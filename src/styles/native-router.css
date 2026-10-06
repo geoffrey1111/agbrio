@@ -185,3 +185,6 @@ html,body,#root{margin:0;width:100%;min-width:0;height:100%;font-family:var(--r2
 .agbrio-card-row>.agbrio-swipe-content>.v4-notification-item,.agbrio-card-row>.agbrio-swipe-content>.v4-watch-item{margin:0!important}
 
 .r2-remote-setup form{display:grid;gap:14px}.r2-remote-setup label{display:grid;gap:6px;font-size:13px}.r2-remote-setup input,.r2-remote-setup select{width:100%;min-width:0;min-height:44px;border:1px solid var(--r2-divider);border-radius:12px;padding:8px 12px;font:inherit;background:var(--r2-paper);color:var(--r2-ink)}.r2-deploy-prompt{display:flex;align-items:center;justify-content:space-between;font-size:13px}.r2-remote-setup{padding:14px 0;border-bottom:1px solid var(--r2-divider)}
+
+/* Fresh remote setup does not inherit the legacy dialog label margins. */
+.r2-device-panel .r2-remote-setup form{align-content:start;height:auto;grid-auto-rows:max-content}.r2-device-panel .r2-remote-setup label{margin:0;line-height:20px}

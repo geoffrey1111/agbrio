@@ -41,8 +41,8 @@ impl Watchdog {
     let tunnel=legacy&&local_client.get("http://127.0.0.1:20241/ready").send().is_ok_and(|r|r.status().is_success());
     let allowed=legacy&&service::can_recover();
     let external_client=if crate::mobile_http::config_method(&config)=="TAILSCALE_SERVE"{&private_client}else{&client};
-    let public=external_client.get(format!("{}/v1/mobile/auth/session",config.allowed_origin.trim_end_matches('/'))).header("cache-control","no-cache").send().is_ok_and(|r|r.status().is_success()&&r.headers().get("x-aiwr-host-instance").and_then(|v|v.to_str().ok())==Some(host.instance_id()));
     let configured=config.allowed_origin.starts_with("https://");
+    let public=configured&&external_client.get(format!("{}/v1/mobile/auth/session",config.allowed_origin.trim_end_matches('/'))).header("cache-control","no-cache").send().is_ok_and(|r|r.status().is_success()&&r.headers().get("x-aiwr-host-instance").and_then(|v|v.to_str().ok())==Some(host.instance_id()));
     let mut state=if !configured{"CONFIG_REQUIRED"}else if public{"ONLINE"}else if !local{"LOCAL_RECOVERING"}else if legacy&&!tunnel && !allowed{"ADMIN_SETUP_REQUIRED"}else if legacy&&!tunnel{"TUNNEL_RECONNECTING"}else{"PUBLIC_UNREACHABLE"}.to_string();
     if public {policy.healthy();}
     if local {local_policy.healthy();}
@@ -86,6 +86,9 @@ mod service {
 #[cfg(not(windows))] mod service {use super::*;pub(super) fn can_recover()->bool{false}pub(super) fn recover(_: &AtomicBool)->Result<(),()>{Err(())}}
 #[cfg(test)] mod tests {
  use super::*;
+ #[test]fn loopback_bootstrap_is_local_ready_but_never_public_ready(){
+  let d=tempfile::tempdir().unwrap();std::fs::write(d.path().join("index.html"),"fixture").unwrap();let core=crate::RouterCore{store:Arc::new(crate::RouterStore::open_at(d.path().join("db")).unwrap()),chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default()};let host=crate::HostRuntime::default();let mut c=crate::mobile_http::MobileHttpConfig::controlled_host_acceptance(d.path().into());c.port=0;c.access_issuer.clear();c.access_audience.clear();c.access_jwks_url.clear();host.ensure_mobile(core.clone(),c.clone());c.port=host.mobile_address().unwrap().port();c.allowed_origin=format!("http://127.0.0.1:{}",c.port);c.allowed_host=format!("127.0.0.1:{}",c.port);host.ensure_mobile(core.clone(),c.clone());host.web.start(host.clone(),core.clone(),c);let until=Instant::now()+Duration::from_secs(5);while host.web.status().checked_at==0&&Instant::now()<until{std::thread::sleep(Duration::from_millis(50));}let s=host.web.status();host.shutdown(&core);assert!(s.local_ready);assert!(!s.public_ready);assert_eq!(s.state,"CONFIG_REQUIRED");
+ }
  #[test]fn transient_failure_and_public_only_failure_never_restart(){let mut p=RecoveryPolicy::default();assert!(!p.tick(true,0));assert!(!p.tick(true,15));assert!(!p.tick(false,30));for n in 0..20{assert!(!p.tick(false,n*15));}}
  #[test]fn recovery_is_bounded_and_healthy_connection_resets_backoff(){let mut p=RecoveryPolicy::default();assert!(!p.tick(true,0));assert!(!p.tick(true,15));assert!(p.tick(true,30));for t in [45,60,90,120]{assert!(!p.tick(true,t));}assert!(p.tick(true,150));p.healthy();assert!(!p.tick(true,165));assert!(!p.tick(true,180));assert!(!p.tick(true,195));assert!(p.tick(true,210));}
 }

@@ -7,6 +7,7 @@ it('lets a fresh user save a verified provider entry without generating a pairin
  const api:WebAccessApi={devices:vi.fn().mockResolvedValue([]),url:vi.fn().mockResolvedValue(null),issue:vi.fn(),revoke:vi.fn(),connection:vi.fn().mockResolvedValue({method:'NONE',origin:null,port:47114,configured:false}),configure};
  render(<DesktopWebAccess api={api}/>);fireEvent.click(screen.getByRole('button',{name:'手机/网页登录'}));
  await screen.findByLabelText('HTTPS 网址');expect(screen.getByRole('button',{name:'验证并保存'})).toBeDisabled();
+ expect(screen.queryByRole('button',{name:'生成配对码'})).not.toBeInTheDocument();
  fireEvent.change(screen.getByLabelText('HTTPS 网址'),{target:{value:'https://pc.tail1.ts.net'}});fireEvent.click(screen.getByRole('button',{name:'验证并保存'}));
  await waitFor(()=>expect(configure).toHaveBeenCalledExactlyOnceWith({method:'TAILSCALE_FUNNEL',origin:'https://pc.tail1.ts.net'}));await screen.findByRole('link',{name:'https://pc.tail1.ts.net/mobile'});expect(api.issue).not.toHaveBeenCalled();
 });
