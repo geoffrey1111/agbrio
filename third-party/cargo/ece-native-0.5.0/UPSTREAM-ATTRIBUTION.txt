@@ -1,0 +1,26 @@
+Upstream package: ece-native@0.5.0
+Declared license: MIT OR Apache-2.0
+Exact source: https://crates.io/api/v1/crates/ece-native/0.5.0/download
+
+[package]
+authors = ["Leo Gaskin <leo.gaskin@le0.gs>"]
+categories = ["cryptography", "network-programming", "web-programming"]
+description = "Encrypted Content-Encoding (ECE) encryption and decryption implemented according to RFC8188"
+edition = "2021"
+homepage = "https://github.com/leotaku/web-push-native"
+keywords = ["http-ece", "web-push", "ece", "rust-crypto"]
+license = "MIT OR Apache-2.0"
+name = "ece-native"
+readme = "README.md"
+repository = "https://github.com/leotaku/web-push-native"
+rust-version = "1.66.1"
+version = "0.5.0"
+
+[dependencies]
+aes-gcm = "0.10.3"
+hkdf = "0.12.4"
+sha2 = "0.10.9"
+
+[dev-dependencies]
+base64ct = { version = "1.6.0", features = ["alloc", "std"] }
+once_cell = "1.21.4"

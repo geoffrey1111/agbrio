@@ -1,0 +1,18 @@
+{
+  "freshAppData": true,
+  "personalConfigUsed": false,
+  "cloudflareAccessUsed": false,
+  "publicTlsVerified": true,
+  "unauthenticatedWriteStatus": 401,
+  "devicePairing": true,
+  "instructionBlockSelected": true,
+  "selectedAttachments": 1,
+  "sendBeforeApprovalRejected": true,
+  "realNativeHandoff": true,
+  "executorMarker": true,
+  "replayStatus": 400,
+  "model": "gpt-6-luna",
+  "existingDesktopRestarted": false,
+  "exactAttachmentBytesCopied": true,
+  "attachmentSha256": "ad9b875887dbad6c4a05fb476c2a95717ffeecd8763aaaa824c5377cd23fa58b"
+}

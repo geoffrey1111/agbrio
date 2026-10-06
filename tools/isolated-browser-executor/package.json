@@ -1,0 +1,12 @@
+{
+  "name": "aiwr-isolated-browser-executor-spike",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "playwright-core": "1.63.0",
+    "puppeteer-core": "25.12.0"
+  }
+}

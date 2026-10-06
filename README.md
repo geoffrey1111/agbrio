@@ -14,7 +14,7 @@ The phone is a convenient place to review and confirm that exchange. The central
 
 ## Release status
 
-**Open-source release preparation.** The personal Windows/Codex implementation is in use, and the owner has reported successful phone handoffs. This public repository currently contains the introduction, illustrations and a self-hosting plan. It does **not** yet contain the application source, an installer, a working installation command or a selected open-source license.
+**MIT-licensed Windows alpha candidate.** Application source and self-hosting setup are now included. The first tagged installer release remains gated on clean Windows installation and a real remote handoff. This is not yet a stable, cross-platform release.
 
 ## For an existing two-conversation workflow
 
@@ -47,20 +47,11 @@ The desktop view shows both sides of the same Bridge. The phone views show manag
 
 ## How the phone reaches your computer
 
-![Agbrio conceptual network and handoff diagram](docs/assets/connection-flow.svg)
+![Agent Bridge topology](docs/assets/connection-flow.svg)
 
-Conceptual topology: the phone controls the desktop Host; the Host connects the two agent conversations. “HTTPS entry” denotes your selected network provider, not an Agbrio-hosted account service.
+[Install and pair](docs/SETUP.md) · [Build from source](docs/BUILD.md) · [MIT license](LICENSE)
 
-The current personal setup uses an HTTPS entry through Cloudflare Tunnel. Cloudflare supplies the network path; your desktop Host still handles the application’s state and requests. A cached PWA shell can open quickly, but cached content is not proof that the computer is online.
-
-The proposed self-hosted setup will let people choose their own access method. The choices below are a plan, not a working selector in the current application.
-
-- **Cloudflare Tunnel** — For an existing Cloudflare-managed domain.
-- **Tailscale Funnel** — A proposed public HTTPS entry on a provider hostname, without buying a domain.
-- **Tailscale Serve** — A proposed private network entry; both devices would use Tailscale.
-- **Your HTTPS proxy or tunnel** — A proposed advanced option for an existing remote-access setup.
-
-[Self-hosting design and draft agent prompt (Simplified Chinese)](docs/SELF_HOSTING_PLAN.zh-CN.md)
+Choose Cloudflare Tunnel, Tailscale Funnel, private Tailscale Serve or your existing HTTPS entry in desktop Settings → Devices. The app verifies TLS and this exact Host before saving, and can copy a deployment prompt for your agent. The domain-free options are Funnel/Serve; you supply your own provider account. Tailscale account provisioning still needs independent real-account validation. No Agbrio-hosted relay is offered.
 
 ## Control, data and delivery
 
@@ -72,14 +63,11 @@ The proposed self-hosted setup will let people choose their own access method. T
 
 ## Current boundaries
 
-Windows + Codex is the current personal-use path. The ChatGPT integration remains experimental and needs separate account/session and end-to-end verification. Claude Code, other agents, macOS and provider-independent onboarding are future work, not supported-release claims. iPhone PWA layout/rendering issues are still being investigated. No hosted multi-user service is offered.
+Windows x64 + Codex + phone PWA is the first alpha scope. App labels are currently Chinese. Other agents, macOS and ChatGPT browser workflows are not supported-release claims. Physical iPhone fixes reported by the owner are distinct from new-machine installer validation.
 
-## Before a usable open-source release
+## Build and contribute
 
-- Export a clean source tree and decide the license after a dependency/distribution audit.
-- Implement access-method selection, verification and an agent-readable deployment prompt.
-- Verify installation, pairing, recovery and file handoffs on a new Windows machine; validate Mac separately.
-- Add other agents only through explicit adapters with independently tested read/send behavior.
+Start with [SETUP](docs/SETUP.md) or [BUILD](docs/BUILD.md). Keep exact routing, explicit confirmation and uncertain-send recovery intact. The project is [MIT licensed](LICENSE); [third-party notices](THIRD_PARTY_NOTICES.md) retain dependency licenses.
 
 ## Contact and feedback
 

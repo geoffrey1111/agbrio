@@ -14,7 +14,7 @@
 
 ## 发布状态
 
-**正在准备开源发布。** 个人 Windows／Codex 实现已在使用，作者已反馈手机转发成功。目前这个公开仓库提供项目介绍、配图与自部署方案；**尚未发布应用源码、安装包、可用的安装命令或选定的开源许可证**。
+**MIT 开源 Windows Alpha 候选版。** 本仓库已包含应用源码和自行部署流程。首个带安装包的版本仍需完成干净 Windows 安装及真实远程交接验证，目前不宣称稳定版或全平台可用。
 
 ## 适合已经使用双对话协作的人
 
@@ -47,20 +47,11 @@
 
 ## 手机如何连接电脑
 
-![Agbrio conceptual network and handoff diagram](docs/assets/connection-flow.svg)
+![Agent Bridge topology](docs/assets/connection-flow.svg)
 
-概念结构：手机操作电脑 Host，Host 连接两端 Agent 对话。「HTTPS 入口」代表用户选择的网络服务，不是 Agbrio 托管的账号服务。
+[安装与配对](docs/SETUP.md) · [源码构建](docs/BUILD.md) · [MIT 许可证](LICENSE)
 
-目前个人环境使用 Cloudflare Tunnel 提供 HTTPS 入口。Cloudflare 负责网络路径，应用状态和请求仍由电脑 Host 处理。PWA 可以先显示缓存界面，但缓存内容不能证明电脑当前在线。
-
-后续自部署流程计划允许用户选择自己的连接方式。下面列的是规划选项，当前应用还没有可用的通用选择器。
-
-- **Cloudflare Tunnel** — 适合已有 Cloudflare 托管域名的用户。
-- **Tailscale Funnel** — 计划提供使用服务商域名的公网 HTTPS 入口，无需购买自己的域名。
-- **Tailscale Serve** — 计划提供私有网络入口，两端都需要使用 Tailscale。
-- **自己的 HTTPS 代理或隧道** — 计划供已有远程访问配置的用户使用。
-
-[自部署设计与 Agent 配置指令草稿](docs/SELF_HOSTING_PLAN.zh-CN.md)
+电脑「设置 → 设备」可选 Cloudflare Tunnel、Tailscale Funnel、私有 Tailscale Serve 或已有 HTTPS 入口。填入地址后先验证 TLS 和本机 Host 身份，再保存；可复制部署指令交给自己的 Agent。Funnel/Serve 无需购买域名，使用自己的服务商账号。Tailscale 真实账号开通链路仍需单独验证，不提供 Agbrio 托管中转。
 
 ## 确认、数据与送达
 
@@ -72,14 +63,11 @@
 
 ## 当前边界
 
-当前个人使用路径是 Windows ＋ Codex。ChatGPT 集成仍属实验性功能，需要另行验证账号会话和完整收发链路。Claude Code、其他 Agent、macOS 与通用自部署流程均是后续工作，不是已发布的支持承诺。iPhone PWA 的布局和渲染问题仍在排查。目前不提供托管的多用户服务。
+首批范围：Windows x64＋Codex＋手机 PWA。应用界面目前为中文。Mac、其他 Agent 和 ChatGPT 浏览器链路不作为已支持发行功能。用户对 iPhone 修复的反馈与新机器安装验证分别记录。
 
-## 可用开源版本发布前
+## 构建与参与
 
-- 导出干净的源码，审查依赖和分发条件后确定许可证。
-- 实现连接方式选择、连接验证和可交给 Agent 的部署指令。
-- 在全新 Windows 环境验证安装、配对、恢复和文件交接；Mac 独立验证。
-- 通过独立适配器扩展其他 Agent，分别验证真实读取与发送行为。
+从[安装文档](docs/SETUP.md)或[构建文档](docs/BUILD.md)开始。保留精确对话身份、最后一次确认和未知送达状态的核对。项目使用 [MIT](LICENSE)，依赖保留[各自的许可及声明](THIRD_PARTY_NOTICES.md)。
 
 ## 联系作者与反馈
 

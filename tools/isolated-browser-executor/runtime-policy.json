@@ -1,0 +1,14 @@
+{
+  "schema": "AIWR_CHROMIUM_PACKAGE_V1",
+  "platform": "win32-x64",
+  "snapshot": "1707745",
+  "productName": "Chromium",
+  "version": "157.0.8079.0",
+  "source": "https://storage.googleapis.com/chromium-browser-snapshots/Win_x64/1707745/chrome-win.zip",
+  "archiveSha256": "7b80a6faf0a8a1b9406a2a10e602b6d5d9c651f0d7d97010ef5276dd8da2a5d7",
+  "executableSha256": "ac2b50c11c536aff132304f1c9ec33709e43ae7f34357153f7359e52fe35f12c",
+  "hashProvenance": "locally-derived from the owner-approved official snapshot; not an upstream signature",
+  "profileRelativePath": "browser-profile/chatgpt",
+  "updatePolicy": "pinned; replacement requires a separately verified package; no browser updater",
+  "notices": "Chromium BSD license and bundled chrome://credits; Puppeteer and Node licenses accompany the package"
+}

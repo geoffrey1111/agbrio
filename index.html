@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#fffcf8" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Agbrio · Agent Bridge</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/brand/apple-touch-v1.png" />
+    <style>
+      html,body{background:#fffcf8}
+      #aiwr-standalone-top-edge{position:fixed;inset:0 0 auto;height:11px;z-index:2147483647;pointer-events:none;background-color:#fffcf8;-webkit-background-clip:text;background-clip:text}
+      html[data-aiwr-mobile="true"] body{margin:0;background:#fffcf8}
+      .aiwr-startup{box-sizing:border-box;min-height:100dvh;margin:0;background:#fffcf8;color:#342d27;padding:calc(76px + env(safe-area-inset-top)) 24px 24px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+      .aiwr-startup[hidden],.aiwr-startup [hidden]{display:none}
+      .aiwr-startup h1{font-size:28px;font-weight:600;line-height:1.5;margin:18px 0}
+      .aiwr-startup p{font-size:15px;line-height:1.75;color:#76675a}
+      .aiwr-startup button{font-family:inherit;font-size:15px;font-weight:500;background:#a55735;color:#fffcf8;min-height:48px;border:0;border-radius:24px;padding:12px 24px;cursor:pointer}
+    </style>
+  </head>
+  <body>
+    <div id="root"><main id="aiwr-startup" class="aiwr-startup" hidden aria-label="Agbrio 正在连接"><h1>Agbrio</h1><p id="aiwr-startup-status" role="status">正在连接…</p><button id="aiwr-startup-retry" type="button" hidden>重试</button></main></div>
+    <script type="module" src="/src/bootstrap.ts"></script>
+  </body>
+</html>
