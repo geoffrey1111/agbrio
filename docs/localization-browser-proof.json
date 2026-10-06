@@ -1,0 +1,29 @@
+{
+  "kind": "AUTOMATED_BROWSER_VALIDATION_WITH_FIXTURE_APIS",
+  "appLanguages": [
+    "en",
+    "zh-CN",
+    "zh-TW"
+  ],
+  "viewports": [
+    {
+      "width": 390,
+      "height": 844
+    },
+    {
+      "width": 440,
+      "height": 956
+    },
+    {
+      "width": 1920,
+      "height": 1080
+    }
+  ],
+  "localeLayoutCases": 9,
+  "allSelectorsInsideViewport": true,
+  "noHorizontalOverflow": true,
+  "reloadPreference": true,
+  "notificationPreferences": true,
+  "pageErrors": [],
+  "physicalIphoneUat": false
+}

@@ -1,3 +1,4 @@
+import {t as uiText} from "../../i18n";
 import {useEffect,useRef,useState} from 'react';
 
 /** Optimistic local removal with serialized persistence for each exact identity.
@@ -24,7 +25,7 @@ export function useUndoRemoval<T>(identity:(item:T)=>string,persist:(item:T,remo
    if(!mounted.current||intents.current.get(id)?.revision!==revision)return;
    intents.current.set(id,{item,removed:!removed,revision});
    setOverrides(old=>new Map(old).set(id,{item,removed:!removed}));setUndoItem(null);
-   operations.current.onError(removed?'删除未完成，条目已恢复。':'撤销未完成，请重新打开列表检查。');
+   operations.current.onError(removed?uiText("删除未完成，条目已恢复。"):uiText("撤销未完成，请重新打开列表检查。"));
   }).finally(()=>{if(queues.current.get(id)===work)queues.current.delete(id);});
  }
  function project(items:T[]){

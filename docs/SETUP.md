@@ -16,6 +16,12 @@ another running Agbrio/AI Work Router instance.
 Open Agbrio. It stays in the system tray when the window closes. Quit from its
 tray menu to stop the Host. Keep the computer awake for remote access.
 
+Choose **Settings → Language** for English, 简体中文, 繁體中文 or system default.
+Desktop and phone keep their own choice. The pairing screen also offers this control.
+Changing language keeps conversations, drafts and device login. Original messages
+and outgoing instructions are not translated. Japanese/Korean currently describe
+the product in the README only.
+
 ## 2. Codex connection
 
 The Windows Store Codex Desktop must already be installed and signed in. Keep its

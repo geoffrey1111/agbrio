@@ -188,3 +188,8 @@ html,body,#root{margin:0;width:100%;min-width:0;height:100%;font-family:var(--r2
 
 /* Fresh remote setup does not inherit the legacy dialog label margins. */
 .r2-device-panel .r2-remote-setup form{align-content:start;height:auto;grid-auto-rows:max-content}.r2-device-panel .r2-remote-setup label{margin:0;line-height:20px}
+/* Language controls belong to the existing preference group. Native-language
+   names stay legible in narrow layouts without widening the app shell. */
+.r2-language-picker{display:grid;grid-template-columns:20px minmax(0,1fr) minmax(110px,auto);align-items:center;gap:12px;margin:0!important;padding:16px 18px;min-width:0;border-block-end:1px solid var(--r2-line,#ded6ca)}
+.r2-language-picker select{min-width:0;max-width:100%;min-height:44px;font:inherit;color:inherit;background:transparent;border:0;padding:4px 8px;cursor:pointer}
+.v4-web-login .r2-language-picker{padding:0;margin-block-end:20px!important;border:0}

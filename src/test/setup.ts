@@ -7,3 +7,6 @@ Object.defineProperty(window, "matchMedia", {
 
 class ResizeObserverStub { observe() {} unobserve() {} disconnect() {} }
 Object.defineProperty(window, "ResizeObserver", { writable: true, value: ResizeObserverStub });
+
+// Existing fixtures explicitly exercise Simplified Chinese; locale cases override it.
+Object.defineProperty(navigator,"languages",{configurable:true,value:["zh-CN"]});

@@ -14,7 +14,7 @@
 
 ## 공개 상태
 
-**[v0.1.0-alpha.1](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.0-alpha.1) — MIT 라이선스 Windows Alpha.** 설치 프로그램과 체크섬을 다운로드하거나 소스로 빌드할 수 있습니다. 깨끗한 Windows 설치와 네이티브 초기 설정의 자동 검증, 실제 원격 Codex／파일 인계를 각각 확인했습니다. 앱은 현재 중국어로 표시되며 Mac과 다른 Agent는 아직 지원 대상이 아닙니다. [설정 절차](docs/SETUP.md).
+**[v0.1.0-alpha.1](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.0-alpha.1) — MIT 라이선스 Windows Alpha.** 설치 프로그램과 체크섬을 다운로드하거나 소스로 빌드할 수 있습니다. 깨끗한 Windows 설치와 네이티브 초기 설정의 자동 검증, 실제 원격 Codex／파일 인계를 각각 확인했습니다. 앱 UI는 영어, 간체 중국어, 번체 중국어를 지원하며 설정에서 전환할 수 있습니다. Mac과 다른 Agent는 아직 지원 대상이 아닙니다. [설정 절차](docs/SETUP.md).
 
 ## 이미 두 대화로 협업하는 사용자를 위한 도구
 
@@ -28,7 +28,7 @@
 
 <p><img src="docs/assets/mobile-handoff.png" width="320" alt="Management-to-execution instruction selection"> <img src="docs/assets/mobile-return.png" width="320" alt="Execution-to-management result selection"></p>
 
-데스크톱 그림은 같은 Bridge의 양쪽 대화를 비교하는 화면입니다. 휴대폰 그림은 관리 측에서 실행 측으로 지시를 보내는 선택 화면과 실행 측에서 관리 측으로 결과를 반환하는 선택 화면입니다. 실제 컴포넌트에 가상 데이터를 넣은 브라우저 미리보기이며 개인 대화나 실기기 검증 결과가 아닙니다. 조작 문구는 현재 중국어이고 README 번역이 앱의 다국어 지원을 의미하지는 않습니다.
+데스크톱 그림은 같은 Bridge의 양쪽 대화를 비교하는 화면입니다. 휴대폰 그림은 관리 측에서 실행 측으로 지시를 보내는 선택 화면과 실행 측에서 관리 측으로 결과를 반환하는 선택 화면입니다. 실제 컴포넌트에 가상 데이터를 넣은 브라우저 미리보기이며 개인 대화나 실기기 검증 결과가 아닙니다. 스크린샷은 중국어 UI입니다. 앱은 영어, 간체 중국어, 번체 중국어를 지원합니다. 한국어와 일본어는 현재 소개 문서에만 제공됩니다.
 
 ## 개인 구현에서 가능한 기능
 
@@ -63,7 +63,7 @@
 
 ## 현재 범위
 
-첫 지원 범위는 Windows x64＋Codex＋휴대폰 PWA입니다. 앱 표시는 현재 중국어입니다. Mac, 다른 Agent, ChatGPT 브라우저 연동은 공개 버전의 지원 완료 기능으로 표시하지 않습니다. iPhone 수정 피드백과 새 Windows 환경 설치 검증은 구분합니다.
+첫 지원 범위는 Windows x64＋Codex＋휴대폰 PWA입니다. 앱은 영어, 간체 중국어, 번체 중국어를 지원합니다. 한국어는 현재 소개 문서에만 제공됩니다. Mac, 다른 Agent, ChatGPT 브라우저 연동은 공개 버전의 지원 완료 기능으로 표시하지 않습니다. iPhone 수정 피드백과 새 Windows 환경 설치 검증은 구분합니다.
 
 ## 빌드 및 기여
 

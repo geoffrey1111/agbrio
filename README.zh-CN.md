@@ -14,7 +14,7 @@
 
 ## 发布状态
 
-**[v0.1.0-alpha.1](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.0-alpha.1) — MIT 开源 Windows Alpha。** 可下载安装包与校验值，或从源码构建。干净 Windows 安装和原生首次设置已通过自动验证，真实远程 Codex／文件交接也已单独验证。应用界面目前为中文，Mac 与其他 Agent 尚未作为支持平台。[安装与配对](docs/SETUP.md)。
+**[v0.1.0-alpha.1](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.0-alpha.1) — MIT 开源 Windows Alpha。** 可下载安装包与校验值，或从源码构建。干净 Windows 安装和原生首次设置已通过自动验证，真实远程 Codex／文件交接也已单独验证。应用支持简体中文、繁体中文和英文，可在「设置 → 语言」切换。Mac 与其他 Agent 尚未作为支持平台。[安装与配对](docs/SETUP.md)。
 
 ## 适合已经使用双对话协作的人
 
@@ -28,7 +28,7 @@
 
 <p><img src="docs/assets/mobile-handoff.png" width="320" alt="Management-to-execution instruction selection"> <img src="docs/assets/mobile-return.png" width="320" alt="Execution-to-management result selection"></p>
 
-电脑图展示同一个 Bridge 的双端对照；两张手机图分别展示「管理端向执行端下发指令」和「执行端向管理端交回结果」的选择界面。使用真实组件、虚构数据和浏览器渲染，不包含私人对话，也不代表设备验收。应用控件目前为中文，多语言 README 不代表应用已完成多语言适配。
+电脑图展示同一个 Bridge 的双端对照；两张手机图分别展示「管理端向执行端下发指令」和「执行端向管理端交回结果」的选择界面。使用真实组件、虚构数据和浏览器渲染，不包含私人对话，也不代表设备验收。示例截图使用中文界面；应用可切换简体中文、繁体中文和英文。日文、韩文目前仅为介绍文档语言。
 
 ## 个人版本目前能做什么
 
@@ -63,7 +63,7 @@
 
 ## 当前边界
 
-首批范围：Windows x64＋Codex＋手机 PWA。应用界面目前为中文。Mac、其他 Agent 和 ChatGPT 浏览器链路不作为已支持发行功能。用户对 iPhone 修复的反馈与新机器安装验证分别记录。
+首批范围：Windows x64＋Codex＋手机 PWA。界面支持简体中文、繁体中文和英文。Mac、其他 Agent 和 ChatGPT 浏览器链路不作为已支持发行功能。用户对 iPhone 修复的反馈与新机器安装验证分别记录。
 
 ## 构建与参与
 

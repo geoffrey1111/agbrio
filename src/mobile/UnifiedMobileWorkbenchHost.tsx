@@ -1,3 +1,4 @@
+import {t as uiText,useLanguage,getLanguage} from "../i18n";
 import {flushSync} from "react-dom";
 import {NotificationDeliveryPanel} from "../features/workbench/NotificationDeliveryPanel";
 import {WebSessionLogout} from "./WebLogin";
@@ -252,24 +253,26 @@ function isMobileAccessAuthenticationError(cause: unknown) {
 }
 
 function MobileRuntimeUnavailable({ onRetry, accessAuthenticationRequired }: { onRetry: () => void; accessAuthenticationRequired: boolean }) {
+ useLanguage();
   const goBack = () => window.history.back();
   if (accessAuthenticationRequired) {
-    return <main className="v3-mobile-runtime-unavailable" aria-label="手机访问需要重新认证">
-      <header><button type="button" onClick={goBack}>‹ 返回</button><h1>手机访问</h1></header>
-      <section><span>访问会话需要重新认证</span><h2>需要重新登录手机访问</h2><p>Cloudflare Access 会话已失效，或当前访问尚未获得授权。Router 和已保存的工作不会因此被删除。</p><p className="v3-mobile-runtime-detail">这不是 ChatGPT 登录，也不表示电脑上的 Router 已关闭。请不要反复刷新。</p><article><h3>下一步</h3><p>重新打开手机访问页，按 Cloudflare Access 的正常登录流程完成认证后，再返回这里。</p><p>认证完成前，手机不能读取新内容或提交操作。</p></article></section>
-      <footer><button type="button" className="v3-primary" onClick={onRetry}>重新打开手机访问页</button><button type="button" onClick={goBack}>返回仍保留的页面</button></footer>
+    return <main className="v3-mobile-runtime-unavailable" aria-label={uiText("手机访问需要重新认证")}>
+      <header><button type="button" onClick={goBack}>{uiText("‹ 返回")}</button><h1>{uiText("手机访问")}</h1></header>
+      <section><span>{uiText("访问会话需要重新认证")}</span><h2>{uiText("需要重新登录手机访问")}</h2><p>{uiText("Cloudflare Access 会话已失效，或当前访问尚未获得授权。Router 和已保存的工作不会因此被删除。")}</p><p className="v3-mobile-runtime-detail">{uiText("这不是 ChatGPT 登录，也不表示电脑上的 Router 已关闭。请不要反复刷新。")}</p><article><h3>{uiText("下一步")}</h3><p>{uiText("重新打开手机访问页，按 Cloudflare Access 的正常登录流程完成认证后，再返回这里。")}</p><p>{uiText("认证完成前，手机不能读取新内容或提交操作。")}</p></article></section>
+      <footer><button type="button" className="v3-primary" onClick={onRetry}>{uiText("重新打开手机访问页")}</button><button type="button" onClick={goBack}>{uiText("返回仍保留的页面")}</button></footer>
     </main>;
   }
-  return <main className="v3-mobile-runtime-unavailable" aria-label="手机端运行状态不可用">
-    <header><button type="button" onClick={goBack}>‹ 返回</button><h1>运行状态</h1></header>
-    <section><span>暂时连不上 Router</span><h2>无法读取 Router 状态</h2><p>手机不能读取新内容，也不能发送消息。此前已显示的内容不会被空白覆盖。</p><p className="v3-mobile-runtime-detail">Router 状态请求未成功；不会把它解释为电脑已关闭。</p><article><h3>在 Windows 上检查 AI Work Router</h3><p>确认“运行环境”显示可用后，再回到手机刷新。</p><p>手机不能直接启动一台已关闭的电脑。</p></article></section>
-    <footer><button type="button" className="v3-primary" onClick={onRetry}>重新连接</button><button type="button" onClick={goBack}>返回仍保留的页面</button></footer>
+  return <main className="v3-mobile-runtime-unavailable" aria-label={uiText("手机端运行状态不可用")}>
+    <header><button type="button" onClick={goBack}>{uiText("‹ 返回")}</button><h1>{uiText("运行状态")}</h1></header>
+    <section><span>{uiText("暂时连不上 Router")}</span><h2>{uiText("无法读取 Router 状态")}</h2><p>{uiText("手机不能读取新内容，也不能发送消息。此前已显示的内容不会被空白覆盖。")}</p><p className="v3-mobile-runtime-detail">{uiText("Router 状态请求未成功；不会把它解释为电脑已关闭。")}</p><article><h3>{uiText("在 Windows 上检查 AI Work Router")}</h3><p>{uiText("确认“运行环境”显示可用后，再回到手机刷新。")}</p><p>{uiText("手机不能直接启动一台已关闭的电脑。")}</p></article></section>
+    <footer><button type="button" className="v3-primary" onClick={onRetry}>{uiText("重新连接")}</button><button type="button" onClick={goBack}>{uiText("返回仍保留的页面")}</button></footer>
   </main>;
 }
 
 /** The mobile host is a thin authenticated projection over the same Router
  * commands used by desktop. It has no provider, browser, or SQLite access. */
 export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSurface?:WorkbenchSurface}={}) {
+  useLanguage();
   const [notificationCount,setNotificationCount]=useState(0);
   const [notificationDetail,setNotificationDetail]=useState(false);
   const [index, setIndex] = useState<MobileWorkstream[]>([]);
@@ -1098,30 +1101,30 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
 
   const phonePushReady = pushSetup === "SUBSCRIBED" && (routerSubscriptionCount ?? 0) > 0;
   const phonePushStatus = pushSetup === "CHECKING"
-    ? "正在核对这台手机与 Router 的通知订阅…"
+    ? uiText("正在核对这台手机与 Router 的通知订阅…")
     : phonePushReady
-      ? "已开启：Router 会为未来新出现的完整 ChatGPT / Codex 回复提交通知。推送服务没有手机弹窗回执；可用下方“测试真实回复通知”核对同一展示路径。"
+      ? uiText("已开启：Router 会为未来新出现的完整 ChatGPT / Codex 回复提交通知。推送服务没有手机弹窗回执；可用下方“测试真实回复通知”核对同一展示路径。")
       : pushSetup === "DENIED"
-        ? "此浏览器已拒绝通知权限。请在手机的站点设置中允许通知后再试。"
+        ? uiText("此浏览器已拒绝通知权限。请在手机的站点设置中允许通知后再试。")
         : pushSetup === "UNSUPPORTED"
-          ? "当前打开方式不支持网站通知。请在受支持的手机浏览器或已添加到主屏幕的 Web App 中打开。"
+          ? uiText("当前打开方式不支持网站通知。请在受支持的手机浏览器或已添加到主屏幕的 Web App 中打开。")
           : pushSetup === "UPDATING"
-            ? "现有订阅已保留，但真实回复通知组件仍在更新。Router 不会把基础测试通知当成业务通知已就绪；请保持此 PWA 打开片刻后刷新状态。"
+            ? uiText("现有订阅已保留，但真实回复通知组件仍在更新。Router 不会把基础测试通知当成业务通知已就绪；请保持此 PWA 打开片刻后刷新状态。")
           : pushSetup === "SUBSCRIBED"
-            ? "浏览器显示已订阅，但 Router 尚未收到有效订阅；不会把它当成已开启。请重新开启一次。"
-            : "尚未开启。现在开启后，Router 只推送未来的新回复。";
-  const phonePushPanel = <section className={`v3-mobile-push-card${phonePushReady ? " is-ready" : ""}`} aria-label="手机通知">
-    <div><span>手机通知</span><h2>{phonePushReady ? "未来回复会通知你" : "开启未来回复通知"}</h2><p>{phonePushStatus}</p></div>
+            ? uiText("浏览器显示已订阅，但 Router 尚未收到有效订阅；不会把它当成已开启。请重新开启一次。")
+            : uiText("尚未开启。现在开启后，Router 只推送未来的新回复。");
+  const phonePushPanel = <section className={`v3-mobile-push-card${phonePushReady ? " is-ready" : ""}`} aria-label={uiText("手机通知")}>
+    <div><span>{uiText("手机通知")}</span><h2>{phonePushReady ? uiText("未来回复会通知你") : uiText("开启未来回复通知")}</h2><p>{uiText(phonePushStatus)}</p></div>
     <div className="v3-mobile-push-actions">
-      {!phonePushReady && <button type="button" className="v3-primary" disabled={pushBusy || pushSetup === "CHECKING" || pushSetup === "UNSUPPORTED" || pushSetup === "DENIED" || pushSetup === "UPDATING"} onClick={() => void enablePhoneNotifications()}>{pushSetup === "UPDATING" ? "正在更新通知组件…" : pushBusy ? "正在开启…" : "开启本机通知"}</button>}
-      {phonePushReady && <><button type="button" disabled={pushBusy} onClick={() => void mobileApi.testPush().catch((cause) => setError(`测试通知没有送达：${String(cause)}`))}>发送测试通知</button><button type="button" disabled={pushBusy} onClick={() => void mobileApi.testReplyPush().catch((cause) => setError(`真实回复通知测试没有送达：${String(cause)}`))}>测试真实回复通知</button><button type="button" disabled={pushBusy} onClick={() => void disablePhoneNotifications()}>{pushBusy ? "正在关闭…" : "关闭本机通知"}</button></>}
-      <button type="button" disabled={pushBusy} onClick={() => void refreshPushSetup().catch((cause) => setError(`手机通知状态未刷新：${String(cause)}`))}>刷新状态</button>
-      {phonePushReady && <button type="button" onClick={() => setPushPanelExpanded(false)}>收起通知设置</button>}
+      {!phonePushReady && <button type="button" className="v3-primary" disabled={pushBusy || pushSetup === "CHECKING" || pushSetup === "UNSUPPORTED" || pushSetup === "DENIED" || pushSetup === "UPDATING"} onClick={() => void enablePhoneNotifications()}>{pushSetup === "UPDATING" ? uiText("正在更新通知组件…") : pushBusy ? uiText("正在开启…") : uiText("开启本机通知")}</button>}
+      {phonePushReady && <><button type="button" disabled={pushBusy} onClick={() => void mobileApi.testPush().catch((cause) => setError(uiText("测试通知没有送达：{0}", String(cause))))}>{uiText("发送测试通知")}</button><button type="button" disabled={pushBusy} onClick={() => void mobileApi.testReplyPush().catch((cause) => setError(uiText("真实回复通知测试没有送达：{0}", String(cause))))}>{uiText("测试真实回复通知")}</button><button type="button" disabled={pushBusy} onClick={() => void disablePhoneNotifications()}>{pushBusy ? uiText("正在关闭…") : uiText("关闭本机通知")}</button></>}
+      <button type="button" disabled={pushBusy} onClick={() => void refreshPushSetup().catch((cause) => setError(uiText("手机通知状态未刷新：{0}", String(cause))))}>{uiText("刷新状态")}</button>
+      {phonePushReady && <button type="button" onClick={() => setPushPanelExpanded(false)}>{uiText("收起通知设置")}</button>}
     </div>
   </section>;
   const mobileWorkspaceMenu = selectedId && (snapshot?.activeChatgptEndpoint || snapshot?.activeCodexEndpoint) ? <>
-    <button type="button" onClick={() => setPushPanelExpanded(true)}>{phonePushReady ? "管理手机通知（已开启）" : "开启手机通知"}</button>
-    {snapshot.activeChatgptEndpoint ? <button type="button" onClick={() => void checkNewProviderReply("CHATGPT")}>检查 ChatGPT 新回复</button> : null}
+    <button type="button" onClick={() => setPushPanelExpanded(true)}>{phonePushReady ? uiText("管理手机通知（已开启）") : uiText("开启手机通知")}</button>
+    {snapshot.activeChatgptEndpoint ? <button type="button" onClick={() => void checkNewProviderReply("CHATGPT")}>{uiText("检查 ChatGPT 新回复")}</button> : null}
     {snapshot.activeCodexEndpoint ? <button type="button" onClick={() => void checkNewProviderReply("CODEX")}>检查 Codex 新回复</button> : null}
     {snapshot.activeChatgptEndpoint ? <button type="button" onClick={() => setObserverDetailsOpen((current) => !current)}>{observerDetailsOpen ? "收起回复观察说明" : "查看回复观察说明"}</button> : null}
     {observerDetailsOpen && <p className="v3-mobile-workspace-menu-note" role="status">Router 在电脑端读取精确绑定的 ChatGPT 对话。首次读取建立观察起点；之后的新终态回复创建通知。被动观察不可用时可手动检查。交接先审阅、批准，再单独发送。</p>}
@@ -1131,7 +1134,7 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
   // consume the first phone viewport or push a focused exact reply below the
   // fixed Reader dock; the workspace menu remains the single clear entry.
   const showPhonePushPanel = pushPanelExpanded;
-  return <>{error && <p role="alert" className="v3-mobile-error">{error}</p>}<UnifiedWorkbench notificationDetail={notificationDetail} notificationCount={notificationCount} notificationSettings={<><div data-expanded={showPhonePushPanel}>{phonePushPanel}</div>{webNotificationApi.delivery&&<NotificationDeliveryPanel api={webNotificationApi.delivery}/>}<NotificationAssistantSettings api={webNotificationApi}/></>} devicePanel={<WebSessionLogout/>} onRenameBridge={async(id,name)=>{await mobileApi.renameBridge(id,name);await refreshIndex();}} onManageBindings={requestBinding} onCreateBridge={async name=>{const id=await mobileApi.createBridge(name);await refreshIndex();await load(id);flushSync(()=>setSurface("WORKSPACE"));setBindingRequest(v=>v+1);}}
+  return <>{error && <p role="alert" className="v3-mobile-error">{uiText(error)}</p>}<UnifiedWorkbench notificationDetail={notificationDetail} notificationCount={notificationCount} notificationSettings={<><div data-expanded={showPhonePushPanel}>{phonePushPanel}</div>{webNotificationApi.delivery&&<NotificationDeliveryPanel api={webNotificationApi.delivery}/>}<NotificationAssistantSettings api={webNotificationApi}/></>} devicePanel={<WebSessionLogout/>} onRenameBridge={async(id,name)=>{await mobileApi.renameBridge(id,name);await refreshIndex();}} onManageBindings={requestBinding} onCreateBridge={async name=>{const id=await mobileApi.createBridge(name);await refreshIndex();await load(id);flushSync(()=>setSurface("WORKSPACE"));setBindingRequest(v=>v+1);}}
     items={items} selectedWorkstreamId={selectedId} reply={reply}
     roleCompatible={roleMode}
     globalActions={<CodexNotifications onDetailChange={setNotificationDetail} onCountChange={setNotificationCount} api={webNotificationApi} workbenchPage={{active:surface==="NOTIFICATIONS",open:()=>setSurface("NOTIFICATIONS")}}/>}

@@ -1,9 +1,11 @@
+import {t as uiText,useLanguage} from "../../i18n";
 import {useEffect,useId,useRef,useState,type ReactNode} from 'react';
 import {Trash2} from 'lucide-react';
 
 /** Both horizontal directions reveal Delete. Native Touch Events also cover
  * Safari's touch arbitration; only a locked horizontal gesture is cancelled. */
 export function SwipeDeleteRow({label,onDelete,children,disabled=false,className=''}:{label:string;onDelete:()=>void;children:ReactNode;disabled?:boolean;className?:string}){
+ useLanguage();
  const id=useId(),row=useRef<HTMLDivElement>(null),[offset,setOffset]=useState(0),[dragging,setDragging]=useState(false);
  const gesture=useRef<{x:number;y:number;start:number;axis:'pending'|'x'|'y';offset:number}|null>(null),suppress=useRef(0);
  function reveal(value:number){setOffset(value);if(value)window.dispatchEvent(new CustomEvent('agbrio-swipe-open',{detail:id}));}
@@ -25,8 +27,8 @@ export function SwipeDeleteRow({label,onDelete,children,disabled=false,className
   onKeyDown={e=>{if(e.key==='Escape'){reveal(0);e.stopPropagation();}}}
   onContextMenu={e=>{if(disabled)return;e.preventDefault();reveal(offset?0:76);}}
   onClickCapture={e=>{if(!(e.target as HTMLElement).closest('.agbrio-swipe-content'))return;if(performance.now()<suppress.current||Math.abs(offset)>=40){e.preventDefault();e.stopPropagation();if(performance.now()>=suppress.current)reveal(0);}}}>
-  <button type="button" className="agbrio-swipe-delete" aria-label={`删除 ${label}`} aria-hidden={Math.abs(offset)<40} tabIndex={Math.abs(offset)>=40?0:-1} disabled={disabled} onClick={onDelete}><Trash2 size={20} aria-hidden="true"/><span>删除</span></button>
+  <button type="button" className="agbrio-swipe-delete" aria-label={uiText("删除 {0}", label)} aria-hidden={Math.abs(offset)<40} tabIndex={Math.abs(offset)>=40?0:-1} disabled={disabled} onClick={onDelete}><Trash2 size={20} aria-hidden="true"/><span>{uiText("删除")}</span></button>
   <div className="agbrio-swipe-content">{children}</div>
-  <button type="button" className="agbrio-row-delete" aria-label={`删除 ${label}`} disabled={disabled} onClick={onDelete}><Trash2 size={18} aria-hidden="true"/></button>
+  <button type="button" className="agbrio-row-delete" aria-label={uiText("删除 {0}", label)} disabled={disabled} onClick={onDelete}><Trash2 size={18} aria-hidden="true"/></button>
  </div>;
 }

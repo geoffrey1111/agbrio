@@ -37,3 +37,13 @@ the personal build do not replace a fresh-install physical-device test.
 ## Clean Windows result
 
 [Successful installation workflow](https://github.com/geoffrey1111/agbrio/actions/runs/37445032617). The actual unsigned NSIS installer runs on a separate clean Windows runner, followed by native Windows accessibility invocation of Settings/Devices, invalid HTTPS recovery, no premature pairing controls and actual maximized capture. Production WebView2 does not expose the requested CDP endpoint in this build; native UI Automation validates the shipped binary without enabling devtools. The source mock preview separately checks 1024 and 1920 layouts; it is not native acceptance.
+
+## First-release app localization
+
+Seven additional frontend cases prove preference persistence and state/content
+boundaries. Global Playwright exercised the production PWA with fixture APIs at
+390×844, 440×956 and 1920×1080: all three languages, reload persistence, visible
+selectors and notification preferences, no horizontal overflow or page errors.
+This is automated browser validation, not physical iPhone acceptance. A new
+installer/native first-setup run is required for this localized source; earlier
+Windows proof applies to the preceding Chinese-only candidate.

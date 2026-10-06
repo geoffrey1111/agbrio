@@ -14,7 +14,7 @@ The phone is a convenient place to review and confirm that exchange. The central
 
 ## Release status
 
-**[v0.1.0-alpha.1](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.0-alpha.1) — MIT-licensed Windows alpha.** Download the installer and checksums, or build the included source. Clean Windows installation and native first-setup controls have passed automated validation, separately from the real remote Codex/file handoff. App labels are Chinese; Mac and other agents remain future work. [Install and pair](docs/SETUP.md).
+**[v0.1.0-alpha.1](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.0-alpha.1) — MIT-licensed Windows alpha.** Download the installer and checksums, or build the included source. Clean Windows installation and native first-setup controls have passed automated validation, separately from the real remote Codex/file handoff. App UI supports English, Simplified Chinese and Traditional Chinese; switch in Settings → Language.  Mac and other agents remain future work. [Install and pair](docs/SETUP.md).
 
 ## For an existing two-conversation workflow
 
@@ -28,7 +28,7 @@ This is a workflow tool for people who deliberately separate management and exec
 
 <p><img src="docs/assets/mobile-handoff.png" width="320" alt="Management-to-execution instruction selection"> <img src="docs/assets/mobile-return.png" width="320" alt="Execution-to-management result selection"></p>
 
-The desktop view shows both sides of the same Bridge. The phone views show management-to-execution instruction selection and execution-to-management result selection. Real app components, fictional demo data, browser-rendered previews; not private conversations or device acceptance. App labels are currently Chinese. README translations do not imply a translated app.
+The desktop view shows both sides of the same Bridge. The phone views show management-to-execution instruction selection and execution-to-management result selection. Real app components, fictional demo data, browser-rendered previews; not private conversations or device acceptance. Screenshots show the Chinese UI. English and Traditional Chinese are available in the app; Japanese and Korean are introduction-only translations.
 
 ## What the personal implementation does
 
@@ -63,7 +63,7 @@ Choose Cloudflare Tunnel, Tailscale Funnel, private Tailscale Serve or your exis
 
 ## Current boundaries
 
-Windows x64 + Codex + phone PWA is the first alpha scope. App labels are currently Chinese. Other agents, macOS and ChatGPT browser workflows are not supported-release claims. Physical iPhone fixes reported by the owner are distinct from new-machine installer validation.
+Windows x64 + Codex + phone PWA is the first alpha scope. UI languages: English, Simplified Chinese and Traditional Chinese. Other agents, macOS and ChatGPT browser workflows are not supported-release claims. Physical iPhone fixes reported by the owner are distinct from new-machine installer validation.
 
 ## Build and contribute
 

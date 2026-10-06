@@ -1,3 +1,4 @@
+import {t as uiText} from "../i18n";
 import { mobileApi } from "./api";
 
 export type PushSetupState = "UNSUPPORTED" | "NOT_REQUESTED" | "DENIED" | "SUPPORTED_NOT_SUBSCRIBED" | "UPDATING" | "SUBSCRIBED";
@@ -37,11 +38,11 @@ function usesApplicationServerKey(subscription: PushSubscription, expected: Uint
 }
 
 export async function enableWebPush() {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window) || !window.isSecureContext) throw new Error("此浏览器或当前安全上下文不支持 Web Push");
-  if (Notification.permission === "denied") throw new Error("浏览器已拒绝通知权限；请在站点设置中重新允许。");
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window) || !window.isSecureContext) throw new Error(uiText("此浏览器或当前安全上下文不支持 Web Push"));
+  if (Notification.permission === "denied") throw new Error(uiText("浏览器已拒绝通知权限；请在站点设置中重新允许。"));
   const registration = await registerCurrentServiceWorker();
   const permission = await Notification.requestPermission();
-  if (permission !== "granted") throw new Error("未授予通知权限；不会创建订阅。");
+  if (permission !== "granted") throw new Error(uiText("未授予通知权限；不会创建订阅。"));
   const { publicKey } = await mobileApi.pushConfig();
   const applicationServerKey = base64UrlToBytes(publicKey);
   const existing = await registration.pushManager.getSubscription();
@@ -57,7 +58,7 @@ export async function enableWebPush() {
     // InvalidStateError, so retire that exact stale endpoint before creating
     // the Router's current one. No reply content crosses this boundary.
     await mobileApi.removePushSubscription(existing.endpoint);
-    if (!(await existing.unsubscribe())) throw new Error("无法注销过期的本机通知订阅。");
+    if (!(await existing.unsubscribe())) throw new Error(uiText("无法注销过期的本机通知订阅。"));
   }
   const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
   await mobileApi.upsertPushSubscription(subscription.toJSON());
