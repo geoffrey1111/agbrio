@@ -4,13 +4,20 @@ on:
     branches: [main, codex/open-alpha]
   pull_request:
   workflow_dispatch:
+    inputs:
+      reuse_installed_run:
+        description: Diagnostic only - reuse the owned installed image from a failed run
+        required: false
+        default: ''
 permissions:
   contents: read
+  actions: read
 concurrency:
-  group: windows-alpha-${{ github.event.pull_request.head.ref || github.ref_name }}
+  group: windows-alpha-${{ github.event_name == 'workflow_dispatch' && inputs.reuse_installed_run != '' && 'diagnostic' || github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 jobs:
-  windows:
+  build:
+    if: ${{ inputs.reuse_installed_run == '' }}
     runs-on: windows-2025
     timeout-minutes: 55
     steps:
@@ -24,30 +31,31 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.98.0'
-      - name: Install locked dependencies
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates -> target
+            src-tauri -> target
+      - name: Locked dependencies and frontend
         run: |
           npm ci
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           npm ci --prefix tools/isolated-browser-executor
-      - name: Frontend and Core
-        run: |
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           npm test
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
-          cargo test --manifest-path crates/Cargo.toml --locked
+          npm run test:shared-lifecycle
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           npm run build
-      - name: Stage verified Windows runtime
+      - name: Core tests
+        run: cargo test --manifest-path crates/Cargo.toml --locked
+      - name: Stage verified runtime
         run: npm run build:browser-executor
       - name: Native tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
       - name: Build Windows installer
-        run: |
-          npm run build:windows
-      - name: Install and inspect on fresh Windows
-        run: |
-          $installer=(Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
-          pwsh -NoProfile -File scripts/windows-install-smoke.ps1 -Installer $installer
-      - name: Artifact checksums
+        run: npm run build:windows
+      - name: Checksums
         run: |
           $installer=Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
           $sum=(Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLower()
@@ -55,13 +63,43 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: agbrio-windows-alpha-candidate
-          path: |
-            src-tauri/target/release/bundle/nsis/*-setup.exe
-            src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
-            runtime/clean-windows/proof.json
-            runtime/clean-windows/desktop-first-setup.png
-      - uses: actions/upload-artifact@v4
-        if: failure()
+          path: src-tauri/target/release/bundle/nsis/
+  install:
+    needs: build
+    if: ${{ always() && (needs.build.result == 'success' || inputs.reuse_installed_run != '') }}
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          name: agbrio-windows-failure-evidence
-          path: runtime/clean-windows/
+          node-version: 24.16.0
+      - name: UI test dependency
+        run: npm ci
+      - uses: actions/download-artifact@v4
+        if: ${{ inputs.reuse_installed_run == '' }}
+        with:
+          name: agbrio-windows-alpha-candidate
+          path: runtime/installer
+      - name: Actual clean Windows install
+        if: ${{ inputs.reuse_installed_run == '' }}
+        run: |
+          $installer=(Get-ChildItem runtime/installer/*-setup.exe | Select-Object -First 1).FullName
+          pwsh -NoProfile -File scripts/windows-install-smoke.ps1 -Installer $installer
+      - name: Diagnostic reuse only
+        if: ${{ inputs.reuse_installed_run != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REUSE_RUN: ${{ inputs.reuse_installed_run }}
+        run: |
+          if($env:REUSE_RUN -notmatch '^[0-9]+$'){throw 'Invalid owned run ID'}
+          gh run download $env:REUSE_RUN --repo $env:GITHUB_REPOSITORY --name agbrio-windows-failure-evidence --dir runtime/recovered
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          pwsh -NoProfile -File scripts/windows-install-smoke.ps1 -InstalledImage runtime/recovered/install
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agbrio-windows-install-validation
+          path: |
+            runtime/clean-windows/proof.json
+            runtime/clean-windows/*.png
