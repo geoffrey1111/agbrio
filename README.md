@@ -14,7 +14,7 @@ The phone is a convenient place to review and confirm that exchange. The central
 
 ## Release status
 
-**MIT-licensed Windows alpha candidate.** Application source and self-hosting setup are now included. The first tagged installer release remains gated on clean Windows installation and a real remote handoff. This is not yet a stable, cross-platform release.
+**[v0.1.0-alpha.1](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.0-alpha.1) — MIT-licensed Windows alpha.** Download the installer and checksums, or build the included source. Clean Windows installation and native first-setup controls have passed automated validation, separately from the real remote Codex/file handoff. App labels are Chinese; Mac and other agents remain future work. [Install and pair](docs/SETUP.md).
 
 ## For an existing two-conversation workflow
 

@@ -1,0 +1,14 @@
+{
+  "freshWindowsRunner": true,
+  "installedApplication": true,
+  "nativeAccessibility": true,
+  "setupSelector": true,
+  "noPersonalOrigin": true,
+  "invalidHttpsRejected": true,
+  "pairingBlockedUntilConfigured": true,
+  "nativeMaximized": true,
+  "controlsInsideWindow": true,
+  "providerCredentialsUsed": false,
+  "captureWidth": 1040,
+  "captureHeight": 736
+}

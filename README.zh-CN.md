@@ -14,7 +14,7 @@
 
 ## 发布状态
 
-**MIT 开源 Windows Alpha 候选版。** 本仓库已包含应用源码和自行部署流程。首个带安装包的版本仍需完成干净 Windows 安装及真实远程交接验证，目前不宣称稳定版或全平台可用。
+**[v0.1.0-alpha.1](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.0-alpha.1) — MIT 开源 Windows Alpha。** 可下载安装包与校验值，或从源码构建。干净 Windows 安装和原生首次设置已通过自动验证，真实远程 Codex／文件交接也已单独验证。应用界面目前为中文，Mac 与其他 Agent 尚未作为支持平台。[安装与配对](docs/SETUP.md)。
 
 ## 适合已经使用双对话协作的人
 
