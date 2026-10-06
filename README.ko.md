@@ -81,4 +81,8 @@
 - 새 Windows 환경에서 설치, 페어링, 복구, 파일 인계를 검증합니다. Mac은 별도로 검증합니다.
 - 독립 어댑터로 다른 Agent를 추가하고 실제 읽기와 전송을 각각 검증합니다.
 
-제안은 [Issues](https://github.com/geoffrey1111/agbrio/issues)에 남겨 주세요. 문제 보고에 화면 리비전, 기기／OS, 연결 방식, 재현 절차를 포함하고 개인 대화, 경로, 토큰, 민감한 이미지를 제거한 후 게시해 주세요.
+## 작성자 연락 및 피드백
+
+[작성자 프로필](https://github.com/geoffrey1111) · [문제 보고](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [워크플로 개선 제안](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
+
+사용 관련 질문도 Issues에 남길 수 있습니다. 공개 채널이므로 예시 데이터를 사용하고 개인 정보를 제거해 주세요.

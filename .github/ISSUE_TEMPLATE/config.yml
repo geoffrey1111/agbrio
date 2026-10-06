@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Author / 作者
+    url: https://github.com/geoffrey1111
+    about: Visit the author's public GitHub profile. Questions and feedback can use repository Issues.

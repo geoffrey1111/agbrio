@@ -81,4 +81,8 @@
 - 在全新 Windows 环境验证安装、配对、恢复和文件交接；Mac 独立验证。
 - 通过独立适配器扩展其他 Agent，分别验证真实读取与发送行为。
 
-欢迎通过 [Issues](https://github.com/geoffrey1111/agbrio/issues) 提建议。反馈问题时附上界面版本、设备／系统、连接方式与复现步骤；公开前移除私人对话、路径、令牌与敏感截图。
+## 联系作者与反馈
+
+[作者主页](https://github.com/geoffrey1111) · [反馈问题](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [提出工作流建议](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
+
+使用问题也可以在 Issues 中交流。这里是公开渠道，请使用示例数据，并在发布前移除私人内容。

@@ -81,4 +81,8 @@ PC の図は同じ Bridge の両側を並べた画面です。スマートフォ
 - 新しい Windows 環境でインストール、ペアリング、復旧、資料転送を検証します。Mac は別途検証します。
 - 独立アダプターで他の Agent を追加し、実際の読み取りと送信を個別に検証します。
 
-提案は [Issues](https://github.com/geoffrey1111/agbrio/issues) へ。問題報告には画面のリビジョン、端末／OS、接続方式、再現手順を添えてください。私的な会話、パス、トークン、機密画像を除いてから投稿してください。
+## 作者への連絡とフィードバック
+
+[作者のプロフィール](https://github.com/geoffrey1111) · [問題を報告する](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [ワークフローの改善を提案する](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
+
+使い方の質問も Issues に投稿できます。公開の場なので、デモデータを使い私的な情報を除いてください。

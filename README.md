@@ -81,4 +81,8 @@ Windows + Codex is the current personal-use path. The ChatGPT integration remain
 - Verify installation, pairing, recovery and file handoffs on a new Windows machine; validate Mac separately.
 - Add other agents only through explicit adapters with independently tested read/send behavior.
 
-Suggestions are welcome in [Issues](https://github.com/geoffrey1111/agbrio/issues). For bug reports, include the interface revision, device/OS, connection method and reproduction steps. Remove private conversation text, paths, tokens and screenshots before posting.
+## Contact and feedback
+
+[Author](https://github.com/geoffrey1111) · [Report a problem](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [Suggest a workflow improvement](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
+
+Questions are welcome in Issues. This is a public channel; use demo data and remove private material before posting.

@@ -1,0 +1,18 @@
+name: Suggestion / 功能建议
+description: Suggest an improvement to the management/execution handoff workflow.
+title: "[Idea] "
+body:
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Your workflow and friction / 使用流程与阻力
+      description: What are the managing and executing conversations doing, and where does the handoff become difficult?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired experience / 希望的体验
+      description: Describe the outcome you want, including an example if useful. Any language is welcome.
+    validations:
+      required: true

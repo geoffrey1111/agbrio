@@ -1,0 +1,41 @@
+name: Bug report / 问题反馈
+description: Report a reproducible Agbrio problem. English or your preferred language is welcome.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: "Please use demo data where possible. Remove tokens and private conversation content from screenshots or logs. 请尽量使用示例数据，移除令牌及私人对话内容。"
+  - type: input
+    id: version
+    attributes:
+      label: Version / 版本
+      description: App version and interface revision from About. If testing a future source release, include the commit.
+      placeholder: "App 0.1.0; interface 2026.10.06-7"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment / 使用环境
+      description: Computer OS, phone OS, agent version, and remote-access method. Do not include credentials or your private address.
+      placeholder: "Windows; iPhone/iOS; Codex; Cloudflare Tunnel"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / 复现步骤
+      placeholder: "1. Open a Bridge\n2. Select the execution side\n3. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual behavior / 预期与实际表现
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Optional screenshot or diagnostic / 可选截图或诊断
+      description: Only include material suitable for a public issue.
