@@ -1,13 +1,21 @@
-param([Parameter(Mandatory=$true)][string]$Installer)
+param([string]$Installer,[string]$InstalledImage)
 $ErrorActionPreference='Stop'
 $agbrioRoot=Join-Path (Get-Location).Path 'runtime\clean-windows'
 $agbrioInstall=Join-Path $agbrioRoot 'install'
 $agbrioData=Join-Path $agbrioRoot 'local-appdata'
 New-Item -ItemType Directory -Path $agbrioData -Force|Out-Null
 if(Get-Process -Name ai-work-router -ErrorAction SilentlyContinue){throw 'Fresh-runner gate: another Host is running.'}
-$agbrioInstaller=(Resolve-Path -LiteralPath $Installer).Path
-$agbrioSetup=Start-Process -FilePath $agbrioInstaller -ArgumentList @('/S',('/D='+$agbrioInstall)) -WindowStyle Hidden -Wait -PassThru
-if($agbrioSetup.ExitCode -ne 0){throw ('Installer failed '+$agbrioSetup.ExitCode)}
+if($Installer){
+ $agbrioInstaller=(Resolve-Path -LiteralPath $Installer).Path
+ $agbrioSetup=Start-Process -FilePath $agbrioInstaller -ArgumentList @('/S',('/D='+$agbrioInstall)) -WindowStyle Hidden -Wait -PassThru
+ if($agbrioSetup.ExitCode -ne 0){throw ('Installer failed '+$agbrioSetup.ExitCode)}
+}elseif($InstalledImage){
+ # Diagnostic-only reuse of a proven runner-owned installed image. Final release
+ # still runs the actual installer on a separate clean Windows runner.
+ $agbrioImage=(Resolve-Path -LiteralPath $InstalledImage).Path
+ if(!$agbrioImage.StartsWith((Get-Location).Path+[IO.Path]::DirectorySeparatorChar)){throw 'Image must be inside the QA workspace.'}
+ Copy-Item -LiteralPath $agbrioImage -Destination $agbrioInstall -Recurse
+}else{throw 'Installer or diagnostic InstalledImage required.'}
 $agbrioExecutable=Join-Path $agbrioInstall 'ai-work-router.exe'
 if(!(Test-Path -LiteralPath $agbrioExecutable)){throw 'Installed application missing.'}
 $agbrioStart=[Diagnostics.ProcessStartInfo]::new($agbrioExecutable)
@@ -27,10 +35,11 @@ try{
   try{$agbrioSession=Invoke-RestMethod 'http://127.0.0.1:47114/v1/mobile/auth/session';break}catch{Start-Sleep -Milliseconds 500}
  }while((Get-Date) -lt $agbrioDeadline)
  if(!$agbrioSession){throw 'Fresh installed Host did not start.'}
- @'
+ $agbrioWindowType=@'
 using System;using System.Runtime.InteropServices;
 public static class AgbrioSmokeWindow{[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr window,int command);}
-'@|Add-Type
+'@
+ Add-Type -TypeDefinition $agbrioWindowType
  for($agbrioAttempt=0;$agbrioAttempt -lt 20;$agbrioAttempt++){
   $agbrioProcess.Refresh()
   if($agbrioProcess.MainWindowHandle -ne [IntPtr]::Zero){break}
