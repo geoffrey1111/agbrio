@@ -1,3 +1,5 @@
+<img src="docs/assets/agbrio-icon.png" width="80" alt="Agbrio icon">
+
 # Agbrio
 
 **Agent Bridge — connect your agent conversations.**
@@ -22,3 +24,5 @@ onboarding, macOS and additional agents require separate verification. These are
 planned capabilities, not current release guarantees.
 
 No hosted multi-user service or public download is available yet.
+
+[Self-hosting plan and agent setup prompt (draft, Chinese)](docs/SELF_HOSTING_PLAN.zh-CN.md)
