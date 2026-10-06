@@ -17,7 +17,7 @@ class AgbrioNativeQa {
   do{var e=root.FindFirst(TreeScope.Descendants,new AndCondition(new PropertyCondition(AutomationElement.NameProperty,name),new PropertyCondition(AutomationElement.ControlTypeProperty,type)));if(e!=null)return e;Thread.Sleep(300);}while(DateTime.UtcNow<end);
   Dump();throw new Exception("Owned accessibility control unavailable: "+name);
  }
- static void Dump(){var values=new List<string>();foreach(AutomationElement e in root.FindAll(TreeScope.Descendants,Condition.TrueCondition)){try{values.Add(e.Current.ControlType.ProgrammaticName+" | "+e.Current.Name);}catch{}if(values.Count>=2000)break;}File.WriteAllText(Path.Combine(output,"uia-controls.json"),new JavaScriptSerializer().Serialize(values));}
+ static void Dump(){var values=new List<string>();foreach(AutomationElement e in root.FindAll(TreeScope.Descendants,Condition.TrueCondition)){try{values.Add(e.Current.ControlType.ProgrammaticName+" | "+e.Current.Name);}catch{}if(values.Count>=2000)break;}var json=new JavaScriptSerializer().Serialize(values);File.WriteAllText(Path.Combine(output,"uia-controls.json"),json);Console.WriteLine("OWNED_QA_CONTROLS "+new JavaScriptSerializer().Serialize(values.Take(70).ToArray()));}
  static void Click(AutomationElement e){((InvokePattern)e.GetCurrentPattern(InvokePattern.Pattern)).Invoke();}
  static void Picture(IntPtr h,string filename){Rect r;if(!GetWindowRect(h,out r))throw new Exception("Native bounds unavailable");using(var b=new Bitmap(r.R-r.L,r.B-r.T)){using(var g=Graphics.FromImage(b)){var dc=g.GetHdc();try{if(!PrintWindow(h,dc,2))throw new Exception("Native capture failed");}finally{g.ReleaseHdc(dc);}}b.Save(Path.Combine(output,filename),ImageFormat.Png);}}
  [STAThread]static int Main(string[] args){

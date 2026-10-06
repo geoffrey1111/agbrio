@@ -51,7 +51,7 @@ public static class AgbrioSmokeWindow{[DllImport("user32.dll")]public static ext
  $agbrioCompiler=Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
  $agbrioWpf=Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\WPF'
  $agbrioHarness=Join-Path $agbrioRoot 'native-ui-qa.exe'
- & $agbrioCompiler /nologo /target:exe ('/out:'+$agbrioHarness) /r:System.Drawing.dll /r:System.Web.Extensions.dll ('/r:'+(Join-Path $agbrioWpf 'UIAutomationClient.dll')) ('/r:'+(Join-Path $agbrioWpf 'UIAutomationTypes.dll')) ('/r:'+(Join-Path $agbrioWpf 'WindowsBase.dll')) scripts/windows-uia-smoke.cs
+ & $agbrioCompiler /nologo /target:exe ('/out:'+$agbrioHarness) /r:System.Drawing.dll /r:System.Web.Extensions.dll ('/r:'+(Join-Path $agbrioWpf 'UIAutomationClient.dll')) ('/r:'+(Join-Path $agbrioWpf 'UIAutomationTypes.dll')) ('/r:'+(Join-Path $agbrioWpf 'WindowsBase.dll')) (Join-Path $PSScriptRoot 'windows-uia-smoke.cs')
  if($LASTEXITCODE -ne 0){throw 'Native accessibility harness compile failed.'}
  & $agbrioHarness ($agbrioProcess.MainWindowHandle.ToInt64()) $agbrioRoot
  if($LASTEXITCODE -ne 0){throw 'Fresh installed desktop UI gate failed.'}
