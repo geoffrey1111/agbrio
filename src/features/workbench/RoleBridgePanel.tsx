@@ -88,8 +88,10 @@ export function RoleBridgePanel({ workstreamId, workstreamName, api, onModeChang
   useBackLayer(reviewOpen,()=>setReviewOpen(false));
   useBackLayer(editing,()=>setEditing(false));
   useBackLayer(Boolean(chat),()=>setChat(null));
-  const [error, setError] = useState<string | null>(null);
-  const connectionAction = error?.includes(uiText("对话正在 Codex Desktop 中使用")) && onOpenConnection ? <button type="button" onClick={() => { setReviewOpen(false); onOpenConnection(); }}>{uiText("连接设置")}</button> : null;
+  const [errorCause, setError] = useState<string | null>(null);
+  const error = errorCause===null?null:errorText(errorCause);
+  const needsSharedConnection=Boolean(errorCause&&(errorCause.includes("owned by another application")||errorCause.includes("THREAD_OWNED")));
+  const connectionAction = needsSharedConnection && onOpenConnection ? <button type="button" onClick={() => { setReviewOpen(false); onOpenConnection(); }}>{uiText("连接设置")}</button> : null;
   const [review, setCurrentReview] = useState<RoleReview | null>(null);
   const [drafts,setDrafts]=useState(()=>({workstream:workstreamId,values:readRoleReviews(workstreamId)}));
   const [draftError,setDraftError]=useState(false);
@@ -117,7 +119,7 @@ export function RoleBridgePanel({ workstreamId, workstreamName, api, onModeChang
     if (pending.current) return;
     pending.current = true; ++operationRevision.current;setBusy(true); setError(null);
     const current = generation.current;
-    try { await operation(() => current === generation.current); } catch (cause) { if (current === generation.current) setError(errorText(cause)); }
+    try { await operation(() => current === generation.current); } catch (cause) { if (current === generation.current) setError(String(cause)); }
     finally { if (current === generation.current) { pending.current = false; setBusy(false); } }
   }
   useEffect(()=>{

@@ -2,7 +2,7 @@
 
 These scopes are distinct; none implies all-platform or physical-device UAT.
 
-- Frontend: 414 Vitest checks across 38 files; TypeScript/Vite production build.
+- Frontend: 415 Vitest checks across 38 files; TypeScript/Vite production build.
 - Core: clean-export database/state/migration suite, 176 checks, one explicit
   provider gate ignored.
 - Native: 161 checks, with 19 account-writing gates explicitly ignored by default.
@@ -40,10 +40,14 @@ the personal build do not replace a fresh-install physical-device test.
 
 ## First-release app localization
 
-Eight additional frontend cases prove preference persistence and state/content
+Nine additional frontend cases prove preference persistence and state/content
 boundaries. Global Playwright exercised the production PWA with fixture APIs at
 390×844, 440×956 and 1920×1080: all three languages, reload persistence, visible
 selectors and notification preferences, no horizontal overflow or page errors.
 This is automated browser validation, not physical iPhone acceptance. A new
 installer/native first-setup run is required for this localized source; earlier
 Windows proof applies to the preceding Chinese-only candidate.
+
+Locale recovery uses raw ownership error identity, never a translated-message substring.
+A focused test changes English to Traditional Chinese after THREAD_OWNED and verifies
+the connection recovery action remains available without dispatching.

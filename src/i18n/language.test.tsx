@@ -6,6 +6,7 @@ import {RelayBlockSelection} from "../features/workbench/RelayBlockSelection";
 import {DesktopWebAccess,type WebAccessApi} from "../features/workbench/DesktopWebAccess";
 import {getLanguage,getLanguagePreference,resolveLanguage,setLanguagePreference,t} from "./index";
 import {LanguagePicker} from "./LanguagePicker";
+import {RoleBridgePanel,type RoleBridgeApi,type RoleState} from "../features/workbench/RoleBridgePanel";
 import en from "./en.json";
 import traditional from "./zh-TW.json";
 import {startupText} from "./startupCopy";
@@ -45,6 +46,13 @@ it("updates an existing failure and preserves the exact HTTPS input without retr
 it("keeps explicit preference in sync even when it resolves to the same language",()=>{
  render(<LanguagePicker/>);fireEvent.change(screen.getByRole("combobox",{name:"语言"}),{target:{value:"zh-CN"}});expect(getLanguagePreference()).toBe("zh-CN");
  act(()=>{localStorage.setItem("agbrio.language.v1","en");window.dispatchEvent(new StorageEvent("storage",{key:"agbrio.language.v1"}));});expect(getLanguage()).toBe("en");expect(screen.getByRole("combobox",{name:"Language"})).toHaveValue("en");
+});
+it("keeps shared-connection recovery available across languages using the raw error identity",async()=>{
+ setLanguagePreference("en");
+ const state:RoleState={bindings:{workstreamId:"language-qa",bindingRevision:1,explicitRoles:true,decision:{role:"DECISION",endpoint:{id:"source",provider:"CODEX",externalId:"source-thread",label:"Original source"}},execution:{role:"EXECUTION",endpoint:{id:"target",provider:"CODEX",externalId:"target-thread",label:"Original target"}}},replies:[{id:"reply",endpointId:"source",text:"Unchanged instructions"}],handoffs:[]};
+ const api:RoleBridgeApi={state:async()=>state,read:async()=>state,attachments:vi.fn().mockRejectedValue(Error("Codex thread is currently owned by another application")),blocks:async()=>[],bind:vi.fn(),prepare:vi.fn(),edit:vi.fn(),approve:vi.fn(),send:vi.fn(),threads:vi.fn(),connect:vi.fn()};
+ const open=vi.fn();render(<RoleBridgePanel workstreamId="language-qa" api={api} onOpenConnection={open}/>);fireEvent.click(await screen.findByRole("button",{name:"Forward to Executor"}));expect(await screen.findByRole("button",{name:"Connection settings"})).toBeVisible();
+ act(()=>setLanguagePreference("zh-TW"));expect(screen.getByRole("button",{name:"連線設定"})).toBeVisible();expect(screen.getByRole("alert")).toHaveTextContent("Codex Desktop");fireEvent.click(screen.getByRole("button",{name:"連線設定"}));expect(open).toHaveBeenCalledTimes(1);expect(api.send).not.toHaveBeenCalled();
 });
 it("has complete catalogs and preserves each interpolation slot",()=>{
  expect(Object.keys(en).sort()).toEqual(Object.keys(traditional).sort());
