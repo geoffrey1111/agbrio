@@ -21,7 +21,6 @@ if(!(Test-Path -LiteralPath $agbrioExecutable)){throw 'Installed application mis
 $agbrioStart=[Diagnostics.ProcessStartInfo]::new($agbrioExecutable)
 $agbrioStart.UseShellExecute=$false
 $agbrioStart.Environment['LOCALAPPDATA']=$agbrioData
-$agbrioStart.Environment['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS']='--remote-debugging-port=9227'
 $agbrioStart.Environment['WEBVIEW2_USER_DATA_FOLDER']=(Join-Path $agbrioRoot 'webview-profile')
 foreach($agbrioKey in @($agbrioStart.Environment.Keys)){
  if($agbrioKey.StartsWith('AI_WORK_ROUTER_')){$agbrioStart.Environment.Remove($agbrioKey)|Out-Null}
@@ -49,7 +48,12 @@ public static class AgbrioSmokeWindow{[DllImport("user32.dll")]public static ext
  [AgbrioSmokeWindow]::ShowWindow($agbrioProcess.MainWindowHandle,3)|Out-Null
  $agbrioWebviews=Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'"
  @($agbrioWebviews)|ForEach-Object{@{pid=$_.ProcessId;parent=$_.ParentProcessId;qaFlags=@([regex]::Matches($_.CommandLine,'--(?:remote-debugging[^ ]*|disable-devtools[^ ]*|enable-features=[^ ]*)')|ForEach-Object Value)}}|ConvertTo-Json -Compress
- node scripts/windows-ui-smoke.mjs
+ $agbrioCompiler=Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+ $agbrioWpf=Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\WPF'
+ $agbrioHarness=Join-Path $agbrioRoot 'native-ui-qa.exe'
+ & $agbrioCompiler /nologo /target:exe ('/out:'+$agbrioHarness) /r:System.Drawing.dll /r:System.Web.Extensions.dll ('/r:'+(Join-Path $agbrioWpf 'UIAutomationClient.dll')) ('/r:'+(Join-Path $agbrioWpf 'UIAutomationTypes.dll')) ('/r:'+(Join-Path $agbrioWpf 'WindowsBase.dll')) scripts/windows-uia-smoke.cs
+ if($LASTEXITCODE -ne 0){throw 'Native accessibility harness compile failed.'}
+ & $agbrioHarness ($agbrioProcess.MainWindowHandle.ToInt64()) $agbrioRoot
  if($LASTEXITCODE -ne 0){throw 'Fresh installed desktop UI gate failed.'}
 }finally{
  # Only this isolated runner-owned process, never an existing user installation.
