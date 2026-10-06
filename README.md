@@ -2,25 +2,33 @@
 
 # Agbrio
 
-**Agent Bridge — connect your agent conversations.**
+**Agent Bridge — handoffs between the conversation that manages and the conversation that executes.**
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
-Agbrio is a personal desktop-and-phone tool for developers who work across existing agent conversations. Keep your computer running, read results on your phone, choose what the next conversation should receive, and confirm the handoff once.
+Already use one agent conversation to manage a project and another to do the work? Agbrio is built around that workflow.
 
-For example, one Codex conversation can plan and review while another implements. Agbrio keeps the two destinations visible and helps you carry the selected instructions and supporting files between them.
+The managing conversation keeps the plan, reviews results and decides the next task. The executing conversation works in the project, implements changes and returns evidence. **Bridge carries the selected instructions, results and supporting files between those two existing conversations, with your confirmation at each handoff.**
+
+The phone is a convenient place to review and confirm that exchange. The central product is the bridge between conversations; remote access is the way you reach it.
 
 ## Release status
 
 **Open-source release preparation.** The personal Windows/Codex implementation is in use, and the owner has reported successful phone handoffs. This public repository currently contains the introduction, illustrations and a self-hosting plan. It does **not** yet contain the application source, an installer, a working installation command or a selected open-source license.
 
-## A desktop workbench, a phone companion
+## For an existing two-conversation workflow
 
-![Agbrio desktop reader](docs/assets/desktop-reader.png)
+This is a workflow tool for people who deliberately separate management and execution contexts. You choose both conversations and their roles. Agbrio does not assign agents automatically or make the managing agent approve its own result.
 
-<p><img src="docs/assets/mobile-handoff.png" width="320" alt="Agbrio handoff selection with a selected instruction block"> <img src="docs/assets/mobile-conversation.png" width="320" alt="Agbrio original conversation and reply composer"></p>
+**Instructions → execution. Results + evidence → management. You → final confirmation.**
 
-Real application components with fictional demo conversations. These are browser-rendered previews, not screenshots of private work or proof of iPhone/macOS acceptance. The application controls currently use Chinese; these README translations do not imply a translated app.
+## One conversation manages. One executes. Bridge connects the handoff.
+
+![Managing and executing conversations side by side in one Bridge](docs/assets/desktop-bridge.png)
+
+<p><img src="docs/assets/mobile-handoff.png" width="320" alt="Management-to-execution instruction selection"> <img src="docs/assets/mobile-return.png" width="320" alt="Execution-to-management result selection"></p>
+
+The desktop view shows both sides of the same Bridge. The phone views show management-to-execution instruction selection and execution-to-management result selection. Real app components, fictional demo data, browser-rendered previews; not private conversations or device acceptance. App labels are currently Chinese. README translations do not imply a translated app.
 
 ## What the personal implementation does
 

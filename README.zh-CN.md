@@ -2,25 +2,33 @@
 
 # Agbrio
 
-**Agent Bridge · 连接你的 Agent 对话**
+**Agent Bridge · 让管理对话与执行对话顺畅交接**
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
-Agbrio 是面向开发者的个人桌面与手机协作工具。电脑保持运行，你可以在手机上查看 Agent 的结果，挑选下一条对话需要的指令和材料，最后一次确认完成交接。
+如果你已经习惯让一个 Agent 对话管理项目，另一个对话实际执行，Agbrio 就是围绕这种用法设计的。
 
-例如，让一个 Codex 对话负责规划和审查，另一个对话负责实现。Agbrio 保留两端的明确身份，帮助你把选定的内容送到正确的原对话。
+管理对话保留规划、审查结果、决定下一项任务；执行对话在项目里实现修改，返回结果与证据。**Bridge 负责把选定的指令、结果和材料在这两条已有对话之间交接，每次发送都由你确认。**
+
+手机让你可以随时审阅和确认这次交接。产品的重点是两条对话之间的桥梁，远程访问是到达这个工作台的方式。
 
 ## 发布状态
 
 **正在准备开源发布。** 个人 Windows／Codex 实现已在使用，作者已反馈手机转发成功。目前这个公开仓库提供项目介绍、配图与自部署方案；**尚未发布应用源码、安装包、可用的安装命令或选定的开源许可证**。
 
-## 电脑工作台，手机随身查看
+## 适合已经使用双对话协作的人
 
-![Agbrio desktop reader](docs/assets/desktop-reader.png)
+这是为主动分开管理与执行上下文的人准备的工作流工具。两条对话和两端角色由你选择。Agbrio 不自动分配 Agent，也不让管理 Agent 自行批准自己的结果。
 
-<p><img src="docs/assets/mobile-handoff.png" width="320" alt="Agbrio handoff selection with a selected instruction block"> <img src="docs/assets/mobile-conversation.png" width="320" alt="Agbrio original conversation and reply composer"></p>
+**指令 → 执行端；结果与证据 → 管理端；最终确认 → 由你完成。**
 
-配图使用真实应用组件和虚构示例对话，通过浏览器渲染。没有公开私人工作内容，也不代表 iPhone 或 Mac 真机验收。应用控件目前为中文；多语言 README 不代表应用已完成多语言适配。
+## 一个对话管理，一个对话执行，Bridge 连接交接过程
+
+![Managing and executing conversations side by side in one Bridge](docs/assets/desktop-bridge.png)
+
+<p><img src="docs/assets/mobile-handoff.png" width="320" alt="Management-to-execution instruction selection"> <img src="docs/assets/mobile-return.png" width="320" alt="Execution-to-management result selection"></p>
+
+电脑图展示同一个 Bridge 的双端对照；两张手机图分别展示「管理端向执行端下发指令」和「执行端向管理端交回结果」的选择界面。使用真实组件、虚构数据和浏览器渲染，不包含私人对话，也不代表设备验收。应用控件目前为中文，多语言 README 不代表应用已完成多语言适配。
 
 ## 个人版本目前能做什么
 

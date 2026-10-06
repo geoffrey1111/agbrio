@@ -2,25 +2,33 @@
 
 # Agbrio
 
-**Agent Bridge — Agent の会話をつなぐ。**
+**Agent Bridge — 管理する会話と実行する会話の引き継ぎをつなぐ。**
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
-Agbrio は、複数の Agent 会話を使う開発者のための個人向けデスクトップ・スマートフォン連携ツールです。PC を起動したまま、スマートフォンで結果を読み、次の会話へ渡す指示と資料を選び、最後に一度確認して引き継ぎます。
+一つの Agent 会話でプロジェクトを管理し、別の会話で実際の作業をしていますか？ Agbrio はその使い方を中心に設計されています。
 
-たとえば、一つの Codex 会話で計画とレビューを行い、別の会話で実装します。Agbrio は両側の宛先を明示し、選んだ内容を正しい元の会話に渡すことを支援します。
+管理側の会話は計画を保ち、結果をレビューして次の仕事を決めます。実行側の会話はプロジェクトで変更を実装し、結果と検証資料を返します。**Bridge は、選んだ指示、結果、資料をこの二つの既存の会話の間で受け渡し、その都度ユーザーが送信を確認します。**
+
+スマートフォンは、その引き継ぎを随時レビューして確認する入口です。製品の中心は会話間の橋渡しであり、リモートアクセスはワークベンチへ到達する手段です。
 
 ## 公開状況
 
 **オープンソース公開の準備段階です。** 個人用 Windows／Codex 実装は使用中で、作者からスマートフォンでの転送成功が報告されています。現在の公開リポジトリには紹介、図、セルフホスト計画があります。**アプリのソース、インストーラー、実行可能なインストールコマンド、確定したオープンソースライセンスはまだ公開されていません。**
 
-## PC のワークベンチとスマートフォンの操作画面
+## すでに二つの会話で協働している人向け
 
-![Agbrio desktop reader](docs/assets/desktop-reader.png)
+管理と実行の文脈を意識的に分ける人のためのワークフローツールです。二つの会話と役割はユーザーが選びます。Agbrio は Agent を自動配置せず、管理 Agent が自分の結果を自ら承認する仕組みも作りません。
 
-<p><img src="docs/assets/mobile-handoff.png" width="320" alt="Agbrio handoff selection with a selected instruction block"> <img src="docs/assets/mobile-conversation.png" width="320" alt="Agbrio original conversation and reply composer"></p>
+**指示 → 実行側。結果と検証資料 → 管理側。最終確認 → ユーザー。**
 
-実際のアプリコンポーネントに架空の会話を入れ、ブラウザーで描画したプレビューです。私的な会話や iPhone／Mac の実機検証結果ではありません。現在の操作ラベルは中国語です。README の翻訳はアプリの多言語対応を意味しません。
+## 一つの会話が管理し、もう一つが実行する。Bridge が引き継ぎをつなぐ。
+
+![Managing and executing conversations side by side in one Bridge](docs/assets/desktop-bridge.png)
+
+<p><img src="docs/assets/mobile-handoff.png" width="320" alt="Management-to-execution instruction selection"> <img src="docs/assets/mobile-return.png" width="320" alt="Execution-to-management result selection"></p>
+
+PC の図は同じ Bridge の両側を並べた画面です。スマートフォンの図は管理側から実行側へ指示を渡す選択画面と、実行側から管理側へ結果を返す選択画面です。実際のコンポーネントに架空データを入れたブラウザープレビューで、私的会話や実機検証結果ではありません。操作ラベルは現在中国語で、README 翻訳はアプリの多言語対応を意味しません。
 
 ## 個人実装でできること
 

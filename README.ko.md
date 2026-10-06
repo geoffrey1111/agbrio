@@ -2,25 +2,33 @@
 
 # Agbrio
 
-**Agent Bridge — Agent 대화를 연결하세요.**
+**Agent Bridge — 관리하는 대화와 실행하는 대화 사이의 인계.**
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
-Agbrio는 여러 Agent 대화를 활용하는 개발자를 위한 개인용 데스크톱·휴대폰 도구입니다. 컴퓨터를 켜 둔 채 휴대폰에서 결과를 읽고, 다음 대화에 전달할 지시와 자료를 선택한 뒤 마지막에 한 번 확인하여 인계합니다.
+한 Agent 대화에서 프로젝트를 관리하고 다른 대화에서 실제 작업을 수행하고 있나요? Agbrio는 이 사용 방식을 중심으로 설계되었습니다.
 
-예를 들어 한 Codex 대화는 계획과 검토를, 다른 대화는 구현을 맡을 수 있습니다. Agbrio는 양쪽 대상을 명확히 보여 주고 선택한 내용을 정확한 원래 대화로 전달하도록 돕습니다.
+관리 대화는 계획을 유지하고 결과를 검토하며 다음 작업을 결정합니다. 실행 대화는 프로젝트에서 변경을 구현하고 결과와 검증 자료를 반환합니다. **Bridge는 선택한 지시, 결과, 자료를 두 기존 대화 사이에서 전달하며 매번 사용자가 전송을 확인합니다.**
+
+휴대폰은 이 인계를 언제든 검토하고 확인하는 입구입니다. 제품의 중심은 대화 사이의 연결이며 원격 접속은 작업대에 접근하는 방법입니다.
 
 ## 공개 상태
 
 **오픈 소스 공개를 준비 중입니다.** 개인용 Windows／Codex 구현은 사용 중이며, 작성자가 휴대폰 전달 성공을 확인했습니다. 현재 공개 저장소에는 소개, 그림, 셀프 호스팅 계획이 있습니다. **앱 소스, 설치 파일, 실행 가능한 설치 명령, 확정된 오픈 소스 라이선스는 아직 공개되지 않았습니다.**
 
-## 데스크톱 작업대와 휴대폰 동반 화면
+## 이미 두 대화로 협업하는 사용자를 위한 도구
 
-![Agbrio desktop reader](docs/assets/desktop-reader.png)
+관리와 실행의 맥락을 의도적으로 분리하는 사람을 위한 워크플로 도구입니다. 두 대화와 역할은 사용자가 선택합니다. Agbrio는 Agent를 자동 배정하거나 관리 Agent가 자기 결과를 스스로 승인하도록 만들지 않습니다.
 
-<p><img src="docs/assets/mobile-handoff.png" width="320" alt="Agbrio handoff selection with a selected instruction block"> <img src="docs/assets/mobile-conversation.png" width="320" alt="Agbrio original conversation and reply composer"></p>
+**지시 → 실행 측. 결과와 검증 자료 → 관리 측. 최종 확인 → 사용자.**
 
-실제 앱 컴포넌트에 가상의 예시 대화를 넣어 브라우저에서 렌더링한 미리보기입니다. 개인 작업 내용이나 iPhone／Mac 실기기 검증 결과가 아닙니다. 앱 조작 문구는 현재 중국어이며, README 번역이 앱의 다국어 지원을 의미하지는 않습니다.
+## 한 대화는 관리하고, 다른 대화는 실행합니다. Bridge가 인계를 연결합니다.
+
+![Managing and executing conversations side by side in one Bridge](docs/assets/desktop-bridge.png)
+
+<p><img src="docs/assets/mobile-handoff.png" width="320" alt="Management-to-execution instruction selection"> <img src="docs/assets/mobile-return.png" width="320" alt="Execution-to-management result selection"></p>
+
+데스크톱 그림은 같은 Bridge의 양쪽 대화를 비교하는 화면입니다. 휴대폰 그림은 관리 측에서 실행 측으로 지시를 보내는 선택 화면과 실행 측에서 관리 측으로 결과를 반환하는 선택 화면입니다. 실제 컴포넌트에 가상 데이터를 넣은 브라우저 미리보기이며 개인 대화나 실기기 검증 결과가 아닙니다. 조작 문구는 현재 중국어이고 README 번역이 앱의 다국어 지원을 의미하지는 않습니다.
 
 ## 개인 구현에서 가능한 기능
 
