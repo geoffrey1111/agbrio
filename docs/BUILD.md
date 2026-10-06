@@ -9,6 +9,7 @@ copy another user's app-data, credentials or browser profile.
 npm ci
 npm ci --prefix tools/isolated-browser-executor
 npm test
+npm run build
 cargo test --manifest-path crates/Cargo.toml --locked
 npm run build:browser-executor
 cargo test --manifest-path src-tauri/Cargo.toml --locked

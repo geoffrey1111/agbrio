@@ -2,6 +2,8 @@
   "freshWindowsRunner": true,
   "installedApplication": true,
   "nativeAccessibility": true,
+  "systemLanguageEnglish": true,
+  "languageChooserPresent": true,
   "setupSelector": true,
   "noPersonalOrigin": true,
   "invalidHttpsRejected": true,
@@ -10,5 +12,8 @@
   "controlsInsideWindow": true,
   "providerCredentialsUsed": false,
   "captureWidth": 1040,
-  "captureHeight": 736
+  "captureHeight": 736,
+  "validatedSourceCommit": "e4900662a6c45695cb8104c46053b8956f6911ac",
+  "workflowRun": 37455874754,
+  "installerSha256": "6fd9e750e6361c7fb2fbf350e8761972b303e7caa54b7ae7229ec7793c1f5aa4"
 }
