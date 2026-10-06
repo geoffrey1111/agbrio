@@ -1,0 +1,31 @@
+.v4-web-login { min-height:100dvh; display:grid; align-content:center; padding:40px 24px; color:var(--awr-ink); background:var(--awr-canvas); font-family:"Noto Sans SC","Microsoft YaHei UI",sans-serif; }
+.v4-web-login > div { width:min(100%,440px); margin:auto; }
+.v4-web-login h1 { margin:16px 0 24px; font-size:28px; line-height:40px; }
+.v4-web-login p { font-size:15px; line-height:28px; margin:20px 0; }
+.v4-web-login form { display:grid; gap:16px; margin:32px 0; }
+.v4-web-login label { font-size:15px; line-height:26px; }
+.v4-web-login input:not([type=checkbox]) { width:100%; min-height:56px; border:1px solid var(--awr-line); background:var(--awr-white); border-radius:12px; padding:12px 16px; color:var(--awr-ink); font-size:17px; }
+.v4-web-login #web-pairing-code { font-size:32px; letter-spacing:.18em; line-height:48px; font-variant-numeric:tabular-nums; }
+.v4-login-remember { display:flex; align-items:center; gap:12px; min-height:48px; }
+.v4-login-remember input { width:20px; height:20px; accent-color:var(--awr-accent); }
+.v4-web-login details { font-size:13px; line-height:24px; }
+.v4-web-login summary { min-height:44px; cursor:pointer; }
+.v4-web-login details label { display:grid; gap:8px; margin:8px 0 16px; }
+.v4-web-login button { min-height:48px; border:0; border-radius:12px; font:500 15px/24px "Noto Sans SC",sans-serif; cursor:pointer; padding:12px 20px; }
+.v4-web-login .v3-primary { background:var(--awr-accent); color:var(--awr-white); }
+.v4-web-login button:disabled { opacity:.6; cursor:not-allowed; }
+.v4-web-login [role=alert] { margin:0; color:var(--awr-danger); }
+.v4-web-logout { min-height:44px; padding:8px 14px; margin-block:12px; background:var(--awr-paper); color:var(--awr-muted); border:1px solid var(--awr-line); border-radius:12px; font-size:13px; }
+.v4-login-status { position:fixed; bottom:68px; right:16px; max-width:calc(100vw - 32px); z-index:30; padding:12px; background:var(--awr-warning-soft); }
+.v4-web-access-dialog > header { display:flex; align-items:center; justify-content:space-between; gap:20px; }
+.v4-web-access-dialog > a { display:block; color:var(--awr-accent); font-size:15px; overflow-wrap:anywhere; margin:24px 0; }
+.v4-web-access-dialog > section { margin:32px 0; }
+.v4-pairing-code { display:block; margin-top:24px; font-size:40px; line-height:56px; letter-spacing:.14em; font-variant-numeric:tabular-nums; }
+.v4-device-row { display:flex; justify-content:space-between; gap:20px; align-items:center; padding:20px 0; border-bottom:1px solid var(--awr-line); }
+.v4-device-row strong { overflow-wrap:anywhere; }
+.v4-global-shortcuts .v4-web-access-entry { margin-top:8px; }
+.unified-workbench .v3-rail-pinned-list { margin-top:112px; }
+@media(max-width:680px) { .v4-web-login { align-content:start; padding-top:64px; } .v4-web-login h1 { font-size:26px; }  .unified-workbench .v3-rail-pinned-list { margin-top:0; } }
+
+.v4-login-status { position:static; padding:12px 16px; margin:0; background:var(--awr-accent-soft); color:var(--awr-ink); }
+.v4-web-availability { margin-block:20px; }

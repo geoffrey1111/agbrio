@@ -1,0 +1,16 @@
+{
+  "freshAppData": true,
+  "personalConfigUsed": false,
+  "cloudflareAccessUsed": false,
+  "publicTlsVerified": true,
+  "unauthenticatedWriteStatus": 401,
+  "devicePairing": true,
+  "instructionBlockSelected": true,
+  "selectedAttachments": 1,
+  "sendBeforeApprovalRejected": true,
+  "realNativeHandoff": true,
+  "executorMarker": true,
+  "replayStatus": 400,
+  "model": "gpt-6-luna",
+  "existingDesktopRestarted": false
+}

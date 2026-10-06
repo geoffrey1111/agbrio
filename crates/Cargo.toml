@@ -1,0 +1,14 @@
+[workspace]
+members = ["router-core"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.98"
+publish = false
+
+[profile.dev]
+debug = 0
+
+[profile.test]
+debug = 0

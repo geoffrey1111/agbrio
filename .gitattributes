@@ -1,0 +1,8 @@
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.icns binary
+*.woff2 binary
+third-party/** -whitespace
+public/fonts/OFL-NotoSansSC.txt -whitespace

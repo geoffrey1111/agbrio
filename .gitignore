@@ -1,0 +1,44 @@
+# Secrets and local credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+secrets/
+credentials/
+
+# Browser and provider session material
+browser-profile/
+chrome-profile/
+session-data/
+cookies/
+
+# Local runtime data, review artifacts, and sensitive logs
+.aiwr/
+data/
+runtime/
+test-results/
+review-cache/
+logs/
+.playwright-mcp/
+*.log
+
+# Local tool and editor state
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Future build outputs and dependencies
+node_modules/
+dist/
+target/
+src-tauri/gen/
+src-tauri/binaries/*.exe
+src-tauri/binaries/.build-*/
+src-tauri/resources/browser-executor/
+
+# Local Python fixture bytecode
+__pycache__/

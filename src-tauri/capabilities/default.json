@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability for the AI Work Router desktop window.",
+  "windows": ["main", "codex-workspace", "decision-workspace", "workstream-*"],
+  "permissions": ["core:default", "core:webview:allow-create-webview-window"]
+}

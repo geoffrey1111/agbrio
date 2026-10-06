@@ -1,0 +1,5 @@
+import { useRef } from "react";
+export function PanelDivider({value,onChange,min=180,max=420,factor=1,step=16,label="调整列表宽度"}:{value:number;onChange:(v:number)=>void;min?:number;max?:number;factor?:number;step?:number;label?:string}){
+ const origin=useRef({x:0,value});const clamp=(v:number)=>Math.max(min,Math.min(max,v));
+ return <div className="v5-panel-divider" role="separator" aria-label={label} aria-orientation="vertical" aria-valuemin={min} aria-valuemax={max} aria-valuenow={value} tabIndex={0} onKeyDown={e=>{if(e.key==="ArrowLeft"||e.key==="ArrowRight"){e.preventDefault();onChange(clamp(value+(e.key==="ArrowLeft"?-step:step)));}}} onPointerDown={e=>{origin.current={x:e.clientX,value};e.currentTarget.setPointerCapture(e.pointerId);}} onPointerMove={e=>{if(e.currentTarget.hasPointerCapture(e.pointerId))onChange(clamp(origin.current.value+(e.clientX-origin.current.x)/factor));}} onPointerUp={e=>{if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);}}/>;
+}

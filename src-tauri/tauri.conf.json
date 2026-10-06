@@ -1,0 +1,67 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Agbrio",
+  "version": "0.1.0-alpha.1",
+  "identifier": "com.geoffrey.aiworkrouter",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build && npm run build:browser-executor",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Agbrio · Agent Bridge",
+        "width": 980,
+        "height": 780,
+        "minWidth": 680,
+        "minHeight": 540
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:1420 ws://localhost:1420;"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "targets": "nsis",
+    "useLocalToolsDir": true,
+    "resources": {
+      "../dist": "dist",
+      "resources/browser-executor": "browser-executor",
+      "resources/web-availability": "web-availability",
+      "resources/codex-shared": "codex-shared",
+      "../LICENSE": "LICENSE",
+      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
+      "../third-party": "third-party"
+    },
+    "externalBin": [
+      "binaries/browser-executor-node"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installerHooks": "./brand-installer-hooks.nsh",
+        "installMode": "currentUser",
+        "languages": [
+          "English",
+          "SimpChinese"
+        ],
+        "displayLanguageSelector": true,
+        "startMenuFolder": "Agbrio"
+      }
+    },
+    "licenseFile": "../LICENSE"
+  }
+}

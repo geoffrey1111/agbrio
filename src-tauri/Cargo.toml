@@ -1,0 +1,45 @@
+[package]
+license = "MIT"
+name = "ai-work-router"
+version = "0.1.0-alpha.1"
+description = "Human-in-the-loop local AI Work Router"
+authors = ["geoffrey1111"]
+edition = "2021"
+
+[lib]
+name = "ai_work_router_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+router-core = { path = "../crates/router-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tauri = { version = "2", features = ["tray-icon", "image-ico"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+axum = { version = "0.8.9", features = ["json"] }
+tokio = { version = "1", features = ["net", "rt-multi-thread", "macros", "sync", "time"] }
+tower-http = { version = "0.6", features = ["fs"] }
+jsonwebtoken = { version = "11", default-features = false, features = ["rust_crypto"] }
+web-push-native = "0.5"
+base64ct = { version = "1", features = ["alloc", "std"] }
+lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "rustls-tls"] }
+
+[target.'cfg(windows)'.dependencies]
+tauri-plugin-autostart = "2.5.1"
+tauri-plugin-single-instance = "2.4.4"
+winreg = "0.55"
+windows-core = "0.61.2"
+windows = { version = "0.61.3", features = ["Data_Xml_Dom", "UI_Notifications", "Security_Credentials", "Win32_System_WinRT", "Win32_Foundation", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_UI_Notifications", "Win32_UI_Shell", "Win32_UI_Shell_PropertiesSystem", "Win32_System_Variant", "Win32_System_Ole", "Win32_Storage_FileSystem"] }
+
+[target.'cfg(windows)'.dev-dependencies]
+windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Accessibility", "Win32_UI_WindowsAndMessaging", "Win32_System_Ole", "Win32_UI_Notifications", "System"] }
+
+[dev-dependencies]
+tempfile = "3"
