@@ -47,6 +47,8 @@ public static class AgbrioSmokeWindow{[DllImport("user32.dll")]public static ext
  }
  if($agbrioProcess.MainWindowHandle -eq [IntPtr]::Zero){throw 'Native application window did not appear.'}
  [AgbrioSmokeWindow]::ShowWindow($agbrioProcess.MainWindowHandle,3)|Out-Null
+ $agbrioWebviews=Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'"
+ @($agbrioWebviews)|ForEach-Object{@{pid=$_.ProcessId;parent=$_.ParentProcessId;qaFlags=@([regex]::Matches($_.CommandLine,'--(?:remote-debugging[^ ]*|disable-devtools[^ ]*|enable-features=[^ ]*)')|ForEach-Object Value)}}|ConvertTo-Json -Compress
  node scripts/windows-ui-smoke.mjs
  if($LASTEXITCODE -ne 0){throw 'Fresh installed desktop UI gate failed.'}
 }finally{

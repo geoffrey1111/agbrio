@@ -1,7 +1,7 @@
 import{chromium}from'playwright';import{mkdir,writeFile}from'node:fs/promises';
-const pause=ms=>new Promise(r=>setTimeout(r,ms));let browser;
-for(let n=0;n<60;n++){try{browser=await chromium.connectOverCDP('http://127.0.0.1:9227');break;}catch{await pause(500);}}
-if(!browser)throw Error('Owned WebView2 QA endpoint did not start');
+const pause=ms=>new Promise(r=>setTimeout(r,ms));let browser,lastError;
+for(let n=0;n<60;n++){try{browser=await chromium.connectOverCDP('http://127.0.0.1:9227');break;}catch(e){lastError=e.message;await pause(500);}}
+if(!browser){let endpoint;try{const r=await fetch('http://127.0.0.1:9227/json/version',{signal:AbortSignal.timeout(2000)});endpoint={status:r.status,browser:(await r.json()).Browser};}catch(e){endpoint={error:e.cause?.code??e.name};}console.error(JSON.stringify({ownedEndpoint: endpoint,lastError}));throw Error('Owned WebView2 QA endpoint did not start');}
 const folder='runtime/clean-windows';await mkdir(folder,{recursive:true});
 try{
  const page=browser.contexts()[0].pages().find(p=>/tauri|localhost/.test(p.url()))??browser.contexts()[0].pages()[0];
