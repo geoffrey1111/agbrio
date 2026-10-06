@@ -47,6 +47,8 @@ The desktop view shows both sides of the same Bridge. The phone views show manag
 
 ## How the phone reaches your computer
 
+![Agent Bridge topology](docs/assets/connection-flow.svg)
+
 [Install and pair](docs/SETUP.md) · [Build from source](docs/BUILD.md) · [MIT license](LICENSE)
 
 Choose Cloudflare Tunnel, Tailscale Funnel, private Tailscale Serve or your existing HTTPS entry in desktop Settings → Devices. The app verifies TLS and this exact Host before saving, and can copy a deployment prompt for your agent. The domain-free options are Funnel/Serve; you supply your own provider account. Tailscale account provisioning still needs independent real-account validation. No Agbrio-hosted relay is offered.

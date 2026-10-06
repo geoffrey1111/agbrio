@@ -47,6 +47,8 @@ PC の図は同じ Bridge の両側を並べた画面です。スマートフォ
 
 ## スマートフォンから PC への接続
 
+![Agent Bridge topology](docs/assets/connection-flow.svg)
+
 [インストールとペアリング](docs/SETUP.md) · [ソースからビルド](docs/BUILD.md) · [MIT](LICENSE)
 
 デスクトップの設定 → デバイスで Cloudflare Tunnel、Tailscale Funnel、プライベートな Tailscale Serve、既存の HTTPS を選択できます。TLS とこの Host の識別情報を検証してから保存します。自分の Agent に渡す設定指示もコピーできます。Funnel/Serve は独自ドメインの購入が不要ですが、ご自身のサービスアカウントを使います。Tailscale の実アカウントでの設定は別途検証が必要です。Agbrio のホスト型中継サービスはありません。

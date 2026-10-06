@@ -47,6 +47,8 @@
 
 ## 手機如何連接電腦
 
+![Agent Bridge topology](docs/assets/connection-flow.svg)
+
 [安裝與配對](docs/SETUP.md) · [原始碼建置](docs/BUILD.md) · [MIT 授權](LICENSE)
 
 電腦「設定 → 裝置」可選 Cloudflare Tunnel、Tailscale Funnel、私人 Tailscale Serve 或已有 HTTPS 入口。儲存前驗證 TLS 與本機 Host 身分；可複製部署指令交給自己的 Agent。Funnel/Serve 不需購買網域，使用自己的服務商帳號。Tailscale 真實帳號開通流程仍須獨立驗證，沒有 Agbrio 託管中繼。

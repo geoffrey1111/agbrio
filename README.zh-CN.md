@@ -47,6 +47,8 @@
 
 ## 手机如何连接电脑
 
+![Agent Bridge topology](docs/assets/connection-flow.svg)
+
 [安装与配对](docs/SETUP.md) · [源码构建](docs/BUILD.md) · [MIT 许可证](LICENSE)
 
 电脑「设置 → 设备」可选 Cloudflare Tunnel、Tailscale Funnel、私有 Tailscale Serve 或已有 HTTPS 入口。填入地址后先验证 TLS 和本机 Host 身份，再保存；可复制部署指令交给自己的 Agent。Funnel/Serve 无需购买域名，使用自己的服务商账号。Tailscale 真实账号开通链路仍需单独验证，不提供 Agbrio 托管中转。

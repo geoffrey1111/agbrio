@@ -31,8 +31,13 @@ try{
 using System;using System.Runtime.InteropServices;
 public static class AgbrioSmokeWindow{[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr window,int command);}
 '@|Add-Type
- $agbrioProcess.Refresh()
- if($agbrioProcess.MainWindowHandle -ne [IntPtr]::Zero){[AgbrioSmokeWindow]::ShowWindow($agbrioProcess.MainWindowHandle,3)|Out-Null}
+ for($agbrioAttempt=0;$agbrioAttempt -lt 20;$agbrioAttempt++){
+  $agbrioProcess.Refresh()
+  if($agbrioProcess.MainWindowHandle -ne [IntPtr]::Zero){break}
+  Start-Sleep -Milliseconds 500
+ }
+ if($agbrioProcess.MainWindowHandle -eq [IntPtr]::Zero){throw 'Native application window did not appear.'}
+ [AgbrioSmokeWindow]::ShowWindow($agbrioProcess.MainWindowHandle,3)|Out-Null
  node scripts/windows-ui-smoke.mjs
  if($LASTEXITCODE -ne 0){throw 'Fresh installed desktop UI gate failed.'}
 }finally{

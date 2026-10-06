@@ -5,6 +5,7 @@ if(!browser)throw Error('Owned WebView2 QA endpoint did not start');
 const folder='runtime/clean-windows';await mkdir(folder,{recursive:true});
 try{
  const page=browser.contexts()[0].pages().find(p=>/tauri|localhost/.test(p.url()))??browser.contexts()[0].pages()[0];
+ const maximized=await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('plugin:window|is_maximized',{label:'main'}));if(!maximized)throw Error('Native desktop did not maximize');
  await page.getByRole('button',{name:'设置',exact:true}).click();await page.getByRole('button',{name:'设备',exact:true}).click();
  const dialog=page.getByRole('dialog');await dialog.getByLabel('连接方式').waitFor();
  if(await dialog.getByLabel('HTTPS 网址').inputValue()!=='')throw Error('Fresh install contains a personal URL');
@@ -14,5 +15,5 @@ try{
  if(!await dialog.getByLabel('连接方式').isVisible())throw Error('Failed setup hid recovery controls');
  await page.screenshot({path:folder+'/desktop-first-setup.png'});
  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1);if(overflow)throw Error('Maximized desktop overflows');
- await writeFile(folder+'/proof.json',JSON.stringify({freshWindowsRunner:true,installedApplication:true,desktopIPC:true,setupSelector:true,noPersonalOrigin:true,invalidHttpsRejected:true,pairingBlockedUntilConfigured:true,maximizedDesktopOverflow:false,providerCredentialsUsed:false},null,2));
+ await writeFile(folder+'/proof.json',JSON.stringify({freshWindowsRunner:true,installedApplication:true,desktopIPC:true,setupSelector:true,noPersonalOrigin:true,invalidHttpsRejected:true,pairingBlockedUntilConfigured:true,nativeMaximized:true,maximizedDesktopOverflow:false,providerCredentialsUsed:false},null,2));
 }finally{await browser.close();}

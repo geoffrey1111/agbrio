@@ -18,7 +18,9 @@ tray menu to stop the Host. Keep the computer awake for remote access.
 
 ## 2. Codex connection
 
-Codex Desktop must already be installed and signed in. In Settings (设置) → Codex,
+The Windows Store Codex Desktop must already be installed and signed in. Keep its
+ordinary window open for the first preparation so Agbrio can identify its running
+native backend. In Settings (设置) → Codex,
 prepare the shared connection (准备共享连接). This checks the existing installation;
 it does not install a second Desktop or a root certificate. Finish current agent
 work, quit Desktop yourself, then choose Open shared Codex (打开共享 Codex) in
@@ -62,10 +64,10 @@ are implemented; a real Tailscale-account end-to-end test is not yet claimed.
 
 For Cloudflare, create a named tunnel whose service is
 `http://127.0.0.1:47114`, retaining the original Host header. If you protect all
-paths with Cloudflare Access, make the read-only setup path
-`/v1/mobile/connection/probe` reachable for verification or use provider-authorized
-configuration. It exposes only an expiring nonce/Host-instance proof and gives
-no data/write permission. A Quick Tunnel's random URL is for disposable trials,
+paths with Cloudflare Access, make `/v1/mobile/connection/probe` and the read-only
+`/v1/mobile/auth/session` reachable for verification/health checks. These give no
+chat data or write permission; the probe additionally requires an expiring
+owner-issued nonce. A Quick Tunnel's random URL is for disposable trials,
 not a persistent PWA installation.
 
 Paste the HTTPS root address into Devices and choose Verify and save

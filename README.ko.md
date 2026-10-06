@@ -47,6 +47,8 @@
 
 ## 휴대폰이 컴퓨터에 연결되는 방식
 
+![Agent Bridge topology](docs/assets/connection-flow.svg)
+
 [설치 및 페어링](docs/SETUP.md) · [소스 빌드](docs/BUILD.md) · [MIT](LICENSE)
 
 데스크톱 설정 → 기기에서 Cloudflare Tunnel, Tailscale Funnel, 비공개 Tailscale Serve 또는 기존 HTTPS 주소를 선택합니다. 저장 전 TLS와 이 Host의 신원을 검증합니다. 자신의 Agent에 전달할 배포 지시도 복사할 수 있습니다. Funnel/Serve는 도메인 구매가 필요 없지만 자신의 서비스 계정을 사용합니다. Tailscale 실제 계정의 설정은 별도 검증이 필요합니다. Agbrio가 호스팅하는 중계 서비스는 없습니다.
