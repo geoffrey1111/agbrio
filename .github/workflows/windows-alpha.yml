@@ -6,6 +6,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: windows-alpha-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
 jobs:
   windows:
     runs-on: windows-2025
@@ -31,6 +34,8 @@ jobs:
           npm test
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           cargo test --manifest-path crates/Cargo.toml --locked
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          npm run build
       - name: Stage verified Windows runtime
         run: npm run build:browser-executor
       - name: Native tests
