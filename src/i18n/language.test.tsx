@@ -4,7 +4,7 @@ import {useState} from "react";
 import {NativeWorkbench} from "../features/workbench/NativeWorkbench";
 import {RelayBlockSelection} from "../features/workbench/RelayBlockSelection";
 import {DesktopWebAccess,type WebAccessApi} from "../features/workbench/DesktopWebAccess";
-import {getLanguage,getLanguagePreference,resolveLanguage,setLanguagePreference,t} from "./index";
+import {getLanguage,getLanguagePreference,resolveLanguage,setLanguagePreference,t,tc} from "./index";
 import {LanguagePicker} from "./LanguagePicker";
 import {RoleBridgePanel,type RoleBridgeApi,type RoleState} from "../features/workbench/RoleBridgePanel";
 import en from "./en.json";
@@ -58,6 +58,7 @@ it("has complete catalogs and preserves each interpolation slot",()=>{
  expect(Object.keys(en).sort()).toEqual(Object.keys(traditional).sort());
  for(const [source,value]of Object.entries(en)){expect(value.trim(),source).not.toBe("");expect(value.match(/\{\d+\}/g)?.sort()??[],source).toEqual(source.match(/\{\d+\}/g)?.sort()??[]);}
  setLanguagePreference("en");expect(t("转给{0}","exact recipient")).toBe("Forward to exact recipient");expect(t("unrecognized-provider-code")).toBe("unrecognized-provider-code");
+ expect(tc("{0} 段",1)).toBe("1 block");expect(tc("{0} 段",0)).toBe("0 blocks");expect(tc("{0} · {1} 条",1,"Original project",1)).toBe("Original project · 1 conversation");
 });
 it("uses the same boot-shell copy without loading the main UI",()=>{
  for(const language of ["en","zh-CN","zh-TW"] as const){setLanguagePreference(language);for(const key of ["Agbrio 正在连接","正在连接…","重试","连接暂时不可用"])expect(startupText(key)).toBe(t(key));}

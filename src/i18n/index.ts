@@ -1,6 +1,7 @@
 import {useSyncExternalStore} from "react";
 import en from "./en.json";
 import traditional from "./zh-TW.json";
+import singular from "./en-singular.json";
 
 import {getLanguage,getLanguagePreference,subscribe,type Language} from "./locale";
 export {getLanguage,getLanguagePreference,resolveLanguage,setLanguagePreference} from "./locale";
@@ -17,4 +18,10 @@ export function t(source:string|null|undefined,...values:unknown[]):string {
  const key=sourceByTranslation.get(source)??source;
  const language=getLanguage();const format=language==="zh-CN"?key:dictionaries[language][key]??key;
  return format.replace(/\{(\d+)\}/g,(match,index)=>Number(index)<values.length?String(values[Number(index)]??""):match);
+}
+/** Quantity grammar is explicit; numbers in native IDs are never plural counts. */
+export function tc(source:string,count:number,...values:unknown[]):string {
+ const slots=values.length?values:[count];
+ const format=getLanguage()==="en"&&new Intl.PluralRules("en").select(count)==="one"?(singular as Record<string,string>)[source]:undefined;
+ return format?format.replace(/\{(\d+)\}/g,(match,index)=>Number(index)<slots.length?String(slots[Number(index)]??""):match):t(source,...slots);
 }

@@ -1,0 +1,12 @@
+{
+ "{0} 条通知": "{0} notification",
+ "{0} 项待办": "{0} pending item",
+ "{0} 分钟内有效 · 使用一次": "Valid for {0} minute · Single use",
+ "{0} 段": "{0} block",
+ "{0} 条对话": "{0} conversation",
+ "{0} 条记录": "{0} record",
+ "{0} 次尝试": "{0} attempt",
+ "已扫描全部 {0} 条未归档对话": "Scanned all {0} unarchived conversation",
+ "已扫描 {0} 条，目录尚未完整": "Scanned {0} conversation; directory incomplete",
+ "{0} · {1} 条": "{0} · {1} conversation"
+}

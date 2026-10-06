@@ -1,5 +1,5 @@
 import {LanguagePicker} from "../../i18n/LanguagePicker";
-import {t as uiText,useLanguage,getLanguage} from "../../i18n";
+import {t as uiText,tc,useLanguage,getLanguage} from "../../i18n";
 import {useVisibleViewport,PHONE_LAYOUT_REVISION} from "./mobileViewport";
 import {displayDiagnostics} from "./displayDiagnostics";
 import {useWorkbenchHistory,useBackLayer} from "./navigationHistory";
@@ -73,7 +73,7 @@ export function NativeWorkbench(props:UnifiedWorkbenchProps) {
     return()=>{window.removeEventListener("online",up);window.removeEventListener("offline",down);};
   },[]);
   useEffect(()=>{setMenu(false);setDetail(null);},[surface,props.selectedWorkstreamId]);
-  const nav = (phone:boolean) => <nav className={phone?"r2-tabbar":"r2-destinations"} aria-label={phone?uiText("主导航"):uiText("桌面导航")}>{destinations.map(({id,label,Icon})=><button key={id} type="button" aria-current={active===id?"page":undefined} onClick={()=>{setDetail(null);navigate(id);}}>{active===id&&<motion.span className="r2-nav-selection" layoutId={phone?"phone-destination":"desktop-destination"} transition={reduced?{duration:0}:{type:"spring",stiffness:560,damping:42}}/>}<Icon size={phone?23:20} aria-hidden/><span>{uiText(label)}</span>{id==="NOTIFICATIONS"&&Boolean(props.notificationCount)&&<b className="r2-nav-badge" aria-label={uiText("{0} 条通知", props.notificationCount)}>{Math.min(20,props.notificationCount!)}</b>}</button>)}</nav>;
+  const nav = (phone:boolean) => <nav className={phone?"r2-tabbar":"r2-destinations"} aria-label={phone?uiText("主导航"):uiText("桌面导航")}>{destinations.map(({id,label,Icon})=><button key={id} type="button" aria-current={active===id?"page":undefined} onClick={()=>{setDetail(null);navigate(id);}}>{active===id&&<motion.span className="r2-nav-selection" layoutId={phone?"phone-destination":"desktop-destination"} transition={reduced?{duration:0}:{type:"spring",stiffness:560,damping:42}}/>}<Icon size={phone?23:20} aria-hidden/><span>{uiText(label)}</span>{id==="NOTIFICATIONS"&&Boolean(props.notificationCount)&&<b className="r2-nav-badge" aria-label={tc("{0} 条通知", props.notificationCount??0)}>{Math.min(20,props.notificationCount!)}</b>}</button>)}</nav>;
   const listed=visible.slice(0,limit);
   const rows = (compact=false) => <div className={`r2-bridge-group${compact?" r2-compact-list":""}`}>
     {(compact&&selected&&!listed.some(item=>item.id===selected.id)?[selected,...listed]:listed).map(item=><SwipeDeleteRow key={item.id} label={item.name} disabled={!props.onLifecycleChange} onDelete={()=>removeBridge(item)}><div className="r2-bridge-row" data-selected={inReader&&selected?.id===item.id}>

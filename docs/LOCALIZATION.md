@@ -16,7 +16,9 @@ Date/time formatting uses the chosen locale and the reader's local timezone.
 `locale.ts` and `startupCopy.ts` keep the boot shell independent of React/full
 catalogs. Tests check boot/catalog parity, interpolation slots, state preservation,
 original-content preservation, persisted preference, cross-tab synchronization,
-and recovery after verification failure.
+and recovery after verification failure. English quantity phrases use explicit
+plural contexts (for example 1 block / 2 blocks); native IDs are never interpreted
+as grammatical counts. Shared-connection recovery keeps raw error identity.
 
 Japanese/Korean are currently README translations, not selectable app languages.
 OS-native menus and provider-produced content are not machine-translated.

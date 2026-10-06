@@ -1,4 +1,4 @@
-import {t as uiText,useLanguage,getLanguage} from "../../i18n";
+import {t as uiText,tc,useLanguage,getLanguage} from "../../i18n";
 import * as Dialog from "@radix-ui/react-dialog";
 import {useEffect,useState,type ReactNode} from "react";
 import {ArrowRight,ArrowUp,Check,ChevronLeft,CircleCheck,Ellipsis,Eye,Pencil,Trash2} from "lucide-react";
@@ -44,7 +44,7 @@ export function RelayReviewSurface({review,busy,oldReview,sourceLabel,targetLabe
     {receipt&&<p role="status" className="r2-relay-receipt"><Check size={18}/>{uiText(receipt)}</p>}
     {error&&<p role="alert">{uiText(error)}</p>}{connectionAction}
   </div>
-  <footer className="r2-relay-dock"><div><span aria-live="polite"><CircleCheck size={16}/>{count} {uiText("段")}</span><button type="button" className="r2-icon" aria-label={view==="EDIT"&&review.blocks?.length?uiText("选择段落"):uiText("编辑发送内容")} aria-pressed={view==="EDIT"} disabled={busy||frozen||!payload.trim()} onClick={()=>{if(view==="EDIT"&&review.blocks?.length){setView("BLOCKS");return;}if(review.choosing)change({...review,text:payload,choosing:false});setView("EDIT");}}>{view==="EDIT"&&review.blocks?.length?<Check size={20}/>:<Pencil size={20}/>}</button><button type="button" className="r2-icon" aria-label={uiText("预览发送内容")} aria-pressed={view==="PREVIEW"} disabled={busy||!payload.trim()} onClick={()=>setView("PREVIEW")}><Eye size={20}/></button></div>
+  <footer className="r2-relay-dock"><div><span aria-live="polite"><CircleCheck size={16}/>{tc("{0} 段",count)}</span><button type="button" className="r2-icon" aria-label={view==="EDIT"&&review.blocks?.length?uiText("选择段落"):uiText("编辑发送内容")} aria-pressed={view==="EDIT"} disabled={busy||frozen||!payload.trim()} onClick={()=>{if(view==="EDIT"&&review.blocks?.length){setView("BLOCKS");return;}if(review.choosing)change({...review,text:payload,choosing:false});setView("EDIT");}}>{view==="EDIT"&&review.blocks?.length?<Check size={20}/>:<Pencil size={20}/>}</button><button type="button" className="r2-icon" aria-label={uiText("预览发送内容")} aria-pressed={view==="PREVIEW"} disabled={busy||!payload.trim()} onClick={()=>setView("PREVIEW")}><Eye size={20}/></button></div>
     {settled?<button type="button" className="r2-action" disabled={busy||(status==="SENT"&&!receiptReady)} onClick={status==="SENT"||status==="CANCELLED"?close:checkStatus}>{status==="SENT"||status==="CANCELLED"?uiText("返回对话"):uiText("检查送达状态")}</button>:<button type="button" className="r2-action" aria-label={uiText("确认并发送给{0}", review.role==="DECISION"?uiText("执行端"):uiText("控制端"))} disabled={!canSend} onClick={submit}><ArrowUp size={20}/>{busy?uiText("提交中…"):uiText("确认发送")}</button>}
   </footer>
  </>;

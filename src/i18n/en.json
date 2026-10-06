@@ -663,5 +663,9 @@
   "手机访问入口": "Phone access",
   "Codex 后端": "Codex backend",
   "连接 Codex（只读）": "Connect Codex (read-only)",
-  "Agbrio 正在连接": "Agbrio connecting"
+  "Agbrio 正在连接": "Agbrio connecting",
+  "{0} 段": "{0} blocks",
+  "{0} 条对话": "{0} conversations",
+  "{0} 条记录": "{0} records",
+  "{0} 次尝试": "{0} attempts"
 }
