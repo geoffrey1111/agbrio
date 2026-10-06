@@ -1,0 +1,62 @@
+name: Windows alpha candidate
+on:
+  push:
+    branches: [main, codex/open-alpha]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.98.0'
+      - name: Install locked dependencies
+        run: |
+          npm ci
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          npm ci --prefix tools/isolated-browser-executor
+      - name: Frontend and Core
+        run: |
+          npm test
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          cargo test --manifest-path crates/Cargo.toml --locked
+      - name: Stage verified Windows runtime
+        run: npm run build:browser-executor
+      - name: Native tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - name: Build Windows installer
+        run: |
+          npm run build:windows
+      - name: Install and inspect on fresh Windows
+        run: |
+          $installer=(Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          pwsh -NoProfile -File scripts/windows-install-smoke.ps1 -Installer $installer
+      - name: Artifact checksums
+        run: |
+          $installer=Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          $sum=(Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLower()
+          "$sum  $($installer.Name)" | Set-Content src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agbrio-windows-alpha-candidate
+          path: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
+            runtime/clean-windows/proof.json
+            runtime/clean-windows/desktop-first-setup.png
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: agbrio-windows-failure-evidence
+          path: runtime/clean-windows/
