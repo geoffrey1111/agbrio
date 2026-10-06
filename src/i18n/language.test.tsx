@@ -32,6 +32,10 @@ it("keeps original content verbatim even when it equals an application phrase",(
  const content=document.querySelector(".markdown-message")!;expect(Array.from(content.querySelectorAll("p")).map(p=>p.textContent)).toEqual(["设置","通知","确认发送"]);
  expect(screen.getByRole("checkbox",{name:/Block 1/})).not.toBeChecked();
 });
+it("keeps a Bridge title unchanged when it matches a translated navigation label",()=>{
+ setLanguagePreference("en");render(<NativeWorkbench items={[{id:"exact-id",name:"通知",lifecycle:"ACTIVE"}]} draft={{value:""}} onDraftChange={()=>{}} onSelectWorkstream={()=>{}} selectedWorkstreamId="exact-id" surface="WORKSPACE"/>);
+ expect(screen.getByRole("heading",{level:1})).toHaveTextContent("通知");expect(screen.getByRole("navigation",{name:"Desktop navigation"})).toHaveTextContent("Notifications");
+});
 it("updates an existing failure and preserves the exact HTTPS input without retrying",async()=>{
  const configure=vi.fn().mockRejectedValue(Error("MOBILE_PROBE_FAILED"));const api:WebAccessApi={connection:async()=>({method:"NONE",configured:false,port:47114,origin:null}),configure,devices:async()=>[],url:async()=>null,issue:vi.fn(),revoke:vi.fn()};
  render(<><LanguagePicker/><DesktopWebAccess api={api}/></>);fireEvent.click(screen.getByRole("button",{name:"手机/网页登录"}));const input=await screen.findByRole("textbox",{name:"HTTPS 网址"});fireEvent.change(input,{target:{value:"https://exact.example"}});fireEvent.click(screen.getByRole("button",{name:"验证并保存"}));await screen.findByText("未能验证这个入口，原连接已保留。请检查转发和 HTTPS 配置。");

@@ -14,7 +14,7 @@
 
 ## 公開状況
 
-**[v0.1.0-alpha.1](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.0-alpha.1) — MIT ライセンスの Windows Alpha。** インストーラーとチェックサムをダウンロードするか、ソースからビルドできます。クリーンな Windows のインストールとネイティブ初期設定の自動検証、実際の Codex／ファイル引き継ぎを別々に確認しています。アプリは現在中国語表示です。Mac と他の Agent は未対応です。[設定手順](docs/SETUP.md)。
+**[v0.1.0-alpha.1](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.0-alpha.1) — MIT ライセンスの Windows Alpha。** インストーラーとチェックサムをダウンロードするか、ソースからビルドできます。クリーンな Windows のインストールとネイティブ初期設定の自動検証、実際の Codex／ファイル引き継ぎを別々に確認しています。アプリは英語・簡体字中国語・繁体字中国語に対応し、設定で切り替えられます。Mac と他の Agent は未対応です。[設定手順](docs/SETUP.md)。
 
 ## すでに二つの会話で協働している人向け
 
@@ -28,7 +28,7 @@
 
 <p><img src="docs/assets/mobile-handoff.png" width="320" alt="Management-to-execution instruction selection"> <img src="docs/assets/mobile-return.png" width="320" alt="Execution-to-management result selection"></p>
 
-PC の図は同じ Bridge の両側を並べた画面です。スマートフォンの図は管理側から実行側へ指示を渡す選択画面と、実行側から管理側へ結果を返す選択画面です。実際のコンポーネントに架空データを入れたブラウザープレビューで、私的会話や実機検証結果ではありません。操作ラベルは現在中国語で、README 翻訳はアプリの多言語対応を意味しません。
+PC の図は同じ Bridge の両側を並べた画面です。スマートフォンの図は管理側から実行側へ指示を渡す選択画面と、実行側から管理側へ結果を返す選択画面です。実際のコンポーネントに架空データを入れたブラウザープレビューで、私的会話や実機検証結果ではありません。スクリーンショットは中国語です。アプリは英語・簡体字中国語・繁体字中国語に対応し、日本語・韓国語は現在、紹介文書のみです。
 
 ## 個人実装でできること
 

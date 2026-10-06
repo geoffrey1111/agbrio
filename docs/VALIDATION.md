@@ -2,7 +2,7 @@
 
 These scopes are distinct; none implies all-platform or physical-device UAT.
 
-- Frontend: 406 Vitest checks across 37 files; TypeScript/Vite production build.
+- Frontend: 414 Vitest checks across 38 files; TypeScript/Vite production build.
 - Core: clean-export database/state/migration suite, 176 checks, one explicit
   provider gate ignored.
 - Native: 161 checks, with 19 account-writing gates explicitly ignored by default.
@@ -40,7 +40,7 @@ the personal build do not replace a fresh-install physical-device test.
 
 ## First-release app localization
 
-Seven additional frontend cases prove preference persistence and state/content
+Eight additional frontend cases prove preference persistence and state/content
 boundaries. Global Playwright exercised the production PWA with fixture APIs at
 390×844, 440×956 and 1920×1080: all three languages, reload persistence, visible
 selectors and notification preferences, no horizontal overflow or page errors.

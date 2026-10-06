@@ -28,7 +28,7 @@
 
 <p><img src="docs/assets/mobile-handoff.png" width="320" alt="Management-to-execution instruction selection"> <img src="docs/assets/mobile-return.png" width="320" alt="Execution-to-management result selection"></p>
 
-電腦圖展示同一個 Bridge 的雙端對照；兩張手機圖分別展示「管理端向執行端下發指令」和「執行端向管理端交回結果」的選擇介面。採用真實元件、虛構資料與瀏覽器渲染，不含私人對話，也不代表裝置驗收。應用控制項目前為中文，多語言 README 不代表應用已完成多語言支援。
+電腦圖展示同一個 Bridge 的雙端對照；兩張手機圖分別展示「管理端向執行端下發指令」和「執行端向管理端交回結果」的選擇介面。採用真實元件、虛構資料與瀏覽器渲染，不含私人對話，也不代表裝置驗收。範例截圖採用中文介面；應用支援繁體中文、簡體中文及英文。日文、韓文目前僅為介紹文件語言。
 
 ## 個人版本目前能做什麼
 
@@ -63,7 +63,7 @@
 
 ## 目前邊界
 
-首批範圍：Windows x64＋Codex＋手機 PWA。應用程式介面目前為中文。Mac、其他 Agent 與 ChatGPT 瀏覽器流程不屬於已支援發行功能。iPhone 修復回饋與新機安裝驗證分別記錄。
+首批範圍：Windows x64＋Codex＋手機 PWA。介面支援繁體中文、簡體中文及英文。Mac、其他 Agent 與 ChatGPT 瀏覽器流程不屬於已支援發行功能。iPhone 修復回饋與新機安裝驗證分別記錄。
 
 ## 建置與參與
 
