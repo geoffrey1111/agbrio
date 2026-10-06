@@ -83,6 +83,6 @@ PC の図は同じ Bridge の両側を並べた画面です。スマートフォ
 
 ## 作者への連絡とフィードバック
 
-[作者のプロフィール](https://github.com/geoffrey1111) · [問題を報告する](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [ワークフローの改善を提案する](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
+[作者のプロフィール](mailto:geoffreyzjx@qq.com) · [GitHub](https://github.com/geoffrey1111) · [問題を報告する](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [ワークフローの改善を提案する](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
 
 使い方の質問も Issues に投稿できます。公開の場なので、デモデータを使い私的な情報を除いてください。

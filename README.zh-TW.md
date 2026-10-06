@@ -83,6 +83,6 @@
 
 ## 聯絡作者與回饋
 
-[作者頁面](https://github.com/geoffrey1111) · [回報問題](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [提出工作流程建議](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
+[作者頁面](mailto:geoffreyzjx@qq.com) · [GitHub](https://github.com/geoffrey1111) · [回報問題](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [提出工作流程建議](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
 
 使用問題也可以在 Issues 中交流。這是公開管道，請使用示例資料，並於發布前移除私人內容。

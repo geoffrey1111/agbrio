@@ -83,6 +83,6 @@
 
 ## 작성자 연락 및 피드백
 
-[작성자 프로필](https://github.com/geoffrey1111) · [문제 보고](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [워크플로 개선 제안](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
+[작성자 프로필](mailto:geoffreyzjx@qq.com) · [GitHub](https://github.com/geoffrey1111) · [문제 보고](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [워크플로 개선 제안](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
 
 사용 관련 질문도 Issues에 남길 수 있습니다. 공개 채널이므로 예시 데이터를 사용하고 개인 정보를 제거해 주세요.

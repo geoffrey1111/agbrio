@@ -83,6 +83,6 @@ Windows + Codex is the current personal-use path. The ChatGPT integration remain
 
 ## Contact and feedback
 
-[Author](https://github.com/geoffrey1111) · [Report a problem](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [Suggest a workflow improvement](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
+[Author](mailto:geoffreyzjx@qq.com) · [GitHub](https://github.com/geoffrey1111) · [Report a problem](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [Suggest a workflow improvement](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
 
 Questions are welcome in Issues. This is a public channel; use demo data and remove private material before posting.
