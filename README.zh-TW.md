@@ -1,6 +1,10 @@
 <img src="docs/assets/agbrio-icon.png" width="72" alt="Agbrio">
 
+
 # Agbrio
+
+> **託管連線預覽版:** Windows **preview.16** 支援選用兌換碼連線：電腦端啟用一次，再配對手機，不必自備網域。兌換碼另外提供；自行部署仍可免費使用。[設定與限制](docs/SETUP.md)。
+
 
 **Agent Bridge · 讓管理對話與執行對話順暢交接**
 

@@ -88,7 +88,9 @@ pub(crate) fn sync(core:&RouterCore,workstream:&str)->Result<BridgeState,String>
                             activity.state=native.state.into();activity.turn_id=native.turn_id;
                             if activity.state=="COMPLETE"{
                                 let prefix=activity.turn_id.as_ref().map(|t|format!("codex:{t}:"));
-                                activity.result_observation_id=initial.replies.iter().find(|r|r.endpoint_id==side.endpoint.id&&prefix.as_ref().is_some_and(|p|r.assistant_identity.as_ref().is_some_and(|i|i.starts_with(p)))).map(|r|r.id.clone());
+                                let reply=initial.replies.iter().find(|r|r.endpoint_id==side.endpoint.id&&prefix.as_ref().is_some_and(|p|r.assistant_identity.as_ref().is_some_and(|i|i.starts_with(p))));
+                                activity.result_observation_id=reply.map(|r|r.id.clone());
+                                if reply.is_some_and(|r|!r.completion_checked){fetch.push((side.role.clone(),side.endpoint.id.clone(),activity.turn_id.clone()));}
                                 if activity.result_observation_id.is_none(){activity.state="RESULT_PENDING".into();fetch.push((side.role.clone(),side.endpoint.id.clone(),activity.turn_id.clone()));}
                             }
                         }
@@ -213,7 +215,7 @@ fn side(core: &RouterCore, workstream: &str, role: &str) -> Result<RoleEndpoint,
 }
 pub(crate) fn read(core: &RouterCore, workstream: &str, role: &str) -> Result<BridgeState, String> {
     let side = side(core, workstream, role)?;
-    let (identity, text) = match side.endpoint.provider.as_str() {
+    let (identity, text,completed) = match side.endpoint.provider.as_str() {
         "CODEX" => {
             let mut s = core
                 .session
@@ -237,11 +239,12 @@ pub(crate) fn read(core: &RouterCore, workstream: &str, role: &str) -> Result<Br
             (
                 format!("codex:{}:{}", r.completed_turn_id, r.agent_item_id),
                 r.text,
+                r.completed_at,
             )
         }
         "CHATGPT" => {
             let r = core.chatgpt.observe_exact(&side.endpoint.external_id)?;
-            (r.message_id, r.text)
+            (r.message_id, r.text,None)
         }
         _ => return Err("BRIDGE_PROVIDER_UNSUPPORTED".into()),
     };
@@ -252,6 +255,7 @@ pub(crate) fn read(core: &RouterCore, workstream: &str, role: &str) -> Result<Br
         &text,
         None,
     )?;
+    core.store.note_reply_completion(workstream,&side.endpoint.id,&identity,completed)?;
     state(core, workstream)
 }
 fn read_without_new_reply(core:&RouterCore,workstream:&str,role:&str,endpoint:&str,outcome:&str)->Result<BridgeState,String>{
@@ -468,6 +472,8 @@ pub(crate) fn approve(
     core.store
         .approve_role_handoff_checked(handoff, expected_hash)
 }
+
+pub(crate) fn verify_handoff_files(core:&RouterCore,handoff:&str)->Result<(),String>{handoff_files(&core.store.role_handoff(handoff)?).map(|_|())}
 
 pub(crate) fn send(core: &RouterCore, handoff: &str) -> Result<BridgeState, String> {
     let preview = core.store.role_handoff(handoff)?;

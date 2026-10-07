@@ -20,6 +20,8 @@ jobs:
     if: ${{ inputs.reuse_installed_run == '' }}
     runs-on: windows-2025
     timeout-minutes: 55
+    env:
+      AGBRIO_HOSTED_CONTROL_ORIGIN: https://agbrio-connect.geoffreygroup.cc
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,6 +47,8 @@ jobs:
           npm test
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           npm run test:shared-lifecycle
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          node --test services/hosted-relay/worker.test.mjs
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           npm run build
       - name: Core tests

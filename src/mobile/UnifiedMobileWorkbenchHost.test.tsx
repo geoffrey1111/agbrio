@@ -1140,3 +1140,37 @@ it("uses global lifecycle and human conversation labels for phone Bridges missin
  expect(await screen.findByText("Codex · 当前控制对话")).toBeVisible();
  expect(screen.queryByText("B 工作区")).toBeNull();
 });
+
+it("opens an exact Bridge notification from the default directory and returns to the directory",async()=>{
+ composition.native=true;useCompactMobileViewport();window.history.replaceState({},"","/mobile?workstream=work-b&reply=notification-qa");
+ render(<UnifiedMobileWorkbenchHost/>);await waitFor(()=>expect(api.workstream).toHaveBeenCalledWith("work-b"));
+ expect(await screen.findByRole("heading",{name:"B 工作区"})).toBeVisible();expect(screen.queryByRole("heading",{name:"Bridge"})).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole("button",{name:"返回"}));expect(await screen.findByRole("heading",{name:"Bridge"})).toBeVisible();
+});
+it("handles a warm notification intent without falling back to the first Bridge",async()=>{
+ composition.native=true;useCompactMobileViewport();let receive!:(event:MessageEvent)=>void;
+ vi.stubGlobal("navigator",{...navigator,serviceWorker:{addEventListener:vi.fn((name,handler)=>{if(name==="message")receive=handler;}),removeEventListener:vi.fn()}});
+ render(<UnifiedMobileWorkbenchHost/>);await screen.findByRole("heading",{name:"Bridge"});await waitFor(()=>expect(receive).toBeDefined());const ack=vi.fn();
+ act(()=>receive({data:{type:"AGBRIO_OPEN_BRIDGE",target:"/mobile?workstream=work-b&reply=warm-qa"},origin:window.location.origin,ports:[{postMessage:ack}]} as unknown as MessageEvent));
+ await waitFor(()=>expect(api.workstream).toHaveBeenCalledWith("work-b"));expect(await screen.findByRole("heading",{name:"B 工作区"})).toBeVisible();expect(ack).toHaveBeenCalledWith({accepted:true});
+});
+it("rejects a missing notification Bridge without reading the first available one",async()=>{
+ composition.native=true;useCompactMobileViewport();window.history.replaceState({},"","/mobile?workstream=missing-qa");render(<UnifiedMobileWorkbenchHost/>);
+ await screen.findByText("通知指定的工作区当前不可用，未回退到其他工作区。");expect(api.workstream).not.toHaveBeenCalled();
+});
+it("ignores an older index response after a newer Bridge notification arrives",async()=>{
+ composition.native=true;useCompactMobileViewport();window.history.replaceState({},"","/mobile?workstream=work-a");let complete!:(value:typeof workstreams)=>void,receive!:(e:MessageEvent)=>void;
+ api.workstreams.mockImplementationOnce(()=>new Promise(resolve=>{complete=resolve;}));
+ vi.stubGlobal("navigator",{...navigator,serviceWorker:{addEventListener:vi.fn((name,handler)=>{if(name==="message")receive=handler;}),removeEventListener:vi.fn()}});
+ render(<UnifiedMobileWorkbenchHost/>);await waitFor(()=>expect(receive).toBeDefined());
+ act(()=>receive({data:{type:"AGBRIO_OPEN_BRIDGE",target:"/mobile?workstream=work-b"},origin:window.location.origin} as MessageEvent));
+ await screen.findByRole("heading",{name:"B 工作区"});await act(async()=>complete(workstreams));expect(screen.getByRole("heading",{name:"B 工作区"})).toBeVisible();expect(api.workstream).not.toHaveBeenCalledWith("work-a");
+});
+it("does not replace a new notification reader with an old snapshot finishing late",async()=>{
+ composition.native=true;useCompactMobileViewport();let complete!:(value:ReturnType<typeof snapshot>)=>void,receive!:(e:MessageEvent)=>void;
+ api.workstream.mockImplementation(async(id:string)=>id==="work-a"?new Promise(resolve=>{complete=resolve;}):snapshot(id));
+ vi.stubGlobal("navigator",{...navigator,serviceWorker:{addEventListener:vi.fn((name,handler)=>{if(name==="message")receive=handler;}),removeEventListener:vi.fn()}});
+ render(<UnifiedMobileWorkbenchHost/>);await waitFor(()=>expect(api.workstream).toHaveBeenCalledWith("work-a"));
+ act(()=>receive({data:{type:"AGBRIO_OPEN_BRIDGE",target:"/mobile?workstream=work-b"},origin:window.location.origin} as MessageEvent));await screen.findByRole("heading",{name:"B 工作区"});
+ await act(async()=>complete(snapshot("work-a")));expect(screen.getByRole("heading",{name:"B 工作区"})).toBeVisible();expect(screen.queryByRole("heading",{name:"A 工作区"})).not.toBeInTheDocument();
+});

@@ -19,6 +19,7 @@ pub(crate) struct HostRuntime {
     shared_stop:Arc<std::sync::atomic::AtomicBool>,
     shared_worker:Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
     setup_worker:Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
+    pub(crate) hosted_child:Arc<Mutex<Option<std::process::Child>>>,
     /// Serializes only exact Host browser operations, preventing concurrent
     /// reads/opens from creating competing Router-owned tabs or roots.
     pub(super) exact_host_operation: Arc<Mutex<()>>,
@@ -102,6 +103,7 @@ mod tests {
 impl Default for HostRuntime {
     fn default() -> Self {
         Self {
+            hosted_child:Default::default(),
             runtime: Arc::new(
                 tokio::runtime::Builder::new_multi_thread()
                     .enable_all()
@@ -138,7 +140,7 @@ impl HostRuntime {
     fn start_setup_requests(&self,core:RouterCore){
         let Ok(mut worker)=self.setup_worker.lock()else{return;};if worker.is_some(){return;}
         let stop=self.shared_stop.clone();let host=self.clone();*worker=Some(std::thread::spawn(move||{
-            while !stop.load(std::sync::atomic::Ordering::Acquire){crate::mobile_connection::process_setup_request(&core,&host);for _ in 0..20{if stop.load(std::sync::atomic::Ordering::Acquire){return;}std::thread::sleep(std::time::Duration::from_millis(100));}}
+            while !stop.load(std::sync::atomic::Ordering::Acquire){crate::mobile_connection::process_setup_request(&core,&host);crate::hosted_relay::ensure(&host);for _ in 0..20{if stop.load(std::sync::atomic::Ordering::Acquire){return;}std::thread::sleep(std::time::Duration::from_millis(100));}}
         }));
     }
     /// Explicit human intent only. AUTH_REQUIRED opens native human-only
@@ -264,6 +266,7 @@ impl HostRuntime {
         if let Ok(mut worker)=self.shared_worker.lock(){if let Some(worker)=worker.take(){let _=worker.join();}}
         if let Ok(mut worker)=self.setup_worker.lock(){if let Some(worker)=worker.take(){let _=worker.join();}}
         self.web.stop();
+        crate::hosted_relay::stop(self);
         if let Ok(mut mobile) = self.mobile.lock() {
             if let Some(handle) = mobile.take() {
                 self.runtime.block_on(handle.shutdown());

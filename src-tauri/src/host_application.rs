@@ -3291,6 +3291,7 @@ pub(crate) struct LatestCodexReply {
     pub(crate) completed_turn_id: String,
     pub(crate) agent_item_id: String,
     pub(crate) text: String,
+    pub(crate) completed_at:Option<i64>,
 }
 
 /// A passive read never turns an incomplete or interrupted Codex turn into a
@@ -3958,6 +3959,7 @@ pub(crate) fn read_latest_codex_reply(
                 completed_turn_id: turn_id,
                 agent_item_id,
                 text,
+                completed_at:turn.get("completedAt").and_then(Value::as_i64).filter(|v|*v>0).and_then(|v|v.checked_mul(1000)).filter(|v|*v<=253402300799000),
             }),
             state: "NO_NEW_TERMINAL_REPLY",
         },
@@ -4198,6 +4200,8 @@ pub(crate) fn check_new_codex_endpoint_replies_with(
             last_successful_check_at: None,
         });
     };
+    let completion_identity=format!("codex:{}:{}",reply.completed_turn_id,reply.agent_item_id);
+    store.note_reply_completion(workstream_id,&endpoint.id,&completion_identity,reply.completed_at)?;
     let watermark = store.codex_reply_observer_watermark(&endpoint.id)?;
     let initialized = store.codex_reply_observer_is_initialized(&endpoint.id)?;
     let watermark_identity = format!(
@@ -4240,6 +4244,7 @@ pub(crate) fn check_new_codex_endpoint_replies_with(
     let identity = format!("codex:{}:{}", reply.completed_turn_id, reply.agent_item_id);
     let created =
         record_provider_surface_reply_with(store, &endpoint, &identity, &reply.text, push)?;
+    store.note_reply_completion(workstream_id,&endpoint.id,&identity,reply.completed_at)?;
     // Persist the new exact identity even if the independently idempotent
     // insert found it after a restart/retry. A text comparison never decides
     // deduplication.

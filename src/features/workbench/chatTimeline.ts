@@ -44,17 +44,17 @@ export function chatTimeline(history:ChatMessage[],observed:ObservedMessage[],re
   const turn=receipt.turnId??`receipt:${receipt.id}`;
   const group=groups.get(turn)??[];
   const match=group.find(m=>m.role==='user'&&m.text===receipt.text&&!m.receipt)??
-   // SEND's acknowledged turn is native identity for its initiating prompt.
+   // SEND/QUEUE's acknowledged turn is native identity for its initiating prompt.
    // Native text may also contain the appended material manifest. STEER can
    // contain several prompts in one turn and must not use this fallback.
-   (receipt.mode==='SEND'&&receipt.status==='SENT'?group.find(m=>m.role==='user'&&!m.receipt):undefined);
+   (receipt.mode!=='STEER'&&receipt.status==='SENT'?group.find(m=>m.role==='user'&&!m.receipt):undefined);
   if(match){match.receipt=receipt;continue;}
   if(loaded&&receipt.status==='SENT'&&!nativeTurns.has(turn))continue;
   const message:TimelineMessage={id:`receipt:${receipt.id}`,turnId:turn,role:'user',text:receipt.text,receipt};
   times.set(turn,Math.min(times.get(turn)??Infinity,receipt.createdAt));
   // A native page owns item order. Unreflected sends follow its known items;
   // with no native page, the sent prompt starts its resulting turn.
-  if(receipt.status==='SENT'&&receipt.mode==='SEND')group.unshift(message);else group.push(message);
+  if(receipt.status==='SENT'&&receipt.mode!=='STEER')group.unshift(message);else group.push(message);
   groups.set(turn,group);
  }
  const known=[...nativeTurns];

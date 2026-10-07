@@ -42,3 +42,8 @@ src-tauri/resources/browser-executor/
 
 # Local Python fixture bytecode
 __pycache__/
+
+# Operator-only hosted service credentials / issued codes
+operator.json
+*-codes.json
+redemption-codes/

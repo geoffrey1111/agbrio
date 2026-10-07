@@ -151,6 +151,19 @@ self.addEventListener("notificationclick", event => {
       }
     });
     if (existing) {
+      // Warm PWA navigation is an intent, not a document reload. Wait for the
+      // mounted application to accept it; old workers/pages retain exact-URL fallback.
+      if(target.pathname==="/mobile"&&target.searchParams.get("workstream")&&typeof existing.postMessage==="function"&&typeof MessageChannel!=="undefined"){
+        try{await existing.focus();}catch{/* Exact-URL fallback remains available. */}
+        const accepted=await new Promise(resolve=>{
+          const channel=new MessageChannel();let timer;
+          const finish=value=>{clearTimeout(timer);channel.port1.close();channel.port2.close();resolve(value);};
+          channel.port1.onmessage=message=>finish(message.data?.accepted===true);
+          timer=setTimeout(()=>finish(false),1000);
+          try{existing.postMessage({type:"AGBRIO_OPEN_BRIDGE",target:target.href},[channel.port2]);}catch{finish(false);}
+        });
+        if(accepted)return;
+      }
       try {
         const client = await existing.navigate(target.href);
         if (client) {

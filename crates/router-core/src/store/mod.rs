@@ -1,4 +1,6 @@
 pub mod control;
+pub mod assistant;
+pub mod assistant_actions;
 pub mod dispatch;
 pub mod migration;
 pub mod relay;
@@ -23,6 +25,8 @@ const MAX_REPLY_OBSERVATION_BYTES: usize = 1_000_000;
 const MAX_WORKSTREAM_DRAFT_BYTES: usize = 100_000;
 
 const NORMAL_FEATURE_MIGRATIONS: &[(&str, &str)] = &[
+    ("assistant-delegation-v1", include_str!("../../migrations/normal/012_assistant_delegation.sql")),
+    ("reply-completion-v1", include_str!("../../migrations/normal/013_reply_completion.sql")),
     ("watch-removal-v1", include_str!("../../migrations/normal/011_watch_removal.sql")),
     ("watch-replies-v1", include_str!("../../migrations/normal/010_watch_replies.sql")),
     ("codex-watches-v1", include_str!("../../migrations/normal/007_codex_watches.sql")),
@@ -52,6 +56,8 @@ const NORMAL_FEATURE_MIGRATIONS: &[(&str, &str)] = &[
         "role-provider-results-v1",
         include_str!("../../migrations/normal/006_role_provider_results.sql"),
     ),
+    ("assistant-instance-v1", include_str!("../../migrations/normal/014_assistant_instance.sql")),
+    ("notification-seen-v1", include_str!("../../migrations/normal/015_notification_seen.sql")),
 ];
 
 const MIGRATIONS: &[(i64, &str)] = &[
@@ -361,6 +367,11 @@ pub struct ReplyObservation {
     pub text: String,
     pub source_provider_run_id: Option<String>,
     pub observed_at: i64,
+    /// Provider-reported terminal time in milliseconds; never inferred from refresh.
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub completed_at:Option<i64>,
+    #[serde(skip)]
+    pub completion_checked:bool,
     pub read_at: Option<i64>,
     pub handled_at: Option<i64>,
     pub push_state: String,
@@ -1648,7 +1659,7 @@ impl RouterStore {
             {
                 return Err("Reply observation requires the ACTIVE provider Endpoint for this Workstream".into());
             }
-            let record = ReplyObservation { id: id(), workstream_id: workstream_id.into(), endpoint_id: endpoint_id.into(), assistant_identity: assistant_identity.map(str::to_string), text: text.to_string(), source_provider_run_id: source_provider_run_id.map(str::to_string), observed_at: now(), read_at: None, handled_at: None, push_state: "PENDING".into(), push_attempted_at: None, push_rendered_at: None };
+            let record = ReplyObservation { id: id(), workstream_id: workstream_id.into(), endpoint_id: endpoint_id.into(), assistant_identity: assistant_identity.map(str::to_string), text: text.to_string(), source_provider_run_id: source_provider_run_id.map(str::to_string), observed_at: now(), completed_at:None,completion_checked:false,read_at: None, handled_at: None, push_state: "PENDING".into(), push_attempted_at: None, push_rendered_at: None };
             let changed = connection.execute(
                 "INSERT OR IGNORE INTO reply_observations(id,workstream_id,endpoint_id,assistant_identity,text,source_provider_run_id,observed_at,read_at,handled_at,push_state,push_attempted_at,push_rendered_at) VALUES(?1,?2,?3,?4,?5,?6,?7,NULL,NULL,?8,NULL,NULL)",
                 params![record.id,record.workstream_id,record.endpoint_id,record.assistant_identity,record.text,record.source_provider_run_id,record.observed_at,record.push_state],
@@ -1881,7 +1892,7 @@ impl RouterStore {
         workstream_id: &str,
     ) -> Result<Vec<ReplyObservation>, String> {
         self.with_connection(|connection| {
-            let mut statement = connection.prepare("SELECT id,workstream_id,endpoint_id,assistant_identity,text,source_provider_run_id,observed_at,read_at,handled_at,push_state,push_attempted_at,push_rendered_at FROM reply_observations WHERE workstream_id=?1 AND (read_at IS NULL OR id IN (SELECT id FROM reply_observations WHERE workstream_id=?1 AND read_at IS NOT NULL ORDER BY observed_at DESC,rowid DESC LIMIT 20)) ORDER BY (read_at IS NULL) DESC,observed_at DESC,rowid DESC").map_err(db_error)?;
+            let mut statement = connection.prepare("SELECT id,workstream_id,endpoint_id,assistant_identity,text,source_provider_run_id,observed_at,read_at,handled_at,push_state,push_attempted_at,push_rendered_at,completed_at,completion_checked FROM reply_observations WHERE workstream_id=?1 AND (read_at IS NULL OR id IN (SELECT id FROM reply_observations WHERE workstream_id=?1 AND read_at IS NOT NULL ORDER BY observed_at DESC,rowid DESC LIMIT 20)) ORDER BY (read_at IS NULL) DESC,observed_at DESC,rowid DESC").map_err(db_error)?;
             let observations = statement
                 .query_map(params![workstream_id], reply_observation_row)
                 .map_err(db_error)?
@@ -1891,6 +1902,17 @@ impl RouterStore {
         })
     }
 
+    pub fn note_reply_completion(&self,workstream:&str,endpoint:&str,identity:&str,completed:Option<i64>)->Result<bool,String>{
+        if completed.is_some_and(|v|v<=0||v>253402300799000){return Err("REPLY_COMPLETION_INVALID".into());}
+        self.with_connection(|c|{
+            let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
+            let prior:Option<Option<i64>>=tx.query_row("SELECT completed_at FROM reply_observations WHERE workstream_id=?1 AND endpoint_id=?2 AND assistant_identity=?3",params![workstream,endpoint,identity],|r|r.get(0)).optional().map_err(db_error)?;
+            let Some(prior)=prior else{return Ok(false)};
+            if prior.zip(completed).is_some_and(|(a,b)|a!=b){return Err("REPLY_COMPLETION_CHANGED".into());}
+            tx.execute("UPDATE reply_observations SET completed_at=COALESCE(completed_at,?4),completion_checked=1 WHERE workstream_id=?1 AND endpoint_id=?2 AND assistant_identity=?3",params![workstream,endpoint,identity,completed]).map_err(db_error)?;
+            tx.commit().map_err(db_error)?;Ok(true)
+        })
+    }
     pub fn acknowledge_reply_observation(
         &self,
         workstream_id: &str,
@@ -3085,6 +3107,7 @@ fn reply_observation_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ReplyObser
         push_state: row.get(9)?,
         push_attempted_at: row.get(10)?,
         push_rendered_at: row.get(11)?,
+        completed_at:row.get(12)?,completion_checked:row.get(13)?,
     })
 }
 fn active_endpoint(
@@ -3817,6 +3840,12 @@ mod tests {
                     names,
                     vec![
                         "app_settings",
+                        "assistant_access",
+                        "assistant_actions",
+                        "assistant_approvals",
+                        "assistant_decisions",
+                        "assistant_drafts",
+                        "assistant_grants",
                         "codex_feedback_drafts",
                         "codex_watch_events",
                         "codex_watches",
@@ -3845,6 +3874,7 @@ mod tests {
                         "watch_removed_items",
                         "watch_replies",
                         "watch_reply_cancellations",
+                        "watch_seen_events",
                         "workstream_drafts",
                         "workstreams"
                     ]
@@ -7517,3 +7547,10 @@ mod control_tests;
 mod chatgpt_dispatch_tests;
 #[cfg(test)]
 mod rename_tests;
+
+#[cfg(test)]
+mod completion_tests;
+
+#[cfg(test)]
+#[path="instance_tests.rs"]
+mod instance_tests;

@@ -1,3 +1,4 @@
+import {useNotificationSeen} from "./useNotificationSeen";
 import {t as uiText,useLanguage,getLanguage} from "../../i18n";
 import {SwipeDeleteRow} from "./SwipeDeleteRow";
 import {useUndoRemoval} from "./useUndoRemoval";
@@ -18,9 +19,9 @@ import type {WatchChatApi} from "./watchChatApi";
 
 export type WatchSnapshot = { state:string; turnId:string|null; itemId:string|null; text:string };
 export type CodexWatch = { threadId:string; label:string; cwd:string; enabled:boolean; generation:number; snapshot:WatchSnapshot; checkedAt:number; errorCode:string|null };
-export type WatchEvent = { sequence:number; threadId:string; label:string; cwd:string; snapshot:WatchSnapshot; observedAt:number };
+export type WatchEvent = { sequence:number; threadId:string; label:string; cwd:string; snapshot:WatchSnapshot; observedAt:number;seenAt?:number|null };
 export type WatchFeed = { events:WatchEvent[]; nextCursor:number; hasMore:boolean; hiddenSequences?:number[] };
-export interface NotificationApi { remove?(kind:"WATCH"|"EVENT",id:string,removed:boolean):Promise<unknown>; watches():Promise<CodexWatch[]>; connect():Promise<unknown>; threads():Promise<ExistingCodexThreadCatalog>; enable(id:string):Promise<unknown>; pause(id:string):Promise<unknown>; feed(after:number):Promise<WatchFeed>; event(sequence:number):Promise<WatchEvent>; webUrl():Promise<string|null>; delivery?:DeliveryApi; chat?:WatchChatApi; onOpen?:(callback:(sequence:number)=>void)=>Promise<()=>void> }
+export interface NotificationApi { markSeen?(sequence:number):Promise<unknown>; markRead?(sequence:number):Promise<unknown>; remove?(kind:"WATCH"|"EVENT",id:string,removed:boolean):Promise<unknown>; watches():Promise<CodexWatch[]>; connect():Promise<unknown>; threads():Promise<ExistingCodexThreadCatalog>; enable(id:string):Promise<unknown>; pause(id:string):Promise<unknown>; feed(after:number):Promise<WatchFeed>; event(sequence:number):Promise<WatchEvent>; webUrl():Promise<string|null>; delivery?:DeliveryApi; chat?:WatchChatApi; onOpen?:(callback:(sequence:number)=>void)=>Promise<()=>void> }
 
 const states:Record<string,string>={get IDLE(){return uiText("尚无任务");},get RUNNING(){return uiText("正在执行");},get ACTION_REQUIRED(){return uiText("需要你确认或回答");},get RESULT_READY(){return uiText("结果已到达");},get RESULT_PENDING(){return uiText("结果尚未读到");},get FAILED(){return uiText("执行失败");},get INTERRUPTED(){return uiText("已中断");},get INCOMPLETE(){return uiText("任务未完成（执行中或已中断）");},get UNKNOWN(){return uiText("状态未确定");}};
 const time=(value:number)=>new Date(value).toLocaleString(getLanguage());
@@ -40,28 +41,41 @@ export function CodexNotifications({api,standalone=false,workbenchPage,onCountCh
  useBackLayer(Boolean(catalog),()=>setCatalog(null));
  const [error,setError]=useState<string|null>(null),[busy,setBusy]=useState(false);
  const [detail,setDetail]=useState<WatchEvent|null>(null),[current,setCurrent]=useState<CodexWatch|null>(null),[linkNotice,setLinkNotice]=useState<string|null>(null);
+ const [keptThisVisit,setKeptThisVisit]=useState<Set<number>>(()=>new Set());
+ const recentActive=Boolean((workbenchPage?workbenchPage.active:open||standalone)&&view==="RECENT"&&!detail&&!current);
+ useLayoutEffect(()=>{
+  setKeptThisVisit(old=>{if(!recentActive)return old.size?new Set():old;const next=new Set([...old,...events.filter(e=>!e.seenAt).map(e=>e.sequence)]);return next.size===old.size?old:next;});
+ },[recentActive,events]);
+
  useEffect(()=>{onDetailChange?.(Boolean(detail||current));},[Boolean(detail||current),onDetailChange]);
- const removal=useUndoRemoval<Removable>(row=>row.kind=== "WATCH"?`watch:${row.item.threadId}`:`event:${row.item.sequence}`,async(row,removed)=>{if(!api.remove)throw Error("WATCH_REMOVAL_UNAVAILABLE");await api.remove(row.kind,row.kind==="WATCH"?row.item.threadId:String(row.item.sequence),removed);await refreshWatches();},message=>setLinkNotice(message));
- const shown=removal.project([...watches.map(item=>({kind:"WATCH" as const,item})),...events.filter(e=>!hiddenSequences.includes(e.sequence)).map(item=>({kind:"EVENT" as const,item}))]);
+ const removal=useUndoRemoval<Removable>(row=>row.kind=== "WATCH"?`watch:${row.item.threadId}`:`event:${row.item.sequence}`,async(row,removed)=>{if(!api.remove)throw Error("WATCH_REMOVAL_UNAVAILABLE");await api.remove(row.kind,row.kind==="WATCH"?row.item.threadId:String(row.item.sequence),removed);await Promise.all([refreshWatches(),refreshFeed()]);},message=>setLinkNotice(message));
+ const shown=removal.project([...watches.map(item=>({kind:"WATCH" as const,item})),...events.filter(e=>!hiddenSequences.includes(e.sequence)&&(!e.seenAt||keptThisVisit.has(e.sequence))).map(item=>({kind:"EVENT" as const,item}))]);
  const visibleWatches=shown.filter((row):row is {kind:"WATCH";item:CodexWatch}=>row.kind==="WATCH").map(row=>row.item);
+ const seenContainer=useRef<HTMLDivElement>(null);
  const visibleEvents=shown.filter((row):row is {kind:"EVENT";item:WatchEvent}=>row.kind==="EVENT").map(row=>row.item).sort((a,b)=>a.sequence-b.sequence);
- useEffect(()=>{onCountChange?.(visibleEvents.length);},[visibleEvents.length,onCountChange]);
+ const unread=visibleEvents.filter(e=>!e.seenAt).map(e=>e.sequence);
+ useEffect(()=>{onCountChange?.(unread.length);},[unread.length,onCountChange]);
+ useNotificationSeen(seenContainer,recentActive,visibleEvents.map(e=>e.sequence),unread,api.markSeen,sequence=>{setEvents(old=>old.map(e=>e.sequence===sequence?{...e,seenAt:Date.now()}:e));},cause=>setLinkNotice(notificationError(cause)));
  const [webUrl,setWebUrl]=useState<string|null>(null);
  const returnKey=useRef<string|null>(null),returnScroll=useRef<{element:HTMLElement|null;top:number}>({element:null,top:0}),restoreList=useRef(false);
- const cursor=useRef(0),epoch=useRef(0),mounted=useRef(true),detailElement=useRef<HTMLElement|null>(null);
+ const cursor=useRef(0),epoch=useRef(0),mounted=useRef(true),detailElement=useRef<HTMLElement|null>(null),feedRevision=useRef(0);
+ const eventsRef=useRef(events);eventsRef.current=events;
+ function applyFeed(feed:WatchFeed,replace=false){setHiddenSequences(feed.hiddenSequences??[]);setEvents(old=>(replace?feed.events.map(e=>({...e,seenAt:e.seenAt??old.find(prior=>prior.sequence===e.sequence)?.seenAt})):[...old,...feed.events.filter(e=>!old.some(o=>o.sequence===e.sequence))]).slice(-20));cursor.current=feed.nextCursor;}
+ async function refreshFeed(){const revision=++feedRevision.current;const feed=await api.feed(0);if(mounted.current&&revision===feedRevision.current)applyFeed(feed,true);}
+ async function markViewed(event:WatchEvent){if(!api.markRead)return;await api.markRead(event.sequence);if(mounted.current){const sequences=[event.sequence,...eventsRef.current.filter(e=>e.threadId===event.threadId&&e.sequence<=event.sequence).map(e=>e.sequence)];setHiddenSequences(old=>[...new Set([...old,...sequences])]);await refreshFeed();}}
  useEffect(()=>{if(detail||current){detailElement.current?.focus();detailElement.current?.scrollIntoView?.({block:"start"});}},[detail,current]);
  useEffect(()=>{let active=true;void api.webUrl().then(url=>{if(active)setWebUrl(url);}).catch(()=>{});return()=>{active=false;};},[api]);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;epoch.current++;};},[]);
  useEffect(()=>{
   let active=true,request=0,dispose:(()=>void)|undefined;
-  function show(sequence:number){if(!active)return;pageNavigation.current?.open();const ticket=++request;setOpen(true);setView("RECENT");setDetail(null);setCurrent(null);setLinkNotice(null);if(sequence>0)void api.event(sequence).then(e=>{if(active&&ticket===request){setDetail(e);setCurrent(null);}}).catch(e=>{if(active&&ticket===request)setLinkNotice(notificationError(e));});}
+  function show(sequence:number){if(!active)return;pageNavigation.current?.open();const ticket=++request;setOpen(true);setView("RECENT");setDetail(null);setCurrent(null);setLinkNotice(null);if(sequence>0)void api.event(sequence).then(async e=>{if(active&&ticket===request){setDetail(e);setCurrent(null);await markViewed(e);}}).catch(e=>{if(active&&ticket===request)setLinkNotice(notificationError(e));});}
   const value=new URL(location.href).searchParams.get("event");if(value&&/^\d+$/.test(value)&&Number.isSafeInteger(Number(value)))show(Number(value));
   void api.onOpen?.(show).then(fn=>{if(active)dispose=fn;else fn();}).catch(()=>{if(active)setError(uiText("通知点击入口暂时不可用；仍可从通知列表查看内容。"));});
   return()=>{active=false;dispose?.();};
  },[api]);
  useEffect(()=>{
   let active=true,timer:ReturnType<typeof setTimeout>;
-  async function poll(){try{const [next,feed]=await Promise.all([open?api.watches():Promise.resolve(null),api.feed(cursor.current)]);if(!active)return;if(next)setWatches(next);setHiddenSequences(feed.hiddenSequences??[]);setEvents(old=>[...old,...feed.events.filter(e=>!old.some(o=>o.sequence===e.sequence))].slice(-20));cursor.current=feed.nextCursor;setError(null);timer=setTimeout(()=>void poll(),feed.hasMore?100:5000);}catch(e){if(active){setError(String(e));timer=setTimeout(()=>void poll(),10000);}}}
+  async function poll(){const revision=++feedRevision.current;try{const [next,feed]=await Promise.all([api.watches(),api.feed(0)]);if(!active)return;if(next)setWatches(next);if(revision===feedRevision.current)applyFeed(feed,true);setError(null);timer=setTimeout(()=>void poll(),feed.hasMore?100:5000);}catch(e){if(active){setError(String(e));timer=setTimeout(()=>void poll(),10000);}}}
   void poll();return()=>{active=false;clearTimeout(timer);};
  },[api,open]);
  async function act(work:()=>Promise<void>){if(busy)return;setBusy(true);setError(null);const mark=++epoch.current;try{await work();}catch(e){if(mounted.current&&mark===epoch.current)setLinkNotice(notificationError(e));}finally{if(mounted.current&&mark===epoch.current)setBusy(false);}}
@@ -72,7 +86,7 @@ export function CodexNotifications({api,standalone=false,workbenchPage,onCountCh
  function closeDetail(){restoreList.current=true;setDetail(null);setCurrent(null);}
  useLayoutEffect(()=>{if(!restoreList.current||detail||current)return;restoreList.current=false;const button=Array.from(document.querySelectorAll<HTMLElement>("[data-notification-key]")).find(n=>n.dataset.notificationKey===returnKey.current);(button??document.getElementById(`notification-tab-${view}`))?.focus({preventScroll:true});const {element,top}=returnScroll.current;if(element)element.scrollTop=top;else window.scrollTo({top,behavior:"instant"});},[detail,current,view]);
  const original=detail??current;
- const content=<div className="v3-notifications-body v4-notification-center">
+ const content=<div ref={seenContainer} className="v3-notifications-body v4-notification-center">
   {error&&<p role="alert">{uiText(error)}</p>}
   {linkNotice&&<p role="status">{uiText(linkNotice)}<button type="button" onClick={()=>setLinkNotice(null)}>{uiText("知道了")}</button></p>}
   {original&&api.chat?<WatchChat key={`${original.threadId}:${detail?.sequence??"current"}`} original={original} api={api.chat} onBack={closeDetail} backLabel={current?uiText("监听对话"):uiText("最近通知")}/>:original?<>
@@ -89,10 +103,10 @@ export function CodexNotifications({api,standalone=false,workbenchPage,onCountCh
    </div>
    {view==="RECENT"&&<section id="notification-panel" role="tabpanel" aria-labelledby="notification-tab-RECENT" aria-label={uiText("Codex 通知列表")}>
     {!native&&<p className="v4-meta">{uiText("只保留最近 20 条，更早的自动清理。")}</p>}
-    {visibleEvents.length===0?<div className="v4-reader-empty"><h2>{uiText("有新结果时，会出现在这里")}</h2><p>{uiText("先在「监听对话」选择你要关注的 Codex 对话。")}</p></div>:[...visibleEvents].reverse().map(e=><SwipeDeleteRow className="agbrio-card-row" key={e.sequence} label={uiText("通知 #{0}", e.sequence)} disabled={!api.remove} onDelete={()=>removal.remove({kind:"EVENT",item:e})}><article className="v4-notification-item">
+    {visibleEvents.length===0?<div className="v4-reader-empty"><h2>{uiText("有新结果时，会出现在这里")}</h2><p>{uiText("先在「监听对话」选择你要关注的 Codex 对话。")}</p></div>:[...visibleEvents].reverse().map(e=><SwipeDeleteRow className="agbrio-card-row" key={e.sequence} label={uiText("通知 #{0}", e.sequence)} disabled={!api.remove} onDelete={()=>removal.remove({kind:"EVENT",item:e})}><article className="v4-notification-item" data-notification-sequence={e.sequence} data-unread={!e.seenAt}>
      <header><strong>{e.label}</strong><span className="v4-event-state" data-state={e.snapshot.state}>{uiText(states[e.snapshot.state]??e.snapshot.state)}</span></header>
      <p className="v4-meta">{time(e.observedAt)}</p><p className="v4-notification-preview">{e.snapshot.text||uiText("本次通知记录了状态变化。")}</p>
-     <button type="button" data-notification-key={`event-${e.sequence}`} disabled={busy} onClick={click=>{rememberList(click.currentTarget,`event-${e.sequence}`);void act(async()=>{const next=await api.event(e.sequence);if(mounted.current){setDetail(next);setCurrent(null);}});}} aria-label={uiText("查看完整通知 #{0}", e.sequence)}>{native?<><Bell size={18}/><span>{uiText("查看")}</span><ChevronRight size={16}/></>:uiText("查看完整通知 #{0}", e.sequence)}</button>
+     <button type="button" data-notification-key={`event-${e.sequence}`} disabled={busy} onClick={click=>{rememberList(click.currentTarget,`event-${e.sequence}`);void act(async()=>{const next=await api.event(e.sequence);if(mounted.current){setDetail(next);setCurrent(null);await markViewed(next);}});}} aria-label={uiText("查看完整通知 #{0}", e.sequence)}>{native?<><Bell size={18}/><span>{uiText("查看")}</span><ChevronRight size={16}/></>:uiText("查看完整通知 #{0}", e.sequence)}</button>
     </article></SwipeDeleteRow>)}
    </section>}
    {view==="WATCHES"&&<section id="notification-panel" role="tabpanel" aria-labelledby="notification-tab-WATCHES" aria-label={uiText("已监听对话")}>

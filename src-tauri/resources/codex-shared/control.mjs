@@ -60,11 +60,13 @@ export async function lifecycle(options,dependencies={}){
  if(action==='launch'){
   if(saved?.format!==2||!['PREPARED','ACTIVE'].includes(saved.phase)||!(await health())?.ready)throw Error('SHARED_NOT_PREPARED');
   // Never close or launch into the owner's already-running Desktop instance.
-  const scan=await execute(ps,['-NoProfile','-NonInteractive','-Command',"$root=(Get-AppxPackage -Name 'OpenAI.Codex').InstallLocation; @(Get-CimInstance Win32_Process -Filter \"Name='ChatGPT.exe'\" | Where-Object {$root -and $_.ExecutablePath -and $_.ExecutablePath.StartsWith($root,[StringComparison]::OrdinalIgnoreCase)}).Count"],{windowsHide:true,timeout:10000});
-  if(Number(scan.stdout.trim())>0)throw Error('SHARED_DESKTOP_CLOSE_REQUIRED');
+  const scan=await execute(ps,['-NoProfile','-NonInteractive','-Command',"$ErrorActionPreference='Stop';$root=(Get-AppxPackage -Name 'OpenAI.Codex').InstallLocation;$desktop=Join-Path $root 'app/ChatGPT.exe';if(!(Test-Path -LiteralPath $desktop)){throw 'SHARED_DESKTOP_BINARY_UNRESOLVED'};$count=@(Get-CimInstance Win32_Process -Filter \"Name='ChatGPT.exe'\" | Where-Object {$_.ExecutablePath -match '^C:\\\\Program Files\\\\WindowsApps\\\\OpenAI\\.Codex_'}).Count;@{desktop=$desktop;count=$count}|ConvertTo-Json -Compress"],{windowsHide:true,timeout:10000});
+  let installed;try{installed=JSON.parse(scan.stdout);}catch{throw Error('SHARED_DESKTOP_BINARY_UNRESOLVED');}
+  if(!Number.isInteger(installed.count)||typeof installed.desktop!=='string'||!installed.desktop)throw Error('SHARED_DESKTOP_BINARY_UNRESOLVED');
+  if(installed.count>0)throw Error('SHARED_DESKTOP_CLOSE_REQUIRED');
   let child;
   try{
-   saved.phase='CONNECTING';await persist(settingsPath,saved);
+   saved.desktop=installed.desktop;saved.phase='CONNECTING';await persist(settingsPath,saved);
    child=createProcess(saved.desktop,[],desktopLaunchOptions(`ws://127.0.0.1:${cfg.port}/rpc`));
    child.on('error',()=>{});
    const deadline=now()+45000;let connected=false;
@@ -81,7 +83,9 @@ export async function lifecycle(options,dependencies={}){
    // untouched even after success, so an absent/crashed gateway cannot trap a
    // normal Desktop launch. Only this explicitly launched process uses ws://.
    cfg.enabled=true;cfg.phase='ACTIVE';await persist(configPath,cfg);saved.enabled=true;saved.phase='ACTIVE';await persist(settingsPath,saved);
-   await persist(join(directory,'desktop-launch.json'),{attemptedAt:Date.now(),pid:child.pid,state:'CONNECTED',windowVisible:true}).catch(()=>{});
+   let iconApplied=false;
+   try{const result=await execute(ps,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(options.scripts??join(directory,'runtime'),'desktop-identity.ps1'),'-DesktopPid',String(child.pid),'-Directory',directory],{windowsHide:true,timeout:10000});iconApplied=JSON.parse(result.stdout).applied===true;}catch{/* A cosmetic failure cannot roll back a connected Desktop. */}
+   await persist(join(directory,'desktop-launch.json'),{attemptedAt:Date.now(),pid:child.pid,state:'CONNECTED',windowVisible:true,iconApplied}).catch(()=>{});
    child.unref();return status();
   }catch(e){
    await persist(join(directory,'desktop-launch.json'),{attemptedAt:Date.now(),pid:child?.pid??null,state:'FAILED',errorCode:/^SHARED_[A-Z_]+$/.test(e.message)?e.message:'SHARED_LIFECYCLE_FAILED',exitCode:child?.exitCode??null}).catch(()=>{});

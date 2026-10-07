@@ -7,6 +7,7 @@ mod host;
 mod host_application;
 mod mobile_http;
 mod mobile_connection;
+mod hosted_relay;
 mod web_auth;
 mod web_availability;
 mod shared_codex;
@@ -23,6 +24,23 @@ mod presentation;
 mod push;
 mod runtime_reconciler;
 mod role_bridge;
+mod assistant_mcp;
+mod assistant_operations;
+
+#[tauri::command]
+fn assistant_settings(state:tauri::State<'_,RouterState>)->Result<serde_json::Value,String>{
+    let core=state.inner();
+    let bridges=core.store.snapshot()?.workstreams.into_iter().filter(|w|w.trashed_at.is_none()&&w.archived_at.is_none()).filter_map(|w|{
+        core.store.role_bridge(&w.id).ok().filter(|b|b.decision.is_some()&&b.execution.is_some()).map(|bindings|serde_json::json!({"id":w.id,"name":w.name,"bindings":bindings}))
+    }).collect::<Vec<_>>();
+    Ok(serde_json::json!({"grants":core.store.assistant_grants()?,"bridges":bridges,"mcpUrl":mobile_http::configured_mobile_allowed_origin().map(|o|format!("{}/mcp",o.trim_end_matches('/')))}))
+}
+#[tauri::command]
+fn assistant_create_grant(input:router_core::store::assistant::GrantInput,state:tauri::State<'_,RouterState>)->Result<router_core::store::assistant::AssistantGrant,String>{state.store.create_assistant_grant(input)}
+#[tauri::command]
+fn assistant_create_instance_grant(input:router_core::store::assistant::InstanceGrantInput,state:tauri::State<'_,RouterState>)->Result<router_core::store::assistant::AssistantGrant,String>{state.store.create_assistant_instance_grant(input)}
+#[tauri::command]
+fn assistant_revoke_grant(grant_id:String,state:tauri::State<'_,RouterState>)->Result<(),String>{state.store.revoke_assistant_grant(&grant_id)}
 mod codex_watch;
 mod watch_notifications;
 mod watch_chat;
@@ -78,9 +96,13 @@ fn web_availability_setup(app:tauri::AppHandle)->Result<(),String>{web_availabil
 #[tauri::command]
 fn mobile_connection_view(host:State<'_,HostRuntime>)->Result<mobile_connection::ConnectionView,String>{mobile_connection::view(host.inner())}
 #[tauri::command]
+fn hosted_connection_status(host:State<'_,HostRuntime>)->hosted_relay::Status{hosted_relay::status(host.inner())}
+#[tauri::command]
+async fn hosted_connection_redeem(input:hosted_relay::RedeemInput,core:State<'_,RouterCore>,host:State<'_,HostRuntime>)->Result<hosted_relay::Status,String>{let core=core.inner().clone();let host=host.inner().clone();tauri::async_runtime::spawn_blocking(move||hosted_relay::redeem(&core,&host,input)).await.map_err(|_|"HOSTED_ACTIVATION_FAILED".to_string())?}
+#[tauri::command]
 async fn mobile_connection_configure(input:mobile_connection::ConnectionInput,core:State<'_,RouterCore>,host:State<'_,HostRuntime>)->Result<mobile_connection::ConnectionView,String>{let core=core.inner().clone();let host=host.inner().clone();tauri::async_runtime::spawn_blocking(move||mobile_connection::configure(&core,&host,input)).await.map_err(|_|"MOBILE_CONFIG_FAILED".to_string())?}
 #[tauri::command]
-fn web_pairing_code()->Result<web_auth::PairingCode,String>{web_auth::global()?.issue()}
+fn web_pairing_code(replace_device_id:Option<String>)->Result<web_auth::PairingCode,String>{web_auth::global()?.issue_replacing(replace_device_id)}
 #[tauri::command]
 fn web_paired_devices()->Result<Vec<web_auth::Device>,String>{web_auth::global()?.devices()}
 #[tauri::command]
@@ -101,6 +123,10 @@ fn codex_watch_enable(thread_id:String,state:State<'_,RouterState>)->Result<(),S
 fn codex_watch_pause(thread_id:String,state:State<'_,RouterState>)->Result<(),String>{state.store.pause_codex_watch(&thread_id)}
 #[tauri::command]
 fn codex_watch_remove(kind:String,id:String,removed:bool,state:State<'_,RouterState>)->Result<(),String>{state.store.set_watch_item_removed(&kind,&id,removed)}
+#[tauri::command]
+fn codex_watch_mark_seen(sequence:i64,state:State<'_,RouterState>)->Result<(),String>{state.store.mark_codex_watch_event_seen(sequence)}
+#[tauri::command]
+fn codex_watch_mark_read(sequence:i64,state:State<'_,RouterState>)->Result<(),String>{state.store.acknowledge_codex_watch_event(sequence)}
 #[tauri::command]
 fn codex_watch_feed(after:i64,state:State<'_,RouterState>)->Result<router_core::store::codex_watch::WatchFeed,String>{state.store.codex_watch_feed(after)}
 #[tauri::command]
@@ -1290,6 +1316,9 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let shared_resources=app.path().resource_dir()?.join("codex-shared");
     let shared_node=std::env::current_exe()?.parent().ok_or("Host directory unavailable")?.join("browser-executor-node.exe");
     #[cfg(debug_assertions)]let(shared_resources,shared_node)=if shared_resources.join("runtime.mjs").is_file(){(shared_resources,shared_node)}else{let source=std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));(source.join("resources/codex-shared"),source.join("binaries/browser-executor-node-x86_64-pc-windows-msvc.exe"))};
+    let hosted_resources=app.path().resource_dir()?.join("hosted-relay");
+    #[cfg(debug_assertions)]let hosted_resources=if hosted_resources.join("connector.mjs").is_file(){hosted_resources}else{std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/hosted-relay")};
+    crate::hosted_relay::configure_assets(hosted_resources,shared_node.clone());
     crate::shared_codex::configure(shared_resources,shared_node);
     connect_codex_for_resident_host(Arc::new(TauriEventSink(app.handle().clone())), &core);
     host.start_shared_reconnection(core.clone(),Arc::new(TauriEventSink(app.handle().clone())));
@@ -1401,9 +1430,9 @@ pub fn run() {
     let builder = builder.setup(|app| configure_host(app));
     #[cfg(debug_assertions)]
     let builder = builder.invoke_handler(tauri::generate_handler![
-        mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_setup, shared_codex_launch, shared_codex_disable,
+        hosted_connection_status,hosted_connection_redeem,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         read_message_media, role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
-        codex_watch_list, codex_watch_enable, codex_watch_pause, codex_watch_remove, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
+        codex_watch_list, codex_watch_enable, codex_watch_pause, codex_watch_remove, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
         codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
         workspace_snapshot,
         workstream_snapshot,
@@ -1488,10 +1517,10 @@ pub fn run() {
     ]);
     #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(tauri::generate_handler![
-        mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_setup, shared_codex_launch, shared_codex_disable,
+        hosted_connection_status,hosted_connection_redeem,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
         read_message_media, role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
-        codex_watch_list, codex_watch_enable, codex_watch_pause, codex_watch_remove, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
+        codex_watch_list, codex_watch_enable, codex_watch_pause, codex_watch_remove, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
         workspace_snapshot,
         workstream_snapshot,
         native_window_monitor_evidence,

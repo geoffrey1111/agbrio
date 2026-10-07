@@ -21,7 +21,8 @@ type Draft = { text: string; files: FileRef[]; model: string; effort: string };
 type ObservedPublicMessage=ChatMessage&{seenAt:number};
 function loadPublicMessages(id:string):ObservedPublicMessage[]{try{const v=JSON.parse(sessionStorage.getItem(`aiwr-watch-public:${id}`)??"[]");return Array.isArray(v)?v.filter(m=>typeof m.id==="string"&&typeof m.turnId==="string"&&typeof m.text==="string"&&m.role==="assistant"&&typeof m.seenAt==="number").slice(-20):[];}catch{return [];}}
 function loadDraft(id: string): Draft { try { const v = JSON.parse(sessionStorage.getItem(key(id)) ?? "null"); if (v && typeof v.text === "string" && Array.isArray(v.files)) return { ...v, model: v.model ?? "", effort: v.effort ?? "" }; } catch { /* private/session storage unavailable */ } return { text: "", files: [], model: "", effort: "" }; }
-function loadReceipt(id: string): {id:string;text:string;options:ReplyOptions}|null {try{return JSON.parse(sessionStorage.getItem(`${key(id)}:pending`)??"null");}catch{return null;}}
+type PendingReply={id:string;text:string;options:ReplyOptions;mode?:WatchReply["mode"];createdAt?:number;sourceSequence?:number|null;expectedTurnId?:string|null;files?:FileRef[];composerCleared?:boolean};
+function loadReceipt(id: string): PendingReply|null {try{return JSON.parse(sessionStorage.getItem(`${key(id)}:pending`)??"null");}catch{return null;}}
 function ChatSheet({title,open,onOpenChange,children}:{title:string;open:boolean;onOpenChange:(open:boolean)=>void;children:ReactNode}){
  useLanguage();useEffect(()=>{if(!open)return;const timer=setTimeout(()=>recordSheetEvidence(title),300);return()=>clearTimeout(timer);},[open,title]);return <Dialog.Root open={open} onOpenChange={onOpenChange}><Dialog.Portal><Dialog.Overlay className="v4-chat-sheet-overlay"/><div className="v4-chat-sheet-frame"><Dialog.Content className="v4-chat-sheet" aria-describedby={undefined}><header><Dialog.Title>{uiText(title)}</Dialog.Title><Dialog.Close asChild><button type="button" aria-label={uiText("关闭{0}", title)}><X size={24} aria-hidden="true"/></button></Dialog.Close></header><div className="v4-chat-sheet-body">{children}</div></Dialog.Content></div></Dialog.Portal></Dialog.Root>;}
 export function chatError(error: unknown): string {
@@ -41,7 +42,21 @@ function RequestCard({ request, disabled, respond }: { request: MobileCodexReque
 }
 export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知") }: { original: WatchEvent | CodexWatch; api: WatchChatApi; onBack: () => void;backLabel?:string }) {
  useLanguage();
- const [draft, setDraft] = useState(() => loadDraft(original.threadId));
+ const [draft, setDraftState] = useState(() => loadDraft(original.threadId));
+ const draftRef=useRef(draft);
+ // Persist the new composer before retiring its request receipt, even if a
+ // navigation/background event unmounts this reader before React effects run.
+ function setDraft(update:Draft|((current:Draft)=>Draft)){
+  const next=typeof update==="function"?update(draftRef.current):update;
+  draftRef.current=next;setDraftState(next);
+  try{sessionStorage.setItem(key(original.threadId),JSON.stringify(next));}catch{/* memory preserves it */}
+ }
+ function restoreAttempt(attempt:PendingReply){
+  if(draftRef.current.text||draftRef.current.files.length)return;
+  const known=attempt.options.attachments.map(id=>attempt.files?.find(f=>f.id===id)??{id,name:uiText("附件"),size:0});
+  setDraft({...draftRef.current,text:attempt.text,files:known});
+ }
+
  const [unconfirmed,setUnconfirmed]=useState(()=>loadReceipt(original.threadId));
  const [publicMessages,setPublicMessages]=useState(()=>loadPublicMessages(original.threadId));
  useEffect(()=>{const text=JSON.stringify(publicMessages);if(text.length<2_000_000)try{sessionStorage.setItem(`aiwr-watch-public:${original.threadId}`,text);}catch{/* full messages still retained in memory and native public history */}},[publicMessages,original.threadId]);
@@ -66,26 +81,32 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
  const pendingRequests=state?.requests.filter(r=>!r.responseSent)??[];
  const nextMode=queueNext?(state?.ownedTurnId?followupMode:"QUEUE"):"SEND";
  useEffect(()=>{if(window.innerWidth<=600&&input.current){input.current.style.height="54px";input.current.style.height=`${Math.min(144,Math.max(54,input.current.scrollHeight))}px`;}},[draft.text]);
- useEffect(() => { try { sessionStorage.setItem(key(original.threadId), JSON.stringify(draft)); } catch { /* memory state still preserves current input */ } }, [draft, original.threadId]);
+ useEffect(() => { try { sessionStorage.setItem(key(original.threadId), JSON.stringify(draftRef.current)); } catch { /* memory state still preserves current input */ } }, [draft, original.threadId]);
  async function refresh() { if (loading.current) return; loading.current = true; const seq = ++requestSequence.current; try { const next = await api.state(original.threadId); if (next.watch.threadId !== original.threadId || next.watch.cwd !== original.cwd) throw new Error("REPLY_TARGET_CHANGED_REFRESH"); if (mounted.current && seq === requestSequence.current) { setState(next);const snap=next.watch.snapshot;if(next.publicMessages?.length){setPublicMessages(old=>{const merged=new Map(old.map(m=>[JSON.stringify([m.turnId,m.id]),m]));for(const m of next.publicMessages!){if(m.role!=="assistant"||!m.id||!m.turnId)continue;const k=JSON.stringify([m.turnId,m.id]);merged.set(k,{...m,seenAt:merged.get(k)?.seenAt??Date.now()});}return mergeHistory(old,next.publicMessages!).map(m=>({...m,seenAt:merged.get(JSON.stringify([m.turnId,m.id]))?.seenAt??Date.now()})).slice(-40);});}if(snap.turnId&&snap.itemId&&snap.text){setPublicMessages(old=>{const prior=old.find(m=>m.turnId===snap.turnId&&m.id===snap.itemId);const message:ObservedPublicMessage={id:snap.itemId!,turnId:snap.turnId!,role:"assistant",text:snap.text,seenAt:prior?.seenAt??Date.now()};return [...old.filter(m=>m.turnId!==message.turnId||m.id!==message.id),message].slice(-20);});}setError(null); } } catch (e) { if (mounted.current && seq === requestSequence.current) setError(chatError(e)); } finally { loading.current = false; } }
  useEffect(() => { mounted.current = true; void refresh(); const timer = setInterval(() => void refresh(), 5000); return () => { mounted.current = false; requestSequence.current++; clearInterval(timer); }; }, [api, original.threadId]);
  async function act(work: () => Promise<void>) { if (actionRunning.current) return; actionRunning.current = true; setBusy(true); setError(null); try { await work(); } catch (e) { if (mounted.current) setError(chatError(e)); } finally { actionRunning.current = false; if (mounted.current) setBusy(false); } }
  function command<T>(action: string, extra: object = {}) { return api.command<T>({ action, threadId: original.threadId, ...extra }); }
  function clearReceipt(){setUnconfirmed(null);try{sessionStorage.removeItem(`${key(original.threadId)}:pending`);}catch{/* no credentials stored */}}
- async function checkReceipt(){if(!unconfirmed)return;const r=await command<WatchReply|null>("RECEIPT",{id:unconfirmed.id});if(!mounted.current)return;if(r&&["SENT","QUEUED"].includes(r.status)){const sent=unconfirmed;setDraft(d=>d.text===sent.text&&JSON.stringify(d.files.map(f=>f.id))===JSON.stringify(sent.options.attachments)?{...d,text:"",files:[]}:d);clearReceipt();setNotice(r.status==="SENT"?uiText("已确认回复发到原对话。"):uiText("已确认回复排队。"));}else if(r&&r.status==="ACKNOWLEDGED"){clearReceipt();setNotice(uiText("这条回复已结束送达检查，送达状态仍未确定，可以输入新的要求。"));}else if(r&&["FAILED","CANCELLED"].includes(r.status)){clearReceipt();setNotice(uiText("已确认这次没有发送。草稿保留，可检查后重新发送。"));}else setNotice(uiText("送达尚未确认。不会自动重发；请查看原对话或取消尚未发送的尝试。"));await refresh();}
- async function acknowledgeUnknown(r:WatchReply){await command("ACKNOWLEDGE_UNKNOWN",{id:r.id,confirmed:true});if(unconfirmed?.id===r.id)clearReceipt();setDraft(d=>d.text===r.text?{...d,text:"",files:[]}:d);setNotice(uiText("已结束这条回复的送达检查，原文仍保留。可以输入新的要求。"));await refresh();input.current?.focus();}
+ async function checkReceipt(){if(!unconfirmed)return;const r=await command<WatchReply|null>("RECEIPT",{id:unconfirmed.id});if(!mounted.current)return;if(r&&(r.id!==unconfirmed.id||r.threadId!==original.threadId))throw Error("REPLY_TARGET_CHANGED_REFRESH");if(r&&["SENT","QUEUED"].includes(r.status)){const sent=unconfirmed;if(!sent.composerCleared)setDraft(d=>d.text===sent.text&&JSON.stringify(d.files.map(f=>f.id))===JSON.stringify(sent.options.attachments)?{...d,text:"",files:[]}:d);clearReceipt();setNotice(r.status==="SENT"?uiText("已确认回复发到原对话。"):uiText("已确认回复排队。"));}else if(r&&r.status==="ACKNOWLEDGED"){clearReceipt();setNotice(uiText("这条回复已结束送达检查，送达状态仍未确定，可以输入新的要求。"));}else if(r&&["FAILED","CANCELLED"].includes(r.status)){restoreAttempt(unconfirmed);clearReceipt();setNotice(uiText("已确认这次没有发送。草稿保留，可检查后重新发送。"));}else setNotice(uiText("送达尚未确认。不会自动重发；请查看原对话或取消尚未发送的尝试。"));await refresh();}
+ async function acknowledgeUnknown(r:WatchReply){await command("ACKNOWLEDGE_UNKNOWN",{id:r.id,confirmed:true});if(unconfirmed?.id===r.id)clearReceipt();if(!unconfirmed?.composerCleared)setDraft(d=>d.text===r.text?{...d,text:"",files:[]}:d);setNotice(uiText("已结束这条回复的送达检查，原文仍保留。可以输入新的要求。"));await refresh();input.current?.focus();}
  async function send(mode: "SEND" | "QUEUE" | "STEER") {
-  if (!state || !draft.text.trim() || blocked) return;
-  const options: ReplyOptions = { model: mode === "STEER" ? null : draft.model || null, effort: mode === "STEER" ? null : draft.effort || null, attachments: draft.files.map(f => f.id) };
-  const request = { id: crypto.randomUUID(), generation: state.watch.generation, sourceSequence: "sequence" in original ? original.sequence : null, expectedTurnId: mode === "STEER" ? state.ownedTurnId : state.watch.snapshot.turnId, mode, text: draft.text, options };
+  const submitted=draftRef.current;
+  if (!state || !submitted.text.trim() || blocked) return;
+  const options: ReplyOptions = { model: mode === "STEER" ? null : submitted.model || null, effort: mode === "STEER" ? null : submitted.effort || null, attachments: submitted.files.map(f => f.id) };
+  const request = { id: crypto.randomUUID(), generation: state.watch.generation, sourceSequence: "sequence" in original ? original.sequence : null, expectedTurnId: mode === "STEER" ? state.ownedTurnId : state.watch.snapshot.turnId, mode, text: submitted.text, options };
   // Retain the exact id after an ambiguous HTTP outcome; never mint a retry.
   const receiptKey = `${key(original.threadId)}:pending`;
-  try { sessionStorage.setItem(receiptKey, JSON.stringify(request)); } catch { /* current request remains in memory */ }
-  setUnconfirmed(request);
+  const attempt={...request,createdAt:Date.now(),files:submitted.files,composerCleared:true};
+  try { sessionStorage.setItem(receiptKey, JSON.stringify(attempt)); } catch { /* current request remains in memory */ }
+  setUnconfirmed(attempt);
+  setDraft({...submitted,text:"",files:[]});
   let reply: WatchReply;
   try { reply = await command<WatchReply>("SEND", request); } catch (e) { if (mounted.current) { setError(chatError(e)); setNotice(uiText("回复是否送达尚未确认。请检查发送记录；草稿已保留，不会自动重发。")); await refresh(); } return; }
   if (!mounted.current) return;
-  if (reply.status === "SENT" || reply.status === "QUEUED") { setDraft(d=>d.text===request.text&&JSON.stringify(d.files.map(f=>f.id))===JSON.stringify(request.options.attachments)?{...d,text:"",files:[]}:d); clearReceipt(); setNotice(reply.status === "QUEUED" ? uiText("已排队，当前任务完成后发送。") : uiText("回复已发送到这个原对话。")); }
+  if(reply.id!==request.id||reply.threadId!==original.threadId)throw Error("REPLY_TARGET_CHANGED_REFRESH");
+  setState(current=>current?{...current,replies:[reply,...current.replies.filter(r=>r.id!==reply.id)]}:current);
+  if (reply.status === "SENT" || reply.status === "QUEUED") { clearReceipt(); setNotice(reply.status === "QUEUED" ? uiText("已排队，当前任务完成后发送。") : uiText("回复已发送到这个原对话。")); }
+  else if(["FAILED","CANCELLED"].includes(reply.status)){restoreAttempt(attempt);clearReceipt();setNotice(uiText("已确认这次没有发送。草稿保留，可检查后重新发送。"));}
   else setNotice(uiText("回复送达尚未确认。请检查原对话，避免重复发送。"));
   await refresh();
  }
@@ -97,7 +118,8 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
  const latest = state?.watch.snapshot;
  const sourceMessage={id:original.snapshot.itemId??'notification',turnId:original.snapshot.turnId??'notification',role:'assistant' as const,text:original.snapshot.text||uiText("暂时没有可读取的公开消息。"),seenAt:('observedAt' in original?original.observedAt:original.checkedAt)??Date.now()};
  const currentMessage=latest?.turnId&&latest?.itemId&&latest.text?{id:latest.itemId,turnId:latest.turnId,role:'assistant' as const,text:latest.text}:undefined;
- const timeline=chatTimeline(history,publicMessages,state?.replies??[],sourceMessage,historyLoaded,currentMessage,"sequence" in original&&latest?.turnId!==sourceMessage.turnId);
+ const localPending:WatchReply|undefined=unconfirmed&&!state?.replies.some(r=>r.id===unconfirmed.id)?{id:unconfirmed.id,threadId:original.threadId,sourceSequence:unconfirmed.sourceSequence??null,expectedTurnId:unconfirmed.expectedTurnId??null,mode:unconfirmed.mode??"SEND",text:unconfirmed.text,options:unconfirmed.options,status:busy?"SENDING":"UNKNOWN",turnId:null,errorCode:null,createdAt:unconfirmed.createdAt??Date.now()}:undefined;
+ const timeline=chatTimeline(history,publicMessages,[...(state?.replies??[]),...(localPending?[localPending]:[])],sourceMessage,historyLoaded,currentMessage,"sequence" in original&&latest?.turnId!==sourceMessage.turnId);
  const historyReading=useRef(false),historyRevision=useRef(''),followLatest=useRef(true),initialScroll=useRef(true);
  async function readHistory(cursor:string|null=null){
   if(historyReading.current)return;historyReading.current=true;
@@ -124,19 +146,19 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
 
    {state?.goal && <details className="v4-secondary-details"><summary>Goal · {state.goal.status}</summary><p>{state.goal.objective}</p></details>}
    <div className="v4-chat-history">{historyCursor&&<button type="button" disabled={busy||historyReading.current} onClick={()=>void readHistory(historyCursor)}>{uiText("加载更早消息")}</button>}{!historyLoaded&&<button type="button" disabled={busy||historyReading.current} onClick={()=>void readHistory()}>{uiText("读取对话消息")}</button>}</div>
-   {timeline.filter(m=>m.id!=="notification"||!historyLoaded||!history.length).map(m=>{const r=m.receipt;return <article key={`${m.turnId}:${m.id}`} className="v4-chat-message" data-role={m.role} aria-label={m.source?uiText("完整通知内容"):undefined}>
+   {timeline.filter(m=>m.id!=="notification"||!historyLoaded||!history.length).map(m=>{const r=m.receipt;return <article key={`${m.turnId}:${m.id}`} className="v4-chat-message" data-role={m.role} data-message-kind={m.id.startsWith("receipt:")?"receipt":"native"} aria-label={m.source?uiText("完整通知内容"):undefined}>
     <p className="v4-meta">{m.role==='user'?uiText("你{0}", r?' · '+replyStates[r.status]:''):m.source&&'sequence' in original?uiText("Codex · 通知原文"):latest?.itemId===m.id?uiText("Codex · 最新公开回复"):'Codex'}</p>
     <MarkdownMessage text={m.text} media={m.source?media:messageMedia({kind:'WATCH',threadId:original.threadId,turnId:m.turnId,itemId:m.id})}/>
     {r?.status==='QUEUED'&&<button type="button" disabled={busy} onClick={()=>void act(async()=>{await command('CANCEL',{id:r.id});await refresh();})}>{uiText("取消排队")}</button>}
-    {r?.status==='UNKNOWN'&&<><p role="status">{uiText("回复可能已发出。请先检查原对话，不会自动重发。")}</p><button type="button" disabled={busy} onClick={()=>void act(()=>acknowledgeUnknown(r))}>{uiText("我已检查原对话，继续输入新回复")}</button></>}
+    {r?.status==='UNKNOWN'&&r.id!==localPending?.id&&<><p role="status">{uiText("回复可能已发出。请先检查原对话，不会自动重发。")}</p><button type="button" disabled={busy} onClick={()=>void act(()=>acknowledgeUnknown(r))}>{uiText("我已检查原对话，继续输入新回复")}</button></>}
     {r?.status==='FAILED'&&<p role="status">{uiText("这条回复没有完成发送。请检查当前对话后重新输入。")}</p>}
     {m.source&&<div className="v4-chat-message-tools"><button type="button" aria-label={uiText("复制原文")} onClick={()=>void act(async()=>{await navigator.clipboard.writeText(m.text);setNotice(uiText("原文已复制。"));})}><Copy size={24} aria-hidden="true"/></button>{'sequence' in original&&<time className="v4-meta">{new Date(sourceMessage.seenAt).toLocaleString(getLanguage())}</time>}</div>}
    </article>;})}
    {state?.requests.map(r => <RequestCard key={`${r.requestId}:${r.revision}`} request={r} disabled={busy} respond={extra => act(async () => { await command("RESPOND", { requestId: r.requestId, input: extra }); await refresh(); })} />)}
    {notice && <p role="status" className="v4-chat-alert">{uiText(notice)}<button type="button" onClick={() => setNotice(null)}>{uiText("知道了")}</button></p>}
-   {unconfirmed&&<div className="v4-chat-alert" role="status"><p>{uiText("上一次回复仍需确认，草稿已保留。")}</p><div className="v4-chat-actions"><button type="button" disabled={busy} onClick={()=>void act(checkReceipt)}>{uiText("检查发送记录")}</button><button type="button" disabled={busy} onClick={()=>void act(async()=>{const v=await command<{cancelled:boolean}>("ABANDON",{id:unconfirmed.id});if(v.cancelled){clearReceipt();setNotice(uiText("已取消尚未发送的尝试。草稿保留。"));}else setNotice(uiText("这条回复已进入发送，请查看原对话，不会重复发送。"));await refresh();})}>{uiText("取消尚未发送的尝试")}</button></div></div>}
+   {unconfirmed&&!busy&&<div className="v4-chat-alert" role="status"><p>{uiText("上一次回复仍需确认，草稿已保留。")}</p><div className="v4-chat-actions"><button type="button" disabled={busy} onClick={()=>void act(checkReceipt)}>{uiText("检查发送记录")}</button><button type="button" disabled={busy} onClick={()=>void act(async()=>{const v=await command<{cancelled:boolean}>("ABANDON",{id:unconfirmed.id});if(v.cancelled){restoreAttempt(unconfirmed);clearReceipt();setNotice(uiText("已取消尚未发送的尝试。草稿保留。"));}else setNotice(uiText("这条回复已进入发送，请查看原对话，不会重复发送。"));await refresh();})}>{uiText("取消尚未发送的尝试")}</button></div></div>}
   </div>
-  <div className="v4-chat-dock"><form className="v4-chat-composer" onSubmit={e => { e.preventDefault(); void act(() => send(nextMode)); }}>
+  <div className="v4-chat-dock"><form className="v4-chat-composer" aria-busy={busy} onSubmit={e => { e.preventDefault(); void act(() => send(nextMode)); }}>
    <label htmlFor="watch-chat-reply">{uiText("回复这个 Codex 对话")}</label><textarea id="watch-chat-reply" ref={input} placeholder={uiText("在 {0} 上工作", state?.host??uiText("这台电脑"))} value={draft.text} maxLength={100000} rows={2} onChange={e => setDraft(d => ({ ...d, text: e.target.value }))} onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); if (!busy) void act(() => send(nextMode)); } }} />
    {draft.files.length > 0 && <ul className="v4-chat-files">{draft.files.map(f => <li key={f.id}>{f.name} · {Math.ceil(f.size / 1024)} KB <button type="button" aria-label={uiText("移除 {0}", f.name)} disabled={busy} onClick={() => setDraft(d => ({ ...d, files: d.files.filter(v => v.id !== f.id) }))}>{uiText("移除")}</button></li>)}</ul>}
    <div className="v4-chat-composer-tools"><input ref={fileInput} type="file" multiple hidden onChange={e => { const fs = e.currentTarget.files; void act(() => upload(fs)); e.currentTarget.value = ""; }} /><input ref={photoInput} type="file" accept="image/*" multiple hidden onChange={e=>{const fs=e.currentTarget.files;void act(()=>upload(fs));e.currentTarget.value="";}}/><button type="button" className="v4-chat-icon" aria-label={uiText("＋ 附件")} disabled={busy || draft.files.length >= 4} onClick={() => {if(window.matchMedia?.("(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1100px)").matches)setAttachmentOpen(true);else fileInput.current?.click();}}><Plus size={24} aria-hidden="true"/><span className="v4-chat-desktop-label">{uiText("附件")}</span></button><button type="button" className="v4-chat-icon v4-chat-permissions" aria-label={uiText("权限与执行请求{0}", pendingRequests.length?uiText("，{0}条待处理", pendingRequests.length):"")} onClick={()=>setPermissionsOpen(true)}><ShieldCheck size={24} aria-hidden="true"/>{pendingRequests.length>0&&<span className="v4-chat-request-count" aria-hidden="true">{pendingRequests.length}</span>}</button><span className="v4-chat-tool-space"/><button type="button" className="v4-chat-icon" aria-label={uiText("对话选项")} aria-expanded={optionsOpen} disabled={busy} onClick={() => { setOptionsOpen(v => !v); if (!models) void act(async () => { const v = await command<{ models: ChatModel[] }>("OPTIONS"); if (mounted.current) setModels(v.models); }); }}><SlidersHorizontal size={24} aria-hidden="true"/><span className="v4-chat-desktop-label">{uiText("对话选项")}</span></button>{state?.ownedTurnId&&!draft.text.trim()?<button type="button" className="v4-chat-send" aria-label={uiText("停止本次执行")} disabled={busy} onClick={()=>void act(async()=>{await command("STOP",{turnId:state.ownedTurnId});setNotice(uiText("已请求停止，等待 Codex 确认。"));await refresh();})}><Square size={24} aria-hidden="true"/></button>:<button type="submit" className="v3-primary v4-chat-send" aria-label={nextMode==="STEER"?uiText("调整当前任务"):queueNext?uiText("排队，完成后发送"):uiText("发送回复")} disabled={busy || !state || !draft.text.trim() || blocked}><ArrowUp size={24} aria-hidden="true"/><span className="v4-chat-desktop-label">{busy?uiText("正在处理…"):nextMode==="STEER"?uiText("调整当前任务"):queueNext?uiText("排队，完成后发送"):uiText("发送回复")}</span></button>}</div>

@@ -1,6 +1,10 @@
 <img src="docs/assets/agbrio-icon.png" width="72" alt="Agbrio">
 
+
 # Agbrio
+
+> **托管连接预览版:** Windows **preview.16** 支持可选兑换码连接：电脑端激活一次，再配对手机，无需自备域名。兑换码单独提供；自己部署仍免费可用。[设置与限制](docs/SETUP.md)。
+
 
 **Agent Bridge · 让管理对话与执行对话顺畅交接**
 

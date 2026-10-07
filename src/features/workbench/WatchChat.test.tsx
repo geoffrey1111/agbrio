@@ -56,3 +56,39 @@ it('shows all public progress in native order during running, with a fixed think
  expect(rows).toEqual([expect.stringContaining('上次要求'),expect.stringContaining('上次结果'),expect.stringContaining('当前要求'),expect.stringContaining('第一阶段汇报'),expect.stringContaining('第二阶段汇报')]);
  expect(view.container.querySelector('.v4-chat-reader')?.contains(screen.getByText('正在思考'))).toBe(false);
 });
+
+it("moves one submission into the transcript immediately and rapid submits cannot create another request",async()=>{
+ let finish:(r:WatchReply)=>void=()=>{};let id="";
+ const command=vi.fn(async(input)=>{if(input.action==="HISTORY")return {messages:[],nextCursor:null};if(input.action==="SEND"){id=input.id as string;return new Promise<WatchReply>(resolve=>{finish=resolve;});}throw Error("unexpected command");});
+ const view=render(<WatchChat original={original} api={{state:vi.fn(async()=>state),command:command as WatchChatApi["command"]}} onBack={()=>{}}/>);
+ const input=screen.getByLabelText("回复这个 Codex 对话");fireEvent.change(input,{target:{value:"第一条回复"}});
+ await waitFor(()=>expect(screen.getByRole("button",{name:"发送回复"})).toBeEnabled());
+ const form=view.container.querySelector('form')!;
+ act(()=>{fireEvent.submit(form);fireEvent.submit(form);});
+ expect(input).toHaveValue("");expect(screen.getByText("第一条回复")).toBeVisible();
+ expect(command.mock.calls.filter(([v])=>v.action==="SEND")).toHaveLength(1);
+ expect(JSON.parse(sessionStorage.getItem('aiwr-watch-draft:exact-original')!)).toMatchObject({text:"",files:[]});
+ expect(command.mock.calls.find(([v])=>v.action==="SEND")?.[0]).not.toHaveProperty('createdAt');
+ finish(response(id));await waitFor(()=>expect(sessionStorage.getItem('aiwr-watch-draft:exact-original:pending')).toBeNull());
+ expect(input).toHaveValue("");fireEvent.submit(form);expect(command.mock.calls.filter(([v])=>v.action==="SEND")).toHaveLength(1);
+});
+it("leaving before acknowledgement keeps the empty composer and exact receipt across reopen",async()=>{
+ let finish:(r:WatchReply)=>void=()=>{};let id="";
+ const command=vi.fn(async(input)=>{if(input.action==="HISTORY")return {messages:[],nextCursor:null};if(input.action==="SEND"){id=input.id as string;return new Promise<WatchReply>(resolve=>{finish=resolve;});}if(input.action==="RECEIPT")return response(id);throw Error("unexpected command");});
+ const api:WatchChatApi={state:vi.fn(async()=>state),command:command as WatchChatApi["command"]};
+ const view=render(<WatchChat original={original} api={api} onBack={()=>{}}/>);fireEvent.change(screen.getByLabelText("回复这个 Codex 对话"),{target:{value:"第一条回复"}});
+ await waitFor(()=>expect(screen.getByRole("button",{name:"发送回复"})).toBeEnabled());fireEvent.click(screen.getByRole("button",{name:"发送回复"}));view.unmount();finish(response(id));
+ render(<WatchChat original={original} api={api} onBack={()=>{}}/>);
+ await screen.findByRole('button',{name:'检查发送记录'});expect(screen.getByLabelText("回复这个 Codex 对话")).toHaveValue("");
+ expect(screen.getByRole("button",{name:"发送回复"})).toBeDisabled();
+ fireEvent.click(screen.getByRole('button',{name:'检查发送记录'}));await waitFor(()=>expect(sessionStorage.getItem('aiwr-watch-draft:exact-original:pending')).toBeNull());
+ expect(command.mock.calls.filter(([v])=>v.action==="SEND")).toHaveLength(1);
+});
+it("a known unsent attempt restores its draft without losing newer input",async()=>{
+ const command=vi.fn(async(input)=>input.action==="HISTORY"?{messages:[],nextCursor:null}:{...response(input.id),status:'FAILED'});
+ render(<WatchChat original={original} api={{state:vi.fn(async()=>state),command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
+ fireEvent.change(screen.getByLabelText('回复这个 Codex 对话'),{target:{value:'第一条回复'}});
+ await waitFor(()=>expect(screen.getByRole('button',{name:'发送回复'})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:'发送回复'}));
+ await screen.findByText('已确认这次没有发送。草稿保留，可检查后重新发送。');expect(screen.getByLabelText('回复这个 Codex 对话')).toHaveValue('第一条回复');
+ expect(sessionStorage.getItem('aiwr-watch-draft:exact-original:pending')).toBeNull();
+});

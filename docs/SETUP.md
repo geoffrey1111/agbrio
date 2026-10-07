@@ -2,8 +2,9 @@
 
 Agbrio connects the existing conversation that manages a project with the
 conversation that executes it. Windows x64 + Codex + a phone PWA is the first
-alpha target. You supply your agent login and remote-access provider account.
-There is no Agbrio account server, subscription or bundled Codex installation.
+alpha target. You supply your existing agent login. Phone access can use an optional
+redemption-code hosted connection or your own HTTPS provider. Codex Desktop
+is never bundled. Free self-deployment does not require a redemption code.
 
 ## 1. Desktop
 
@@ -42,7 +43,36 @@ unrelated processes. Mac and other agent adapters are not validated targets.
 
 ## 3. Choose your phone entry
 
-Settings (设置) → Devices (设备) offers four entry types. The HTTP Host binds only
+### Optional hosted connection (preview 16)
+
+Install the **preview.16** Windows package for redemption support; alpha.1 does
+not include it. In **Settings → Devices**, enter a code supplied separately by
+the author and activate once on your desktop. The packaged service is
+`https://agbrio-connect.geoffreygroup.cc`; you do not enter a domain, tunnel
+command or connection method. The app verifies your isolated HTTPS entrance
+before saving it. Keep Agbrio running and the computer awake, then pair your
+phone using the displayed mobile address.
+
+Codes have 7-, 30- or 365-day durations starting at first successful redemption.
+A code binds to one desktop installation identity. A fresh code renews that
+installation's existing entrance; re-entering a used code does not extend time.
+Phones and tablets do not each redeem a code. The limit is **20 paired browser
+sessions**, not 20 purchased licenses. For a reinstalled PWA, select **Replace**
+and the exact old login when generating a pairing code. The old login is revoked
+only after successful pairing. No automatic physical-device matching is claimed.
+Desktop transfer/reset is not yet self-service; do not share app-data or your
+installation key with another person.
+
+Hosted codes are optional and not included in the public installer/source.
+Ask the author at **geoffreyzjx@qq.com** for availability; this preview does not
+implement checkout or promise unlimited hosted capacity. Expired/revoked access
+stops the hosted entrance while local conversations remain. TLS protects network
+connections; this relay is **not end-to-end encrypted against the operator or
+Cloudflare**. See [hosted service source](../services/hosted-relay/README.md).
+
+### Use your own entrance
+
+Choose **Configure myself** for the four existing entry types. The HTTP Host binds only
 to `127.0.0.1:47114` by default. Use the port displayed by your running instance.
 Your proxy must preserve the browser's exact Host header and HTTPS origin.
 
@@ -101,7 +131,7 @@ it does not change which directory a running Host owns.
 
 Open the saved `/mobile` URL on your iPhone. Generate a one-use five-minute
 pairing code in Devices; enter it on the phone. Add to Home Screen from Safari.
-You can revoke the phone from Devices. Remembered sessions last up to 90 days
+You can revoke the phone from Devices, or replace an exact old login during a new pairing. Remembered sessions last up to 90 days
 and renew on use; a cache does not mean the desktop is online.
 
 Create a Bridge, select two different exact conversations, review the latest

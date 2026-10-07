@@ -1,6 +1,10 @@
 <img src="docs/assets/agbrio-icon.png" width="72" alt="Agbrio">
 
+
 # Agbrio
+
+> **ホスト接続プレビュー:** Windows **preview.16** は任意の引き換えコード接続に対応します。PCで一度有効化してからスマートフォンをペアリングできます。コードは別途提供され、無料のセルフホストも引き続き利用できます。[設定と制限](docs/SETUP.md)。
+
 
 **Agent Bridge — 管理する会話と実行する会話の引き継ぎをつなぐ。**
 

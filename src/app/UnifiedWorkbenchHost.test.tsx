@@ -51,6 +51,7 @@ async function enterAdvancedConnection() {
 }
 
 beforeEach(() => {
+  composition.last=null;
   api.nativeWriterAcceptanceAvailable.mockResolvedValue(false);
   eventHandlers.clear();
   api.workspaceSnapshot.mockResolvedValue(snapshot);
@@ -1405,3 +1406,11 @@ vi.mock("../features/workbench/UnifiedWorkbench",async(importOriginal)=>{
 it("opens the newly created exact Bridge even when the previous render's index lacked its ID",async()=>{render(<UnifiedWorkbenchHost initialSurface="BRIDGES"/>);await waitFor(()=>expect(composition.last?.items.some(item=>item.id==="work-a")).toBe(true));const create=composition.last!.onCreateBridge!;const row={...workstreams[0],id:"work-new-exact",name:"new owner Bridge"};const fresh={...snapshot,workstreams:[...workstreams,row],selectedWorkstreamId:row.id};api.createBridge.mockResolvedValue(row.id);api.workspaceSnapshot.mockResolvedValue(fresh);api.workstreamSnapshot.mockImplementation(async(id:string)=>id===row.id?fresh:snapshot);await act(async()=>{await create("new owner Bridge");});expect(api.selectWorkspace).toHaveBeenCalledWith("project-1",row.id);expect(api.workstreamSnapshot).toHaveBeenCalledWith(row.id);await waitFor(()=>expect(composition.last?.selectedWorkstreamId).toBe(row.id));expect(composition.last?.surface).toBe("WORKSPACE");});
 
 it("lists and opens an exact Bridge from another project without changing its bound conversation",async()=>{const other={...workstreams[0],id:"other-project-exact",projectId:"other-project",name:"Other project Bridge"};api.dashboardProjection.mockResolvedValue({workstreams:[{workstream:other,projectId:other.projectId,projectName:"Other project",attentionItems:[],chatgptEndpoint:null,codexEndpoint:null}],attentionItems:[]});render(<UnifiedWorkbenchHost initialSurface="BRIDGES"/>);await waitFor(()=>expect(composition.last?.items.some(item=>item.id===other.id)).toBe(true));const select=composition.last!.onSelectWorkstream;await act(async()=>{select(other.id);});await waitFor(()=>expect(api.selectWorkspace).toHaveBeenCalledWith(other.projectId,other.id));expect(api.pairWorkstreamEndpoints).not.toHaveBeenCalled();});
+
+it("selects the new reader while presentation persistence is pending",async()=>{
+ render(<UnifiedWorkbenchHost initialSurface="BRIDGES"/>);await waitFor(()=>expect(composition.last?.items.some(item=>item.id==="work-b")).toBe(true));
+ let finish!:()=>void;api.selectWorkspace.mockImplementationOnce(()=>new Promise(resolve=>{finish=()=>resolve(snapshot);}));
+ act(()=>{composition.last!.onSelectWorkstream("work-b");});
+ await waitFor(()=>expect(composition.last?.selectedWorkstreamId).toBe("work-b"));expect(composition.last?.surface).toBe("WORKSPACE");
+ await act(async()=>finish());
+});

@@ -21,6 +21,11 @@ export function useUndoRemoval<T>(identity:(item:T)=>string,persist:(item:T,remo
   if(removed)setUndoItem(item);else setUndoItem(null);
   const work=(queues.current.get(id)??Promise.resolve()).catch(()=>{}).then(()=>persist(item,removed));
   queues.current.set(id,work);
+  void work.then(()=>{
+   if(!mounted.current||intents.current.get(id)?.revision!==revision)return;
+   // Return authority to the shared server list after its acknowledgement.
+   intents.current.delete(id);setOverrides(old=>{const next=new Map(old);next.delete(id);return next;});
+  },()=>{});
   void work.catch(()=>{
    if(!mounted.current||intents.current.get(id)?.revision!==revision)return;
    intents.current.set(id,{item,removed:!removed,revision});

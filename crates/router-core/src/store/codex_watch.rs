@@ -52,6 +52,7 @@ pub struct WatchEvent {
     pub cwd: String,
     pub snapshot: WatchSnapshot,
     pub observed_at: i64,
+    pub seen_at:Option<i64>,
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -101,6 +102,21 @@ fn watch_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CodexWatch> {
     })
 }
 impl RouterStore {
+    /// Reading a notification acknowledges this exact chat through the selected
+    /// sequence, including older retained events not loaded on the client yet.
+    /// Newer events and other chats stay unread; originals and watches remain.
+    pub fn mark_codex_watch_event_seen(&self,sequence:i64)->Result<(),String>{
+        if sequence<=0{return Err("WATCH_SEQUENCE_INVALID".into());}
+        self.with_connection(|c|{c.execute("INSERT OR IGNORE INTO watch_seen_events(sequence,seen_at) SELECT sequence,?2 FROM codex_watch_events WHERE sequence=?1",params![sequence,now()]).map_err(db_error)?;Ok(())})
+    }
+    pub fn acknowledge_codex_watch_event(&self,sequence:i64)->Result<(),String>{
+        if sequence<=0{return Err("WATCH_SEQUENCE_INVALID".into());}
+        self.with_connection(|c|{
+            let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
+            tx.execute("INSERT OR IGNORE INTO watch_removed_items(kind,id,removed_at) SELECT 'EVENT',CAST(sequence AS TEXT),?2 FROM codex_watch_events WHERE sequence<=?1 AND thread_id=(SELECT thread_id FROM codex_watch_events WHERE sequence=?1)",params![sequence,now()]).map_err(db_error)?;
+            tx.commit().map_err(db_error)
+        })
+    }
     /// Reversible local list removal; never deletes/resumes/stops a provider thread.
     pub fn set_watch_item_removed(&self,kind:&str,id:&str,removed:bool)->Result<(),String>{
         if !matches!(kind,"WATCH"|"EVENT")||id.is_empty()||id.len()>256{return Err("WATCH_REMOVAL_INVALID".into());}
@@ -177,6 +193,11 @@ impl RouterStore {
             Ok(())
         })
     }
+    pub fn registered_codex_watch(&self,id:&str)->Result<CodexWatch,String>{self.with_connection(|c|c.query_row("SELECT thread_id,label,cwd,enabled,generation,snapshot_json,checked_at,error_code,retry_after FROM codex_watches WHERE thread_id=?1",[id],watch_row).optional().map_err(db_error)?.ok_or("WATCH_CONVERSATION_NOT_REGISTERED".into()))}
+    pub fn removed_watch_items(&self)->Result<Vec<Value>,String>{self.with_connection(|c|{
+        let mut statement=c.prepare("SELECT kind,id,removed_at,(SELECT generation FROM codex_watches WHERE thread_id=watch_removed_items.id) FROM watch_removed_items ORDER BY removed_at DESC LIMIT 100").map_err(db_error)?;
+        let out=statement.query_map([],|r|Ok(serde_json::json!({"kind":r.get::<_,String>(0)?,"id":r.get::<_,String>(1)?,"removedAt":r.get::<_,i64>(2)?,"generation":r.get::<_,Option<i64>>(3)?}))).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;Ok(out)
+    })}
     pub fn codex_watches(&self) -> Result<Vec<CodexWatch>, String> {
         self.with_connection(|c| { let mut s=c.prepare("SELECT thread_id,label,cwd,enabled,generation,snapshot_json,checked_at,error_code,retry_after FROM codex_watches WHERE NOT EXISTS(SELECT 1 FROM watch_removed_items WHERE kind='WATCH' AND id=codex_watches.thread_id) ORDER BY checked_at DESC,thread_id").map_err(db_error)?; let rows=s.query_map([],watch_row).map_err(db_error)?; rows.collect::<Result<Vec<_>,_>>().map_err(db_error) })
     }
@@ -208,7 +229,7 @@ impl RouterStore {
             return Err("WATCH_CURSOR_INVALID".into());
         }
         self.with_connection(|c| {
-            let mut s=c.prepare("SELECT sequence,thread_id,label,cwd,snapshot_json,observed_at FROM codex_watch_events WHERE sequence>?1 AND NOT EXISTS(SELECT 1 FROM watch_removed_items WHERE kind='EVENT' AND id=CAST(codex_watch_events.sequence AS TEXT)) ORDER BY sequence LIMIT 21").map_err(db_error)?;
+            let mut s=c.prepare("SELECT sequence,thread_id,label,cwd,snapshot_json,observed_at,(SELECT seen_at FROM watch_seen_events WHERE watch_seen_events.sequence=codex_watch_events.sequence) FROM codex_watch_events WHERE sequence>?1 AND NOT EXISTS(SELECT 1 FROM watch_removed_items WHERE kind='EVENT' AND id=CAST(codex_watch_events.sequence AS TEXT)) ORDER BY sequence LIMIT 21").map_err(db_error)?;
             let mut events=s.query_map([after], event_row).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;
             let has_more=events.len()>20;events.truncate(20);
             for e in &mut events {e.snapshot.text=e.snapshot.text.chars().take(400).collect();}
@@ -220,7 +241,7 @@ impl RouterStore {
         })
     }
     pub fn codex_watch_event(&self, sequence: i64) -> Result<WatchEvent, String> {
-        self.with_connection(|c| c.query_row("SELECT sequence,thread_id,label,cwd,snapshot_json,observed_at FROM codex_watch_events WHERE sequence=?1",[sequence],event_row).optional().map_err(db_error)?.ok_or("WATCH_EVENT_NOT_FOUND".into()))
+        self.with_connection(|c| c.query_row("SELECT sequence,thread_id,label,cwd,snapshot_json,observed_at,(SELECT seen_at FROM watch_seen_events WHERE watch_seen_events.sequence=codex_watch_events.sequence) FROM codex_watch_events WHERE sequence=?1",[sequence],event_row).optional().map_err(db_error)?.ok_or("WATCH_EVENT_NOT_FOUND".into()))
     }
 }
 pub(super) fn event_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WatchEvent> {
@@ -235,12 +256,24 @@ pub(super) fn event_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WatchEvent>
         cwd: row.get(3)?,
         snapshot,
         observed_at: row.get(5)?,
+        seen_at:row.get(6)?,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]fn reading_acknowledges_only_the_exact_chat_through_selected_event_and_persists(){
+        let d=tempfile::tempdir().unwrap();let path=d.path().join("read.db");let s=RouterStore::open_at(&path).unwrap();let cwd=d.path().to_str().unwrap();
+        for id in ["a","b"]{s.enable_codex_watch(id,id,cwd,&snapshot("IDLE","baseline","baseline")).unwrap();}
+        for (id,text) in [("a","old"),("b","other chat"),("a","selected"),("a","newer")]{s.record_codex_watch(id,1,&snapshot("RESULT_READY",text,text)).unwrap();}
+        let selected=s.codex_watch_feed(0).unwrap().events.into_iter().find(|e|e.snapshot.text=="selected").unwrap().sequence;
+        s.acknowledge_codex_watch_event(selected).unwrap();s.acknowledge_codex_watch_event(selected).unwrap();
+        drop(s);let s=RouterStore::open_at(path).unwrap();let feed=s.codex_watch_feed(0).unwrap();
+        assert_eq!(feed.events.len(),2);assert!(feed.events.iter().any(|e|e.snapshot.text=="other chat"));assert!(feed.events.iter().any(|e|e.snapshot.text=="newer"));
+        assert_eq!(s.codex_watch_event(selected).unwrap().snapshot.text,"selected");assert!(s.codex_watches().unwrap().iter().all(|w|w.enabled));
+        s.acknowledge_codex_watch_event(99999).unwrap();assert!(s.acknowledge_codex_watch_event(0).is_err());
+    }
     fn snapshot(state: &str, turn: &str, text: &str) -> WatchSnapshot {
         WatchSnapshot {
             state: state.into(),

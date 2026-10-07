@@ -49,3 +49,9 @@ it('a refreshed native prompt comes before an already cached report in that turn
  const merged=mergeHistory([m('t','report','assistant')],[m('t','prompt','user'),m('t','report','assistant'),m('t','next','assistant')]);
  expect(merged.map(m=>m.id)).toEqual(['prompt','report','next']);
 });
+
+it('a dispatched queued reply with native material text decorates its initiating prompt once',()=>{
+ const reply={...receipt('queued','t2','prompt',100),mode:'QUEUE' as const};
+ const result=chatTimeline([m('t2','u2','user','prompt\nMaterial manifest: demo.txt'),source],[],[reply],source,true);
+ expect(result.map(x=>x.id)).toEqual(['u2','a2']);expect(result[0].receipt?.id).toBe('queued');
+});

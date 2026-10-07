@@ -1,0 +1,223 @@
+use super::*;
+use crate::host_application::{RouterCore,Session};
+use router_core::store::{RouterStore,assistant::{GrantInput,BriefRule},role_bridge::RoleBindingInput};
+use serde_json::{json,Value};
+use std::time::Instant;
+fn now_ms()->i64{clock() as i64*1000}
+#[test]fn instance_operations_manage_seen_inbox_restore_watches_and_send_original_chat_once(){
+ let(_dir,core,old_gid,_)=fixture();let old=core.store.assistant_grant(&old_gid).unwrap();let g=core.store.create_assistant_instance_grant(router_core::store::assistant::InstanceGrantInput{label:"App manager QA".into(),rules:old.rules,expires_at:now_ms()+600000}).unwrap();
+ let mut index=0;let mut apply=|operation:&str,input:Value|{index+=1;let a=crate::assistant_mcp::call(&core,&g.id,"agbrio_prepare_action",json!({"requestId":format!("op-{index}"),"operation":operation,"input":input})).unwrap();let args=json!({"actionId":a["id"],"expectedHash":a["payloadHash"],"ruleId":"continue","useOwnerAnswer":false,"assessment":"Covered disposable operation"});let result=crate::assistant_mcp::call(&core,&g.id,"agbrio_execute_action",args.clone()).unwrap();assert_eq!(result["status"],"APPLIED");assert_eq!(crate::assistant_mcp::call(&core,&g.id,"agbrio_execute_action",args).unwrap(),result);result};
+ apply("ENABLE_WATCH",json!({"threadId":"qa-watch-original"}));let watch=core.store.codex_watches().unwrap().remove(0);
+ for turn in ["demo-one","demo-two"]{core.store.record_codex_watch(&watch.thread_id,watch.generation,&router_core::store::codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some(turn.into()),item_id:Some("item".into()),text:turn.into()}).unwrap();}
+ let first=core.store.codex_watch_feed(0).unwrap().events[0].sequence;apply("MARK_NOTIFICATION_READ",json!({"sequence":first}));let feed=core.store.codex_watch_feed(0).unwrap();assert_eq!(feed.events.len(),2);assert_eq!(feed.events.iter().filter(|e|e.seen_at.is_some()).count(),1);
+ apply("REMOVE_WATCH_ITEM",json!({"kind":"WATCH","id":watch.thread_id,"generation":watch.generation,"removed":true}));assert!(core.store.codex_watches().unwrap().is_empty());let removed=core.store.removed_watch_items().unwrap();let generation=removed[0]["generation"].as_i64().unwrap();
+ apply("REMOVE_WATCH_ITEM",json!({"kind":"WATCH","id":watch.thread_id,"generation":generation,"removed":false}));let active=core.store.codex_watches().unwrap().remove(0);assert!(active.enabled);
+ let read=crate::assistant_mcp::call(&core,&g.id,"agbrio_read_chat",json!({"threadId":watch.thread_id})).unwrap();assert!(read["history"]["messages"].as_array().unwrap().is_empty());
+ let result=apply("SEND_CHAT",json!({"threadId":watch.thread_id,"generation":active.generation,"sourceSequence":null,"expectedTurnId":null,"mode":"SEND","text":"Demo follow-up in the original conversation","options":{"model":null,"effort":null,"attachments":[]}}));assert_eq!(result["result"]["status"],"SENT");assert_eq!(core.store.watch_replies(&watch.thread_id).unwrap().len(),1);
+}
+#[test]fn instance_mcp_routes_multiple_and_future_bridges_and_applies_a_global_operation_once(){
+ let(_dir,core,old_gid,first_obs)=fixture();let old=core.store.assistant_grant(&old_gid).unwrap();
+ let g=core.store.create_assistant_instance_grant(router_core::store::assistant::InstanceGrantInput{label:"QA global".into(),rules:old.rules.clone(),expires_at:now_ms()+600000}).unwrap();
+ assert!(crate::assistant_mcp::call(&core,&old_gid,"agbrio_read_app",json!({})).is_err());
+ let list=|gid:&str|crate::assistant_mcp::rpc(&core,gid,json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}));
+ assert_eq!(list(&old_gid)["result"]["tools"].as_array().unwrap().len(),8);assert_eq!(list(&g.id)["result"]["tools"].as_array().unwrap().len(),16);
+ let call=|name:&str,args:Value|crate::assistant_mcp::call(&core,&g.id,name,args).unwrap();
+ let created=call("agbrio_prepare_action",json!({"requestId":"create-demo-b","operation":"CREATE_BRIDGE","input":{"name":"Demo B"}}));
+ let execute=json!({"actionId":created["id"],"expectedHash":created["payloadHash"],"ruleId":"continue","useOwnerAnswer":false,"assessment":"Routine setup under owner brief"});
+ let applied=call("agbrio_execute_action",execute.clone());assert_eq!(applied["status"],"APPLIED");let second=applied["result"]["workstreamId"].as_str().unwrap();
+ assert_eq!(call("agbrio_execute_action",execute),applied);assert_eq!(core.store.snapshot().unwrap().workstreams.len(),2);
+ let bind=call("agbrio_prepare_action",json!({"requestId":"bind-demo-b","operation":"BIND_BRIDGE","input":{"workstreamId":second,"bindingRevision":0,"decision":{"provider":"CODEX","externalId":"qa-b-source","label":"B source","cwd":null},"execution":{"provider":"CODEX","externalId":"qa-b-target","label":"B target","cwd":null}}}));
+ assert_eq!(call("agbrio_execute_action",json!({"actionId":bind["id"],"expectedHash":bind["payloadHash"],"ruleId":"continue","useOwnerAnswer":false,"assessment":"Exact B identities selected by owner brief"}))["status"],"APPLIED");
+ let b=core.store.role_bridge(second).unwrap();let source=b.decision.unwrap().endpoint;core.store.record_reply_observation(second,&source.id,Some("codex:second:item"),"Demo B exact result",None).unwrap();let second_obs=core.store.reply_observations_for_workstream(second).unwrap().remove(0);
+ assert!(crate::assistant_mcp::call(&core,&g.id,"agbrio_prepare_handoff",json!({"workstreamId":second,"bindingRevision":1,"requestId":"wrong-source","observationId":first_obs,"role":"DECISION","text":"Wrong Bridge","attachmentIds":[]})).is_err());
+ for (index,wid,obs) in [(0,old.workstream_id.as_str(),first_obs.as_str()),(1,second,second_obs.id.as_str())]{
+  let ready=call("agbrio_prepare_handoff",json!({"workstreamId":wid,"bindingRevision":1,"requestId":format!("send-{index}"),"observationId":obs,"role":"DECISION","text":format!("Demo handoff {index}"),"attachmentIds":[]}));
+  let result=call("agbrio_confirm_and_send",json!({"handoffId":ready["id"],"expectedHash":ready["payloadHash"],"ruleId":"continue","decisionId":null,"assessment":"Routine exact handoff under the owner brief"}));assert_eq!(result["status"],"SENT");
+  assert!(crate::assistant_mcp::call(&core,&g.id,"agbrio_confirm_and_send",json!({"handoffId":ready["id"],"expectedHash":ready["payloadHash"],"ruleId":"continue","decisionId":null,"assessment":"Repeat"})).is_err());
+ }
+ assert_eq!(call("agbrio_read_app",json!({}))["bridges"].as_array().unwrap().len(),2);
+ core.store.revoke_assistant_grant(&g.id).unwrap();assert!(crate::assistant_mcp::call(&core,&g.id,"agbrio_read_app",json!({})).is_err());
+}
+fn fixture()->(tempfile::TempDir,RouterCore,String,String){
+ let dir=tempfile::tempdir().unwrap();let store=Arc::new(RouterStore::open_at(dir.path().join("router.db")).unwrap());
+ let p=store.create_project("MCP QA".into(),None).unwrap();let w=store.create_workstream(&p.id,"Delegation QA".into()).unwrap();
+ let side=|id:&str|RoleBindingInput{provider:"CODEX".into(),external_id:id.into(),label:id.into(),cwd:Some(dir.path().to_string_lossy().into())};
+ let bindings=store.bind_role_bridge(&w.id,w.binding_revision,side("qa-source-thread"),side("qa-target-thread")).unwrap();
+ let src=bindings.decision.unwrap().endpoint;store.record_reply_observation(&w.id,&src.id,Some("codex:qa-turn:qa-item"),"Owner-approved plan: continue. No change of scope.",None).unwrap();
+ let observation=store.reply_observations_for_workstream(&w.id).unwrap()[0].id.clone();
+ let g=store.create_assistant_grant(GrantInput{workstream_id:w.id,source_role:"DECISION".into(),binding_revision:bindings.binding_revision,label:"QA assistant".into(),rules:vec![BriefRule{id:"continue".into(),text:"Forward the approved plan; ask me about any change.".into()}],expires_at:now_ms()+86400000}).unwrap();
+ let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};
+ let path=dir.path().join("fixture-native.mjs");std::fs::write(&path,r#"
+import readline from 'node:readline';
+const cwd=process.argv[2];
+readline.createInterface({input:process.stdin}).on('line',line=>{
+ const q=JSON.parse(line);if(q.id===undefined)return;
+ const thread={id:q.params?.threadId,cwd,status:{type:'idle'},turns:[]};
+ const result=q.method==='initialize'?{userAgent:'Agbrio offline fixture'}:q.method==='thread/read'||q.method==='thread/resume'?{thread,model:'fixture',reasoningEffort:'low'}:q.method==='thread/turns/list'?{data:[],nextCursor:null}:q.method==='thread/goal/get'?{goal:null}:q.method==='turn/start'?{turn:{id:'fixture-turn-'+q.params.threadId,status:'inProgress'}}:{};
+ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:q.id,result})+'\n');
+});
+"#).unwrap();
+ let mut command=std::process::Command::new("node");command.arg(path).arg(dir.path());
+ #[cfg(windows)]{use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}
+ let mut adapter=crate::codex::adapter::CodexAdapter::start_shared_validation(command,Arc::new(|_|{})).unwrap();adapter.initialize().unwrap();core.session.lock().unwrap().adapter=Some(adapter);
+ (dir,core,g.id,observation)
+}
+fn config(dir:&std::path::Path)->MobileHttpConfig{MobileHttpConfig{port:0,allowed_host:"assistant.fixture.invalid".into(),allowed_origin:"https://assistant.fixture.invalid".into(),access_issuer:String::new(),access_audience:String::new(),access_jwks_url:String::new(),static_dir:dir.into()}}
+fn client()->reqwest::Client{reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none()).build().unwrap()}
+#[test]fn two_paired_clients_share_atomic_read_ack_and_watch_removal(){
+ let(d,core,_,_)=fixture();let host=crate::HostRuntime::default();let runtime=tokio::runtime::Runtime::new().unwrap();
+ let snap=|text:&str|router_core::store::codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some(text.into()),item_id:Some("item".into()),text:text.into()};
+ for thread in ["qa-a","qa-b"]{core.store.enable_codex_watch(thread,thread,d.path().to_str().unwrap(),&snap("baseline")).unwrap();}
+ for (thread,text) in [("qa-a","old a"),("qa-b","other b"),("qa-a","selected a"),("qa-a","newer a")]{core.store.record_codex_watch(thread,1,&snap(text)).unwrap();}
+ let selected=core.store.codex_watch_feed(0).unwrap().events.into_iter().find(|e|e.snapshot.text=="selected a").unwrap().sequence;
+ runtime.block_on(async{
+  let web=Arc::new(crate::web_auth::WebAuth::open(None).unwrap());let code=web.issue().unwrap();let a=web.exchange(&code.code,"QA phone",false).unwrap();let code=web.issue().unwrap();let b=web.exchange(&code.code,"QA desktop",false).unwrap();
+  let handle=start_with_web_auth(core.clone(),config(d.path()),host.clone(),web).await.unwrap();let base=format!("http://{}/v1/mobile/codex-watches",handle.address);let c=client();
+  let post=|token:&str,origin:&str|c.post(&base).header("host","assistant.fixture.invalid").header("origin",origin).header("cookie",format!("{}={token}",crate::web_auth::COOKIE));
+  let oldest=core.store.codex_watch_feed(0).unwrap().events[0].sequence;
+  assert_eq!(post(&a,"https://assistant.fixture.invalid").json(&json!({"action":"MARK_SEEN","sequence":oldest})).send().await.unwrap().status(),StatusCode::OK);
+  let seen:Value=c.get(format!("{base}/events?after=0")).header("host","assistant.fixture.invalid").header("cookie",format!("{}={b}",crate::web_auth::COOKIE)).send().await.unwrap().json().await.unwrap();
+  assert_eq!(seen["events"].as_array().unwrap().len(),4);assert!(seen["events"].as_array().unwrap().iter().find(|e|e["sequence"]==oldest).unwrap()["seenAt"].is_number());
+  assert_eq!(seen["events"].as_array().unwrap().iter().filter(|e|e["seenAt"].is_number()).count(),1);
+  assert_eq!(post(&a,"https://wrong.invalid").json(&json!({"action":"MARK_READ","sequence":selected})).send().await.unwrap().status(),StatusCode::FORBIDDEN);
+  assert_eq!(post(&a,"https://assistant.fixture.invalid").json(&json!({"action":"MARK_READ","sequence":selected})).send().await.unwrap().status(),StatusCode::OK);
+  let get=|suffix:&str|c.get(format!("{base}{suffix}")).header("host","assistant.fixture.invalid").header("cookie",format!("{}={b}",crate::web_auth::COOKIE));
+  let feed:Value=get("/events?after=0").send().await.unwrap().json().await.unwrap();let events=feed["events"].as_array().unwrap();assert_eq!(events.len(),2);assert!(events.iter().any(|e|e["snapshot"]["text"]=="other b"));assert!(events.iter().any(|e|e["snapshot"]["text"]=="newer a"));
+  assert_eq!(get(&format!("/events/{selected}")).send().await.unwrap().json::<Value>().await.unwrap()["snapshot"]["text"],"selected a");
+  assert_eq!(post(&a,"https://assistant.fixture.invalid").json(&json!({"action":"REMOVE","kind":"WATCH","id":"qa-a","removed":true})).send().await.unwrap().status(),StatusCode::OK);
+  let watches:Value=get("").send().await.unwrap().json().await.unwrap();assert_eq!(watches.as_array().unwrap().len(),1);assert_eq!(watches[0]["threadId"],"qa-b");
+  let _=handle.shutdown.send(());handle.task.await.unwrap();
+ });
+}
+async fn rpc(client:&reqwest::Client,base:&str,token:&str,name:&str,args:Value)->Value{
+ let r=client.post(format!("{base}/mcp")).header("host","assistant.fixture.invalid").header("accept","application/json, text/event-stream").bearer_auth(token)
+ .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":args}})).send().await.unwrap();assert_eq!(r.status(),StatusCode::OK);r.json().await.unwrap()
+}
+#[test]
+fn oauth_pkce_owner_consent_resource_binding_and_revocation_over_real_http(){
+ let(d,core,gid,_)=fixture();let host=crate::HostRuntime::default();let runtime=tokio::runtime::Runtime::new().unwrap();runtime.block_on(async { let web=Arc::new(crate::web_auth::WebAuth::open(None).unwrap());
+ let code=web.issue().unwrap();let owner=web.exchange(&code.code,"QA owner",false).unwrap();let cookie=format!("{}={owner}",crate::web_auth::COOKIE);
+ let handle=start_with_web_auth(core.clone(),config(d.path()),host.clone(),web).await.unwrap();let base=format!("http://{}",handle.address);let c=client();
+ let request=|path:&str|c.post(format!("{base}{path}")).header("host","assistant.fixture.invalid");
+ let init=json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"QA","version":"1"}}});
+ let unauth=request("/mcp").json(&init).send().await.unwrap();assert_eq!(unauth.status(),StatusCode::UNAUTHORIZED);assert!(unauth.headers()["www-authenticate"].to_str().unwrap().contains("oauth-protected-resource/mcp"));
+ assert_eq!(request("/mcp").header("cookie",&cookie).json(&init).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
+ let client_meta:Value=request("/oauth/register").json(&json!({"client_name":"QA Dot","redirect_uris":["https://client.fixture.invalid/callback"],"token_endpoint_auth_method":"none"})).send().await.unwrap().json().await.unwrap();let cid=client_meta["client_id"].as_str().unwrap();
+ let verifier="a".repeat(64);let challenge=Base64UrlUnpadded::encode_string(&Sha256::digest(verifier.as_bytes()));let res="https://assistant.fixture.invalid/mcp";
+ let mut auth_url=url::Url::parse(&format!("{base}/oauth/authorize")).unwrap();auth_url.query_pairs_mut().extend_pairs([("client_id",cid),("redirect_uri","https://client.fixture.invalid/callback"),("response_type","code"),("code_challenge",&challenge),("code_challenge_method","S256"),("state","exact-state"),("resource",res),("scope",SCOPE)]);
+ let auth=c.get(auth_url.clone()).header("host","assistant.fixture.invalid").send().await.unwrap();assert_eq!(auth.status(),StatusCode::SEE_OTHER);
+ let next=auth.headers()["location"].to_str().unwrap();let page=c.get(format!("{base}{next}")).header("host","assistant.fixture.invalid").send().await.unwrap();assert!(page.headers().contains_key("content-security-policy"));
+ let intent=url::Url::parse(&format!("{base}{next}")).unwrap().query_pairs().find(|(k,_)|k=="request").unwrap().1.to_string();
+ assert_eq!(request("/v1/mobile/assistant/consent").header("origin",res.trim_end_matches("/mcp")).json(&json!({"request":intent,"grantId":gid,"allow":true})).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
+ let approve:Value=request("/v1/mobile/assistant/consent").header("cookie",&cookie).header("origin","https://assistant.fixture.invalid").json(&json!({"request":intent,"grantId":gid,"allow":true})).send().await.unwrap().json().await.unwrap();
+ let redirect=url::Url::parse(approve["redirect"].as_str().unwrap()).unwrap();assert_eq!(redirect.query_pairs().find(|(k,_)|k=="state").unwrap().1,"exact-state");
+ let code=redirect.query_pairs().find(|(k,_)|k=="code").unwrap().1.to_string();
+ let exchange=|verifier:&str,resource:&str|request("/oauth/token").form(&[("grant_type","authorization_code"),("client_id",cid),("redirect_uri","https://client.fixture.invalid/callback"),("code",code.as_str()),("code_verifier",verifier),("resource",resource)]);
+ assert_eq!(exchange(&"b".repeat(64),res).send().await.unwrap().status(),StatusCode::BAD_REQUEST);
+ assert_eq!(exchange(&verifier,"https://different.invalid/mcp").send().await.unwrap().status(),StatusCode::BAD_REQUEST);
+ let credentials:Value=exchange(&verifier,res).send().await.unwrap().json().await.unwrap();let token=credentials["access_token"].as_str().unwrap();
+ assert_eq!(exchange(&verifier,res).send().await.unwrap().status(),StatusCode::BAD_REQUEST);
+ let initialized:Value=request("/mcp").bearer_auth(token).header("accept","application/json, text/event-stream").json(&init).send().await.unwrap().json().await.unwrap();assert_eq!(initialized["result"]["serverInfo"]["name"],"Agbrio Agent Bridge");
+ let listed:Value=request("/mcp").bearer_auth(token).header("accept","application/json, text/event-stream").json(&json!({"jsonrpc":"2.0","id":2,"method":"tools/list"})).send().await.unwrap().json().await.unwrap();assert_eq!(listed["result"]["tools"].as_array().unwrap().len(),8);
+ assert_eq!(request("/v1/mobile/assistant/grants").bearer_auth(token).send().await.unwrap().status(),StatusCode::METHOD_NOT_ALLOWED);
+ assert_eq!(c.get(format!("{base}/v1/mobile/assistant/grants")).header("host","assistant.fixture.invalid").bearer_auth(token).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
+ assert_eq!(request("/mcp").bearer_auth(token).header("origin","https://evil.invalid").json(&init).send().await.unwrap().status(),StatusCode::FORBIDDEN);
+ core.store.revoke_assistant_grant(&gid).unwrap();assert_eq!(request("/mcp").bearer_auth(token).json(&init).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
+ handle.shutdown.send(()).unwrap();handle.task.await.unwrap();});
+}
+#[test]
+fn decision_gap_answer_and_send_error_retain_exact_receipt_no_false_delivery(){
+ let(d,core,gid,observation)=fixture();let host=crate::HostRuntime::default();let runtime=tokio::runtime::Runtime::new().unwrap();runtime.block_on(async {let token=core.store.issue_assistant_access(&gid,"https://assistant.fixture.invalid/mcp",now_ms()+60000).unwrap();
+ let handle=start(core.clone(),config(d.path()),host.clone()).await.unwrap();let base=format!("http://{}",handle.address);let c=client();
+ let source=rpc(&c,&base,&token,"agbrio_read_source",json!({"observationId":observation})).await;assert_eq!(source["result"]["isError"],false,"{source}");
+ let args=json!({"requestId":"request-1","observationId":observation,"text":"exact instruction\n","attachmentIds":[]});
+ let prepared=rpc(&c,&base,&token,"agbrio_prepare_handoff",args.clone()).await;assert_eq!(prepared["result"]["isError"],false);let h=&prepared["result"]["structuredContent"];let hid=h["id"].as_str().unwrap();let hash=h["payloadHash"].as_str().unwrap();
+ let again=rpc(&c,&base,&token,"agbrio_prepare_handoff",args).await;assert_eq!(again["result"]["structuredContent"]["id"],hid);
+ let asked=rpc(&c,&base,&token,"agbrio_request_decision",json!({"handoffId":hid,"expectedHash":hash,"question":"Choose A or B"})).await;let did=asked["result"]["structuredContent"]["id"].as_str().unwrap();
+ let blocked=rpc(&c,&base,&token,"agbrio_confirm_and_send",json!({"handoffId":hid,"expectedHash":hash,"ruleId":"continue","decisionId":null,"assessment":"try rule"})).await;assert_eq!(blocked["result"]["isError"],true);assert_eq!(core.store.role_handoff(hid).unwrap().status,"READY");
+ let answered=rpc(&c,&base,&token,"agbrio_record_answer",json!({"decisionId":did,"expectedHash":hash,"answer":"Choose A","answerReference":"dot-chat/user-reply-12"})).await;assert_eq!(answered["result"]["isError"],false);
+ core.session.lock().unwrap().adapter.take().unwrap().shutdown();
+ let send=rpc(&c,&base,&token,"agbrio_confirm_and_send",json!({"handoffId":hid,"expectedHash":hash,"ruleId":null,"decisionId":did,"assessment":"Follow the actual owner's choice A"})).await;assert_eq!(send["result"]["isError"],true);
+ let receipt=rpc(&c,&base,&token,"agbrio_receipt",json!({"handoffId":hid,"expectedHash":hash})).await;assert_eq!(receipt["result"]["structuredContent"]["handoff"]["status"],"APPROVED");
+ assert_eq!(core.store.assistant_grant(&gid).unwrap().rules[0].id,"continue");
+ handle.shutdown.send(()).unwrap();handle.task.await.unwrap();});
+}
+#[test]fn redirect_registration_rejects_active_schemes_and_ambiguous_uris(){
+ for uri in ["javascript:alert(1)","file:///x","https://user:pass@example.test/callback","https://example.test/#fragment","http://remote.test/callback"]{assert!(!redirect_allowed(uri));}
+ assert!(redirect_allowed("https://example.test/callback"));assert!(redirect_allowed("http://127.0.0.1:3456/callback"));
+}
+#[test]fn registered_client_survives_restart_and_corrupt_optional_registry_fails_closed(){
+ let d=tempfile::tempdir().unwrap();let path=d.path().join("clients.json");let mut auth=AssistantOAuth::open(path.clone());auth.clients.insert("exact-client".into(),Client{name:"QA".into(),redirects:vec!["https://client.invalid/callback".into()],expires:clock()+3600});auth.save().unwrap();
+ assert!(AssistantOAuth::open(path.clone()).clients.contains_key("exact-client"));std::fs::write(&path,b"broken").unwrap();assert!(AssistantOAuth::open(path).fault);
+}
+
+#[test]
+#[ignore="bounded local-only disposable MCP/browser fixture; no provider account"]
+fn assistant_fixture_for_sdk_and_browser(){
+ let(d,core,gid,observation)=fixture();let host=crate::HostRuntime::default();let rt=tokio::runtime::Runtime::new().unwrap();
+ let socket=std::net::TcpListener::bind("127.0.0.1:0").unwrap();let port=socket.local_addr().unwrap().port();drop(socket);
+ let base=format!("http://127.0.0.1:{port}");let mut cfg=config(d.path());cfg.port=port;cfg.allowed_host=format!("127.0.0.1:{port}");cfg.allowed_origin=base.clone();
+ let web=Arc::new(crate::web_auth::WebAuth::open(None).unwrap());let pairing=web.issue().unwrap();
+ let token=core.store.issue_assistant_access(&gid,&format!("{base}/mcp"),now_ms()+600000).unwrap();
+ let handle=rt.block_on(start_with_web_auth(core.clone(),cfg,host.clone(),web)).unwrap();
+ let folder=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("runtime/assistant-mcp-validation");std::fs::create_dir_all(&folder).unwrap();
+ let info=json!({"base":base,"token":token,"pairingCode":pairing.code,"grantId":gid,"observationId":observation,"fixtureOnly":true});
+ std::fs::write(folder.join("fixture.json"),serde_json::to_vec(&info).unwrap()).unwrap();
+ println!("ASSISTANT_LOCAL_FIXTURE_READY");
+ let until=Instant::now()+Duration::from_secs(600);while Instant::now()<until&&!folder.join("stop-fixture").exists(){std::thread::sleep(Duration::from_millis(250));}
+ rt.block_on(async{let _=handle.shutdown.send(());handle.task.await.unwrap();});
+ core.store.revoke_assistant_grant(&gid).unwrap();std::fs::remove_file(folder.join("fixture.json")).unwrap();
+}
+
+#[test]
+fn instance_oauth_cannot_downgrade_or_elevate_an_old_bridge_token(){
+ let(d,core,old_gid,_)=fixture();let old=core.store.assistant_grant(&old_gid).unwrap();let gid=core.store.create_assistant_instance_grant(router_core::store::assistant::InstanceGrantInput{label:"Whole app QA".into(),rules:old.rules,expires_at:now_ms()+600000}).unwrap().id;let host=crate::HostRuntime::default();let runtime=tokio::runtime::Runtime::new().unwrap();runtime.block_on(async { let web=Arc::new(crate::web_auth::WebAuth::open(None).unwrap());
+ let code=web.issue().unwrap();let owner=web.exchange(&code.code,"QA owner",false).unwrap();let cookie=format!("{}={owner}",crate::web_auth::COOKIE);
+ let handle=start_with_web_auth(core.clone(),config(d.path()),host.clone(),web).await.unwrap();let base=format!("http://{}",handle.address);let c=client();
+ let request=|path:&str|c.post(format!("{base}{path}")).header("host","assistant.fixture.invalid");
+ let init=json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"QA","version":"1"}}});
+ let unauth=request("/mcp").json(&init).send().await.unwrap();assert_eq!(unauth.status(),StatusCode::UNAUTHORIZED);assert!(unauth.headers()["www-authenticate"].to_str().unwrap().contains("oauth-protected-resource/mcp"));
+ assert_eq!(request("/mcp").header("cookie",&cookie).json(&init).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
+ let client_meta:Value=request("/oauth/register").json(&json!({"client_name":"QA Dot","redirect_uris":["https://client.fixture.invalid/callback"],"token_endpoint_auth_method":"none"})).send().await.unwrap().json().await.unwrap();let cid=client_meta["client_id"].as_str().unwrap();
+ let verifier="a".repeat(64);let challenge=Base64UrlUnpadded::encode_string(&Sha256::digest(verifier.as_bytes()));let res="https://assistant.fixture.invalid/mcp";
+ let mut auth_url=url::Url::parse(&format!("{base}/oauth/authorize")).unwrap();auth_url.query_pairs_mut().extend_pairs([("client_id",cid),("redirect_uri","https://client.fixture.invalid/callback"),("response_type","code"),("code_challenge",&challenge),("code_challenge_method","S256"),("state","exact-state"),("resource",res),("scope",INSTANCE_SCOPE)]);
+ let auth=c.get(auth_url.clone()).header("host","assistant.fixture.invalid").send().await.unwrap();assert_eq!(auth.status(),StatusCode::SEE_OTHER);
+ let next=auth.headers()["location"].to_str().unwrap();let page=c.get(format!("{base}{next}")).header("host","assistant.fixture.invalid").send().await.unwrap();assert!(page.headers().contains_key("content-security-policy"));
+ let intent=url::Url::parse(&format!("{base}{next}")).unwrap().query_pairs().find(|(k,_)|k=="request").unwrap().1.to_string();
+ assert_eq!(request("/v1/mobile/assistant/consent").header("origin",res.trim_end_matches("/mcp")).json(&json!({"request":intent,"grantId":gid,"allow":true})).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
+ assert_eq!(request("/v1/mobile/assistant/consent").header("cookie",&cookie).header("origin","https://assistant.fixture.invalid").json(&json!({"request":intent,"grantId":old_gid,"allow":true})).send().await.unwrap().status(),StatusCode::BAD_REQUEST);
+ let approve:Value=request("/v1/mobile/assistant/consent").header("cookie",&cookie).header("origin","https://assistant.fixture.invalid").json(&json!({"request":intent,"grantId":gid,"allow":true})).send().await.unwrap().json().await.unwrap();
+ let redirect=url::Url::parse(approve["redirect"].as_str().unwrap()).unwrap();assert_eq!(redirect.query_pairs().find(|(k,_)|k=="state").unwrap().1,"exact-state");
+ let code=redirect.query_pairs().find(|(k,_)|k=="code").unwrap().1.to_string();
+ let exchange=|verifier:&str,resource:&str|request("/oauth/token").form(&[("grant_type","authorization_code"),("client_id",cid),("redirect_uri","https://client.fixture.invalid/callback"),("code",code.as_str()),("code_verifier",verifier),("resource",resource)]);
+ assert_eq!(exchange(&"b".repeat(64),res).send().await.unwrap().status(),StatusCode::BAD_REQUEST);
+ assert_eq!(exchange(&verifier,"https://different.invalid/mcp").send().await.unwrap().status(),StatusCode::BAD_REQUEST);
+ let credentials:Value=exchange(&verifier,res).send().await.unwrap().json().await.unwrap();assert_eq!(credentials["scope"],INSTANCE_SCOPE);let token=credentials["access_token"].as_str().unwrap();
+ assert_eq!(exchange(&verifier,res).send().await.unwrap().status(),StatusCode::BAD_REQUEST);
+ let initialized:Value=request("/mcp").bearer_auth(token).header("accept","application/json, text/event-stream").json(&init).send().await.unwrap().json().await.unwrap();assert_eq!(initialized["result"]["serverInfo"]["name"],"Agbrio Agent Bridge");
+ let listed:Value=request("/mcp").bearer_auth(token).header("accept","application/json, text/event-stream").json(&json!({"jsonrpc":"2.0","id":2,"method":"tools/list"})).send().await.unwrap().json().await.unwrap();assert_eq!(listed["result"]["tools"].as_array().unwrap().len(),16);
+ assert_eq!(request("/v1/mobile/assistant/grants").bearer_auth(token).send().await.unwrap().status(),StatusCode::METHOD_NOT_ALLOWED);
+ assert_eq!(c.get(format!("{base}/v1/mobile/assistant/grants")).header("host","assistant.fixture.invalid").bearer_auth(token).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
+ assert_eq!(request("/mcp").bearer_auth(token).header("origin","https://evil.invalid").json(&init).send().await.unwrap().status(),StatusCode::FORBIDDEN);
+ core.store.revoke_assistant_grant(&gid).unwrap();assert_eq!(request("/mcp").bearer_auth(token).json(&init).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
+ handle.shutdown.send(()).unwrap();handle.task.await.unwrap();});
+}
+
+#[test]
+#[ignore="bounded whole-app MCP/SDK/browser fixture; fake provider only"]
+fn instance_fixture_for_sdk_and_browser(){
+ let(d,core,old_gid,observation)=fixture();let old=core.store.assistant_grant(&old_gid).unwrap();
+ let gid=core.store.create_assistant_instance_grant(router_core::store::assistant::InstanceGrantInput{label:"Demo whole app".into(),rules:old.rules,expires_at:now_ms()+600000}).unwrap().id;
+ let baseline=router_core::store::codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some("baseline".into()),item_id:Some("item".into()),text:"Demo baseline".into()};
+ core.store.enable_codex_watch("demo-notification-thread","Demo notifications",d.path().to_str().unwrap(),&baseline).unwrap();
+ for i in 1..=6{core.store.record_codex_watch("demo-notification-thread",1,&router_core::store::codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some(format!("demo-turn-{i}")),item_id:Some("item".into()),text:format!("Demo notification {i}")}).unwrap();}
+ let rt=tokio::runtime::Runtime::new().unwrap();let host=crate::HostRuntime::default();let root=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();let folder=root.join("runtime/instance-mcp");std::fs::create_dir_all(&folder).unwrap();
+ let socket=std::net::TcpListener::bind("127.0.0.1:0").unwrap();let port=socket.local_addr().unwrap().port();drop(socket);let base=format!("http://127.0.0.1:{port}");
+ let mut cfg=config(&root.join("dist"));cfg.port=port;cfg.allowed_host=format!("127.0.0.1:{port}");cfg.allowed_origin=base.clone();
+ let web=Arc::new(crate::web_auth::WebAuth::open(None).unwrap());let pair=web.issue().unwrap();let owner=web.exchange(&pair.code,"Disposable browser QA",false).unwrap();
+ let token=core.store.issue_assistant_access(&gid,&format!("{base}/mcp"),now_ms()+600000).unwrap();
+ let handle=rt.block_on(start_with_web_auth(core.clone(),cfg,host.clone(),web)).unwrap();
+ let info=json!({"base":base,"token":token,"ownerCookie":owner,"grantId":gid,"legacyGrantId":old_gid,"workstreamId":old.workstream_id,"observationId":observation,"fixtureOnly":true});std::fs::write(folder.join("fixture.json"),info.to_string()).unwrap();println!("INSTANCE_DISPOSABLE_FIXTURE_READY");
+ let until=Instant::now()+Duration::from_secs(600);while Instant::now()<until&&!folder.join("stop-fixture").exists(){std::thread::sleep(Duration::from_millis(250));}
+ rt.block_on(async{let _=handle.shutdown.send(());handle.task.await.unwrap();});core.store.revoke_assistant_grant(&gid).unwrap();std::fs::remove_file(folder.join("fixture.json")).unwrap();drop(d);
+}

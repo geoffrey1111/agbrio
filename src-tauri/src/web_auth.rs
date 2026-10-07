@@ -21,7 +21,7 @@ pub(crate) struct Device { pub id:String, pub label:String, pub created_at:u64, 
 struct SavedSession { device:Device, token_hash:String, #[serde(default)] remembered:Option<bool> }
 #[derive(Default, Serialize, Deserialize)]
 struct Saved { sessions:Vec<SavedSession> }
-struct Code { hash:String, expires_at:u64, tries:u8 }
+struct Code { hash:String, expires_at:u64, tries:u8, replace_device_id:Option<String> }
 #[derive(Default)]
 struct Inner { saved:Saved, code:Option<Code> }
 pub(crate) struct WebAuth { inner:Mutex<Inner>, path:Option<PathBuf> }
@@ -45,9 +45,14 @@ impl WebAuth {
   } Ok(())
  }
  pub(crate) fn issue(&self)->Result<PairingCode,String>{
+  self.issue_replacing(None)
+ }
+ pub(crate) fn issue_replacing(&self,replace_device_id:Option<String>)->Result<PairingCode,String>{
+  let mut inner=self.inner.lock().map_err(|_|"WEB_AUTH_UNAVAILABLE")?;
+  if replace_device_id.as_ref().is_some_and(|id|!inner.saved.sessions.iter().any(|s|&s.device.id==id&&s.device.expires_at>now())){return Err("WEB_REPLACEMENT_TARGET_CHANGED".into());}
   let random=Uuid::new_v4();let b=random.as_bytes();let number=u32::from_le_bytes([b[0],b[1],b[2],b[3]])%1_000_000;
   let code=format!("{number:06}");let expires_at=now()+CODE_SECONDS;
-  self.inner.lock().map_err(|_|"WEB_AUTH_UNAVAILABLE")?.code=Some(Code{hash:hash(&code),expires_at,tries:0});
+  inner.code=Some(Code{hash:hash(&code),expires_at,tries:0,replace_device_id});
   Ok(PairingCode{code,expires_at})
  }
  pub(crate) fn exchange(&self,code:&str,label:&str,remember:bool)->Result<String,String>{self.exchange_at(code,label,remember,now())}
@@ -57,10 +62,12 @@ impl WebAuth {
   if pending.expires_at<=time || pending.tries>=5 {inner.code=None;return Err("WEB_PAIRING_INVALID_OR_EXPIRED".into());}
   pending.tries+=1;
   if code.len()!=6 || !code.bytes().all(|b|b.is_ascii_digit()) || !same(&hash(code),&pending.hash){return Err("WEB_PAIRING_INVALID_OR_EXPIRED".into());}
+  let replace=pending.replace_device_id.clone();
+  if replace.as_ref().is_some_and(|id|!inner.saved.sessions.iter().any(|s|&s.device.id==id&&s.device.expires_at>time)){return Err("WEB_REPLACEMENT_TARGET_CHANGED".into());}
   let token=format!("{}{}",Uuid::new_v4().simple(),Uuid::new_v4().simple());
   let label:String=label.trim().chars().filter(|c|!c.is_control()).take(40).collect();
   let device=Device{id:Uuid::new_v4().to_string(),label:if label.is_empty(){"浏览器设备".into()}else{label},created_at:time,expires_at:time+if remember{SESSION_SECONDS}else{TEMPORARY_SECONDS}};
-  let mut next:Vec<_>=inner.saved.sessions.iter().filter(|s|s.device.expires_at>time).cloned().collect();
+  let mut next:Vec<_>=inner.saved.sessions.iter().filter(|s|s.device.expires_at>time&&replace.as_ref()!=Some(&s.device.id)).cloned().collect();
   if next.len()>=20{return Err("WEB_DEVICE_LIMIT".into());}
   next.push(SavedSession{device,token_hash:hash(&token),remembered:Some(remember)});
   self.save(&next)?;inner.saved.sessions=next;inner.code=None;Ok(token)
@@ -136,4 +143,6 @@ mod tests {
   let code=a.issue().unwrap();let time=now();let temporary=a.exchange_at(&code.code,"temporary",false,time).unwrap();assert_eq!(a.renew_at(&temporary,time+3600).unwrap(),Some(false));assert!(!a.valid_at(&temporary,time+TEMPORARY_SECONDS));
  }
  #[test]fn corrupt_store_and_duplicate_cookie_fail_closed(){let d=tempfile::tempdir().unwrap();let p=d.path().join("auth.json");fs::write(&p,"broken").unwrap();assert!(WebAuth::open(Some(p)).is_err());let mut h=axum::http::HeaderMap::new();h.insert("cookie",format!("{COOKIE}=a; {COOKIE}=b").parse().unwrap());assert!(cookie_token(&h).is_none());}
+ #[test]fn replacing_a_reinstalled_phone_at_twenty_retains_other_devices_and_persists(){let d=tempfile::tempdir().unwrap();let p=d.path().join("auth.json");let auth=WebAuth::open(Some(p.clone())).unwrap();let tokens:Vec<_>=(0..20).map(|_|{let code=auth.issue().unwrap();auth.exchange(&code.code,"Same phone label",true).unwrap()}).collect();let ordinary=auth.issue().unwrap();assert!(auth.exchange(&ordinary.code,"extra",true).is_err());let target=auth.devices().unwrap()[0].id.clone();let code=auth.issue_replacing(Some(target)).unwrap();assert!(tokens.iter().all(|t|auth.valid(t)));assert!(auth.exchange("wrong","new",true).is_err());assert!(auth.valid(&tokens[0]));let replacement=auth.exchange(&code.code,"Reinstalled phone",true).unwrap();assert_eq!(auth.devices().unwrap().len(),20);assert!(!auth.valid(&tokens[0]));assert!(tokens[1..].iter().all(|t|auth.valid(t)));drop(auth);let auth=WebAuth::open(Some(p)).unwrap();assert!(auth.valid(&replacement));assert!(tokens[1..].iter().all(|t|auth.valid(t)));assert!(!auth.valid(&tokens[0]));}
+ #[test]fn replacement_never_revokes_on_expired_code_or_failed_persistence(){let d=tempfile::tempdir().unwrap();let p=d.path().join("auth.json");let auth=WebAuth::open(Some(p.clone())).unwrap();let code=auth.issue().unwrap();let token=auth.exchange(&code.code,"Old",true).unwrap();let id=auth.devices().unwrap()[0].id.clone();assert!(auth.issue_replacing(Some("wrong-exact-id".into())).is_err());let expired=auth.issue_replacing(Some(id.clone())).unwrap();assert!(auth.exchange_at(&expired.code,"new",true,expired.expires_at).is_err());assert!(auth.valid(&token));let replacement=auth.issue_replacing(Some(id)).unwrap();fs::create_dir(p.with_extension("json.pending")).unwrap();assert!(auth.exchange(&replacement.code,"new",true).is_err());assert!(auth.valid(&token));assert_eq!(auth.devices().unwrap().len(),1);}
 }

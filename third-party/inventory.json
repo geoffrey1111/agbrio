@@ -6251,6 +6251,16 @@
   },
   {
     "ecosystem": "npm",
+    "name": "gsap",
+    "version": "3.15.0",
+    "license": "Standard 'no charge' license: https://gsap.com/standard-license.",
+    "source": "https://registry.npmjs.org/gsap/-/gsap-3.15.0.tgz",
+    "notices": [
+      "third-party/npm/gsap-3.15.0/UPSTREAM-ATTRIBUTION.txt"
+    ]
+  },
+  {
+    "ecosystem": "npm",
     "name": "hast-util-to-jsx-runtime",
     "version": "2.3.6",
     "license": "MIT",

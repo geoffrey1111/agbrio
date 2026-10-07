@@ -57,3 +57,41 @@ the connection recovery action remains available without dispatching.
 Validated app/build source: `e4900662a6c45695cb8104c46053b8956f6911ac`.
 Installer SHA-256: `6fd9e750e6361c7fb2fbf350e8761972b303e7caa54b7ae7229ec7793c1f5aa4`.
 This build is unsigned and remains an alpha, not an all-platform stable release.
+
+## 2026-10-08 · preview.16 hosted activation
+
+Separate from alpha.1: the final local NSIS package was installed and checked in
+a maximized native Windows window, with interface 2026.10.08-16 and served asset /
+native connector parity. Existing self-host entry and paired sessions remained;
+Codex, its Gateway and the existing Cloudflare tunnel were not restarted. The
+release asset is byte-identical to this installer, not a relabelled alpha.1 build.
+
+Before export: 445 frontend cases plus 8 focused cases after expiry-copy refinement;
+TypeScript/Vite and NSIS build; 192 Core and 171 Host cases (24 ignored). Pairing
+replacement covers the 20-session cap. Seven isolated Worker tests pass. Two empty
+disposable Rust Hosts exercised real public HTTPS/Worker/WSS: private content,
+foreign cookie/Origin/material rejection, independent inbox, redemption/renewal,
+old-code replay, wrong installation key, duplicate connector, expiry/revocation
+and Host restart retaining phone login, without model/provider writes. Browser
+checks used 440×956 and 1920×1080; these are not physical-iPhone acceptance.
+
+Private runtime proofs, credentials, codes and personal conversations are not
+included in source. Public export checks are listed separately in release notes.
+No fresh-recipient Windows, physical-iPhone, Mac, live Dot account or large-scale
+capacity acceptance is claimed. Earlier alpha.1 clean-Windows results remain
+historical and must not be attributed to this preview.
+
+Public sanitized export checks: 446 frontend tests in 44 files, production
+TypeScript/Vite build, 192 Core tests (1 ignored), 7 Worker tests and 15 shared
+lifecycle tests. Privacy scan of 1,481 selected/tracked files matched none of the
+20 actual private code/admin values and no private runtime files. 758 locked
+third-party dependencies have notices/source links; GSAP is separately licensed.
+`npm audit --omit=dev` reports zero findings. The complete npm audit reports two
+high-severity dev-tool packages (jsdom's undici 8.10.0 and source-map-js 1.2.1);
+those npm modules are not shipped in the app. This release preserves the tested
+lockfiles; dependency upgrades are a separate build/test change, not a claim that
+all dependencies or bundled runtimes have been security-audited.
+
+Public sanitized native source also passes 171 Host tests (24 ignored), plus
+one launcher test. Native resource inputs reuse verified vendor files only;
+no production processes are launched or changed by these unit checks.

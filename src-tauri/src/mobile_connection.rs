@@ -15,7 +15,7 @@ pub(crate) fn view(host:&HostRuntime)->Result<ConnectionView,String>{
  Ok(ConnectionView{method:mobile_http::config_method(&c),origin:configured.then_some(c.allowed_origin),port:host.mobile_address().map_or(c.port,|a|a.port()),configured})
 }
 pub(crate) fn validate(input:&ConnectionInput)->Result<(String,String),String>{
- if !matches!(input.method.as_str(),"CLOUDFLARE"|"TAILSCALE_FUNNEL"|"TAILSCALE_SERVE"|"CUSTOM_HTTPS"){return Err("MOBILE_METHOD_INVALID".into());}
+ if !matches!(input.method.as_str(),"CLOUDFLARE"|"TAILSCALE_FUNNEL"|"TAILSCALE_SERVE"|"CUSTOM_HTTPS"|"HOSTED"){return Err("MOBILE_METHOD_INVALID".into());}
  let u=url::Url::parse(input.origin.trim()).map_err(|_|"MOBILE_ORIGIN_INVALID")?;
  if u.scheme()!="https"||u.host_str().is_none()||!u.username().is_empty()||u.password().is_some()||u.query().is_some()||u.fragment().is_some()||u.path()!="/"||u.port()==Some(0){return Err("MOBILE_ORIGIN_INVALID".into());}
  if input.method.starts_with("TAILSCALE_")&&!u.host_str().unwrap().ends_with(".ts.net"){return Err("MOBILE_TAILSCALE_ORIGIN_REQUIRED".into());}

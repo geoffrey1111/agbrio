@@ -14,6 +14,12 @@ function fixture(explicit = true) {
   return { state, prepared, api };
 }
 describe("role-compatible Bridge", () => {
+  it("opens the most recently completed side instead of a saved old selection",async()=>{
+    const{api,state}=fixture();localStorage.setItem("aiwr.role-selected.work-a","DECISION");api.state.mockResolvedValue({...state,replies:[{...state.replies[0],observedAt:5000,completedAt:1000},{id:"obs-b",endpointId:execution.id,text:"new execution reply",observedAt:3000,completedAt:2000}]});
+    render(<NativeSurfaceContext.Provider value><RoleBridgePanel workstreamId="work-a" api={api}/></NativeSurfaceContext.Provider>);
+    await screen.findByText("new execution reply");expect(screen.getByRole("tab",{name:"执行端 · Codex"})).toHaveAttribute("aria-selected","true");expect(screen.getByText("最新回复")).toBeVisible();
+    fireEvent.click(screen.getByRole("tab",{name:"控制端 · Codex"}));expect(await screen.findByText("original")).toBeVisible();
+  });
   it("one final confirmation cannot dispatch twice while approval is pending",async()=>{
     const {api,prepared}=fixture();api.prepare.mockResolvedValue({...prepared,approvedText:"original"});
     let accept:(value:RoleHandoff)=>void=()=>{};api.approve.mockImplementation(()=>new Promise(resolve=>{accept=resolve;}));

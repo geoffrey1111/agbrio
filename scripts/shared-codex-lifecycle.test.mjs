@@ -18,7 +18,7 @@ async function fixture(){
    if(action==='Restore'){const j=JSON.parse(await readFile(args[args.indexOf('-SnapshotPath')+1],'utf8'));for(const c of j.changes)if(env[c.name]===c.installed)env[c.name]=c.previous;}
    if(action==='Stop')running=false;return{ok:true};
   },
-  exec:async(_file,args)=>({stdout:args[0]==='--version'?'codex-cli 0.160.0':args.at(-1).includes('.Count')?'0':'S-1-5-21-fixture'}),
+  exec:async(_file,args)=>({stdout:args[0]==='--version'?'codex-cli 0.160.0':args.includes('-DesktopPid')?JSON.stringify({applied:true}):args.at(-1).includes('ConvertTo-Json')?JSON.stringify({desktop:'fixture-current-Desktop.exe',count:0}):'S-1-5-21-fixture'}),
   spawn:(_file,args)=>{calls.push(args.length?'spawn-supervisor':'spawn-Desktop');if(args.length)running=true;else desktopConnected=true;return child();},
   fetch:async(url,opts)=>{if(!running)throw Error('refused');if(url.endsWith('/stop')){assert.match(opts.headers.Authorization,/^Bearer [0-9a-f]{64}$/);if(turns)return {ok:false,status:409};running=false;return{ok:true};}const cfg=JSON.parse(await readFile(join(directory,'runtime-config.json'),'utf8'));return{json:async()=>({instance:cfg.instance,ready:true,desktopConnected,activeTurns:turns})};},
   probe:async()=>{calls.push('probe-RPC');assert.equal(env.CODEX_APP_SERVER_WS_URL,null);},
@@ -57,7 +57,7 @@ test('active Desktop turns reject disable before any endpoint mutation or proces
  await assert.rejects(lifecycle({...f.options,action:'disable'},f.dependencies),/SHARED_DESKTOP_BUSY/);assert.equal(f.env.CODEX_APP_SERVER_WS_URL,null);assert.ok(!f.calls.slice(before).includes('Restore'));assert.ok(!f.calls.slice(before).includes('Stop'));
 });
 test('already-running Desktop blocks launch without creating a second instance or abandoning prepared mode',async()=>{
- const f=await fixture();await lifecycle({...f.options,action:'setup'},f.dependencies);f.dependencies.exec=async()=>({stdout:'1'});
+ const f=await fixture();await lifecycle({...f.options,action:'setup'},f.dependencies);f.dependencies.exec=async()=>({stdout:JSON.stringify({desktop:'fixture-current-Desktop.exe',count:1})});
  await assert.rejects(lifecycle({...f.options,action:'launch'},f.dependencies),/SHARED_DESKTOP_CLOSE_REQUIRED/);assert.ok(!f.calls.includes('spawn-Desktop'));assert.equal(f.env.CODEX_APP_SERVER_WS_URL,null);
 });
 test('legacy enabled/settings and disabled/runtime mismatch restores only installed values',async()=>{
@@ -87,4 +87,21 @@ test('diagnostic persistence failure cannot block rollback or fail successful ac
  const active=await lifecycle({...f.options,action:'launch'},f.dependencies);assert.equal(active.enabled,true);await lifecycle({...f.options,action:'disable'},f.dependencies);
  await lifecycle({...f.options,action:'setup'},f.dependencies);let clock=0;f.dependencies.now=()=>clock;f.dependencies.sleep=async ms=>{clock+=ms;};const run=f.dependencies.run;f.dependencies.run=async args=>args.includes('DesktopWindow')?{visible:false}:run(args);
  await assert.rejects(lifecycle({...f.options,action:'launch'},f.dependencies),/SHARED_DESKTOP_CONNECTION_FAILED/);assert.equal(JSON.parse(await readFile(join(f.options.directory,'settings.json'),'utf8')).phase,'DISABLED');
+});
+
+
+test('Store upgrade resolves the registered Desktop rather than a removed saved executable',async()=>{
+ const f=await fixture();await lifecycle({...f.options,action:'setup'},f.dependencies);
+ const spawn=f.dependencies.spawn;let launched;
+ f.dependencies.spawn=(file,args,opts)=>{if(!args.length)launched=file;return spawn(file,args,opts);};
+ await lifecycle({...f.options,action:'launch'},f.dependencies);
+ assert.equal(launched,'fixture-current-Desktop.exe');
+ assert.equal(JSON.parse(await readFile(join(f.options.directory,'desktop-launch.json'),'utf8')).iconApplied,true);
+});
+test('icon repair failure preserves the connected Desktop and reports the cosmetic failure',async()=>{
+ const f=await fixture();await lifecycle({...f.options,action:'setup'},f.dependencies);const exec=f.dependencies.exec;
+ f.dependencies.exec=async(file,args)=>{if(args.includes('-DesktopPid'))throw Error('icon unavailable');return exec(file,args);};
+ assert.equal((await lifecycle({...f.options,action:'launch'},f.dependencies)).state,'SHARED_CONNECTED');
+ assert.equal(JSON.parse(await readFile(join(f.options.directory,'desktop-launch.json'),'utf8')).iconApplied,false);
+ assert.ok(!f.calls.includes('Stop'));
 });

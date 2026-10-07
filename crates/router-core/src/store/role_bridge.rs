@@ -195,13 +195,13 @@ pub(super) fn complete_roles(c: &Connection, w: &str) -> Result<bool, String> {
     let b = bridge(c, w)?;
     Ok(b.explicit_roles && b.decision.is_some() && b.execution.is_some())
 }
-fn bridge(c: &Connection, workstream: &str) -> Result<RoleBridge, String> {
+pub(super) fn bridge(c: &Connection, workstream: &str) -> Result<RoleBridge, String> {
     let w = workstream_by_id(c, workstream)?;
     Ok(RoleBridge { workstream_id: workstream.into(), binding_revision: w.binding_revision,
         decision: role_endpoint(c,workstream,"DECISION")?, execution: role_endpoint(c,workstream,"EXECUTION")?,
         explicit_roles: c.query_row("SELECT EXISTS(SELECT 1 FROM endpoints WHERE workstream_id=?1 AND status='ACTIVE' AND bridge_role!='LEGACY')",params![workstream],|r|r.get(0)).map_err(db_error)? })
 }
-fn validate_handoff(c: &Connection, handoff: &HandoffHistoryItem) -> Result<(), String> {
+pub(super) fn validate_handoff(c: &Connection, handoff: &HandoffHistoryItem) -> Result<(), String> {
     let details: (i64, String) = c
         .query_row(
             "SELECT binding_revision,source_role FROM role_handoff_details WHERE handoff_id=?1",
@@ -378,6 +378,7 @@ impl RouterStore {
         self.with_connection(|c| {
             let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
             let h=handoff_by_id(&tx,handoff)?;validate_handoff(&tx,&h)?;
+            super::assistant::validate_claim(&tx,&h)?;
             let duplicate:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM handoffs WHERE status='SENT' AND source_response_identity=?1 AND destination_endpoint_id=?2 AND payload_hash=?3)",params![h.source_response_identity,h.destination_endpoint.id,h.payload_hash],|r|r.get(0)).map_err(db_error)?;
             if duplicate {return Err("BRIDGE_ALREADY_SENT".into());}
             let busy:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM handoffs WHERE workstream_id=?1 AND status='SENDING') OR EXISTS(SELECT 1 FROM provider_runs WHERE workstream_id=?1 AND status IN ('STARTING','RUNNING','UNKNOWN'))",params![h.workstream_id],|r|r.get(0)).map_err(db_error)?;

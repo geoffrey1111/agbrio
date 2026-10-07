@@ -28,6 +28,7 @@ export interface UnifiedWorkbenchProps {
   notificationCount?:number;
   notificationDetail?:boolean;
   devicePanel?:ReactNode;
+  assistantPanel?:ReactNode;
   onOpenWebAccess?:()=>void;
   onCreateBridge?: (name:string)=>Promise<void>;
   items: WorkbenchItem[];

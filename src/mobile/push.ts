@@ -7,7 +7,7 @@ export type PushSetupState = "UNSUPPORTED" | "NOT_REQUESTED" | "DENIED" | "SUPPO
 // prior Worker could render only the legacy probe path, leaving real replies
 // indistinguishable from a lost notification.  This is not a capability key
 // rotation: the existing PushSubscription is preserved and re-registered.
-export const CURRENT_SERVICE_WORKER_URL = "/service-worker.js?build=agbrio-touch-v4";
+export const CURRENT_SERVICE_WORKER_URL = "/service-worker.js?build=agbrio-bridge-entry-v1";
 
 export async function registerCurrentServiceWorker() {
   const registration = await navigator.serviceWorker.register(CURRENT_SERVICE_WORKER_URL, { scope: "/" });

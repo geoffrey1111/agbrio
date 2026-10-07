@@ -132,7 +132,7 @@ impl RouterStore {
    let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
    let row=tx.query_row("SELECT d.event_sequence,d.channel FROM watch_deliveries d JOIN codex_watch_events e ON e.sequence=d.event_sequence JOIN watch_delivery_channels ch ON ch.channel=d.channel WHERE ch.enabled=1 AND d.status IN ('PENDING','FAILED') AND d.attempts<3 AND d.retry_at<=?1 ORDER BY d.event_sequence,d.channel LIMIT 1",[now()],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?))).optional().map_err(db_error)?;
    let result=if let Some((seq,channel))=row {
-    let event=tx.query_row("SELECT sequence,thread_id,label,cwd,snapshot_json,observed_at FROM codex_watch_events WHERE sequence=?1",[seq],codex_watch::event_row).map_err(db_error)?;
+    let event=tx.query_row("SELECT sequence,thread_id,label,cwd,snapshot_json,observed_at,(SELECT seen_at FROM watch_seen_events WHERE watch_seen_events.sequence=codex_watch_events.sequence) FROM codex_watch_events WHERE sequence=?1",[seq],codex_watch::event_row).map_err(db_error)?;
     tx.execute("UPDATE watch_deliveries SET status='SENDING',attempts=attempts+1,updated_at=?3 WHERE event_sequence=?1 AND channel=?2",params![seq,channel,now()]).map_err(db_error)?;
     Some((channel,event))
    }else{None};

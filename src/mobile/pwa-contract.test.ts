@@ -6,6 +6,12 @@ const manifest = JSON.parse(readFileSync(resolve(process.cwd(), "public/manifest
 const workerSource = readFileSync(resolve(process.cwd(), "public/service-worker.js"), "utf8");
 
 describe("MOBILE_WEB_PUSH_V1 PWA contract", () => {
+ it("reuses a warm Bridge client by acknowledged intent without reloading its document",async()=>{
+  const handlers=new Map<string,(e:any)=>void>();const focus=vi.fn().mockResolvedValue(undefined),navigate=vi.fn(),openWindow=vi.fn(),postMessage=vi.fn((message,ports)=>{expect(message).toEqual({type:"AGBRIO_OPEN_BRIDGE",target:"https://router.example/mobile?workstream=qa-b&reply=qa-result"});ports[0].onmessage({data:{accepted:true}});});
+  class Channel {port1={onmessage:null as null|((e:any)=>void),close:vi.fn()};port2={close:vi.fn(),onmessage:(e:any)=>this.port1.onmessage?.(e)};}
+  vi.stubGlobal("MessageChannel",Channel);vi.stubGlobal("self",{addEventListener:(n:string,h:any)=>handlers.set(n,h),location:{origin:"https://router.example"}});vi.stubGlobal("clients",{matchAll:vi.fn().mockResolvedValue([{url:"https://router.example/mobile",focus,navigate,postMessage}]),openWindow});new Function(workerSource)();let pending!:Promise<unknown>;
+  handlers.get("notificationclick")!({notification:{close:vi.fn(),data:{target:"/mobile?workstream=qa-b&reply=qa-result"}},waitUntil:(p:Promise<unknown>)=>pending=p});await pending;expect(focus).toHaveBeenCalledOnce();expect(navigate).not.toHaveBeenCalled();expect(openWindow).not.toHaveBeenCalled();
+ });
   it("routes independent watch notifications to the exact event and rejects external click targets", async () => {
     const handlers=new Map<string,(event:any)=>void>(),showNotification=vi.fn().mockResolvedValue(undefined),openWindow=vi.fn().mockResolvedValue(undefined),fetch=vi.fn();
     vi.stubGlobal("self",{addEventListener:(name:string,handler:(event:any)=>void)=>handlers.set(name,handler),registration:{showNotification},location:{origin:"https://router.example"}});

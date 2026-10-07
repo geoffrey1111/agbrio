@@ -5,6 +5,8 @@ import { request } from "../../mobile/api";
 import type { NotificationApi } from "./CodexNotifications";
 import { desktopWatchChatApi, webWatchChatApi } from "./watchChatApi";
 export const desktopNotificationApi:NotificationApi={
+ markSeen:sequence=>invoke("codex_watch_mark_seen",{sequence}),
+ markRead:sequence=>invoke("codex_watch_mark_read",{sequence}),
  chat:desktopWatchChatApi,
  delivery:{desktop:true,settings:()=>invoke("codex_delivery_settings"),command:input=>invoke("codex_delivery_command",{input})},
  onOpen:async callback=>{const dispose=await listen<number>("codex-notification-open",e=>callback(e.payload));try{const pending=await invoke<number|null>("codex_notification_navigation");if(pending!==null)callback(pending);return dispose;}catch(e){dispose();throw e;}},
@@ -13,6 +15,8 @@ export const desktopNotificationApi:NotificationApi={
 };
 function command<T>(body:unknown){return request<T>("/codex-watches",{method:"POST",body:JSON.stringify(body)});}
 export const webNotificationApi:NotificationApi={
+ markSeen:sequence=>command({action:"MARK_SEEN",sequence}),
+ markRead:sequence=>command({action:"MARK_READ",sequence}),
  chat:webWatchChatApi,
  delivery:{desktop:false,settings:()=>request("/codex-watches/delivery"),command:input=>request("/codex-watches/delivery",{method:"POST",body:JSON.stringify(input)})},
  webUrl:async()=>`${location.origin}/mobile/notifications`,

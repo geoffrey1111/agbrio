@@ -612,7 +612,7 @@ mod tests {
                 item_id: None,
                 text: "SECRET_RESULT_NOT_FOR_EMAIL".into(),
             },
-            observed_at: 123,
+            observed_at: 123,seen_at:None,
         };
         let m = email_message(
             &s,

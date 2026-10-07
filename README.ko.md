@@ -1,6 +1,10 @@
 <img src="docs/assets/agbrio-icon.png" width="72" alt="Agbrio">
 
+
 # Agbrio
+
+> **호스팅 연결 프리뷰:** Windows **preview.16**에서는 선택적으로 교환 코드를 사용할 수 있습니다. PC에서 한 번 활성화한 뒤 휴대폰을 페어링하세요. 코드는 별도로 제공되며 무료 자체 배포도 계속 지원합니다. [설정 및 제한](docs/SETUP.md).
+
 
 **Agent Bridge — 관리하는 대화와 실행하는 대화 사이의 인계.**
 

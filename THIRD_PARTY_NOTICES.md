@@ -28,3 +28,8 @@ For source rebuilds, run `python scripts/license-inventory.py` after installing
 locked dependencies. Keep these notices with redistributed builds. See the
 [Mozilla MPL FAQ](https://www.mozilla.org/en-US/MPL/2.0/FAQ/#q8-i-want-to-distribute-outside-my-organization-executable-programs-or-libraries-that-i-have-compiled-from-someone-elses-unchanged-mpl-licensed-source-code-either-standalone-or-part-of-a-larger-work-what-do-i-have-to-do)
 for its source-availability requirement.
+
+GSAP 3.15.0 provides optional motion feedback. It is under the GSAP Standard
+no-charge license, **not MIT**: https://gsap.com/standard-license/ . Its upstream
+package attribution and license URL are retained in the `third-party/` inventory; its
+copyright/license header stays in the distributed JavaScript chunk.

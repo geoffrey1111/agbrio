@@ -29,6 +29,8 @@ use tokio::{net::TcpListener, sync::oneshot, task::JoinHandle, time::timeout};
 use tower_http::services::{ServeDir, ServeFile};
 
 const ACCESS_JWT_HEADER: &str = "cf-access-jwt-assertion";
+#[path="assistant_http.rs"]
+mod assistant_http;
 
 #[cfg(all(test, windows))]
 #[path = "mobile_real_provider_ui_tests.rs"]
@@ -187,6 +189,7 @@ struct MobileHttpState {
     jwks: Arc<Mutex<Option<JwkSet>>>,
     web_auth: Arc<crate::web_auth::WebAuth>,
     jwks_refresh: Arc<tokio::sync::Mutex<Option<std::time::Instant>>>,
+    assistant_oauth: Arc<Mutex<assistant_http::AssistantOAuth>>,
 }
 
 pub(crate) struct MobileHttpHandle {
@@ -220,6 +223,10 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         return Err("Mobile HTTP listener refused a non-loopback address".into());
     }
     let static_dir = config.static_dir.clone();
+    #[cfg(test)]
+    let assistant_oauth=Arc::new(Mutex::new(assistant_http::AssistantOAuth::default()));
+    #[cfg(not(test))]
+    let assistant_oauth=Arc::new(Mutex::new(assistant_http::AssistantOAuth::open(mobile_runtime_config_path()?.with_file_name("mcp-oauth-clients.json"))));
     let state = MobileHttpState {
         core,
         host,
@@ -227,6 +234,7 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         jwks: Arc::new(Mutex::new(None)),
         web_auth,
         jwks_refresh:Arc::new(tokio::sync::Mutex::new(None)),
+        assistant_oauth,
     };
     let watch_api = Router::new()
         .route("/v1/mobile/bridges",post(create_bridge))
@@ -242,6 +250,17 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         .layer(axum::middleware::map_response(watch_no_store));
     let api = Router::new()
         .merge(watch_api)
+        .route("/mcp",post(assistant_http::mcp))
+        .route("/.well-known/oauth-protected-resource/mcp",get(assistant_http::metadata))
+        .route("/.well-known/oauth-protected-resource",get(assistant_http::metadata))
+        .route("/.well-known/oauth-authorization-server",get(assistant_http::authorization_metadata))
+        .route("/oauth/register",post(assistant_http::register))
+        .route("/oauth/authorize",get(assistant_http::authorize))
+        .route("/oauth/token",post(assistant_http::token))
+        .route("/assistant/connect",get(assistant_http::page))
+        .route("/v1/mobile/assistant/consent",get(assistant_http::consent_info).post(assistant_http::consent))
+        .route("/v1/mobile/assistant/grants",get(assistant_http::grants))
+        .route("/v1/mobile/assistant/grants/{gid}/revoke",post(assistant_http::revoke))
         .route("/v1/mobile/auth/session",get(web_auth_session))
         .route("/v1/mobile/auth/pair",post(web_auth_pair).layer(axum::extract::DefaultBodyLimit::max(1024)))
         .route("/v1/mobile/auth/logout",post(web_auth_logout))
@@ -522,7 +541,7 @@ async fn watch_no_store(mut response:axum::response::Response)->axum::response::
 
 #[derive(Deserialize)]
 #[serde(tag="action",rename_all="SCREAMING_SNAKE_CASE")]
-enum WatchCommand { Remove {kind:String,id:String,removed:bool}, Enable { #[serde(rename="threadId")] thread_id:String }, Pause { #[serde(rename="threadId")] thread_id:String }, Threads, Connect }
+enum WatchCommand { MarkSeen {sequence:i64},MarkRead {sequence:i64}, Remove {kind:String,id:String,removed:bool}, Enable { #[serde(rename="threadId")] thread_id:String }, Pause { #[serde(rename="threadId")] thread_id:String }, Threads, Connect }
 #[derive(Deserialize)]
 #[serde(rename_all="camelCase")]
 struct WatchFeedQuery { #[serde(default)] after:i64, #[serde(default)] wait_seconds:u64 }
@@ -538,6 +557,8 @@ async fn codex_watch_command(State(state):State<MobileHttpState>,headers:HeaderM
         match input {
             WatchCommand::Enable{thread_id}=>{crate::codex_watch::enable(&core,&thread_id)?;Ok(serde_json::json!({"ok":true}))},
             WatchCommand::Remove{kind,id,removed}=>{core.store.set_watch_item_removed(&kind,&id,removed)?;Ok(serde_json::json!({"ok":true}))},
+            WatchCommand::MarkSeen{sequence}=>{core.store.mark_codex_watch_event_seen(sequence)?;Ok(serde_json::json!({"ok":true}))},
+              WatchCommand::MarkRead{sequence}=>{core.store.acknowledge_codex_watch_event(sequence)?;Ok(serde_json::json!({"ok":true}))},
             WatchCommand::Pause{thread_id}=>{core.store.pause_codex_watch(&thread_id)?;Ok(serde_json::json!({"ok":true}))},
             WatchCommand::Threads=>serde_json::to_value(crate::role_bridge::catalog(&core)?).map_err(|_|"WATCH_RESPONSE_INVALID".into()),
             WatchCommand::Connect=>serde_json::to_value(crate::host_application::connect_codex_service(&core,std::sync::Arc::new(router_core::events::NullEventSink))?).map_err(|_|"WATCH_RESPONSE_INVALID".into()),

@@ -6,6 +6,25 @@ afterEach(cleanup);
 const event:WatchEvent={sequence:1,threadId:"native-exact",label:"执行对话",cwd:"D:\\project",snapshot:{state:"RESULT_READY",turnId:"turn-exact",itemId:"item-exact",text:"preview"},observedAt:100};
 function fixture(){return {watches:vi.fn().mockResolvedValue([]),connect:vi.fn().mockResolvedValue({}),threads:vi.fn().mockResolvedValue({complete:true,threads:[{id:"native-exact",label:"执行对话",recencyAt:Date.now()/1000,projectProvenance:"项目"}]}),enable:vi.fn().mockResolvedValue({}),pause:vi.fn().mockResolvedValue({}),feed:vi.fn().mockResolvedValue({events:[event],nextCursor:1,hasMore:false}),event:vi.fn().mockResolvedValue({...event,snapshot:{...event.snapshot,text:"完整结果 <script>literal</script>"}}),webUrl:vi.fn().mockResolvedValue("https://router.example/mobile/notifications")} satisfies NotificationApi;}
 describe("independent Codex notifications",()=>{
+ it("acknowledges a push before its list loads with one authoritative request",async()=>{
+  const api=fixture();let open!:(sequence:number)=>void;let initial!:(v:unknown)=>void;
+  api.feed.mockImplementationOnce(()=>new Promise(resolve=>{initial=resolve;})).mockResolvedValue({events:[],hiddenSequences:[1],nextCursor:1,hasMore:false});
+  const markRead=vi.fn().mockResolvedValue({});const onOpen=vi.fn(async(callback:(sequence:number)=>void)=>{open=callback;return()=>{};});
+  render(<CodexNotifications api={{...api,markRead,onOpen}}/>);await waitFor(()=>expect(open).toBeDefined());
+  act(()=>open(1));await waitFor(()=>expect(markRead).toHaveBeenCalledExactlyOnceWith(1));
+  await screen.findByText("完整结果 <script>literal</script>");
+  act(()=>initial({events:[event],nextCursor:1,hasMore:false}));await waitFor(()=>expect(screen.queryByRole("button",{name:"查看完整通知 #1"})).not.toBeInTheDocument());
+ });
+ it("consumes the viewed chat's earlier notifications, updates the badge and retains its watch",async()=>{
+  const api=fixture();const seen=new Set<number>();const rows=Array.from({length:20},(_,i)=>({...event,sequence:i+1}));
+  api.feed.mockImplementation(async()=>({events:rows.filter(e=>!seen.has(e.sequence)),hiddenSequences:[...seen],nextCursor:20,hasMore:false}));
+  api.event.mockImplementation(async(sequence)=>({...event,sequence}));
+  const watch={threadId:event.threadId,label:event.label,cwd:event.cwd,enabled:true,generation:1,snapshot:event.snapshot,checkedAt:Date.now(),errorCode:null};api.watches.mockResolvedValue([watch]);
+  const markRead=vi.fn(async(sequence:number)=>{for(const row of rows)if(row.sequence<=sequence)seen.add(row.sequence);});const count=vi.fn();render(<CodexNotifications api={{...api,markRead}} standalone onCountChange={count}/>);
+  fireEvent.click(await screen.findByRole("button",{name:"查看完整通知 #20"}));await waitFor(()=>expect(markRead).toHaveBeenCalledOnce());await waitFor(()=>expect(count).toHaveBeenLastCalledWith(0));
+  fireEvent.click(screen.getByRole("button",{name:"关闭内容"}));expect(screen.queryByRole("button",{name:/查看完整通知 #/})).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab",{name:"监听对话"}));expect(await screen.findByText(watch.label)).toBeVisible();expect(api.pause).not.toHaveBeenCalled();
+ });
  it("returns focus to the exact invoking notification after reading the original",async()=>{
   const scroll=vi.spyOn(window,"scrollTo").mockImplementation(()=>{});
   const api=fixture();render(<CodexNotifications api={api} standalone/>);
@@ -98,4 +117,10 @@ it('removes only a subscription and restores it without sending to the provider'
  fireEvent.click(screen.getByRole('button',{name:'撤销'}));await screen.findByRole('button',{name:'查看当前内容'});
  await waitFor(()=>expect(api.remove).toHaveBeenLastCalledWith('WATCH','native-exact',false));
  expect(api.enable).not.toHaveBeenCalled();expect(api.pause).not.toHaveBeenCalled();
+});
+
+it('seen cards do not contribute to the badge or return on a fresh Recent visit',async()=>{
+ const api=fixture();api.feed.mockResolvedValue({events:[{...event,seenAt:Date.now()}],nextCursor:1,hasMore:false});const count=vi.fn();
+ render(<CodexNotifications api={api} standalone onCountChange={count}/>);await waitFor(()=>expect(count).toHaveBeenLastCalledWith(0));expect(screen.queryByRole('button',{name:'查看完整通知 #1'})).toBeNull();
+ expect(await screen.findByText('有新结果时，会出现在这里')).toBeVisible();
 });

@@ -1,6 +1,10 @@
 <img src="docs/assets/agbrio-icon.png" width="72" alt="Agbrio">
 
+
 # Agbrio
+
+> **Hosted connection preview:** Windows **preview.16** adds optional redemption-code phone access: activate once on the desktop, then pair your phone. Codes are provided separately; free self-deployment remains available. [Setup and limits](docs/SETUP.md).
+
 
 **Agent Bridge — handoffs between the conversation that manages and the conversation that executes.**
 

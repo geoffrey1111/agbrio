@@ -1,5 +1,7 @@
+import {bridgeNotificationRoute,BRIDGE_NOTIFICATION_MESSAGE} from "./bridgeNotificationRoute";
 import {t as uiText,useLanguage,getLanguage} from "../i18n";
 import {flushSync} from "react-dom";
+import {useDirectorySync} from "../features/workbench/useDirectorySync";
 import {NotificationDeliveryPanel} from "../features/workbench/NotificationDeliveryPanel";
 import {WebSessionLogout} from "./WebLogin";
 import { NotificationAssistantSettings, CodexNotifications } from "../features/workbench/CodexNotifications";
@@ -328,21 +330,28 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
   const explicitChatGptConfirmationRef = useRef(false);
   const [codexThreadId, setCodexThreadId] = useState("");
   const [codexThreadLabel, setCodexThreadLabel] = useState("");
-  const [surface, setSurface] = useState<WorkbenchSurface>(initialSurface);
+  const [surface, setSurface] = useState<WorkbenchSurface>(()=>bridgeNotificationRoute(window.location.href,window.location.origin)?"WORKSPACE":initialSurface);
+  const [bridgeEntryRequest,setBridgeEntryRequest]=useState(0);
   const [roleMode, setRoleMode] = useState(false);
   const [bindingRequest, setBindingRequest] = useState(0);
   const roleApi = useMemo(() => selectedId ? mobileRoleBridgeApi(selectedId) : null, [selectedId]);
   const [attentionTarget, setAttentionTarget] = useState<{ workstreamId: string; sourceId?: string; kind: string } | null>(null);
   const [providerRunStatus, setProviderRunStatus] = useState<MobileProviderRunStatus | null>(null);
   const restoredHandoffRef = useRef<string | null>(null);
-  const notificationTarget = useMemo(() => {
+  const indexLoadGeneration=useRef(0),loadGeneration=useRef(0);
+  const [notificationTarget,setNotificationTarget] = useState(() => {
     const query = new URLSearchParams(window.location.search);
     return {
       workstreamId: query.get("workstream")?.trim() || null,
       replyId: query.get("reply")?.trim() || null,
       handoffId: query.get("handoff")?.trim() || null,
     };
-  }, []);
+  });
+  useEffect(()=>{
+    const receive=(event:MessageEvent)=>{if(event.data?.type!==BRIDGE_NOTIFICATION_MESSAGE||typeof event.data.target!=="string"||event.origin&&event.origin!==window.location.origin)return;const route=bridgeNotificationRoute(event.data.target,window.location.origin);if(!route)return;
+      indexLoadGeneration.current++;loadGeneration.current++;setNotificationTarget(route);setAttentionTarget(null);setSelectedId(null);setSnapshot(null);setObservations([]);setSurface("WORKSPACE");setBridgeEntryRequest(v=>v+1);history.replaceState({...history.state,aiwrBridgeEntry:{id:route.workstreamId,url:new URL(event.data.target,window.location.origin).href}},"",event.data.target);event.ports?.[0]?.postMessage({accepted:true});event.ports?.[0]?.close?.();
+    };navigator.serviceWorker?.addEventListener("message",receive);return()=>navigator.serviceWorker?.removeEventListener("message",receive);
+  },[]);
 
   const refreshPushSetup = useCallback(async () => {
     const [browserState, routerState] = await Promise.all([
@@ -390,7 +399,9 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
   };
 
   const refreshIndex = useCallback(async () => {
-    const next = await mobileApi.workstreams();
+    const ticket=++indexLoadGeneration.current;
+    let next:MobileWorkstream[];try{next=await mobileApi.workstreams();}catch(cause){if(ticket!==indexLoadGeneration.current)return;throw cause;}
+    if(ticket!==indexLoadGeneration.current)return;
     setAccessAuthenticationRequired(false);
     setIndex(next);
     if (notificationTarget.replyId && !notificationTarget.workstreamId) {
@@ -399,7 +410,7 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
       return;
     }
     if (notificationTarget.workstreamId) {
-      if (!next.some((item) => item.id === notificationTarget.workstreamId)) {
+      if (!next.some((item) => item.id === notificationTarget.workstreamId&&(!item.status||lifecycleOf({status:item.status,trashedAt:item.trashedAt})==="ACTIVE"))) {
         setSelectedId(null);
         setSnapshot(null);
         setObservations([]);
@@ -412,7 +423,11 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
     setSelectedId((current) => current ?? next[0]?.id ?? null);
   }, [notificationTarget]);
 
+  useDirectorySync(async()=>{setIndex(await mobileApi.workstreams());});
+
   const load = useCallback(async (workstreamId: string, preserveExplicitChatGptCandidate = false) => {
+    const ticket=++loadGeneration.current;
+    try {
     const draftLoadGeneration = beginDraftLoad(workstreamId);
     setSelectedId(workstreamId);
     if (!preserveExplicitChatGptCandidate) {
@@ -429,6 +444,8 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
     // Workstream projection is pending.
     setObservations([]);
     const nextSnapshot=await mobileApi.workstream(workstreamId);
+    if(ticket!==loadGeneration.current)return;
+    if(!LEGACY_WORKBENCH_DETAILS&&nextSnapshot.selectedWorkstreamId!==workstreamId)throw Error("通知指定的工作区当前不可用，未回退到其他工作区。");
     const hasCodex=LEGACY_WORKBENCH_DETAILS&&Boolean(nextSnapshot.activeCodexEndpoint);
     const hasProvider=LEGACY_WORKBENCH_DETAILS&&(hasCodex||Boolean(nextSnapshot.activeChatgptEndpoint));
     const [history, nextGoal, nextDraft, nextObservations, nextReviewResults, nextProjectLinks, nextCodexRequests] = await Promise.all([
@@ -440,6 +457,7 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
       mobileApi.projectLinks(workstreamId).catch(() => []),
       hasCodex&&typeof mobileApi.codexRequests === "function" ? mobileApi.codexRequests(workstreamId).catch(() => []) : Promise.resolve([]),
     ]);
+    if(ticket!==loadGeneration.current)return;
     setSnapshot(nextSnapshot);
     setHandoff(recoverPendingHandoff(nextSnapshot, workstreamId));
     setCodexHistory(history.history);
@@ -447,7 +465,7 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
     setReviewResults(nextReviewResults);
     setProjectLinks(nextProjectLinks);
     setCodexRequests(nextCodexRequests);
-    if (notificationTarget.replyId && workstreamId === notificationTarget.workstreamId && !nextObservations.some((item) => item.id === notificationTarget.replyId)) {
+    if (LEGACY_WORKBENCH_DETAILS&&notificationTarget.replyId && workstreamId === notificationTarget.workstreamId && !nextObservations.some((item) => item.id === notificationTarget.replyId)) {
       setError("通知指定的精确回复当前不可读或不存在，未显示其他回复。");
     }
     hydrateDraft(workstreamId, nextDraft, draftLoadGeneration);
@@ -463,6 +481,7 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
       controllableActions: nextGoal.status === "active" ? ["PAUSE", "DELETE", ...(nextGoal.activeTurnId ? ["STOP_TURN" as const] : [])] : nextGoal.status === "paused" ? ["RESUME", "DELETE"] : ["DELETE"],
     } : endpoint ? { threadId: endpoint.externalId, status: "NONE", readAt: Date.now(), controllableActions: [] } : null);
     return nextSnapshot;
+    }catch(cause){if(ticket!==loadGeneration.current)return;throw cause;}
   }, [beginDraftLoad, hydrateDraft, notificationTarget]);
 
   useEffect(() => {
@@ -619,6 +638,7 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
         }
         if (!index.some((item) => item.id === workstreamId)) throw new Error("此手机交接链接指定的工作区当前不可用，未切换到其他工作区。");
         const restoredSnapshot = await load(workstreamId);
+        if(!restoredSnapshot)return;
         if (cancelled) return;
         const persistedReview = direction === "CODEX_TO_CHATGPT"
           ? restoredSnapshot.mobileCodexOutboundReviews?.find(item => item.actionId === actionId)
@@ -1139,7 +1159,7 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
     roleCompatible={roleMode}
     globalActions={<CodexNotifications onDetailChange={setNotificationDetail} onCountChange={setNotificationCount} api={webNotificationApi} workbenchPage={{active:surface==="NOTIFICATIONS",open:()=>setSurface("NOTIFICATIONS")}}/>}
     criticalNotice={(browserAuthenticationRequired) ? <BridgeStatus recoveryOnly name={selected?.name || "AI Work Router"} recoveryError={error} decision={snapshot?.activeChatgptEndpoint} execution={snapshot?.activeCodexEndpoint} authenticationRequired={browserAuthenticationRequired} nextAction={items.find(item => item.id === selectedId)?.attentionItems?.[0]?.message} onManage={() => setSurface("PROJECT")} onOpenBrowser={() => mobileApi.openHostChatGptBrowserSetup().then(() => { setError(null); return true; }).catch(cause => { setError(securityRecoveryError(cause, "OPEN")); return false; })} onAuthenticationCompleted={() => mobileApi.confirmChatGptAuthenticationCompleted().then(() => setBrowserAuthenticationRequired(false)).catch(cause => setError(securityRecoveryError(cause, "COMPLETE")))} /> : null}
-    bridgePanel={<>{!roleMode && (selected && !(browserAuthenticationRequired) ? <BridgeStatus name={selected?.name || "AI Work Router"} recoveryError={error} decision={snapshot?.activeChatgptEndpoint} execution={snapshot?.activeCodexEndpoint} authenticationRequired={browserAuthenticationRequired} nextAction={items.find(item => item.id === selectedId)?.attentionItems?.[0]?.message} onManage={requestBinding} onOpenBrowser={() => mobileApi.openHostChatGptBrowserSetup().then(() => { setError(null); return true; }).catch(cause => { setError(securityRecoveryError(cause, "OPEN")); return false; })} onAuthenticationCompleted={() => mobileApi.confirmChatGptAuthenticationCompleted().then(() => setBrowserAuthenticationRequired(false)).catch(cause => setError(securityRecoveryError(cause, "COMPLETE")))} /> : null)} {selectedId && roleApi && <RoleBridgePanel key={selectedId} workstreamId={selectedId} workstreamName={items.find(item => item.id === selectedId)?.name} api={roleApi} bindingRequest={bindingRequest} externalBindingEntry={Boolean(selected && !browserAuthenticationRequired)} onModeChange={setRoleMode} />}</>}
+    bridgePanel={<>{!roleMode && (selected && !(browserAuthenticationRequired) ? <BridgeStatus name={selected?.name || "AI Work Router"} recoveryError={error} decision={snapshot?.activeChatgptEndpoint} execution={snapshot?.activeCodexEndpoint} authenticationRequired={browserAuthenticationRequired} nextAction={items.find(item => item.id === selectedId)?.attentionItems?.[0]?.message} onManage={requestBinding} onOpenBrowser={() => mobileApi.openHostChatGptBrowserSetup().then(() => { setError(null); return true; }).catch(cause => { setError(securityRecoveryError(cause, "OPEN")); return false; })} onAuthenticationCompleted={() => mobileApi.confirmChatGptAuthenticationCompleted().then(() => setBrowserAuthenticationRequired(false)).catch(cause => setError(securityRecoveryError(cause, "COMPLETE")))} /> : null)} {selectedId && roleApi && <RoleBridgePanel key={selectedId} workstreamId={selectedId} workstreamName={items.find(item => item.id === selectedId)?.name} api={roleApi} readerActive={surface==="WORKSPACE"} entryRequest={bridgeEntryRequest} bindingRequest={bindingRequest} externalBindingEntry={Boolean(selected && !browserAuthenticationRequired)} onModeChange={setRoleMode} />}</>}
     draft={workbenchDraft}
     handoff={handoff}
     goal={goal}
@@ -1147,7 +1167,7 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
     runtime={{ notice: runtimeAttentionNotice, checks: [{ id: "router-core", label: "Router Core", state: snapshot ? "READY" : "CHECKING", detail: snapshot ? "已通过受认证的手机语义 API 读取当前工作区" : "正在读取受认证的手机语义 API" }, { id: "providers", label: "Provider 连接", state: "WARNING", detail: "按选中精确工作区读取；手机端不会直接连接 Provider" }] }}
     surface={surface} onSurfaceChange={(next) => setSurface(next === "PROJECT_HOME" ? "PROJECT" : next)} projectPanel={connectionPanel} hasCodexEndpoint={Boolean(snapshot?.activeCodexEndpoint)} codexHistoryPanel={codexHistoryPanel} chatgptResultsPanel={chatgptResultsPanel} codexResultsPanel={codexResultsPanel} codexAttachmentsPanel={codexAttachmentsPanel} codexFeedbackPanel={codexFeedbackPanel} codexRequestPanel={codexRequestPanel} providerRunStatusPanel={providerRunStatusPanel} codexResultCount={codexResults.length} codexRequestCount={codexRequests.filter((request) => !request.responseSent).length} mobileWorkspaceMenu={<><WebSessionLogout/>{mobileWorkspaceMenu}</>} workspaceNotice={manualCheckNotice}
     handoffDestinationActionLabel="核对并显示精确 ChatGPT 链接" onOpenHandoffDestination={(id) => { void resolveManualHandoffDestination(id); }}
-    onSelectWorkstream={(id) => { setAttentionTarget(null); setSurface("WORKSPACE"); void load(id).catch((cause) => setError(String(cause))); }}
+    onSelectWorkstream={(id) => { setNotificationTarget({workstreamId:null,replyId:null,handoffId:null});setAttentionTarget(null); setSurface("WORKSPACE"); void load(id).catch((cause) => setError(String(cause))); }}
     onSelectAttention={(workstreamId, attention) => {
       setAttentionTarget({ workstreamId, sourceId: attention.sourceId, kind: attention.kind });
       setProviderRunStatus(null);

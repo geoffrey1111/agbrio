@@ -2,6 +2,8 @@ import {flushSync} from "react-dom";
 import {NotificationDeliveryPanel} from "../features/workbench/NotificationDeliveryPanel";
 import {SharedCodexConnection} from "../features/workbench/SharedCodexConnection";
 import {DesktopWebAccess} from "../features/workbench/DesktopWebAccess";
+import {AssistantSettings} from "../features/workbench/AssistantSettings";
+import {useDirectorySync} from "../features/workbench/useDirectorySync";
 import { NotificationAssistantSettings, CodexNotifications } from "../features/workbench/CodexNotifications";
 import { desktopNotificationApi } from "../features/workbench/notificationApi";
 import { RoleBridgePanel } from "../features/workbench/RoleBridgePanel";
@@ -271,6 +273,10 @@ export function UnifiedWorkbenchHost({initialSurface="BRIDGES"}:{initialSurface?
   }, [refreshDashboard]);
 
   useEffect(() => { void refreshIndex().catch((error) => setRuntimeError(String(error))); }, [refreshIndex]);
+  useDirectorySync(async()=>{
+    const next=await codexApi.dashboardProjection();setDashboard(next);
+    setSnapshot(current=>current?{...current,workstreams:next.workstreams.map(item=>item.workstream)}:current);
+  });
   useEffect(() => {
     let stopped = false;
     let inFlight = false;
@@ -724,9 +730,11 @@ export function UnifiedWorkbenchHost({initialSurface="BRIDGES"}:{initialSurface?
     // This is a presentation preference, not endpoint routing. Persist the
     // exact local Workstream identity so a restart cannot silently return to a
     // same-named predecessor.
-    await codexApi.selectWorkspace(workstream.projectId, workstreamId);
     setSelectedCodexObservation((current) => current?.workstreamId === workstreamId ? current : null);
-    return loadSelected(workstreamId);
+    // Choose/clear the reader before a deleted predecessor can redirect
+    // WORKSPACE back to the directory while selection IPC is pending.
+    const [loaded]=await Promise.all([loadSelected(workstreamId),codexApi.selectWorkspace(workstream.projectId, workstreamId)]);
+    return loaded;
   }, [loadSelected, snapshot?.workstreams,dashboard?.workstreams]);
 
   useEffect(() => {
@@ -1446,9 +1454,9 @@ export function UnifiedWorkbenchHost({initialSurface="BRIDGES"}:{initialSurface?
     selectedWorkstreamId={selectedWorkstreamId}
     reply={reply}
     roleCompatible={roleMode}
-    runtimeAddon={<SharedCodexConnection/>} onOpenWebAccess={()=>setWebAccessRequest(v=>v+1)} globalActions={<><CodexNotifications onDetailChange={setNotificationDetail} onCountChange={setNotificationCount} api={desktopNotificationApi} workbenchPage={{active:surface==="NOTIFICATIONS",open:()=>setSurface("NOTIFICATIONS")}}/><DesktopWebAccess openRequest={webAccessRequest}/></>}
+    assistantPanel={<AssistantSettings/>} runtimeAddon={<SharedCodexConnection/>} onOpenWebAccess={()=>setWebAccessRequest(v=>v+1)} globalActions={<><CodexNotifications onDetailChange={setNotificationDetail} onCountChange={setNotificationCount} api={desktopNotificationApi} workbenchPage={{active:surface==="NOTIFICATIONS",open:()=>setSurface("NOTIFICATIONS")}}/><DesktopWebAccess openRequest={webAccessRequest}/></>}
     criticalNotice={(chatGptAccountSecurityRequired || hostEnvironment?.chatgptBrowserMode === "AUTH_REQUIRED") ? <BridgeStatus recoveryOnly name={selected?.name || "AI Work Router"} recoveryError={runtimeError} showErrors decision={selectedChatGptEndpoint} execution={selectedCodexEndpoint} authenticationRequired={chatGptAccountSecurityRequired || hostEnvironment?.chatgptBrowserMode === "AUTH_REQUIRED"} executionConnected={codexConnected} nextAction={items.find(item => item.id === selectedWorkstreamId)?.attentionItems?.[0]?.message} onManage={() => openProject()} onOpenBrowser={openHostBrowserSetup} onAuthenticationCompleted={() => codexApi.confirmChatGptAuthenticationCompleted().then(() => { setChatGptAccountSecurityRequired(false); return refreshHostEnvironment(); }).catch(error => setRuntimeError(securityRecoveryError(error, "COMPLETE")))} /> : null}
-    bridgePanel={<>{!roleMode && (selected && !(chatGptAccountSecurityRequired || hostEnvironment?.chatgptBrowserMode === "AUTH_REQUIRED") ? <BridgeStatus name={selected?.name || "AI Work Router"} recoveryError={runtimeError} showErrors decision={selectedChatGptEndpoint} execution={selectedCodexEndpoint} authenticationRequired={chatGptAccountSecurityRequired || hostEnvironment?.chatgptBrowserMode === "AUTH_REQUIRED"} executionConnected={codexConnected} nextAction={items.find(item => item.id === selectedWorkstreamId)?.attentionItems?.[0]?.message} onManage={requestBinding} onOpenBrowser={openHostBrowserSetup} onAuthenticationCompleted={() => codexApi.confirmChatGptAuthenticationCompleted().then(() => { setChatGptAccountSecurityRequired(false); return refreshHostEnvironment(); }).catch(error => setRuntimeError(securityRecoveryError(error, "COMPLETE")))} /> : null)} {selectedWorkstreamId && <RoleBridgePanel key={selectedWorkstreamId} workstreamId={selectedWorkstreamId} workstreamName={items.find(item => item.id === selectedWorkstreamId)?.name} api={desktopRoleBridgeApi} onOpenConnection={()=>setSurface("RUNTIME")} bindingRequest={bindingRequest} externalBindingEntry={Boolean(selected && !(chatGptAccountSecurityRequired || hostEnvironment?.chatgptBrowserMode === "AUTH_REQUIRED"))} onModeChange={setRoleMode} onBindingsChanged={() => { void refreshIndex(); }} />}</>}
+    bridgePanel={<>{!roleMode && (selected && !(chatGptAccountSecurityRequired || hostEnvironment?.chatgptBrowserMode === "AUTH_REQUIRED") ? <BridgeStatus name={selected?.name || "AI Work Router"} recoveryError={runtimeError} showErrors decision={selectedChatGptEndpoint} execution={selectedCodexEndpoint} authenticationRequired={chatGptAccountSecurityRequired || hostEnvironment?.chatgptBrowserMode === "AUTH_REQUIRED"} executionConnected={codexConnected} nextAction={items.find(item => item.id === selectedWorkstreamId)?.attentionItems?.[0]?.message} onManage={requestBinding} onOpenBrowser={openHostBrowserSetup} onAuthenticationCompleted={() => codexApi.confirmChatGptAuthenticationCompleted().then(() => { setChatGptAccountSecurityRequired(false); return refreshHostEnvironment(); }).catch(error => setRuntimeError(securityRecoveryError(error, "COMPLETE")))} /> : null)} {selectedWorkstreamId && <RoleBridgePanel key={selectedWorkstreamId} workstreamId={selectedWorkstreamId} workstreamName={items.find(item => item.id === selectedWorkstreamId)?.name} api={desktopRoleBridgeApi} readerActive={surface==="WORKSPACE"} onOpenConnection={()=>setSurface("RUNTIME")} bindingRequest={bindingRequest} externalBindingEntry={Boolean(selected && !(chatGptAccountSecurityRequired || hostEnvironment?.chatgptBrowserMode === "AUTH_REQUIRED"))} onModeChange={setRoleMode} onBindingsChanged={() => { void refreshIndex(); }} />}</>}
     draft={workbenchDraft}
     handoff={handoff}
     goal={goal}

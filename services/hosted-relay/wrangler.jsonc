@@ -1,0 +1,12 @@
+{
+  "name": "agbrio-hosted-relay",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "durable_objects": {"bindings": [
+    {"name": "CONTROL", "class_name": "Control"},
+    {"name": "TENANTS", "class_name": "Tenant"}
+  ]},
+  "migrations": [{"tag":"v1","new_sqlite_classes":["Control","Tenant"]}],
+  "vars": {"CONTROL_HOST":"connect.example.invalid","ZONE_ROOT":"example.invalid"}
+}
