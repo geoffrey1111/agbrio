@@ -795,5 +795,9 @@
   "来源回复": "Source replies",
   "选择要转发的回复": "Choose a reply to forward",
   "{0} 条回复": "{0} replies",
-  "{0} 条回复，按时间排列。": "{0} replies in time order."
+  "{0} 条回复，按时间排列。": "{0} replies in time order.",
+  "任务进行中，仍然重启？": "Restart while a task is running?",
+  "将安装 Agbrio {0}。重启期间同步与回执记录会暂停，由 Agbrio 启动的任务可能中断。共享 Codex 不会重启。": "Agbrio {0} will be installed. Sync and receipt recording will pause during restart; tasks started by Agbrio may be interrupted. Shared Codex will not restart.",
+  "安装前会备份数据。交接结果不确定时，请恢复后核对；不会自动重发。": "Data will be backed up before installation. Verify any uncertain handoff after reconnecting; it will not be resent automatically.",
+  "仍然重启并安装": "Restart and install anyway"
 }

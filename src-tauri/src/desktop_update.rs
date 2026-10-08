@@ -55,12 +55,18 @@ pub(crate) async fn desktop_update_download(app:AppHandle,version:String,state:S
  if data.len() as u64>MAX_PACKAGE{return Err(fault(&state,"UPDATE_PACKAGE_INVALID"));}let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;c.view.state="READY".into();c.view.downloaded=data.len() as u64;c.bytes=Some(data);Ok(c.view.clone())
 }
 #[tauri::command]
-pub(crate) fn desktop_update_install(version:String,state:State<'_,UpdateState>,core:State<'_,RouterCore>)->Result<(),String>{
+pub(crate) fn desktop_update_install(version:String,confirm_restart:Option<bool>,state:State<'_,UpdateState>,core:State<'_,RouterCore>)->Result<(),String>{
  let _busy=guard(&state)?;
- {let s=core.session.lock().map_err(|_|"UPDATE_BUSY")?;if s.codex_adapter_borrowed||s.connecting||s.adapter.as_ref().is_some_and(|a|a.has_owned_active_turns()){return Err("UPDATE_TASK_RUNNING".into());}}
- let (update,data)={let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;if c.view.version.as_deref()!=Some(&version)||c.view.state!="READY"{return Err("UPDATE_CHANGED".into());}let update=c.candidate.clone().ok_or("UPDATE_CHANGED")?;let data=c.bytes.take().ok_or("UPDATE_CHANGED")?;c.view.state="INSTALLING".into();(update,data)};
+ let active={let s=core.session.lock().map_err(|_|"UPDATE_BUSY")?;s.codex_adapter_borrowed||s.connecting||s.adapter.as_ref().is_some_and(|a|a.has_owned_active_turns())};
+ let (update,data)={let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;install_gate(&version,c.view.version.as_deref(),&c.view.state,c.candidate.is_some()&&c.bytes.is_some(),active,confirm_restart.unwrap_or(false))?;let update=c.candidate.clone().ok_or("UPDATE_CHANGED")?;let data=c.bytes.take().ok_or("UPDATE_CHANGED")?;c.view.state="INSTALLING".into();(update,data)};
  if core.store.backup_before_application_update().is_err(){if let Ok(mut c)=state.cache.lock(){c.bytes=Some(data);c.view.state="READY".into();}return Err("UPDATE_BACKUP_FAILED".into());}
  if update.install(&data).is_err(){if let Ok(mut c)=state.cache.lock(){c.bytes=Some(data);c.view.state="READY".into();}return Err("UPDATE_INSTALL_FAILED".into());}Ok(())
+}
+// Desktop owner confirmation overrides only the active-task gate, never the
+// verified package/version gate or the mandatory backup before installation.
+fn install_gate(version:&str,cached_version:Option<&str>,state:&str,verified:bool,active:bool,confirmed:bool)->Result<(),String>{
+ if cached_version!=Some(version)||state!="READY"||!verified{return Err("UPDATE_CHANGED".into());}
+ if active&&!confirmed{return Err("UPDATE_TASK_RUNNING".into());}Ok(())
 }
 #[tauri::command]
 pub(crate) fn desktop_update_open_release(state:State<'_,UpdateState>)->Result<(),String>{
@@ -70,6 +76,12 @@ pub(crate) fn desktop_update_open_release(state:State<'_,UpdateState>)->Result<(
 }
 #[cfg(test)]mod tests{
  use super::*;
+ #[test]fn active_restart_requires_confirmation_for_the_exact_verified_candidate(){
+  assert_eq!(install_gate("0.1.3",Some("0.1.3"),"READY",true,true,false),Err("UPDATE_TASK_RUNNING".into()));
+  assert!(install_gate("0.1.3",Some("0.1.3"),"READY",true,true,true).is_ok());
+  assert!(install_gate("0.1.3",Some("0.1.3"),"READY",true,false,false).is_ok());
+  for (version,state,verified) in [(Some("0.1.4"),"READY",true),(Some("0.1.3"),"DOWNLOADING",true),(Some("0.1.3"),"READY",false),(None,"READY",true)]{assert_eq!(install_gate("0.1.3",version,state,verified,true,true),Err("UPDATE_CHANGED".into()));}
+ }
  fn release(tag:&str,draft:bool)->Release{Release{tag_name:tag.into(),draft,body:None,assets:vec![]}}
  #[test]fn version_selection_ignores_drafts_and_preserves_prerelease_order(){let rows=vec![release("v0.1.0-preview.16",false),release("v0.1.1",false),release("v9.0.0",true),release("invalid",false)];assert_eq!(choose_release(&rows).unwrap().tag_name,"v0.1.1");}
  #[test]fn only_the_pinned_release_can_supply_an_installer(){for u in ["http://github.com/geoffrey1111/agbrio/releases/download/v0.1.1/a.exe","https://example.test/a.exe","https://github.com/other/repo/releases/download/v0.1.1/a.exe","https://github.com/geoffrey1111/agbrio/releases/download/v0.1.0/a.exe","https://github.com/geoffrey1111/agbrio/releases/download/v0.1.1/a.exe?x=1"]{assert!(!release_asset_url("v0.1.1",&url::Url::parse(u).unwrap()));}assert!(release_asset_url("v0.1.1",&url::Url::parse("https://github.com/geoffrey1111/agbrio/releases/download/v0.1.1/Agbrio.exe").unwrap()));}
