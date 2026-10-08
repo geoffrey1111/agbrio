@@ -53,7 +53,10 @@ fn redirect_allowed(value:&str)->bool{
 }
 pub(super) async fn register(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<Registration>)->Result<(StatusCode,Json<serde_json::Value>),ApiError>{
  boundary(&headers,&state)?;
- if input.client_name.trim().is_empty()||input.client_name.len()>120||input.redirect_uris.is_empty()||input.redirect_uris.len()>8||!input.redirect_uris.iter().all(|v|redirect_allowed(v))||input.token_endpoint_auth_method.as_deref().is_some_and(|m|m!="none")||input.grant_types.as_ref().is_some_and(|g|g!=&["authorization_code"])||input.response_types.as_ref().is_some_and(|g|g!=&["code"]){return Err(bad());}
+ // Codex/rmcp requests authorization_code + refresh_token even when the
+ // server advertises authorization_code only. RFC7591 allows negotiation:
+ // return only the supported grant below; never issue/advertise refresh tokens.
+ if input.client_name.trim().is_empty()||input.client_name.len()>120||input.redirect_uris.is_empty()||input.redirect_uris.len()>8||!input.redirect_uris.iter().all(|v|redirect_allowed(v))||input.token_endpoint_auth_method.as_deref().is_some_and(|m|m!="none")||input.grant_types.as_ref().is_some_and(|g|!g.iter().any(|v|v=="authorization_code")||g.len()>2||g.iter().any(|v|v!="authorization_code"&&v!="refresh_token")||(g.len()==2&&g[0]==g[1]))||input.response_types.as_ref().is_some_and(|g|g!=&["code"]){return Err(bad());}
  let mut auth=oauth(&state)?;auth.prune();if auth.clients.len()>=128{return Err(ApiError(StatusCode::TOO_MANY_REQUESTS,"ASSISTANT_CLIENT_LIMIT".into()));}
  let id=uuid::Uuid::new_v4().to_string();auth.clients.insert(id.clone(),Client{name:input.client_name.clone(),redirects:input.redirect_uris.clone(),expires:clock()+3600});
  if let Err(e)=auth.save(){auth.clients.remove(&id);return Err(e);}

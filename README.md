@@ -3,7 +3,7 @@
 
 # Agbrio
 
-> **Windows preview0.1.4:** [Download the signed-update release](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.4). Includes single-side Bridge activity, stopped-only review attention, earlier result selection, native Codex questions/follow-up and Settings → Check for updates. Optional hosted codes and free self-hosting remain. [Changes and limits](docs/RELEASE_0.1.4.md).
+> **Windows preview0.1.5:** [Download the signed-update release](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.5). Includes single-side Bridge activity, stopped-only review attention, earlier result selection, native Codex questions/follow-up and Settings → Check for updates. Optional hosted codes and free self-hosting remain. [Changes and limits](docs/RELEASE_0.1.5.md).
 
 
 
@@ -19,7 +19,7 @@ The phone is a convenient place to review and confirm that exchange. The central
 
 ## Release status
 
-**[v0.1.4](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.4) — MIT-licensed Windows alpha.** Download the installer and checksums, or build the included source. Clean Windows installation and native first-setup controls have passed automated validation, separately from the real remote Codex/file handoff. App UI supports English, Simplified Chinese and Traditional Chinese; switch in Settings → Language. Mac and other agents remain future work. [Install and pair](docs/SETUP.md).
+**[v0.1.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.5) — MIT-licensed Windows alpha.** Download the installer and checksums, or build the included source. Clean Windows installation and native first-setup controls have passed automated validation, separately from the real remote Codex/file handoff. App UI supports English, Simplified Chinese and Traditional Chinese; switch in Settings → Language. Mac and other agents remain future work. [Install and pair](docs/SETUP.md).
 
 ## For an existing two-conversation workflow
 
