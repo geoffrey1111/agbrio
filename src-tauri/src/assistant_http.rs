@@ -8,6 +8,16 @@ use std::collections::HashMap;
 
 const SCOPE:&str="agbrio:handoff";
 const INSTANCE_SCOPE:&str="agbrio:instance";
+// OAuth scope is a space-delimited set, not one enum value. A client may
+// request both advertised scopes; owner consent still selects one existing
+// grant, and the token returns only that grant's scope (never their union).
+fn valid_scope_request(scope:&str)->bool{
+ !scope.is_empty()&&scope.len()<=128&&scope.split(' ').all(|s|s==SCOPE||s==INSTANCE_SCOPE)
+}
+fn scope_allows_grant(scope:&str,grant_scope:&str)->bool{
+ let required=match grant_scope{"INSTANCE"=>INSTANCE_SCOPE,"BRIDGE"=>SCOPE,_=>return false};
+ scope.is_empty()||scope.split(' ').any(|s|s==required)
+}
 fn clock()->u64{std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()}
 fn secret()->String{format!("{}{}",uuid::Uuid::new_v4().simple(),uuid::Uuid::new_v4().simple())}
 fn digest(s:&str)->String{format!("{:x}",Sha256::digest(s.as_bytes()))}
@@ -65,7 +75,7 @@ pub(super) async fn register(State(state):State<MobileHttpState>,headers:HeaderM
 #[derive(Deserialize)]pub(super) struct Authorization{client_id:String,redirect_uri:String,response_type:String,code_challenge:String,code_challenge_method:String,state:String,resource:String,scope:Option<String>}
 pub(super) async fn authorize(State(state):State<MobileHttpState>,headers:HeaderMap,Query(input):Query<Authorization>)->Result<Redirect,ApiError>{
  boundary(&headers,&state)?;let mut auth=oauth(&state)?;auth.prune();let client=auth.clients.get(&input.client_id).cloned().ok_or_else(bad)?;
- if input.response_type!="code"||input.code_challenge_method!="S256"||input.code_challenge.len()!=43||!input.code_challenge.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'_')||!client.redirects.contains(&input.redirect_uri)||input.resource!=resource(&state)||input.scope.as_deref().is_some_and(|s|s!=SCOPE&&s!=INSTANCE_SCOPE)||input.state.is_empty()||input.state.len()>2048{return Err(bad());}
+ if input.response_type!="code"||input.code_challenge_method!="S256"||input.code_challenge.len()!=43||!input.code_challenge.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'_')||!client.redirects.contains(&input.redirect_uri)||input.resource!=resource(&state)||input.scope.as_deref().is_some_and(|s|!valid_scope_request(s))||input.state.is_empty()||input.state.len()>2048{return Err(bad());}
  if auth.intents.len()>=128{return Err(ApiError(StatusCode::TOO_MANY_REQUESTS,"ASSISTANT_AUTHORIZATION_LIMIT".into()));}
  let id=secret();auth.intents.insert(id.clone(),Intent{client,client_id:input.client_id,redirect:input.redirect_uri,challenge:input.code_challenge,state:input.state,resource:input.resource,scope:input.scope.unwrap_or_default(),expires:clock()+300});
  Ok(Redirect::to(&format!("/assistant/connect?request={id}")))
@@ -81,7 +91,7 @@ pub(super) async fn page(State(state):State<MobileHttpState>,headers:HeaderMap)-
 pub(super) async fn consent_info(State(state):State<MobileHttpState>,headers:HeaderMap,Query(input):Query<IntentQuery>)->ApiResult<serde_json::Value>{
  authenticated(&headers,&state,false).await?;
  let intent={let mut auth=oauth(&state)?;auth.prune();auth.intents.get(&input.request).cloned().ok_or_else(bad)?};
- let grants=state.core.store.assistant_grants().map_err(core_error)?.into_iter().filter(|g|state.core.store.assistant_grant(&g.id).is_ok()).filter(|g|intent.scope.is_empty()||(intent.scope==INSTANCE_SCOPE&&g.scope=="INSTANCE")||(intent.scope==SCOPE&&g.scope=="BRIDGE")).map(|g|{
+ let grants=state.core.store.assistant_grants().map_err(core_error)?.into_iter().filter(|g|state.core.store.assistant_grant(&g.id).is_ok()).filter(|g|scope_allows_grant(&intent.scope,&g.scope)).map(|g|{
     let b=if g.scope=="INSTANCE"{None}else{Some(state.core.store.role_bridge(&g.workstream_id)?)};
     Ok(serde_json::json!({"grant":g,"bindings":b,"scope":g.scope}))
  }).collect::<Result<Vec<_>,String>>().map_err(core_error)?;
@@ -94,7 +104,7 @@ pub(super) async fn consent(State(state):State<MobileHttpState>,headers:HeaderMa
  let mut redirect=url::Url::parse(&intent.redirect).map_err(|_|bad())?;
  if input.allow{
     let gid=input.grant_id.ok_or_else(bad)?;let g=state.core.store.assistant_grant(&gid).map_err(core_error)?;
-    if (intent.scope==INSTANCE_SCOPE&&g.scope!="INSTANCE")||(intent.scope==SCOPE&&g.scope!="BRIDGE"){return Err(bad());}
+    if !scope_allows_grant(&intent.scope,&g.scope){return Err(bad());}
     if let Some(c)=auth.clients.get_mut(&intent.client_id){c.expires=clock()+90*86400;}auth.save()?;
     let code=secret();redirect.query_pairs_mut().append_pair("code",&code).append_pair("state",&intent.state);
     let mut code_intent=intent;code_intent.expires=clock()+60;

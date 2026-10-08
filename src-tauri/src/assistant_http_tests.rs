@@ -165,6 +165,37 @@ fn decision_gap_answer_and_send_error_retain_exact_receipt_no_false_delivery(){
  assert!(AssistantOAuth::open(path.clone()).clients.contains_key("exact-client"));std::fs::write(&path,b"broken").unwrap();assert!(AssistantOAuth::open(path).fault);
 }
 
+#[test]fn codex_combined_scopes_preserve_the_owner_selected_grant_over_real_http(){
+ let(d,core,bridge_gid,_)=fixture();
+ let instance_gid=core.store.connect_assistant_instance(router_core::store::assistant::AssistantConnectionInput{label:"Whole app scope QA".into(),expires_at:now_ms()+600000}).unwrap().id;
+ let host=crate::HostRuntime::default();let runtime=tokio::runtime::Runtime::new().unwrap();
+ runtime.block_on(async{
+  let web=Arc::new(crate::web_auth::WebAuth::open(None).unwrap());let pairing=web.issue().unwrap();let owner=web.exchange(&pairing.code,"Scope QA owner",false).unwrap();let cookie=format!("{}={owner}",crate::web_auth::COOKIE);
+  let handle=start_with_web_auth(core.clone(),config(d.path()),host.clone(),web).await.unwrap();let base=format!("http://{}",handle.address);let c=client();
+  let request=|path:&str|c.post(format!("{base}{path}")).header("host","assistant.fixture.invalid");
+  let registration=request("/oauth/register").json(&json!({"client_name":"Codex scope QA","redirect_uris":["http://127.0.0.1:4567/callback/fixture"],"token_endpoint_auth_method":"none","grant_types":["authorization_code","refresh_token"],"response_types":["code"]})).send().await.unwrap();assert_eq!(registration.status(),StatusCode::CREATED);
+  let registered:Value=registration.json().await.unwrap();let cid=registered["client_id"].as_str().unwrap();let verifier="a".repeat(64);let challenge=Base64UrlUnpadded::encode_string(&Sha256::digest(verifier.as_bytes()));let res="https://assistant.fixture.invalid/mcp";
+  let auth_url=|scope:&str|{let mut u=url::Url::parse(&format!("{base}/oauth/authorize")).unwrap();u.query_pairs_mut().extend_pairs([("client_id",cid),("redirect_uri","http://127.0.0.1:4567/callback/fixture"),("response_type","code"),("code_challenge",&challenge),("code_challenge_method","S256"),("state","scope-fixture-state"),("resource",res),("scope",scope)]);u};
+  for scope in ["agbrio:handoff agbrio:instance","agbrio:instance agbrio:handoff"]{
+   for (gid,expected_scope,expected_tools) in [(&bridge_gid,SCOPE,8),(&instance_gid,INSTANCE_SCOPE,16)]{
+    let authorization=c.get(auth_url(scope)).header("host","assistant.fixture.invalid").send().await.unwrap();assert_eq!(authorization.status(),StatusCode::SEE_OTHER,"Combined advertised scopes must reach owner consent");
+    let next=authorization.headers()["location"].to_str().unwrap();let intent=url::Url::parse(&format!("{base}{next}")).unwrap().query_pairs().find(|(k,_)|k=="request").unwrap().1.to_string();
+    let info=c.get(format!("{base}/v1/mobile/assistant/consent")).header("host","assistant.fixture.invalid").header("cookie",&cookie).query(&[("request",&intent)]).send().await.unwrap();assert_eq!(info.status(),StatusCode::OK);let info:Value=info.json().await.unwrap();assert_eq!(info["grants"].as_array().unwrap().len(),2);
+    assert_eq!(request("/v1/mobile/assistant/consent").header("origin","https://assistant.fixture.invalid").json(&json!({"request":intent,"grantId":gid,"allow":true})).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
+    let approved=request("/v1/mobile/assistant/consent").header("cookie",&cookie).header("origin","https://assistant.fixture.invalid").json(&json!({"request":intent,"grantId":gid,"allow":true})).send().await.unwrap();assert_eq!(approved.status(),StatusCode::OK);let approved:Value=approved.json().await.unwrap();let callback=url::Url::parse(approved["redirect"].as_str().unwrap()).unwrap();let code=callback.query_pairs().find(|(k,_)|k=="code").unwrap().1.to_string();assert_eq!(callback.query_pairs().find(|(k,_)|k=="state").unwrap().1,"scope-fixture-state");
+    let exchange=|resource:&str,proof:&str|request("/oauth/token").form(&[("grant_type","authorization_code"),("client_id",cid),("redirect_uri","http://127.0.0.1:4567/callback/fixture"),("code",code.as_str()),("code_verifier",proof),("resource",resource)]);
+    assert_eq!(exchange("https://other-tenant.fixture.invalid/mcp",&verifier).send().await.unwrap().status(),StatusCode::BAD_REQUEST);assert_eq!(exchange(res,&"b".repeat(64)).send().await.unwrap().status(),StatusCode::BAD_REQUEST);
+    let issued=exchange(res,&verifier).send().await.unwrap();assert_eq!(issued.status(),StatusCode::OK);let issued:Value=issued.json().await.unwrap();assert_eq!(issued["scope"],expected_scope);assert!(issued.get("refresh_token").is_none());let token=issued["access_token"].as_str().unwrap();assert_eq!(exchange(res,&verifier).send().await.unwrap().status(),StatusCode::BAD_REQUEST);
+    let listed=request("/mcp").bearer_auth(token).header("accept","application/json, text/event-stream").json(&json!({"jsonrpc":"2.0","id":2,"method":"tools/list"})).send().await.unwrap();assert_eq!(listed.status(),StatusCode::OK);let listed:Value=listed.json().await.unwrap();assert_eq!(listed["result"]["tools"].as_array().unwrap().len(),expected_tools);
+    if expected_scope==SCOPE{assert_eq!(rpc(&c,&base,token,"agbrio_read_app",json!({})).await["result"]["isError"],true);}
+    assert_eq!(c.get(format!("{base}/v1/mobile/assistant/grants")).header("host","assistant.fixture.invalid").bearer_auth(token).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
+   }
+  }
+  for scope in ["agbrio:instance unknown:scope","agbrio:handoff openid","","agbrio:instance\tagbrio:handoff"]{assert_eq!(c.get(auth_url(scope)).header("host","assistant.fixture.invalid").send().await.unwrap().status(),StatusCode::BAD_REQUEST);}
+  handle.shutdown.send(()).unwrap();handle.task.await.unwrap();
+ });
+}
+
 #[test]
 #[ignore="bounded local-only disposable MCP/browser fixture; no provider account"]
 fn assistant_fixture_for_sdk_and_browser(){

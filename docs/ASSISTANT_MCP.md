@@ -107,3 +107,7 @@ POST401 verified; this is not a live assistant OAuth/account acceptance result.
 ASSISTANT_MCP_CLOUDFLARE.md retains the earlier login/rule preparation history.
 
 Migration016 is additive and preserves old brief-rule authority, token IDs and decision/approval records. The new account-level Dot connection has not yet been accepted by the owner; isolated OAuth/HTTP/native/browser proofs are not live Dot UAT.
+
+## 0.1.6 OAuth Verify repair
+
+Codex Verify requests `agbrio:handoff agbrio:instance` together. The server now validates a scope set rather than one string enum. Owner consent selects one existing delegation and the token grants only its actual scope. Re-run Verify after updating and complete owner sign-in/Allow. Unknown scopes and wrong callback/resource/PKCE remain rejected. Successful registration alone is not full OAuth/account acceptance.
