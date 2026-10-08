@@ -18,7 +18,7 @@ import { Fragment } from "react";
 import {motion,useReducedMotion} from "motion/react";
 import { readRoleReviews, saveRoleReviews, reviewKey, type RoleReview } from "./roleReviewDrafts";
 import {latestBridgeReply,latestSideReply,replyTime} from "./bridgeRecency";
-import { Columns2, History, RefreshCw, Settings2, SquarePen, SlidersHorizontal, ArrowRightLeft, MessageSquareReply,CircleCheck,Link2 } from "lucide-react";
+import { Columns2, History, RefreshCw, Settings2, SquarePen, SlidersHorizontal, ArrowRightLeft, MessageSquareReply,Link2 } from "lucide-react";
 
 export type BridgeRole = "DECISION" | "EXECUTION";
 export type RelayTextBlock = { id: string; kind: "INSTRUCTION" | "CODE" | "PROSE"; recommended: boolean; text: string };
@@ -74,7 +74,7 @@ export function RoleBridgePanel({ workstreamId, workstreamName, api, onModeChang
   const nativeSurface=useContext(NativeSurfaceContext);
   const reducedMotion=useReducedMotion();
   const [replyLimits,setReplyLimits]=useState({DECISION:10,EXECUTION:10});
-  const [selectedReplies,setSelectedReplies]=useState<Partial<Record<BridgeRole,string>>>({});
+  const [savedReviewSources,setSavedReviewSources]=useState<Partial<Record<BridgeRole,string>>>({});
   const [state, setState] = useState<RoleState | null>(null);
   const [editing, setEditing] = useState(false);
   const [bindingStep, setBindingStep] = useState<0 | 1 | 2>(0);
@@ -112,7 +112,7 @@ export function RoleBridgePanel({ workstreamId, workstreamName, api, onModeChang
   useEffect(() => {
     const current = ++generation.current;
     pending.current=false;pollBusy.current=false;setBusy(false);
-    try{readingPositions.current=JSON.parse(localStorage.getItem(`aiwr.role-scroll.${workstreamId}`)??"{}");}catch{readingPositions.current={};} setReviewOpen(false); setState(null); setEditing(false); setCurrentReview(null); setDrafts({workstream:workstreamId,values:readRoleReviews(workstreamId)});setChecked({});setSelectedReplies({});setReplyLimits({DECISION:10,EXECUTION:10});setChat(null);setError(null); onModeChange?.(false);
+    try{readingPositions.current=JSON.parse(localStorage.getItem(`aiwr.role-scroll.${workstreamId}`)??"{}");}catch{readingPositions.current={};} setReviewOpen(false); setState(null); setEditing(false); setCurrentReview(null); setDrafts({workstream:workstreamId,values:readRoleReviews(workstreamId)});setChecked({});setSavedReviewSources({});setReplyLimits({DECISION:10,EXECUTION:10});setChat(null);setError(null); onModeChange?.(false);
     void api.state(workstreamId).then(value => {
       if (generation.current !== current) return;
       if(value.bindings.workstreamId!==workstreamId)throw Error("BRIDGE_BINDING_CHANGED");
@@ -161,8 +161,7 @@ export function RoleBridgePanel({ workstreamId, workstreamName, api, onModeChang
   useEffect(()=>{if(!state?.bindings.explicitRoles)return;const scroller=readingScroller();if(!scroller)return;const track=()=>{if(panel.current?.closest("[hidden]"))return;readingPositions.current[activeRole]=scroller.scrollTop;try{localStorage.setItem(`aiwr.role-scroll.${workstreamId}`,JSON.stringify(readingPositions.current));}catch{}};scroller.addEventListener("scroll",track);return()=>scroller.removeEventListener("scroll",track);},[activeRole,workstreamId,state?.bindings.explicitRoles]);
   const bindings = state?.bindings;
   const newestReply=state?latestBridgeReply(state):null;
-  const copiedEndpoint=(activeRole==="DECISION"?bindings?.decision:bindings?.execution)?.endpoint.id;
-  const copiedReply=state?.replies.find(item=>item.endpointId===copiedEndpoint&&item.id===selectedReplies[activeRole])??state?.replies.filter(item=>item.endpointId===copiedEndpoint).sort((a,b)=>(b.observedAt??0)-(a.observedAt??0))[0];
+  const copiedReply=state?latestSideReply(state,activeRole):undefined;
   useReaderCopy(copiedReply?.text??null);
   const oldReview=review?.bindingRevision!=null&&review.bindingRevision!==bindings?.bindingRevision;
   const goalBlocked=Boolean(errorCause&&(errorCause.includes("SHARED_TARGET_GOAL_NOT_IDLE")||errorCause.includes("BRIDGE_TARGET_GOAL_ACTIVE")));
@@ -199,7 +198,7 @@ export function RoleBridgePanel({ workstreamId, workstreamName, api, onModeChang
     seenBindingRequest.current = bindingRequest;
     open(bindings.explicitRoles ? 2 : 0);
   }, [bindingRequest, bindings]);
-  function latest(side: Side) { return state?.replies.find(r=>r.endpointId===side.endpoint.id&&r.id===selectedReplies[side.role])??(state?latestSideReply(state,side.role):undefined); }
+  function latest(side: Side) { return state?latestSideReply(state,side.role):undefined; }
   function reviewPayload(value:RoleReview){
     if(!value.choosing || !value.blocks?.length)return value.text;
     const chosen=value.blocks.filter(block=>value.blockIds?.includes(block.id));
@@ -214,11 +213,11 @@ export function RoleBridgePanel({ workstreamId, workstreamName, api, onModeChang
     void act(async valid=>{
       const key=reviewKey({role,reply,text:reply.text,options:[],selected:[],bindingRevision:bindings.bindingRevision});
       const existing=drafts.workstream===workstreamId?drafts.values[key]:undefined;
-      if(existing){if(valid()){setReview(existing.approved&&state?.handoffs.find(h=>h.id===existing.approved!.id)?{...existing,approved:state.handoffs.find(h=>h.id===existing.approved!.id)}:existing);setSelectedReplies(old=>({...old,[role]:id}));}return;}
+      if(existing){if(valid()){setReview(existing.approved&&state?.handoffs.find(h=>h.id===existing.approved!.id)?{...existing,approved:state.handoffs.find(h=>h.id===existing.approved!.id)}:existing);setSavedReviewSources(old=>({...old,[role]:id}));}return;}
       const[options,blocks]=await Promise.all([api.attachments(workstreamId,role,id),api.blocks?.(workstreamId,role,id)??Promise.resolve([])]);
       if(!valid())return;
       setReview({role,reply,bindingRevision:bindings.bindingRevision,destinationId:target?.endpoint.id,text:reply.text,options,selected:[],blocks,blockIds:[],choosing:blocks.length>0});
-      setSelectedReplies(old=>({...old,[role]:id}));
+      setSavedReviewSources(old=>({...old,[role]:id}));
     });
   }
   function sendReview(){
@@ -282,15 +281,16 @@ export function RoleBridgePanel({ workstreamId, workstreamName, api, onModeChang
         const currentResult=Boolean(reply&&phase==="COMPLETE"&&activity?.resultObservationId===reply.id);
         const historical=Boolean(api.sync&&!currentResult)||Boolean(outcome&&outcome.state!=="NO_NEW_TERMINAL_REPLY");
         const notice=fresh&&activity?.goalStatus?goalStatusText(activity.goalStatus):phase==="RUNNING"?uiText("执行中"):phase==="COMPLETE"?(currentResult?uiText("已完成"):uiText("新结果正在同步")):phase==="RESULT_PENDING"?uiText("新结果正在同步"):phase==="INTERRUPTED"?uiText("最新一轮已中断"):phase==="ACTION_REQUIRED"?uiText("需要你处理"):phase==="PAUSED"?uiText("已暂停"):phase==="FAILED"?uiText("最新执行未完成，请核对原对话"):phase==="EMPTY"?uiText("当前没有执行结果"):phase==="UNCONFIRMED"?uiText("状态待确认"):outcome?.state==="LATEST_TURN_INTERRUPTED"?uiText("{0}最新一轮已中断。{1}", label(role), outcome.retainedReply?uiText("当前保留的是先前的完整回复。"):uiText("目前没有新的完整回复。")):outcome?.state==="LATEST_TURN_ACTIVE"?uiText("{0}仍在执行。{1}", label(role), outcome.retainedReply?uiText("当前显示的是先前的完整回复。"):uiText("完成后可检查回复。")):outcome?.state==="OBSERVATION_MATERIALIZATION_PENDING"?uiText("完整回复正在整理，请稍后检查。"):outcome?.state==="EXTERNAL_STATUS_UNCONFIRMED"?uiText("状态待确认"):outcome?uiText("当前没有新的完整回复。"):null;
-        const retainedDraft=drafts.values[reviewKey({role,reply:reply??{id:"",endpointId:"",text:""},text:reply?.text??"",options:[],selected:[],bindingRevision:bindings.bindingRevision})];
+        const draftSource=state?.replies.find(r=>r.endpointId===side?.endpoint.id&&r.id===savedReviewSources[role])??reply;
+        const retainedDraft=drafts.values[reviewKey({role,reply:draftSource??{id:"",endpointId:"",text:""},text:draftSource?.text??"",options:[],selected:[],bindingRevision:bindings.bindingRevision})];
         const sent=retainedDraft?.approved?.status==="SENT";
         const relayActionLabel=retainedDraft?(nativeSurface&&sent?uiText("查看发送记录"):uiText("继续审阅交接")):uiText("转给{0}", label(role === "DECISION" ? "EXECUTION" : "DECISION"));
         return <Fragment key={role}><article id={`role-reader-${role}`} role="tabpanel" aria-labelledby={`role-tab-${role}`}><header className="v4-role-reader-heading"><strong>{side?.endpoint.label || uiText("尚未绑定")}</strong><button type="button" disabled={busy || !side} onClick={() => void act(async valid => { const next = await api.read(workstreamId, role); if(valid()){setState(next);const endpoint=(role==="DECISION"?next.bindings.decision:next.bindings.execution)?.endpoint.id;const source=next.replies.filter(r=>r.endpointId===endpoint).sort((a,b)=>(b.observedAt??0)-(a.observedAt??0))[0];setChecked(old=>({...old,[role]:{at:Date.now(),sourceId:next.readOutcome?undefined:source?.id}}));} })} aria-label={uiText("检查{0}回复", label(role))} title={uiText("刷新")}><RefreshCw size={18}/></button></header>
           {notice&&!nativeSurface&&<p className="v5-role-status" role="status">{uiText(notice)}</p>}
           {nativeSurface?<div className="v5-reply-time"><span role="status" className={reply&&newestReply?.reply.id===reply.id&&(currentResult||!api.sync)?"r2-latest-reply":undefined}>{currentResult||!api.sync?(newestReply?.reply.id===reply?.id?uiText(newestReply?.byCompletion?"最新回复":"最近收到"):uiText(currentResult?"已完成":"已保存")):notice??uiText("已保存")}{reply&&!currentResult&&["RUNNING","INTERRUPTED","RESULT_PENDING"].includes(phase??"")?uiText(" · 上次结果"):""}</span>{reply&&replyTime(reply).at&&<time dateTime={new Date(replyTime(reply).at!).toISOString()}>{uiText(replyTime(reply).completed?"完成":"收到")} {new Date(replyTime(reply).at!).toLocaleString(getLanguage(),{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</time>}</div>:<div className="v5-reply-time">{reply&&<span>{currentResult||checked[role]?.sourceId===reply.id?uiText("最新已读取"):uiText("已保存")}</span>}{reply&&replyTime(reply).at&&<time dateTime={new Date(replyTime(reply).at!).toISOString()}>{uiText(replyTime(reply).completed?"完成":"收到")} {new Date(replyTime(reply).at!).toLocaleString(getLanguage(),{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</time>}{checked[role]&&<span>{uiText("核对")} {new Date(checked[role]!.at).toLocaleTimeString(getLanguage(),{hour:"2-digit",minute:"2-digit"})}</span>}{fresh&&<span>{uiText("同步")} {new Date(activity!.checkedAt).toLocaleTimeString(getLanguage(),{hour:"2-digit",minute:"2-digit"})}</span>}</div>}
 
-          {reply ? <>{timeline.length>1&&<button type="button" className="r2-earlier-replies" onClick={()=>{if(timeline.length>shownTimeline.length)setReplyLimits(old=>({...old,[role]:old[role]+10}));const scroller=readingScroller();if(scroller)scroller.scrollTo({top:0,behavior:reducedMotion?"instant":"smooth"});}}><History size={14}/>{uiText("查看此前回复 · {0}",timeline.length-1)}</button>}<div className="v4-role-original">{timeline.length>1&&<p className="r2-reply-history-hint">{uiText("{0} 条回复，按时间排列。选择要转发的一条。",timeline.length)}</p>}{shownTimeline.map(message=><section className="r2-bridge-message" key={message.id} data-observation-id={message.id} data-chosen={message.id===reply.id}>
-              {timeline.length>1&&<header><time>{replyTime(message).at?new Date(replyTime(message).at!).toLocaleString(getLanguage(),{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}):uiText("已保存")}</time><button type="button" disabled={busy||reviewOpen} aria-pressed={message.id===reply.id} onClick={()=>{autoPickLatest.current=false;setSelectedReplies(old=>({...old,[role]:message.id}));void api.markRead?.(workstreamId,message.id).then(()=>setState(old=>old?{...old,replies:old.replies.map(r=>r.id===message.id?{...r,readAt:Date.now()}:r)}:old)).catch(()=>{});}}>{message.id===reply.id?<CircleCheck size={15}/>:<ArrowRightLeft size={15}/>}<span>{uiText(message.id===reply.id?"已选此条":"选择此条")}</span></button></header>}
+          {reply ? <>{timeline.length>1&&<button type="button" className="r2-earlier-replies" onClick={()=>{if(timeline.length>shownTimeline.length)setReplyLimits(old=>({...old,[role]:old[role]+10}));const scroller=readingScroller();if(scroller)scroller.scrollTo({top:0,behavior:reducedMotion?"instant":"smooth"});}}><History size={14}/>{uiText("查看此前回复 · {0}",timeline.length-1)}</button>}<div className="v4-role-original">{timeline.length>1&&<p className="r2-reply-history-hint">{uiText("{0} 条回复，按时间排列。",timeline.length)}</p>}{shownTimeline.map(message=><section className="r2-bridge-message" key={message.id} data-observation-id={message.id}>
+              {timeline.length>1&&<header><time>{replyTime(message).at?new Date(replyTime(message).at!).toLocaleString(getLanguage(),{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}):uiText("已保存")}</time></header>}
               <MarkdownMessage text={message.text} media={messageMedia({kind:"ROLE",workstreamId,role,observationId:message.id})}/>
             </section>)}</div><footer className="v4-role-reader-actions">{timeline.length>1&&<span className="r2-selected-reply">{uiText("已选第 {0} 条",timeline.findIndex(m=>m.id===reply.id)+1)}</span>}<button type="button" className="v3-primary" aria-label={relayActionLabel} disabled={busy || reviewOpen} onClick={() => void act(async valid => { const target = role === "DECISION" ? bindings.execution : bindings.decision;
             const key=reviewKey({role,reply,text:reply.text,options:[],selected:[],bindingRevision:bindings.bindingRevision});

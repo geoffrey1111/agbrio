@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([Parameter(Mandatory=$true)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$')][string]$Version,[string]$NotesFile='')
+param([Parameter(Mandatory=$true)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$')][string]$Version,[string]$NotesFile='',[ValidateSet('lzma','zlib')][string]$Compression='lzma')
 $ErrorActionPreference='Stop'
 $baseVersion=[version]($Version.Split('-')[0])
 if($baseVersion -lt [version]'0.1.1'){throw 'The first signed update must use version 0.1.1 or higher; installed 0.1.0 clients cannot update to a 0.1.0 prerelease'}
@@ -20,7 +20,7 @@ try{
  }
  $env:VITE_AGBRIO_APP_VERSION=$Version
  $overlay=Join-Path $releaseRoot 'signed-build.json'
- @{version=$Version;bundle=@{createUpdaterArtifacts=$true}} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $overlay -Encoding utf8
+ @{version=$Version;bundle=@{createUpdaterArtifacts=$true;windows=@{nsis=@{compression=$Compression}}}} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $overlay -Encoding utf8
  Push-Location $repoRoot
  try{
   & npm run build:windows -- --config $overlay

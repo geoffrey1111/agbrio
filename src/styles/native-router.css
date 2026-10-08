@@ -227,8 +227,6 @@ html,body,#root{margin:0;width:100%;min-width:0;height:100%;font-family:var(--r2
 .r2-bridge-message{max-width:848px;margin:0 auto;padding:0 0 30px}
 .r2-bridge-message+.r2-bridge-message{border-top:1px solid var(--r2-divider);padding-top:24px}
 .r2-bridge-message>header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 16px;color:var(--r2-muted);font-size:12px}
-.r2-bridge-message>header button{display:inline-flex;align-items:center;gap:5px;min-height:44px;padding:8px 12px;border:0;border-radius:12px;background:var(--r2-soft);color:var(--r2-ink);font:inherit;cursor:pointer}
-.r2-bridge-message>header button[aria-pressed=true]{background:var(--r2-selected);color:var(--r2-accent)}
 .r2-reply-history-hint{max-width:848px;margin:0 auto 20px;color:var(--r2-muted);font-size:12px;line-height:1.6}
 .r2-selected-reply{font-size:12px;color:var(--r2-muted);white-space:nowrap;margin-right:auto}
 .r2-master .r2-bridge-new-reply{font-size:10px}.r2-master .r2-row-title strong{min-width:0}

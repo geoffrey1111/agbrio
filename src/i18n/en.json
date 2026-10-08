@@ -794,5 +794,6 @@
   "更新未完成，请重新检查或查看发布页面。": "Update did not complete. Check again or view releases.",
   "来源回复": "Source replies",
   "选择要转发的回复": "Choose a reply to forward",
-  "{0} 条回复": "{0} replies"
+  "{0} 条回复": "{0} replies",
+  "{0} 条回复，按时间排列。": "{0} replies in time order."
 }
