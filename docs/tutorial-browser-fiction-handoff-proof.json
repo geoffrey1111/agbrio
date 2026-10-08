@@ -1,0 +1,26 @@
+{
+  "text": "Interface workflow\n1\nManager\nExecutor\nPlanning and review\nGoal achieved\nCompleted 10/9, 12:09 AM\n\nThe submission flow is ready for review. Keep the existing layout and finish the error states before adding another feature.\n\nThe next handoff contains only the implementation task. This analysis stays in the original conversation.\n\nCode\nComplete the submission and receipt states.\nKeep the current scope and check duplicate submissions.\nReturn a concise report and the remaining review questions.\n\nHistory\nForward\nManager · Planning and review\nExecutor · Implementation\n10/9, 12:09 AM\nCode\nComplete the submission and receipt states.\nKeep the current scope and check duplicate submissions.\nReturn a concise report and the remaining review questions.\n\n\nSent\n\n1 block\nBack to conversation",
+  "sends": 1,
+  "h": {
+    "id": "example-handoff",
+    "workstreamId": "example-bridge",
+    "status": "SENT",
+    "approvedText": "```text\nComplete the submission and receipt states.\nKeep the current scope and check duplicate submissions.\nReturn a concise report and the remaining review questions.\n```",
+    "originalText": "The submission flow is ready for review. Keep the existing layout and finish the error states before adding another feature.\n\nThe next handoff contains only the implementation task. This analysis stays in the original conversation.\n\n```text\nComplete the submission and receipt states.\nKeep the current scope and check duplicate submissions.\nReturn a concise report and the remaining review questions.\n```",
+    "payloadHash": "example-payload-hash",
+    "sourceEndpoint": {
+      "id": "example-control",
+      "provider": "CODEX",
+      "externalId": "example-planning-conversation",
+      "label": "Planning and review"
+    },
+    "destinationEndpoint": {
+      "id": "example-execution",
+      "provider": "CODEX",
+      "externalId": "example-implementation-conversation",
+      "label": "Implementation"
+    },
+    "attachments": []
+  },
+  "sourceRetained": true
+}

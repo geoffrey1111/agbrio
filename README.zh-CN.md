@@ -1,83 +1,66 @@
 <img src="docs/assets/agbrio-icon.png" width="72" alt="Agbrio">
 
-
 # Agbrio
 
-> **Windows 预览版0.1.5：** [下载安装包](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.5)。包含 Bridge 当前活动端、停止后待审提示、选择更早原文、Codex 提问回答和跟进，以及设置中的检查更新。保留可选托管兑换码和免费自部署。[更新与验证范围](docs/RELEASE_0.1.5.md)。
-
-
-
-**Agent Bridge · 让管理对话与执行对话顺畅交接**
+**Agent Bridge — 一个对话负责决策与审阅，一个对话负责执行。**
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
-如果你已经习惯让一个 Agent 对话管理项目，另一个对话实际执行，Agbrio 就是围绕这种用法设计的。
+你是不是也用一个对话负责管理，一个负责执行？Agbrio 连接这两段已有上下文：读结果、选出下一轮需要的内容、核对接收端，再把工作交接过去。
 
-管理对话保留规划、审查结果、决定下一项任务；执行对话在项目里实现修改，返回结果与证据。**Bridge 负责把选定的指令、结果和材料在这两条已有对话之间交接，每次发送都由你确认。**
+**思考留在思考端，执行留在执行端，Bridge 负责准确交接。**
 
-手机让你可以随时审阅和确认这次交接。产品的重点是两条对话之间的桥梁，远程访问是到达这个工作台的方式。
+[下载 Windows v0.1.7](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.7) · [安装与配对](docs/SETUP.md) · [连接 AI 助手](docs/ASSISTANT_CONNECTION_GUIDE.zh-CN.md) · [MIT 许可证](LICENSE)
 
-## 发布状态
+## 从审阅到下一项任务
 
-**[v0.1.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.5) — MIT 开源 Windows Alpha。** 可下载安装包与校验值，或从源码构建。干净 Windows 安装和原生首次设置已通过自动验证，真实远程 Codex／文件交接也已单独验证。应用支持简体中文、繁体中文和英文，可在「设置 → 语言」切换。Mac 与其他 Agent 尚未作为支持平台。[安装与配对](docs/SETUP.md)。
+![Agbrio 两端对照：简体中文界面和虚构对话](docs/assets/zh-CN/desktop-bridge.png)
 
-## 适合已经使用双对话协作的人
+管理端保留计划、分析证据、确定下一步；执行端在项目中完成工作并返回汇报。Bridge 绑定两端精确的对话 ID，多组项目并行时也能核对正确接收对象。
 
-这是为主动分开管理与执行上下文的人准备的工作流工具。两条对话和两端角色由你选择。Agbrio 不自动分配 Agent，也不让管理 Agent 自行批准自己的结果。
+<p><img src="docs/assets/zh-CN/mobile-handoff.png" width="320" alt="只选择指令段，保留未选分析"> <img src="docs/assets/zh-CN/mobile-preview.png" width="320" alt="核对执行端与最终文字后确认发送"></p>
 
-**指令 → 执行端；结果与证据 → 管理端；最终确认 → 由你完成。**
+只选择需要交接的指令，分析仍留在原对话。预览最终文字和接收端，确认发送；在电脑或手机 PWA 上继续审阅下一次结果。手机让你离开桌前也能完成这一步，产品的核心仍是两段对话之间的交接。
 
-## 一个对话管理，一个对话执行，Bridge 连接交接过程
+截图使用实际 Agbrio 组件与独立虚构数据，界面和对话均为简体中文；属于浏览器预览，不冒充两个 Codex 窗口或手机真机录制。
 
-![Managing and executing conversations side by side in one Bridge](docs/assets/desktop-bridge.png)
+## 为双对话工作方式准备的能力
 
-<p><img src="docs/assets/mobile-handoff.png" width="320" alt="Management-to-execution instruction selection"> <img src="docs/assets/mobile-return.png" width="320" alt="Execution-to-management result selection"></p>
+| 能力 | 用途 |
+| --- | --- |
+| 精确 Bridge 绑定 | 按稳定 ID 交接，保持管理和执行上下文独立 |
+| 选择性转发 | 选择整段、核对文件、编辑最终文字，确认接收对象 |
+| 较早的完整结果 | 目标停滞后仍可审阅前面更有价值的汇报 |
+| 当前状态与审阅提醒 | 聚焦正在工作的那一端，需要介入时提示审阅 |
+| 监听与通知 | 持续关注 Bridge 外的对话，回复精确的原对话 |
+| Codex 提问 | 在应用中回答支持的问题和选项 |
+| 桌面 Host 与手机 PWA | 电脑保持在线，手机远离桌面审阅和交接 |
+| 签名更新 | 在设置中检查、下载和安装经过验证的 Windows 更新 |
 
-电脑图展示同一个 Bridge 的双端对照；两张手机图分别展示「管理端向执行端下发指令」和「执行端向管理端交回结果」的选择界面。使用真实组件、虚构数据和浏览器渲染，不包含私人对话，也不代表设备验收。示例截图使用中文界面；应用可切换简体中文、繁体中文和英文。日文、韩文目前仅为介绍文档语言。
+选中的 Codex 文件会复制到接收端项目的 `.aiwr/incoming/<handoff-id>/`，消息包含相对路径和 SHA-256；它是本地项目材料，不代表已上传成 ChatGPT 附件。
 
-## 个人版本目前能做什么
+## 让 AI 助手参与审阅
 
-- **Bridge 双端协作** — 绑定已有的控制端与执行端对话。查看任意一端，按相反方向把执行结果交回控制端。
-- **选择内容后交接** — 阅读完整原文，整块勾选需要的段落，修改发送内容，看清接收端，最后一次确认发送。指令块识别只是建议，发送什么由你决定。
-- **带齐材料** — 选中的 Codex 交接文件会复制到接收端项目的 `.aiwr/incoming/<handoff-id>/` 目录，消息附上相对路径和 SHA-256。接收端读取的是实际本地副本；这不等于把文件上传成 ChatGPT 对话附件。
-- **通知与原对话回复** — 打开具体的结果通知，直接回复对应的原对话。公开的用户消息和 Agent 回复从旧到新排列，更早的消息在上方加载。
-- **桌面 Host ＋手机 PWA** — 电脑端保存绑定、观察结果和发送记录，手机使用配对后的网页会话。实时读取和发送需要电脑开机、保持唤醒并联网。
+![应用内云端连接教程：简体中文](docs/assets/zh-CN/assistant-guide.png)
 
-## 一次完整交接
+设置 → AI 助手提供六步可视化教程，也能复制指令交给助手。先选择 **ChatGPT / dot 云端**或 **Codex 本地**：读取自己实例的完整 HTTPS MCP 地址，复用有效授权，由本人登录同意，在目标助手中发现工具并只读验收。桌面显示准备就绪不等于云端连接通过。
 
-1. 创建 Bridge，绑定准确的控制端和执行端对话。
-2. 阅读控制端回复，选择指令块与需要的材料。
-3. 核对接收端，点击一次「确认发送」。
-4. 执行端返回结果后，审阅并选择内容，再交回控制端。
+整个应用授权为 **INSTANCE + CONVERSATION_REVIEW**，默认 30 天，可撤销。连接后，助手先问“你希望我接管哪些 Bridge？”，再确认任务、方向、必须询问的情况与暂停条件。直接在助手对话中说明即可，不强制填写 Brief / Insight；整个应用可访问不等于所有工作都已委托。
 
-## 手机如何连接电脑
+明确委托内的常规交接，助手审阅后可以推进，不需要每轮回手机审批；要求冲突、超出范围或需要你决定时，再向你提问。沿用准备交接 → 核对与确认 → 查回执，保留版本、决策记录和防重复发送。
 
-![Agent Bridge topology](docs/assets/connection-flow.svg)
+用户已报告 dot 发现 16 个工具，`read_app`、`read_bridge`、`read_source` 通过；真实 dot 写入尚未验收。事件订阅与自动唤醒尚未实现，连接 MCP 不代表已开启无人值守循环。[操作与排错](docs/ASSISTANT_CONNECTION_GUIDE.zh-CN.md) · [可复制指令](docs/ASSISTANT_COPY_PROMPT.zh-CN.md)。
 
-[安装与配对](docs/SETUP.md) · [源码构建](docs/BUILD.md) · [MIT 许可证](LICENSE)
+## 连接自己的电脑
 
-电脑「设置 → 设备」可选 Cloudflare Tunnel、Tailscale Funnel、私有 Tailscale Serve 或已有 HTTPS 入口。填入地址后先验证 TLS 和本机 Host 身份，再保存；可复制部署指令交给自己的 Agent。Funnel/Serve 无需购买域名，使用自己的服务商账号。Tailscale 真实账号开通链路仍需单独验证，不提供 Agbrio 托管中转。
+保留已有部署。在桌面设置 → 设备选择自己的 Cloudflare Tunnel 域名、Tailscale Funnel / Serve 或现有 HTTPS 入口；也可使用运营者提供的托管兑换码，自部署仍可使用。部署步骤可复制给自己的 AI 助手。托管激活后的实例凭据和租户路由独立，没有给所有用户一份共享 MCP 凭据。
 
-## 确认、数据与送达
+实时读取与发送需要电脑开机、不休眠并联网；有效登录直接复用，新浏览器确实需要时再配对。[安装说明](docs/SETUP.md) · [托管选项](docs/HOSTED_RELAY.md)。
 
-- 使用准确的 conversation／thread 标识绑定目标，不按标题、截图或界面位置猜测。
-- 每次交接需要用户明确确认，不建立自动循环的管理端／执行端工作流。
-- 送达不确定时保留该状态，先核对记录，不盲目重复发送。
-- 选定文件的真实字节与哈希才是材料依据；只显示源电脑的路径，不能让远程接收端自动拿到文件。
-- 自部署仍需信任选用的隧道／网络服务商和 Agent 服务商；手机缓存和本地留存的消息也是私人数据。
+## 版本与参与
 
-## 当前边界
+当前为 Windows x64 + Codex + 配对 PWA 的 Alpha。应用支持**简体中文、繁体中文、英语**，在设置 → 语言切换。日语和韩语目前仅翻译产品介绍；macOS 和其他执行 Agent 尚未列入已验证发行范围。来源正文不能扩大授权，收到交接回执不等于下游任务已经完成。
 
-首批范围：Windows x64＋Codex＋手机 PWA。界面支持简体中文、繁体中文和英文。Mac、其他 Agent 和 ChatGPT 浏览器链路不作为已支持发行功能。用户对 iPhone 修复的反馈与新机器安装验证分别记录。
+[从源码构建](docs/BUILD.md) · [助手协议](docs/ASSISTANT_MCP.md) · [v0.1.7 更新](docs/RELEASE_0.1.7.md) · [第三方声明](THIRD_PARTY_NOTICES.md)
 
-## 构建与参与
-
-从[安装文档](docs/SETUP.md)或[构建文档](docs/BUILD.md)开始。保留精确对话身份、最后一次确认和未知送达状态的核对。项目使用 [MIT](LICENSE)，依赖保留[各自的许可及声明](THIRD_PARTY_NOTICES.md)。
-
-## 联系作者与反馈
-
-[作者主页](mailto:geoffreyzjx@qq.com) · [GitHub](https://github.com/geoffrey1111) · [反馈问题](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [提出工作流建议](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
-
-使用问题也可以在 Issues 中交流。这里是公开渠道，请使用示例数据，并在发布前移除私人内容。
-
-[Copyable AI assistant deployment, connection diagnostics and whole-app delegation instructions](docs/ASSISTANT_COPY_PROMPT.zh-CN.md). The app includes the same guide in Settings → AI assistant with your configured MCP URL.
+[联系作者](mailto:geoffreyzjx@qq.com) · [反馈问题](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [提出建议](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)

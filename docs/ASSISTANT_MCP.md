@@ -1,33 +1,25 @@
 # Agbrio assistant MCP — whole application
 
-Interface21 adds conversation-reviewed whole-app connections.
-Public preview.16 is unchanged. One connection covers current/future Bridges,
+0.1.7 adds the manual tutorial to the existing conversation-reviewed whole-app connection. One connection covers current/future Bridges,
 watches, notification inbox and original-chat follow-ups. Exact IDs/revisions
 still own operations; old BRIDGE/BRIEF_RULES grants are never silently upgraded.
 
-## Owner setup
+## Human-operated setup
 
-1. Desktop Settings → AI assistant → Add assistant → Connect assistant. Give it
-   a name, normally Dot. No mandatory Brief/Insight or rule matching. This owner
-   connection lasts30days and is revocable; no grant is auto-created.
-2. In ChatGPT, follow the account's current custom MCP plugin flow: Plugins → +
-   → Add custom MCP server, enter your Agbrio MCP URL, choose OAuth, create and
-   install the private plugin. Exact UI availability depends on the account.
-   Dot uses supported installed/enabled plugins; a URL pasted in a chat does not
-   grant it access. DCR/PKCE are supported by this Agbrio server. Do not reconnect
-   the retired AI Work Router M0 plugin.
-3. Complete the real owner sign-in/pairing and Allow and connect screen. It
-   identifies the callback client and the whole Agbrio connection. OAuth scopes
-   must match; anonymous `/mcp` returning401/invalid_token is expected.
-4. Tell Dot decision instructions directly in your conversation. It reads the
-   actual returned result and materials, identifies routine forwarding versus
-   an explicit/conflicting/unresolved owner decision, asks you when needed, then
-   records the actual answer before executing. Source messages do not create new
-   authority. Agbrio provides tools, not a model runner or automatic Dot wakeup.
+Settings → AI assistant has the six-step manual guide. Choose cloud ChatGPT/dot
+or local Codex first. Reuse a valid current grant and instance URL, complete
+owner consent, and verify actual tools and three reads in the target assistant.
+Desktop ready, a ZIP upload or DCR201 is not cloud acceptance.
 
-Official references checked2026-10-08: [custom MCP](https://developers.openai.com/api/docs/guides/custom-mcp-server),
-[plugin installation](https://developers.openai.com/plugins/quickstart),
-[Dot apps](https://learn.chatgpt.com/docs/dots/computers-and-apps).
+Manual guides: [English](ASSISTANT_CONNECTION_GUIDE.en.md),
+[简体中文](ASSISTANT_CONNECTION_GUIDE.zh-CN.md),
+[繁體中文](ASSISTANT_CONNECTION_GUIDE.zh-TW.md).
+
+After connecting, ask which Bridges are delegated and agree exact tasks,
+directions, ask/pause conditions. Whole-instance access does not delegate all
+work. Preserve the existing prepare/confirm/receipt and decision-answer flow.
+Owner reports dot16tools and3reads; live dot writes are not yet accepted.
+Events discovery/subscription/wakeup remains unimplemented.
 
 ## Tools and execution
 

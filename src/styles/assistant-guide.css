@@ -1,0 +1,35 @@
+.r2-assistant-settings{max-width:780px}
+.r2-assistant-tutorial{margin:28px 0 32px;padding:24px 0;border-block:1px solid var(--r2-divider);font-size:15px}
+.assistant-guide-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.r2-assistant-settings .assistant-guide-heading h2{font-size:22px;margin:0;line-height:1.3;text-wrap:balance}
+.r2-assistant-settings .assistant-guide-heading p{margin:8px 0 18px;max-width:58ch}
+.assistant-guide-heading>button{flex:none;font-size:13px;min-height:44px}
+.r2-assistant-settings .assistant-route-question{font-weight:500;color:var(--r2-ink);margin:16px 0 12px}
+.assistant-route-options{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.r2-assistant-settings .assistant-route-options button{display:flex;align-items:center;gap:12px;min-width:0;min-height:88px;text-align:left;background:var(--r2-surface);border:1px solid var(--r2-divider);border-radius:14px;padding:16px}
+.assistant-route-options button>span{flex:1;min-width:0}.assistant-route-options strong{display:block;font-size:16px;font-weight:550}.assistant-route-options small{display:block;font-size:13px;margin-top:3px;line-height:1.5;color:var(--r2-muted)}
+.r2-assistant-settings .assistant-route-options button[aria-pressed=true]{background:var(--r2-selected);border-color:var(--r2-accent);color:var(--r2-accent)}
+.assistant-route-options svg{flex:none}.assistant-route-hint{max-width:65ch}
+.assistant-guide-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;padding:20px 0 12px}
+.r2-assistant-settings .assistant-guide-steps button{display:flex;align-items:center;justify-content:flex-start;gap:8px;min-height:44px;padding:8px 10px;background:transparent;border-radius:10px;color:var(--r2-muted);font-size:13px;text-align:left;white-space:normal;line-height:1.4}
+.assistant-step-number{display:inline-flex;align-items:center;justify-content:center;flex:none;width:24px;height:24px;border:1px solid var(--r2-divider);border-radius:50%;font-size:12px;font-variant-numeric:tabular-nums}
+.r2-assistant-settings .assistant-guide-steps button[aria-current=step]{color:var(--r2-accent);background:var(--r2-selected)}.assistant-guide-steps [aria-current=step] .assistant-step-number{background:var(--r2-accent);color:var(--r2-paper);border-color:var(--r2-accent)}
+.assistant-guide-content{padding:20px 0 0;max-width:70ch}
+.r2-assistant-settings .assistant-guide-count{margin:0 0 8px;font-size:12px;color:var(--r2-muted);font-variant-numeric:tabular-nums}
+.r2-assistant-settings .assistant-guide-content h3{font-size:20px;line-height:1.4;margin:0 0 16px;text-wrap:balance}.assistant-guide-content h3:focus{outline:none}
+.assistant-guide-content h3:focus-visible{outline:2px solid var(--r2-accent);outline-offset:4px}
+.r2-assistant-settings .assistant-guide-value{display:flex;align-items:center;gap:12px;padding:14px 0;border-block:1px solid var(--r2-divider);margin:20px 0}
+.r2-assistant-settings .assistant-guide-value code{flex:1;min-width:0;margin:0;font-size:14px;overflow-wrap:anywhere}.assistant-guide-value>svg{flex:none;color:var(--r2-muted)}
+.r2-assistant-settings .assistant-guide-notice{padding:14px 0;border-top:1px solid var(--r2-divider);font-size:14px;color:var(--r2-ink);margin-top:20px}
+.r2-assistant-settings .assistant-guide-note{font-size:12px;overflow-wrap:anywhere;color:var(--r2-muted)}
+.assistant-guide-existing{display:flex;align-items:flex-start;gap:12px;margin:20px 0}.assistant-guide-existing>svg{flex:none;color:var(--r2-accent);margin-top:2px}.assistant-guide-existing>div{flex:1;min-width:0}.assistant-guide-existing strong{font-weight:550}.r2-assistant-settings .assistant-guide-existing p{display:flex;gap:16px;justify-content:space-between;flex-wrap:wrap;margin:8px 0;color:var(--r2-ink);overflow-wrap:anywhere}.assistant-guide-existing span{font-size:13px;color:var(--r2-muted)}
+.assistant-guide-fields{margin:20px 0}.r2-assistant-settings .assistant-guide-fields p{display:grid;grid-template-columns:140px minmax(0,1fr);gap:16px;align-items:start;border-bottom:1px solid var(--r2-divider);padding:10px 0;margin:0}.assistant-guide-fields strong{font-weight:500;color:var(--r2-ink)}.r2-assistant-settings .assistant-guide-fields code{margin:0;overflow-wrap:anywhere;font-size:13px;color:var(--r2-ink)}
+.assistant-guide-flow{display:flex;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:12px;margin:24px 0;color:var(--r2-ink);font-weight:500}.assistant-guide-flow svg{color:var(--r2-accent);flex:none}
+.assistant-guide-prompt{margin:20px 0}.assistant-guide-prompt>button{margin-bottom:10px}.assistant-guide-prompt pre{padding:16px;border-radius:12px;background:var(--r2-soft);font:14px/1.7 var(--r2-font);white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto;overscroll-behavior:contain}
+.assistant-guide-evidence{list-style:none;padding:0;margin:20px 0}.assistant-guide-evidence li{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;border-bottom:1px solid var(--r2-divider);padding:12px 0;color:var(--r2-ink)}.assistant-guide-evidence small{font-size:12px;color:var(--r2-muted)}
+.assistant-guide-footer{display:flex;justify-content:space-between;gap:16px;margin-top:24px}.r2-assistant-settings .assistant-guide-footer button{display:inline-flex;gap:8px;align-items:center;justify-content:center;min-height:44px}
+.assistant-guide-troubleshoot{margin-top:24px;border-top:1px solid var(--r2-divider)}.assistant-guide-troubleshoot dt{font-weight:550;margin:16px 0 6px;color:var(--r2-ink)}.assistant-guide-troubleshoot dd{margin:0;color:var(--r2-muted)}.assistant-guide-troubleshoot>button{display:inline-flex;gap:8px;align-items:center}
+@media(max-width:560px){.assistant-route-options{grid-template-columns:1fr}.r2-assistant-settings .assistant-route-options button{min-height:74px;padding:14px}.assistant-guide-heading{gap:8px}.r2-assistant-settings .assistant-guide-heading h2{font-size:20px}.assistant-guide-heading>button{padding-inline:10px}.r2-assistant-settings .assistant-guide-fields p{grid-template-columns:110px minmax(0,1fr);gap:10px}.assistant-guide-steps{padding-top:16px}.assistant-guide-content{padding-top:14px}}
+@media(hover:hover) and (pointer:fine){.r2-assistant-settings .assistant-guide-steps button:hover{background:var(--r2-soft)}}
+@media(prefers-reduced-motion:reduce){.r2-assistant-tutorial button{transition:none!important;transform:none!important}}
+@media(max-width:560px){.assistant-guide-steps{grid-template-columns:repeat(2,minmax(0,1fr))}}

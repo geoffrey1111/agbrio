@@ -27,6 +27,7 @@ mod push;
 mod runtime_reconciler;
 mod role_bridge;
 mod assistant_mcp;
+mod assistant_help;
 mod assistant_operations;
 
 #[tauri::command]
@@ -1442,7 +1443,7 @@ pub fn run() {
     let builder = builder.setup(|app| configure_host(app));
     #[cfg(debug_assertions)]
     let builder = builder.invoke_handler(tauri::generate_handler![
-        desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_setup, shared_codex_launch, shared_codex_disable,
+        desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
         codex_watch_candidates,codex_watch_list, codex_watch_enable, codex_watch_pause, codex_watch_remove, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
         codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
@@ -1529,7 +1530,7 @@ pub fn run() {
     ]);
     #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(tauri::generate_handler![
-        desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_setup, shared_codex_launch, shared_codex_disable,
+        desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
         read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
         codex_watch_candidates,codex_watch_list, codex_watch_enable, codex_watch_pause, codex_watch_remove, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,

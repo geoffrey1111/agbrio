@@ -9,7 +9,7 @@ is never bundled. Free self-deployment does not require a redemption code.
 ## 1. Desktop
 
 Use the Windows installer from [Releases](https://github.com/geoffrey1111/agbrio/releases).
-The0.1.1 package includes a publisher signature for in-app updating; it is not Windows Authenticode-signed. Verify `SHA256SUMS.txt` against the downloaded file;
+The0.1.7 package includes a publisher signature for in-app updating; it is not Windows Authenticode-signed. Verify `SHA256SUMS.txt` against the downloaded file;
 review the source before trusting a build. WebView2 must be available; the
 installer uses Microsoft's bootstrapper if necessary. Do not install alongside
 another running Agbrio/AI Work Router instance.
@@ -153,3 +153,8 @@ This is a local project handoff, not a ChatGPT file-slot upload.
 References: [Tailscale Funnel](https://tailscale.com/docs/reference/tailscale-cli/funnel),
 [Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve),
 [Cloudflare Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).
+
+
+## AI assistant connection
+
+Desktop Settings → AI assistant offers a six-step human-operated guide, with cloud/local routes and copy-to-AI instructions. Use your actual instance MCP URL, reuse valid authorization and consent personally. Verify actual tools in the intended dot/client. [English](ASSISTANT_CONNECTION_GUIDE.en.md) · [简体中文](ASSISTANT_CONNECTION_GUIDE.zh-CN.md) · [繁體中文](ASSISTANT_CONNECTION_GUIDE.zh-TW.md).

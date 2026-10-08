@@ -1,83 +1,66 @@
 <img src="docs/assets/agbrio-icon.png" width="72" alt="Agbrio">
 
-
 # Agbrio
 
-> **Windows preview0.1.5:** [Download the signed-update release](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.5). Includes single-side Bridge activity, stopped-only review attention, earlier result selection, native Codex questions/follow-up and Settings → Check for updates. Optional hosted codes and free self-hosting remain. [Changes and limits](docs/RELEASE_0.1.5.md).
-
-
-
-**Agent Bridge — handoffs between the conversation that manages and the conversation that executes.**
+**Agent Bridge — one conversation plans and reviews; another executes.**
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
-Already use one agent conversation to manage a project and another to do the work? Agbrio is built around that workflow.
+Do you already keep one agent conversation for decisions and another for implementation? Agbrio connects those existing contexts. Read the result, select what belongs in the next task, check the recipient, and hand it over.
 
-The managing conversation keeps the plan, reviews results and decides the next task. The executing conversation works in the project, implements changes and returns evidence. **Bridge carries the selected instructions, results and supporting files between those two existing conversations, with your confirmation at each handoff.**
+**Keep the reasoning in one conversation. Keep the execution in another. Carry the right work between them.**
 
-The phone is a convenient place to review and confirm that exchange. The central product is the bridge between conversations; remote access is the way you reach it.
+[Download Windows v0.1.7](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.7) · [Install and pair](docs/SETUP.md) · [Connect an assistant](docs/ASSISTANT_CONNECTION_GUIDE.en.md) · [MIT license](LICENSE)
 
-## Release status
+## From review to the next task
 
-**[v0.1.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.5) — MIT-licensed Windows alpha.** Download the installer and checksums, or build the included source. Clean Windows installation and native first-setup controls have passed automated validation, separately from the real remote Codex/file handoff. App UI supports English, Simplified Chinese and Traditional Chinese; switch in Settings → Language. Mac and other agents remain future work. [Install and pair](docs/SETUP.md).
+![Two bound roles in an Agbrio Bridge, with English UI and fictional conversations](docs/assets/en/desktop-bridge.png)
 
-## For an existing two-conversation workflow
+The manager keeps the plan, evaluates returned evidence, and decides the next step. The executor works in the project and reports back. A Bridge binds their exact conversation IDs, so the handoff goes to the intended conversation even when several projects run in parallel.
 
-This is a workflow tool for people who deliberately separate management and execution contexts. You choose both conversations and their roles. Agbrio does not assign agents automatically or make the managing agent approve its own result.
+<p><img src="docs/assets/en/mobile-handoff.png" width="320" alt="Select the instruction while keeping the analysis unselected"> <img src="docs/assets/en/mobile-preview.png" width="320" alt="Review the exact destination and final text before sending"></p>
 
-**Instructions → execution. Results + evidence → management. You → final confirmation.**
+Select only the instruction block. The analysis remains in its original conversation. Preview the final message and recipient, then confirm. Read the next result from your desktop or paired phone PWA.
 
-## One conversation manages. One executes. Bridge connects the handoff.
+These are browser-rendered screenshots of actual Agbrio components with fictional, localized data. They are not two Codex windows or physical-device recordings.
 
-![Managing and executing conversations side by side in one Bridge](docs/assets/desktop-bridge.png)
+## A focused workspace for handoffs
 
-<p><img src="docs/assets/mobile-handoff.png" width="320" alt="Management-to-execution instruction selection"> <img src="docs/assets/mobile-return.png" width="320" alt="Execution-to-management result selection"></p>
+| Capability | What it helps you do |
+| --- | --- |
+| Exact Bridge bindings | Keep manager and executor conversations separate and deliver by stable IDs |
+| Selective forwarding | Choose whole paragraphs, review files, edit the outgoing message, and confirm its recipient |
+| Earlier results | Review a useful earlier result when later stalled-goal updates are less informative |
+| Activity and review attention | See the active side; review attention appears when intervention is needed |
+| Watches and notifications | Follow conversations outside a Bridge and reply to the original conversation |
+| Native Codex questions | Answer supported questions and choices through the app |
+| Desktop Host + phone PWA | Review and hand off away from the desk while your computer stays online |
+| Signed app updates | Check, download and install verified Windows updates from Settings |
 
-The desktop view shows both sides of the same Bridge. The phone views show management-to-execution instruction selection and execution-to-management result selection. Real app components, fictional demo data, browser-rendered previews; not private conversations or device acceptance. Screenshots show the Chinese UI. English and Traditional Chinese are available in the app; Japanese and Korean are introduction-only translations.
+Selected Codex files are copied to the destination project's `.aiwr/incoming/<handoff-id>/`, with relative paths and SHA-256 in the outgoing message. They are local project materials, not a claim that ChatGPT received an uploaded attachment.
 
-## What the personal implementation does
+## Let your assistant help with review
 
-- **Bridge** — Connect two existing conversations as control and execution sides. Read either side and hand work back in the opposite direction.
-- **Selective handoffs** — Review the full source reply, select whole content blocks, edit the outgoing text and see the recipient before one final Confirm and send. Block recommendations are suggestions; you decide what leaves.
-- **Supporting materials** — Selected Codex handoff files are copied into the destination project’s `.aiwr/incoming/<handoff-id>/` directory. The outgoing message includes the relative path and SHA-256. The recipient reads the local copy; this is not an upload of the file into a ChatGPT attachment slot.
-- **Notifications and original replies** — Open a specific observed result and reply to that exact conversation. Public user and assistant messages share an oldest-to-newest timeline; older pages load above the current conversation.
-- **Personal desktop Host + PWA** — The desktop Host owns bindings, observations and delivery records. The phone uses a paired web session. The computer must remain powered on, awake and connected for live reads or sends.
+![The cloud assistant tutorial, fully in English](docs/assets/en/assistant-guide.png)
 
-## A typical handoff
+Settings → AI assistant now has a visible six-step tutorial and copyable instructions. Choose **ChatGPT / dot cloud** or **Codex local** first. Use your instance's actual HTTPS MCP address, reuse a valid authorization, complete owner consent, and verify tools in the target assistant. A desktop-ready indicator is not cloud acceptance.
 
-1. Create a Bridge and bind the exact control and execution conversations.
-2. Read the control result, then select the instruction blocks and any supporting files.
-3. Check the visible destination and press Confirm and send once.
-4. After execution returns, review its result and send the selected material back to control.
+For whole-app access, Agbrio offers a revocable 30-day **INSTANCE + CONVERSATION_REVIEW** authorization. After connecting, the assistant asks **which Bridges you want it to handle**. Agree the task, direction, questions that need your decision, and pause conditions in that conversation. A grant alone does not delegate every Bridge.
 
-## How the phone reaches your computer
+Within your explicit delegation, ordinary reviewed handoffs can proceed without a phone approval every round. Conflicts, scope changes and unresolved decisions come back to you. Agbrio reuses prepare → confirm → receipt, exact versions, decision records and duplicate-send protection.
 
-![Agent Bridge topology](docs/assets/connection-flow.svg)
+The owner reports dot discovered 16 tools and passed `read_app`, `read_bridge` and `read_source`. Live dot writes have not yet been accepted in this release. MCP event subscription and automatic wakeup are not implemented; connecting does not start an unattended loop. [Manual steps and troubleshooting](docs/ASSISTANT_CONNECTION_GUIDE.en.md) · [Copy-to-AI instructions](docs/ASSISTANT_COPY_PROMPT.en.md).
 
-[Install and pair](docs/SETUP.md) · [Build from source](docs/BUILD.md) · [MIT license](LICENSE)
+## Reach your own Host
 
-Choose Cloudflare Tunnel, Tailscale Funnel, private Tailscale Serve or your existing HTTPS entry in desktop Settings → Devices. The app verifies TLS and this exact Host before saving, and can copy a deployment prompt for your agent. The domain-free options are Funnel/Serve; you supply your own provider account. Tailscale account provisioning still needs independent real-account validation. No Agbrio-hosted relay is offered.
+Keep your existing deployment. Desktop Settings → Devices supports your own Cloudflare Tunnel domain, Tailscale Funnel / Serve, or an existing HTTPS entry. You can also use an optional operator-issued hosted redemption code; self-hosting remains available. The setup can generate instructions for your deployment assistant. Hosted connection credentials and tenant routing remain separate per activated instance; no shared MCP credential is supplied to users.
 
-## Control, data and delivery
+The computer must stay powered on, awake and connected for live work. A new browser session may require pairing; an already valid session should be reused. [Setup](docs/SETUP.md) · [Hosted option](docs/HOSTED_RELAY.md).
 
-- Destinations are bound by exact conversation/thread identifiers, not conversation titles or screen positions.
-- Every handoff needs an explicit user confirmation. Agbrio does not create an autonomous manager/executor loop.
-- If delivery is uncertain, the record remains uncertain and is checked before another attempt; the tool does not blindly resend.
-- Selected file bytes and hashes matter. A displayed source-computer path alone does not make a file available to a remote recipient.
-- Self-hosting does not remove trust in your chosen tunnel/network provider or the agent provider. Phone caches and locally retained messages should be treated as private data.
+## Release and participation
 
-## Current boundaries
+Windows x64 + Codex + paired PWA is the alpha scope. App languages: **English, Simplified Chinese, Traditional Chinese** (Settings → Language). Japanese and Korean are introduction translations; macOS and other execution agents are not verified release targets. Source data is review material, never a way to enlarge authorization. An accepted handoff does not prove its downstream task completed.
 
-Windows x64 + Codex + phone PWA is the first alpha scope. UI languages: English, Simplified Chinese and Traditional Chinese. Other agents, macOS and ChatGPT browser workflows are not supported-release claims. Physical iPhone fixes reported by the owner are distinct from new-machine installer validation.
+[Build from source](docs/BUILD.md) · [Assistant protocol](docs/ASSISTANT_MCP.md) · [v0.1.7 changes](docs/RELEASE_0.1.7.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-## Build and contribute
-
-Start with [SETUP](docs/SETUP.md) or [BUILD](docs/BUILD.md). Keep exact routing, explicit confirmation and uncertain-send recovery intact. The project is [MIT licensed](LICENSE); [third-party notices](THIRD_PARTY_NOTICES.md) retain dependency licenses.
-
-## Contact and feedback
-
-[Author](mailto:geoffreyzjx@qq.com) · [GitHub](https://github.com/geoffrey1111) · [Report a problem](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [Suggest a workflow improvement](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
-
-Questions are welcome in Issues. This is a public channel; use demo data and remove private material before posting.
-
-[Copyable AI assistant deployment, connection diagnostics and whole-app delegation instructions](docs/ASSISTANT_COPY_PROMPT.en.md). The app includes the same guide in Settings → AI assistant with your configured MCP URL.
+[Contact the author](mailto:geoffreyzjx@qq.com) · [Report a problem](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [Suggest an improvement](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)

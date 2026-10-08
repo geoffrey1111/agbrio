@@ -95,3 +95,7 @@ all dependencies or bundled runtimes have been security-audited.
 Public sanitized native source also passes 171 Host tests (24 ignored), plus
 one launcher test. Native resource inputs reuse verified vendor files only;
 no production processes are launched or changed by these unit checks.
+
+
+## 0.1.7 tutorial and localized introduction
+487frontend tests/52files, TypeScript/build, native browser whitelist and existingOAuth tests.54browsercases/3languages/3widths/6steps have no documentoverflow; Englishguide CJK0. See tutorial-browser-geometry-final.json and fictionalhandoff proof. These are isolatedrealcomponents, notliveDotwrite or physicaliPhone acceptance. Exact signedartifact/installer evidence is tracked separately.
