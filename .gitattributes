@@ -6,3 +6,6 @@
 *.woff2 binary
 third-party/** -whitespace
 public/fonts/OFL-NotoSansSC.txt -whitespace
+# Cryptographic fixtures must retain their signed bytes on every checkout.
+src-tauri/test-fixtures/updater-signature-sample.txt -text
+src-tauri/test-fixtures/updater-signature-sample.txt.sig -text
