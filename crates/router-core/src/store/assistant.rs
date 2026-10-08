@@ -19,6 +19,49 @@ pub struct AssistantGrant {
     pub created_at: i64, pub expires_at: i64, pub revoked_at: Option<i64>,
     pub approval_mode: String,
 }
+
+/// INSTANCE directory, independent of desktop selection. Keep Workstream's
+/// execution status separate from its reversible presentation lifecycle.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssistantAppBridge {
+    #[serde(flatten)]
+    pub workstream: Workstream,
+    pub lifecycle: &'static str,
+}
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssistantAppBridgeIndex {
+    pub bridges: Vec<AssistantAppBridge>,
+    pub archived_bridges: Vec<AssistantAppBridge>,
+    pub trashed_bridges: Vec<AssistantAppBridge>,
+}
+impl RouterStore {
+    pub fn assistant_app_bridge_index(&self, grant_id: &str) -> Result<AssistantAppBridgeIndex, String> {
+        self.with_connection(|c| {
+            if active(c, grant_id)?.scope != "INSTANCE" {
+                return Err("ASSISTANT_INSTANCE_AUTHORITY_REQUIRED".into());
+            }
+            let mut query = c.prepare("SELECT id,project_id,name,status,created_at,updated_at,binding_revision,archived_at,trashed_at,pinned_at FROM workstreams ORDER BY pinned_at IS NOT NULL DESC,pinned_at DESC,updated_at DESC,name,id").map_err(db_error)?;
+            let rows = query.query_map([], workstream_row).map_err(db_error)?;
+            let mut index = AssistantAppBridgeIndex::default();
+            for row in rows {
+                let workstream = row.map_err(db_error)?;
+                // Trash wins for an archived Bridge subsequently removed.
+                let lifecycle = if workstream.trashed_at.is_some() { "TRASHED" }
+                    else if workstream.archived_at.is_some() || workstream.status == "ARCHIVED" { "ARCHIVED" }
+                    else { "ACTIVE" };
+                let item = AssistantAppBridge { workstream, lifecycle };
+                match lifecycle {
+                    "TRASHED" => index.trashed_bridges.push(item),
+                    "ARCHIVED" => index.archived_bridges.push(item),
+                    _ => index.bridges.push(item),
+                }
+            }
+            Ok(index)
+        })
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ApprovalInput {

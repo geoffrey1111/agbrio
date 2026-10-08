@@ -9,7 +9,7 @@ is never bundled. Free self-deployment does not require a redemption code.
 ## 1. Desktop
 
 Use the Windows installer from [Releases](https://github.com/geoffrey1111/agbrio/releases).
-The0.1.7 package includes a publisher signature for in-app updating; it is not Windows Authenticode-signed. Verify `SHA256SUMS.txt` against the downloaded file;
+The0.1.8 package includes a publisher signature for in-app updating; it is not Windows Authenticode-signed. Verify `SHA256SUMS.txt` against the downloaded file;
 review the source before trusting a build. WebView2 must be available; the
 installer uses Microsoft's bootstrapper if necessary. Do not install alongside
 another running Agbrio/AI Work Router instance.

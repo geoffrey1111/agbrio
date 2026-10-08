@@ -2,6 +2,21 @@ use super::*;
 use assistant::{BriefRule,InstanceGrantInput,GrantInput};
 use assistant_actions::{ActionInput,ActionApproval};
 fn rules()->Vec<BriefRule>{vec![BriefRule{id:"routine".into(),text:"Carry out routine approved operations; ask about changes".into()}]}
+#[test]fn instance_bridge_index_covers_projects_separates_trash_and_keeps_scope_and_selection(){
+ let d=tempfile::tempdir().unwrap();let s=RouterStore::open_at(d.path().join("example.db")).unwrap();let g=global(&s);
+ let pa=s.create_project("Demo A".into(),None).unwrap();let pb=s.create_project("Demo B".into(),None).unwrap();
+ let a=bridge(&s,&pa.id,"A");let b=bridge(&s,&pb.id,"B");let archived=bridge(&s,&pa.id,"Archived");let trash=bridge(&s,&pa.id,"Trash");let archived_trash=bridge(&s,&pb.id,"ArchivedTrash");
+ s.archive_workstream(&archived).unwrap();s.trash_workstream(&trash).unwrap();s.archive_workstream(&archived_trash).unwrap();s.trash_workstream(&archived_trash).unwrap();
+ s.select_workspace(&pa.id,Some(&a)).unwrap();let snapshot=serde_json::to_value(s.snapshot().unwrap()).unwrap();let grants=serde_json::to_value(s.assistant_grant(&g.id).unwrap()).unwrap();
+ let index=s.assistant_app_bridge_index(&g.id).unwrap();let active=index.bridges.iter().map(|v|v.workstream.id.as_str()).collect::<std::collections::BTreeSet<_>>();assert_eq!(active,std::collections::BTreeSet::from([a.as_str(),b.as_str()]));
+ assert_eq!(index.archived_bridges.len(),1);assert_eq!(index.archived_bridges[0].workstream.id,archived);assert_eq!(index.archived_bridges[0].lifecycle,"ARCHIVED");assert_eq!(index.trashed_bridges.len(),2);assert!(index.trashed_bridges.iter().all(|v|v.lifecycle=="TRASHED"));assert!(index.bridges.iter().all(|v|v.lifecycle=="ACTIVE"&&v.workstream.binding_revision==1));
+ assert_eq!(serde_json::to_value(s.snapshot().unwrap()).unwrap(),snapshot);
+ s.select_workspace(&pb.id,Some(&b)).unwrap();assert_eq!(serde_json::to_value(s.assistant_app_bridge_index(&g.id).unwrap()).unwrap(),serde_json::to_value(index).unwrap());assert_eq!(serde_json::to_value(s.assistant_grant(&g.id).unwrap()).unwrap(),grants);
+ let old=s.create_assistant_grant(GrantInput{workstream_id:a.clone(),source_role:"BOTH".into(),binding_revision:1,label:"Legacy".into(),rules:rules(),expires_at:now()+600000}).unwrap();assert!(s.assistant_app_bridge_index(&old.id).unwrap_err().contains("INSTANCE_AUTHORITY_REQUIRED"));assert!(s.require_assistant_bridge(&old.id,&b,Some(1)).is_err());assert!(s.require_assistant_bridge(&g.id,&b,Some(2)).is_err());
+ for id in [&archived,&trash,&archived_trash]{assert!(s.require_assistant_bridge(&g.id,id,Some(1)).is_err());}
+ s.restore_workstream(&archived_trash).unwrap();let index=s.assistant_app_bridge_index(&g.id).unwrap();assert_eq!(index.archived_bridges.len(),2);assert_eq!(index.trashed_bridges.len(),1);assert_eq!(index.bridges.len(),2);
+ s.with_connection(|c|{c.execute("UPDATE assistant_grants SET expires_at=?2 WHERE id=?1",params![g.id,now()-1]).map_err(db_error)?;Ok(())}).unwrap();assert!(s.assistant_app_bridge_index(&g.id).unwrap_err().contains("EXPIRED"));
+}
 #[test]fn revoking_instance_authority_blocks_a_delayed_direct_reply_at_its_physical_claim(){
  let d=tempfile::tempdir().unwrap();let s=RouterStore::open_at(d.path().join("test.db")).unwrap();let g=global(&s);
  let snapshot=codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()};s.enable_codex_watch("demo-thread","Demo","D:\\demo",&snapshot).unwrap();

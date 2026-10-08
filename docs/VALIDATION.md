@@ -99,3 +99,7 @@ no production processes are launched or changed by these unit checks.
 
 ## 0.1.7 tutorial and localized introduction
 487frontend tests/52files, TypeScript/build, native browser whitelist and existingOAuth tests.54browsercases/3languages/3widths/6steps have no documentoverflow; Englishguide CJK0. See tutorial-browser-geometry-final.json and fictionalhandoff proof. These are isolatedrealcomponents, notliveDotwrite or physicaliPhone acceptance. Exact signedartifact/installer evidence is tracked separately.
+
+
+## 0.1.8 INSTANCE directory
+Regression first reproduces selected-project-only/removed-row enumeration, then checks cross-project activeIDs, lifecycle partitions, selectionindependence, exactproject/bindingRevision, unchangedgrant/snapshot, legacy8tool refusal and revoked/expired guards. NativeMCPRPC read_app/read_bridge/read_source pass with a read-only offlineadapter, zero provider/modelturns. Core199pass/1ignored; OAuthHTTP11pass/2ignored. RealDotpostupdate acceptance remains owner-only; independent read_chat/receipt reports are not claimed fixed.

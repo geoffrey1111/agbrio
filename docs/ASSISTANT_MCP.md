@@ -21,6 +21,23 @@ work. Preserve the existing prepare/confirm/receipt and decision-answer flow.
 Owner reports dot16tools and3reads; live dot writes are not yet accepted.
 Events discovery/subscription/wakeup remains unimplemented.
 
+## All-project directory (0.1.8)
+
+`agbrio_read_app` requires an active INSTANCE grant and enumerates all projects
+independently of the selected desktop workspace. `bridges` contains only ACTIVE
+entries. `archivedBridges` and `trashedBridges` are separately classified history,
+not takeover candidates. Each row retains its exact `id`, `projectId`,
+`bindingRevision`, existing Workstream fields and explicit `lifecycle`; trash
+wins for an archived item subsequently removed. `bridgeListScope=ALL_PROJECTS`.
+
+This read does not change desktop selection, snapshot semantics or authorization.
+Legacy BRIDGE grants still have8tools and cannot call it. Use exact IDs from the
+ACTIVE list and read the chosen Bridge/source with the existing connection.
+An active directory entry does not mean the owner has delegated its work.
+
+The reported read_chat -32603 and old APPROVED receipt INVALID_ARGUMENT are
+independent unresolved diagnostics; no resend was used to test them.
+
 ## Tools and execution
 
 INSTANCE has16 tools; BRIDGE retains its existing8 and cannot call the new8.
