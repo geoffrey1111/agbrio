@@ -258,7 +258,7 @@ it("keeps each Bridge draft across unmount and never reuses it for a newer sourc
 it("opens direct original-chat replies only after the explicit action and exact native ID",async()=>{
  const{api}=fixture();const watch={threadId:"thread-a",label:"source",cwd:"D:/public-fixture",enabled:true,generation:1,checkedAt:Date.now(),errorCode:null,snapshot:{state:"IDLE",turnId:null,itemId:null,text:""}};
  const extended:RoleBridgeApi={...api,openChat:vi.fn().mockResolvedValue(watch),chat:{state:vi.fn().mockResolvedValue({watch,host:"fixture",ownedTurnId:null,externalBusy:false,replies:[],requests:[],goal:null}),command:vi.fn()}};
- render(<RoleBridgePanel workstreamId="work-a" api={extended}/>);await screen.findByRole("button",{name:"监听并回复"});expect(extended.openChat).not.toHaveBeenCalled();fireEvent.click(screen.getByRole("button",{name:"监听并回复"}));await screen.findByRole("dialog",{name:"原对话回复"});expect(extended.openChat).toHaveBeenCalledWith("thread-a");expect(vi.mocked(extended.chat!.command).mock.calls.filter(([input])=>input.action!=="HISTORY")).toHaveLength(0);expect(api.send).not.toHaveBeenCalled();
+ render(<RoleBridgePanel workstreamId="work-a" api={extended}/>);await screen.findByRole("button",{name:"回复原对话"});expect(extended.openChat).not.toHaveBeenCalled();fireEvent.click(screen.getByRole("button",{name:"回复原对话"}));await screen.findByRole("dialog",{name:"原对话回复"});expect(extended.openChat).toHaveBeenCalledWith("thread-a");expect(vi.mocked(extended.chat!.command).mock.calls.filter(([input])=>input.action!=="HISTORY")).toHaveLength(0);expect(api.send).not.toHaveBeenCalled();
 });
 
 it("does not label an empty endpoint as a latest-read result",async()=>{
@@ -282,4 +282,29 @@ it("refreshes untouched cached segmentation and selects the instruction without 
  expect(blocks).toHaveBeenCalledTimes(2);expect(within(block).queryByText("可直接发给原执行对话：")).toBeNull();
  fireEvent.click(within(block).getByRole("checkbox"));fireEvent.click(screen.getByRole("button",{name:"编辑发送内容"}));
  expect(screen.getByRole("textbox",{name:"跨端交接发送内容"})).toHaveValue("继续11项校准。");expect(api.prepare).not.toHaveBeenCalled();expect(api.approve).not.toHaveBeenCalled();expect(api.send).not.toHaveBeenCalled();
+});
+
+it("retains a full earlier deliverable before repeated blocked updates and forwards the explicitly selected source",async()=>{
+ const {api,state}=fixture();api.state.mockResolvedValue({...state,replies:[{id:"blocked-2",endpointId:decision.id,text:"Goal is blocked",observedAt:3000},{id:"valuable",endpointId:decision.id,text:"Complete delivery checklist; ready for review",observedAt:1000},{id:"blocked-1",endpointId:decision.id,text:"Still waiting for the owner",observedAt:2000}]});
+ render(<NativeSurfaceContext.Provider value><RoleBridgePanel workstreamId="work-a" api={api}/></NativeSurfaceContext.Provider>);await screen.findByText("Complete delivery checklist; ready for review");
+ const messages=[...document.querySelectorAll(".r2-bridge-message")];expect(messages.map(n=>n.getAttribute("data-observation-id"))).toEqual(["valuable","blocked-1","blocked-2"]);
+ fireEvent.click(within(messages[0] as HTMLElement).getByRole("button",{name:"选择此条"}));fireEvent.click(screen.getByRole("button",{name:"转给执行端"}));expect(await screen.findByRole("textbox",{name:"跨端交接发送内容"})).toHaveValue("Complete delivery checklist; ready for review");expect(api.attachments).toHaveBeenCalledWith("work-a","DECISION","valuable");expect(api.send).not.toHaveBeenCalled();
+});
+
+it("explains a shared Goal prewrite block without replaying or silently changing the Goal",async()=>{
+ const {api,prepared}=fixture();api.prepare.mockResolvedValue({...prepared,approvedText:"original"});api.send.mockRejectedValue(Error("SHARED_TARGET_GOAL_NOT_IDLE"));
+ render(<RoleBridgePanel workstreamId="work-a" api={api}/>);fireEvent.click(await screen.findByRole("button",{name:"转给执行端"}));fireEvent.click(await screen.findByRole("button",{name:"确认并发送给执行端"}));
+ expect(await screen.findByRole("alert")).toHaveTextContent("本次未发送");expect(screen.getByRole("alert")).not.toHaveTextContent("SHARED_TARGET_GOAL_NOT_IDLE");expect(api.send).toHaveBeenCalledOnce();
+});
+
+it("switches directly from a blocked update to the exact earlier deliverable inside relay, without carrying its selection or attachments",async()=>{
+ const{api,state}=fixture();const blocked={id:"blocked",endpointId:decision.id,text:"Goal is blocked",observedAt:3000},valuable={id:"valuable",endpointId:decision.id,text:"Delivery ready for review",observedAt:1000};
+ api.state.mockResolvedValue({...state,replies:[blocked,valuable],activities:[{role:"DECISION",endpointId:decision.id,state:"ACTION_REQUIRED",goalStatus:"blocked",checkedAt:Date.now()}]});
+ const blocks=vi.fn().mockImplementation(async(_w,_r,id)=>[{id:id+"-body",kind:"PROSE",recommended:false,text:id==="valuable"?valuable.text:blocked.text}]);
+ render(<NativeSurfaceContext.Provider value><RoleBridgePanel workstreamId="work-a" api={{...api,blocks}}/></NativeSurfaceContext.Provider>);
+ fireEvent.click(await screen.findByRole("button",{name:"转给执行端"}));const dialog=await screen.findByRole("dialog",{name:"转发"});
+ const sources=within(dialog).getByRole("group",{name:"选择要转发的回复"});fireEvent.click(within(sources).getByRole("button",{name:/Delivery ready for review/}));
+ await waitFor(()=>expect(api.attachments).toHaveBeenCalledWith("work-a","DECISION","valuable"));
+ const selected=await within(dialog).findByRole("checkbox",{name:"第 1 段"});expect(selected).not.toBeChecked();fireEvent.click(selected);fireEvent.click(within(dialog).getByRole("button",{name:"编辑发送内容"}));
+ expect(within(dialog).getByRole("textbox",{name:"跨端交接发送内容"})).toHaveValue(valuable.text);expect(blocks).toHaveBeenCalledWith("work-a","DECISION","valuable");expect(api.send).not.toHaveBeenCalled();
 });

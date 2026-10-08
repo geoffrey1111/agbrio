@@ -1,3 +1,5 @@
+mod desktop_update;
+use desktop_update::{desktop_update_check,desktop_update_status,desktop_update_download,desktop_update_install,desktop_update_open_release};
 mod message_media;
 mod artifact;
 mod chatgpt;
@@ -37,6 +39,8 @@ fn assistant_settings(state:tauri::State<'_,RouterState>)->Result<serde_json::Va
 }
 #[tauri::command]
 fn assistant_create_grant(input:router_core::store::assistant::GrantInput,state:tauri::State<'_,RouterState>)->Result<router_core::store::assistant::AssistantGrant,String>{state.store.create_assistant_grant(input)}
+#[tauri::command]
+fn assistant_connect_instance(input:router_core::store::assistant::AssistantConnectionInput,state:tauri::State<'_,RouterState>)->Result<router_core::store::assistant::AssistantGrant,String>{state.store.connect_assistant_instance(input)}
 #[tauri::command]
 fn assistant_create_instance_grant(input:router_core::store::assistant::InstanceGrantInput,state:tauri::State<'_,RouterState>)->Result<router_core::store::assistant::AssistantGrant,String>{state.store.create_assistant_instance_grant(input)}
 #[tauri::command]
@@ -116,6 +120,8 @@ async fn codex_delivery_command(input:watch_notifications::DeliveryCommand,state
 fn codex_notification_navigation(state:State<'_,watch_notifications::NotificationNavigation>)->Option<i64>{state.0.lock().ok()?.take()}
 
 #[tauri::command]
+fn codex_watch_candidates(state:State<'_,RouterState>)->Result<ExistingCodexThreadCatalog,String>{codex_watch::candidates(state.inner())}
+#[tauri::command]
 fn codex_watch_list(state:State<'_,RouterState>)->Result<Vec<router_core::store::codex_watch::CodexWatch>,String>{state.store.codex_watches()}
 #[tauri::command]
 fn codex_watch_enable(thread_id:String,state:State<'_,RouterState>)->Result<(),String>{codex_watch::enable(state.inner(),&thread_id)}
@@ -155,6 +161,10 @@ use tauri::{AppHandle, Manager, State, WebviewWindow, WindowEvent};
 
 #[tauri::command]
 fn read_message_media(input:message_media::MediaInput,state:State<'_,RouterState>)->Result<message_media::MediaFile,String>{message_media::read(state.inner(),input)}
+#[tauri::command]
+async fn bridge_directory_activity(workstream_ids:Vec<String>,state:State<'_,RouterState>)->Result<Vec<role_bridge::DirectoryActivity>,String>{
+ let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||role_bridge::directory_activity(&core,&workstream_ids)).await.map_err(|_|"BRIDGE_ACTIVITY_UNAVAILABLE".to_string())?
+}
 #[tauri::command]
 fn role_bridge_state(workstream_id:String,state:State<'_,RouterState>)->Result<role_bridge::BridgeState,String>{role_bridge::state(state.inner(),&workstream_id)}
 #[tauri::command]
@@ -1409,6 +1419,8 @@ pub fn run() {
     };
     let builder = tauri::Builder::default()
         .manage(core)
+        .manage(desktop_update::UpdateState::default())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(HostRuntime::default())
         .manage(watch_notifications::NotificationNavigation::default())
         .on_window_event(on_host_window_event);
@@ -1430,9 +1442,9 @@ pub fn run() {
     let builder = builder.setup(|app| configure_host(app));
     #[cfg(debug_assertions)]
     let builder = builder.invoke_handler(tauri::generate_handler![
-        hosted_connection_status,hosted_connection_redeem,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_setup, shared_codex_launch, shared_codex_disable,
-        read_message_media, role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
-        codex_watch_list, codex_watch_enable, codex_watch_pause, codex_watch_remove, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
+        desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_setup, shared_codex_launch, shared_codex_disable,
+        read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
+        codex_watch_candidates,codex_watch_list, codex_watch_enable, codex_watch_pause, codex_watch_remove, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
         codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
         workspace_snapshot,
         workstream_snapshot,
@@ -1517,10 +1529,10 @@ pub fn run() {
     ]);
     #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(tauri::generate_handler![
-        hosted_connection_status,hosted_connection_redeem,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_setup, shared_codex_launch, shared_codex_disable,
+        desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
-        read_message_media, role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
-        codex_watch_list, codex_watch_enable, codex_watch_pause, codex_watch_remove, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
+        read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
+        codex_watch_candidates,codex_watch_list, codex_watch_enable, codex_watch_pause, codex_watch_remove, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
         workspace_snapshot,
         workstream_snapshot,
         native_window_monitor_evidence,

@@ -59,6 +59,7 @@ pub(crate) struct Session {
     pub(crate) mobile_reviews: HashMap<String, MobileReverseReview>,
     pub(crate) mobile_outbound_reviews: HashMap<String, MobileCodexOutboundReview>,
     pub(crate) pending_codex_requests: HashMap<String, PendingCodexRequest>,
+    pub(crate) resolved_codex_requests: std::collections::VecDeque<(String, Value)>,
 }
 
 #[derive(Deserialize)]
@@ -651,7 +652,13 @@ pub(crate) struct MobileCodexQuestion {
     pub(crate) label: String,
     pub(crate) placeholder: Option<String>,
     pub(crate) required: bool,
+    pub(crate) options: Vec<MobileCodexInputOption>,
+    pub(crate) is_other: bool,
+    pub(crate) is_secret: bool,
 }
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MobileCodexInputOption { pub(crate) label: String, pub(crate) description: String }
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -812,7 +819,7 @@ impl RouterCore {
     }
 
     pub(crate) fn mobile_workstreams(&self) -> Result<Vec<MobileWorkstreamItem>, String> {
-        let pending={let session=self.session.lock().map_err(|_|"Router session is unavailable")?;session.pending_codex_requests.values().filter(|request|!session.codex_adapter_borrowed&&!session.adapter.as_ref().is_some_and(|a|a.is_shared()&&!a.is_exact_turn_active(&request.thread_id,&request.turn_id))).map(|request|request.thread_id.clone()).collect::<HashSet<_>>()};
+        let pending={let session=self.session.lock().map_err(|_|"Router session is unavailable")?;session.pending_codex_requests.values().filter(|request|!session.codex_adapter_borrowed&&!session.adapter.as_ref().is_some_and(|a|a.is_shared()&&!a.is_shared_subscribed(&request.thread_id)&&!a.is_exact_turn_active(&request.thread_id,&request.turn_id))).map(|request|request.thread_id.clone()).collect::<HashSet<_>>()};
         Ok(self
             .store
             .dashboard_projection()?
@@ -1640,7 +1647,7 @@ impl RouterCore {
             .pending_codex_requests
             .values()
             .filter(|request| request.thread_id == active.external_id)
-            .filter(|request| !session.codex_adapter_borrowed&&!session.adapter.as_ref().is_some_and(|a|a.is_shared()&&!a.is_exact_turn_active(&request.thread_id,&request.turn_id)))
+            .filter(|request| !session.codex_adapter_borrowed&&!session.adapter.as_ref().is_some_and(|a|a.is_shared()&&!a.is_shared_subscribed(&request.thread_id)&&!a.is_exact_turn_active(&request.thread_id,&request.turn_id)))
             .filter_map(mobile_codex_request_projection)
             .collect())
     }
@@ -2416,7 +2423,7 @@ impl RouterCore {
             return Err("The structured request changed before response".into());
         }
         let adapter=session.adapter.as_mut().ok_or("Codex backend disconnected. The live request cannot be reconstructed.")?;
-        if adapter.is_shared()&&!adapter.is_exact_turn_active(&request.thread_id,&request.turn_id){return Err("That request belongs to a turn controlled in Codex Desktop.".into());}
+        if adapter.is_shared()&&!adapter.is_shared_subscribed(&request.thread_id)&&!adapter.is_exact_turn_active(&request.thread_id,&request.turn_id){return Err("That request belongs to a turn controlled in Codex Desktop.".into());}
         adapter.respond_to_server_request(&request.raw_request_id, result)?;
         if let Some(current) = session.pending_codex_requests.get_mut(action_id) {
             current.responded = true;
@@ -3034,6 +3041,9 @@ pub(crate) fn mobile_codex_request_projection(
                             .and_then(Value::as_str)
                             .map(str::to_string),
                         required: true,
+                        options: question.get("options").and_then(Value::as_array).into_iter().flatten().filter_map(|o|Some(MobileCodexInputOption{label:o.get("label")?.as_str()?.into(),description:o.get("description").and_then(Value::as_str).unwrap_or("").into()})).collect(),
+                        is_other: question.get("isOther").and_then(Value::as_bool).unwrap_or(false),
+                        is_secret: question.get("isSecret").and_then(Value::as_bool).unwrap_or(false),
                     })
                 })
                 .collect();
@@ -3131,6 +3141,8 @@ pub(crate) fn capture_pending_codex_request(session: &Arc<Mutex<Session>>, messa
     };
     if mobile_codex_request_projection(&request).is_some() {
         if let Ok(mut current) = session.lock() {
+            if current.resolved_codex_requests.iter().any(|(thread,id)|thread==&request.thread_id&&id==&request.raw_request_id)
+                ||current.pending_codex_requests.values().any(|r|r.thread_id==request.thread_id&&r.raw_request_id==request.raw_request_id){return;}
             current
                 .pending_codex_requests
                 .insert(request.action_id.clone(), request);
@@ -3150,6 +3162,8 @@ pub(crate) fn clear_resolved_codex_request(session: &Arc<Mutex<Session>>, messag
         return;
     };
     if let Ok(mut current) = session.lock() {
+        current.resolved_codex_requests.push_back((thread_id.into(),request_id.clone()));
+        while current.resolved_codex_requests.len()>1024{current.resolved_codex_requests.pop_front();}
         current.pending_codex_requests.retain(|_, request| {
             !(request.thread_id == thread_id && request.raw_request_id == *request_id)
         });
@@ -3203,6 +3217,7 @@ pub(crate) fn server_request_response_result(
             }
         }
         "item/tool/requestUserInput" => {
+            if input.decision.as_deref()==Some("skip") {return Ok(json!({"answers":{}}));}
             let submitted = input.answers.ok_or("Codex requested an answer")?;
             let expected = request
                 .params
@@ -3742,6 +3757,8 @@ pub(crate) fn connect_codex_in_background(
             .lock()
             .map_err(|_| "Router session is unavailable")?;
         current.adapter = Some(adapter);
+        current.pending_codex_requests.clear();
+        current.resolved_codex_requests.clear();
         current.codex_observer_epoch = current.codex_observer_epoch.wrapping_add(1);
         current.connecting = false;
         current.connection_detail = None;

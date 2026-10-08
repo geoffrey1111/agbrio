@@ -19,7 +19,7 @@ export function SwipeDeleteRow({label,onDelete,children,disabled=false,className
  const touchHandlers=useRef({start,move,finish,cancel});touchHandlers.current={start,move,finish,cancel};
  useEffect(()=>{const element=row.current;if(!element||disabled)return;const down=(e:TouchEvent)=>{if(e.touches.length!==1){touchHandlers.current.cancel();return;}const t=e.touches[0];touchHandlers.current.start(t.clientX,t.clientY,e.target);};const update=(e:TouchEvent)=>{if(e.touches.length!==1){touchHandlers.current.cancel();return;}const t=e.touches[0];if(touchHandlers.current.move(t.clientX,t.clientY)&&e.cancelable)e.preventDefault();};const end=()=>touchHandlers.current.finish(),abort=()=>touchHandlers.current.cancel();element.addEventListener('touchstart',down,{passive:true});element.addEventListener('touchmove',update,{passive:false});element.addEventListener('touchend',end);element.addEventListener('touchcancel',abort);return()=>{element.removeEventListener('touchstart',down);element.removeEventListener('touchmove',update);element.removeEventListener('touchend',end);element.removeEventListener('touchcancel',abort);};},[disabled]);
  if(disabled)return <div className={`agbrio-swipe-row ${className}`}><div className="agbrio-swipe-content">{children}</div></div>;
- return <div ref={row} className={`agbrio-swipe-row ${className}`} data-open={Math.abs(offset)>=40} data-revealed={Math.abs(offset)>0} data-side={offset<0?'right':'left'} data-dragging={dragging} style={{'--swipe-offset':`${offset}px`} as React.CSSProperties}
+ return <div ref={row} className={`agbrio-swipe-row ${className}`} data-open={Math.abs(offset)>=40} data-revealed={Math.abs(offset)>0} data-side={offset<0?'right':'left'} data-dragging={dragging}
   onPointerDown={e=>{if(e.pointerType==='mouse'||e.pointerType==='touch')return;start(e.clientX,e.clientY,e.target);}}
   onPointerMove={e=>{if(e.pointerType==='touch')return;if(move(e.clientX,e.clientY))e.currentTarget.setPointerCapture?.(e.pointerId);}}
   onPointerUp={e=>{if(e.pointerType!=='touch')finish();}}
@@ -28,7 +28,7 @@ export function SwipeDeleteRow({label,onDelete,children,disabled=false,className
   onContextMenu={e=>{if(disabled)return;e.preventDefault();reveal(offset?0:76);}}
   onClickCapture={e=>{if(!(e.target as HTMLElement).closest('.agbrio-swipe-content'))return;if(performance.now()<suppress.current||Math.abs(offset)>=40){e.preventDefault();e.stopPropagation();if(performance.now()>=suppress.current)reveal(0);}}}>
   <button type="button" className="agbrio-swipe-delete" aria-label={uiText("删除 {0}", label)} aria-hidden={Math.abs(offset)<40} tabIndex={Math.abs(offset)>=40?0:-1} disabled={disabled} onClick={onDelete}><Trash2 size={20} aria-hidden="true"/><span>{uiText("删除")}</span></button>
-  <div className="agbrio-swipe-content">{children}</div>
+  <div className="agbrio-swipe-content" style={{transform:`translateX(${offset}px)`}}>{children}</div>
   <button type="button" className="agbrio-row-delete" aria-label={uiText("删除 {0}", label)} disabled={disabled} onClick={onDelete}><Trash2 size={18} aria-hidden="true"/></button>
  </div>;
 }

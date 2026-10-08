@@ -8,7 +8,12 @@ static ASSETS:OnceLock<Assets>=OnceLock::new();static START:Mutex<()>=Mutex::new
 #[derive(Clone,Serialize,Deserialize)]#[serde(rename_all="camelCase")]
 struct Settings{enabled:bool,#[serde(default)]format:u32,#[serde(default)]phase:String,binary:PathBuf,version:String,owner_sid:String,port:u16,instance:String,#[serde(default)]desktop:Option<PathBuf>}
 #[derive(Serialize,Deserialize)]#[serde(rename_all="camelCase")]
-pub(crate)struct Status{pub enabled:bool,pub ready:bool,pub desktop_connected:bool,pub state:String,pub update_pending:bool}
+pub(crate)struct Status{pub enabled:bool,pub ready:bool,pub desktop_connected:bool,pub state:String,pub update_pending:bool,#[serde(default)]pub launch_progress:Option<LaunchProgress>}
+#[derive(Serialize,Deserialize)]#[serde(rename_all="camelCase")]
+pub(crate)struct LaunchProgress{step:String,state:String,error_code:Option<String>,updated_at:u64}
+fn launch_progress()->Option<LaunchProgress>{let v:LaunchProgress=serde_json::from_slice(&fs::read(folder().ok()?.join("launch-progress.json")).ok()?).ok()?;
+ matches!(v.step.as_str(),"CHECKING"|"LAUNCHING"|"CONNECTING"|"SHOWING"|"CONNECTED"|"FAILED").then_some(v)
+}
 fn folder()->Result<PathBuf,String>{Ok(PathBuf::from(std::env::var_os("LOCALAPPDATA").ok_or("SHARED_LOCAL_DATA_UNAVAILABLE")?).join("AIWorkRouter/codex-shared"))}
 fn settings()->Result<Option<Settings>,String>{let p=folder()?.join("settings.json");if !p.exists(){return Ok(None)}serde_json::from_slice(&fs::read(p).map_err(|_|"SHARED_SETTINGS_UNAVAILABLE")?).map(Some).map_err(|_|"SHARED_SETTINGS_INVALID".into())}
 fn tool_path(path:PathBuf)->PathBuf{
@@ -20,14 +25,26 @@ pub(crate)fn configure(source:PathBuf,node:PathBuf){let _=ASSETS.set(Assets{sour
 #[cfg(not(windows))]fn hidden(_: &mut Command){}
 fn health(s:&Settings)->Option<serde_json::Value>{if s.format!=2{return None}let client=reqwest::blocking::Client::builder().no_proxy().timeout(std::time::Duration::from_secs(2)).build().ok()?;let v=client.get(format!("http://127.0.0.1:{}/health",s.port)).send().ok()?.json::<serde_json::Value>().ok()?;(v["instance"].as_str()==Some(&s.instance)).then_some(v)}
 pub(crate)fn status()->Status{
- let fallback=Status{enabled:false,ready:false,desktop_connected:false,state:"INDEPENDENT".into(),update_pending:false};
+ let fallback=Status{enabled:false,ready:false,desktop_connected:false,state:"INDEPENDENT".into(),update_pending:false,launch_progress:None};
  let Ok(Some(s))=settings()else{return fallback};if s.phase=="RECOVERY_REQUIRED"{return Status{state:"RECOVERY_REQUIRED".into(),..fallback}}if s.format!=2{return Status{state:if s.enabled{"LEGACY_REPAIR_REQUIRED"}else{"INDEPENDENT"}.into(),..fallback}};
  let h=health(&s);let ready=h.as_ref().is_some_and(|h|h["ready"]==true);let desktop=h.as_ref().is_some_and(|h|h["desktopConnected"]==true);
- Status{enabled:s.enabled,ready,desktop_connected:desktop,state:if s.phase=="RECOVERY_REQUIRED"{"RECOVERY_REQUIRED"}else if s.phase=="PREPARED"&&ready{"SHARED_PREPARED"}else if s.enabled&&desktop{"SHARED_CONNECTED"}else if s.enabled{"SHARED_RECONNECTING"}else{"INDEPENDENT"}.into(),update_pending:runtime_update_pending()}
+ Status{enabled:s.enabled,ready,desktop_connected:desktop,state:if s.phase=="RECOVERY_REQUIRED"{"RECOVERY_REQUIRED"}else if s.phase=="PREPARED"&&ready{"SHARED_PREPARED"}else if s.enabled&&desktop{"SHARED_CONNECTED"}else if s.enabled{"SHARED_RECONNECTING"}else{"INDEPENDENT"}.into(),update_pending:runtime_update_pending(),launch_progress:launch_progress()}
 }
 fn copy_tree(from:&Path,to:&Path)->Result<(),String>{fs::create_dir_all(to).map_err(|_|"SHARED_RUNTIME_COPY_FAILED")?;for e in fs::read_dir(from).map_err(|_|"SHARED_RUNTIME_COPY_FAILED")?{let e=e.map_err(|_|"SHARED_RUNTIME_COPY_FAILED")?;let ty=e.file_type().map_err(|_|"SHARED_RUNTIME_COPY_FAILED")?;if ty.is_symlink(){return Err("SHARED_RUNTIME_LINK_REJECTED".into())}if ty.is_dir(){copy_tree(&e.path(),&to.join(e.file_name()))?}else{fs::copy(e.path(),to.join(e.file_name())).map_err(|_|"SHARED_RUNTIME_COPY_FAILED")?;}}Ok(())}
 fn asset_stamp(a:&Assets)->Result<String,String>{let mut digest=Sha256::new();for name in ["runtime.mjs","transport.mjs","peer-owner.ps1","desktop-runtime.ps1","peer-service.ps1","control.mjs","environment.ps1","desktop-identity.ps1"]{digest.update(fs::read(a.source.join(name)).map_err(|_|"SHARED_RUNTIME_ASSET_MISSING")?);}digest.update(fs::read(&a.node).map_err(|_|"SHARED_NODE_MISSING")?);let ws=a.source.parent().ok_or("SHARED_RUNTIME_ASSET_MISSING")?.join("browser-executor/node_modules/ws");for name in ["index.js","package.json"]{digest.update(fs::read(ws.join(name)).map_err(|_|"SHARED_WS_MISSING")?);}let mut files:Vec<_>=fs::read_dir(ws.join("lib")).map_err(|_|"SHARED_WS_MISSING")?.filter_map(Result::ok).collect();files.sort_by_key(|f|f.file_name());for f in files{digest.update(fs::read(f.path()).map_err(|_|"SHARED_WS_MISSING")?);}Ok(format!("{:x}",digest.finalize()))}
-fn runtime_update_pending()->bool{let Some(a)=ASSETS.get()else{return false};let Ok(stamp)=asset_stamp(a)else{return true};folder().ok().and_then(|f|fs::read_to_string(f.join("runtime/version")).ok()).is_some_and(|v|v!=stamp)}
+fn live_assets_stamp(source:&Path,node:&Path,ws:&Path)->Option<String>{
+ let mut digest=Sha256::new();for name in ["runtime.mjs","transport.mjs","peer-service.ps1"]{digest.update(fs::read(source.join(name)).ok()?);}digest.update(fs::read(node).ok()?);
+ for name in ["index.js","package.json"]{digest.update(fs::read(ws.join(name)).ok()?);}
+ let mut files:Vec<_>=fs::read_dir(ws.join("lib")).ok()?.collect::<Result<_,_>>().ok()?;files.sort_by_key(|f|f.file_name());
+ for file in files{digest.update(file.file_name().to_string_lossy().as_bytes());digest.update(fs::read(file.path()).ok()?);}Some(format!("{:x}",digest.finalize()))
+}
+fn runtime_update_pending()->bool{
+ let Some(a)=ASSETS.get()else{return false};let Some(root)=folder().ok().map(|f|f.join("runtime"))else{return true};
+ let Some(ws)=a.source.parent().map(|p|p.join("browser-executor/node_modules/ws"))else{return true};
+ // Control/environment scripts execute from the installed package, not the
+ // resident supervisor. Updating launch UI must not require ending active turns.
+ let expected=live_assets_stamp(&a.source,&a.node,&ws);expected.is_none()||expected!=live_assets_stamp(&root,&root.join("node.exe"),&root.join("ws"))
+}
 fn same_supervisor_identity(saved:&serde_json::Value,current:&serde_json::Value,expected_image:&str,expected_owner:&str)->bool{
  let normalized=|p:&str|p.replace('/',"\\").trim_start_matches("\\\\?\\").to_ascii_lowercase();
  saved["pid"].as_u64().is_some_and(|id|id>0&&current["pid"].as_u64()==Some(id))&&saved["createdAt"].as_str().is_some_and(|v|!v.is_empty()&&current["createdAt"].as_str()==Some(v))&&current["ownerSid"].as_str()==Some(expected_owner)&&saved["ownerSid"].as_str()==Some(expected_owner)&&current["imagePath"].as_str().is_some_and(|p|normalized(p)==normalized(expected_image))&&saved["imagePath"].as_str().is_some_and(|p|normalized(p)==normalized(expected_image))

@@ -30,6 +30,8 @@ jsonwebtoken = { version = "11", default-features = false, features = ["rust_cry
 web-push-native = "0.5"
 base64ct = { version = "1", features = ["alloc", "std"] }
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "rustls-tls"] }
+tauri-plugin-updater = "=2.12.0"
+semver = "1"
 
 [target.'cfg(windows)'.dependencies]
 tauri-plugin-autostart = "2.5.1"
@@ -43,3 +45,4 @@ windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_System_Co
 
 [dev-dependencies]
 tempfile = "3"
+minisign-verify = "=0.2.5"

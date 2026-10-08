@@ -47,3 +47,7 @@ __pycache__/
 operator.json
 *-codes.json
 redemption-codes/
+
+# Private recording assets remain outside the public source export
+demo/
+src/demo/

@@ -39,16 +39,18 @@ impl RouterStore {
             let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
             if let Some(prior)=tx.query_row(&format!("SELECT {COLS} FROM watch_replies WHERE id=?1"),[&input.id],row).optional().map_err(db_error)?{if prior.payload_hash!=hash{return Err("REPLY_ID_REUSED_WITH_DIFFERENT_CONTENT".into());}return Ok(prior);}
             if tx.query_row("SELECT 1 FROM watch_reply_cancellations WHERE id=?1",[&input.id],|r|r.get::<_,i64>(0)).optional().map_err(db_error)?.is_some(){return Err("REPLY_CANCELLED".into());}
-            let current:Option<(String,i64)>=tx.query_row("SELECT cwd,generation FROM codex_watches WHERE thread_id=?1",[&input.thread_id],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(db_error)?;
-            if current!=Some((input.cwd.clone(),input.generation)){return Err("REPLY_TARGET_CHANGED_REFRESH".into());}
+            let current=codex_watch::chat_context(&tx,&input.thread_id)?;
+            if current.cwd!=input.cwd||current.generation!=input.generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}
             if let Some(seq)=input.source_sequence{let target:Option<String>=tx.query_row("SELECT thread_id FROM codex_watch_events WHERE sequence=?1",[seq],|r|r.get(0)).optional().map_err(db_error)?;if target.as_deref()!=Some(&input.thread_id){return Err("WATCH_EVENT_NOT_FOUND".into());}}
             let conflict:i64=tx.query_row("SELECT COUNT(*) FROM watch_replies WHERE thread_id=?1 AND status IN ('QUEUED','SENDING','UNKNOWN')",[&input.thread_id],|r|r.get(0)).map_err(db_error)?;if conflict>0{return Err("REPLY_PREVIOUS_PENDING_CHECK_FIRST".into());}
             let at=now();tx.execute("INSERT INTO watch_replies(id,thread_id,cwd,generation,source_sequence,expected_turn_id,mode,text,options_json,payload_hash,status,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,'QUEUED',?11,?11)",params![input.id,input.thread_id,input.cwd,input.generation,input.source_sequence,input.expected_turn_id,input.mode,input.text,raw,hash,at]).map_err(db_error)?;
             let reply=tx.query_row(&format!("SELECT {COLS} FROM watch_replies WHERE id=?1"),[&input.id],row).map_err(db_error)?;tx.commit().map_err(db_error)?;Ok(reply)
         })
     }
+    pub fn queued_watch_replies(&self)->Result<Vec<WatchReply>,String>{self.with_connection(|c|{let mut q=c.prepare(&format!("SELECT {COLS} FROM watch_replies WHERE status='QUEUED' AND mode='QUEUE' ORDER BY created_at LIMIT 100")).map_err(db_error)?;let rows=q.query_map([],row).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;Ok(rows)})}
     pub fn claim_watch_reply(&self,id:&str)->Result<WatchReply,String>{self.with_connection(|c|{let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;let reply=tx.query_row(&format!("SELECT {COLS} FROM watch_replies WHERE id=?1"),[id],row).map_err(db_error)?;if reply.status!="QUEUED"{return Err("REPLY_ALREADY_ATTEMPTED".into());}
-        let valid:i64=tx.query_row("SELECT COUNT(*) FROM codex_watches WHERE thread_id=?1 AND cwd=?2 AND generation=?3",params![reply.thread_id,reply.cwd,reply.generation],|r|r.get(0)).map_err(db_error)?;if valid!=1{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}
+        let current=codex_watch::chat_context(&tx,&reply.thread_id)?;
+        if current.cwd!=reply.cwd||current.generation!=reply.generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}
         let busy:i64=tx.query_row("SELECT (SELECT COUNT(*) FROM provider_runs r JOIN endpoints e ON e.id=r.endpoint_id WHERE e.provider='CODEX' AND e.external_id=?1 AND r.status IN ('STARTING','RUNNING','UNKNOWN')) + (SELECT COUNT(*) FROM handoffs h JOIN endpoints e ON e.id=h.destination_endpoint_id WHERE e.provider='CODEX' AND e.external_id=?1 AND h.status='SENDING')",[&reply.thread_id],|r|r.get(0)).map_err(db_error)?;if busy>0{return Err("REPLY_OTHER_WRITER_PENDING".into());}
         // Instance-delegated direct replies, including delayed QUEUE dispatch,
         // revalidate authority in the physical writer's own claim transaction.

@@ -3,7 +3,8 @@
 
 # Agbrio
 
-> **託管連線預覽版:** Windows **preview.16** 支援選用兌換碼連線：電腦端啟用一次，再配對手機，不必自備網域。兌換碼另外提供；自行部署仍可免費使用。[設定與限制](docs/SETUP.md)。
+> **Windows 預覽版0.1.1：** [下載安裝包](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.1)。包含 Bridge 目前活動端、停止後待審提示、選擇較早原文、Codex 提問回答與跟進，以及設定中的檢查更新。保留可選託管兌換碼和免費自行部署。[更新與驗證範圍](docs/RELEASE_0.1.1.md)。
+
 
 
 **Agent Bridge · 讓管理對話與執行對話順暢交接**
@@ -18,7 +19,7 @@
 
 ## 發布狀態
 
-**[v0.1.0-alpha.1](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.0-alpha.1) — MIT 開源 Windows Alpha。** 可下載安裝包與校驗值，或從原始碼建置。乾淨 Windows 安裝及原生首次設定已通過自動驗證，實際遠端 Codex／檔案交接亦已獨立驗證。介面支援繁體中文、簡體中文及英文，可在「設定 → 語言」切換。Mac 與其他 Agent 尚未列為支援平台。[安裝與配對](docs/SETUP.md)。
+**[v0.1.1](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.1) — MIT 開源 Windows Alpha。** 可下載安裝包與校驗值，或從原始碼建置。乾淨 Windows 安裝及原生首次設定已通過自動驗證，實際遠端 Codex／檔案交接亦已獨立驗證。介面支援繁體中文、簡體中文及英文，可在「設定 → 語言」切換。Mac 與其他 Agent 尚未列為支援平台。[安裝與配對](docs/SETUP.md)。
 
 ## 適合已經使用雙對話協作的人
 

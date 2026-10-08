@@ -1,0 +1,30 @@
+name: Exact released Windows installer
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  released-install:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+      - name: Test dependency
+        run: npm ci
+      - name: Download exact public0.1.1 bytes
+        run: |
+          New-Item -ItemType Directory -Path runtime/released -Force | Out-Null
+          $path='runtime/released/Agbrio_0.1.1_x64-setup.exe'
+          Invoke-WebRequest 'https://github.com/geoffrey1111/agbrio/releases/download/v0.1.1/Agbrio_0.1.1_x64-setup.exe' -OutFile $path
+          if((Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant() -ne 'b50cc65a1dd8dca5aa420b64923957284692a09093b3743d52d389d3004ea9dd'){throw 'Released byte identity mismatch'}
+          pwsh -NoProfile -File scripts/windows-install-smoke.ps1 -Installer $path
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agbrio-exact-released-install-validation
+          path: |
+            runtime/clean-windows/proof.json
+            runtime/clean-windows/*.png

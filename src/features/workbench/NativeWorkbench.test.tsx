@@ -71,3 +71,9 @@ it("menu-to-rename waits for the old history layer without closing the new sheet
  act(()=>history.back());
  await waitFor(()=>expect(screen.queryByRole("textbox",{name:"名称"})).not.toBeInTheDocument());
 });
+
+it("shows the one current side and Bridge review hints without deriving a task from its title",async()=>{
+ const bounds=vi.spyOn(Element.prototype,"getBoundingClientRect").mockReturnValue({x:20,y:100,top:100,bottom:218,left:20,right:400,width:380,height:118,toJSON:()=>({})});
+ const api=vi.fn().mockResolvedValue([{workstreamId:"exact-a",bindingRevision:1,unreadCount:2,sides:[{role:"DECISION",endpointId:"d",state:"THINKING",checkedAt:Date.now()},{role:"EXECUTION",endpointId:"e",state:"ACTION_REQUIRED",checkedAt:Date.now()}]}]);
+ try{render(<UnifiedWorkbench {...base} surface="BRIDGES" bridgeActivityApi={api}/>);expect(await screen.findByText("正在思考")).toBeVisible();expect(screen.queryByText("待你处理")).toBeNull();expect(screen.queryAllByLabelText("有新回复待审阅")).toHaveLength(0);expect(api).toHaveBeenCalledWith(["exact-a","exact-b"]);}finally{bounds.mockRestore();}
+});

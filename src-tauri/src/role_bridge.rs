@@ -20,7 +20,7 @@ pub(crate) struct BridgeState {
     pub(crate) snapshot_at:Option<u64>,
 }
 #[derive(Clone,Serialize)]#[serde(rename_all="camelCase")]
-pub(crate) struct RoleActivity{pub role:String,pub endpoint_id:String,pub state:String,pub checked_at:u64,pub turn_id:Option<String>,pub result_observation_id:Option<String>}
+pub(crate) struct RoleActivity{pub role:String,pub endpoint_id:String,pub state:String,pub checked_at:u64,pub turn_id:Option<String>,pub result_observation_id:Option<String>,pub goal_status:Option<String>,pub turn_active:bool}
 #[derive(Serialize)]#[serde(rename_all="camelCase")]
 pub(crate) struct BridgeReadOutcome{role:String,endpoint_id:String,state:String,retained_reply:bool}
 #[derive(Serialize)]#[serde(rename_all="camelCase")]
@@ -79,13 +79,13 @@ pub(crate) fn sync(core:&RouterCore,workstream:&str)->Result<BridgeState,String>
     {
         let mut session=core.session.try_lock().ok();
         for side in [&initial.bindings.decision,&initial.bindings.execution].into_iter().flatten(){
-            let mut activity=RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:activity_now(),turn_id:None,result_observation_id:None};
+            let mut activity=RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:activity_now(),turn_id:None,result_observation_id:None,goal_status:None,turn_active:false};
             if side.endpoint.provider=="CODEX"{
                 if let Some(adapter)=session.as_mut().and_then(|s|s.adapter.as_mut()).filter(|a|!a.is_closed()){
                     if let Ok(native)=adapter.read_thread_activity(&side.endpoint.external_id){
                         let root_matches=side.cwd.as_ref().is_some_and(|cwd|std::fs::canonicalize(cwd).ok().zip(std::fs::canonicalize(&native.cwd).ok()).is_some_and(|(a,b)|a==b));
                         if root_matches&&native.thread_id==side.endpoint.external_id{
-                            activity.state=native.state.into();activity.turn_id=native.turn_id;
+                            activity.state=native.state.into();activity.turn_id=native.turn_id;activity.goal_status=native.goal_status;activity.turn_active=native.turn_active;
                             if activity.state=="COMPLETE"{
                                 let prefix=activity.turn_id.as_ref().map(|t|format!("codex:{t}:"));
                                 let reply=initial.replies.iter().find(|r|r.endpoint_id==side.endpoint.id&&prefix.as_ref().is_some_and(|p|r.assistant_identity.as_ref().is_some_and(|i|i.starts_with(p))));
@@ -632,3 +632,49 @@ pub(crate) fn send(core: &RouterCore, handoff: &str) -> Result<BridgeState, Stri
 #[cfg(test)]
 #[path = "role_bridge_tests.rs"]
 mod tests;
+
+#[derive(Serialize)]#[serde(rename_all="camelCase")]
+pub(crate) struct DirectoryActivity { pub workstream_id:String,pub binding_revision:i64,pub unread_count:usize,pub latest_role:Option<String>,pub sides:Vec<RoleActivity> }
+/// Bounded read-only status projection. Does not read transcript bodies, start a
+/// watch, load cold conversations, or navigate an authenticated browser.
+pub(crate) fn directory_activity(core:&RouterCore,ids:&[String])->Result<Vec<DirectoryActivity>,String>{
+ if ids.len()>20||ids.iter().any(|id|id.is_empty()||id.len()>128){return Err("BRIDGE_ACTIVITY_REQUEST_INVALID".into());}
+ let mut result=Vec::new();let started=std::time::Instant::now();let mut session=core.session.try_lock().ok();
+ for id in ids{
+  let w=core.store.snapshot_for_workstream(id)?.workstreams.into_iter().find(|w|w.id==*id).ok_or("BRIDGE_UNAVAILABLE")?;
+  if w.trashed_at.is_some()||w.archived_at.is_some(){continue;}
+  let b=core.store.role_bridge(id)?;let mut sides=Vec::new();
+  for side in [&b.decision,&b.execution].into_iter().flatten(){
+   let pending=session.as_ref().is_some_and(|s|s.pending_codex_requests.values().any(|r|r.thread_id==side.endpoint.external_id&&!r.responded));
+   let mut a=RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:0,turn_id:None,result_observation_id:None,goal_status:None,turn_active:false};
+   if side.endpoint.provider=="CODEX"&&started.elapsed()<std::time::Duration::from_secs(4){
+    if let Some(adapter)=session.as_mut().and_then(|s|s.adapter.as_mut()).filter(|a|!a.is_closed()){
+     if let Ok(native)=adapter.read_thread_activity(&side.endpoint.external_id){
+      let exact=side.cwd.as_ref().is_some_and(|cwd|std::fs::canonicalize(cwd).ok().zip(std::fs::canonicalize(&native.cwd).ok()).is_some_and(|(a,b)|a==b));
+      if exact&&native.thread_id==side.endpoint.external_id&&native.authoritative{
+       a.state=native.state.into();a.turn_id=native.turn_id;a.goal_status=native.goal_status;a.turn_active=native.turn_active;a.checked_at=activity_now();
+       if a.state=="RUNNING"&&pending{a.state="ACTION_REQUIRED".into();}
+       else if a.state=="RUNNING"{if let Some(turn)=a.turn_id.as_ref(){
+        if let Ok(items)=adapter.request_with_timeout("thread/items/list",json!({"threadId":side.endpoint.external_id,"turnId":turn,"cursor":null,"limit":1,"sortDirection":"desc"}),std::time::Duration::from_millis(500)){
+         if items["data"][0]["turnId"].as_str()==Some(turn)&&items["data"][0]["item"]["type"]=="reasoning"{a.state="THINKING".into();}
+        }
+       }}
+       if a.state=="COMPLETE"{
+        let prefix=a.turn_id.as_ref().map(|t|format!("codex:{t}:"));
+        a.result_observation_id=core.store.reply_observations_for_workstream(id)?.into_iter().find(|r|r.endpoint_id==side.endpoint.id&&prefix.as_ref().is_some_and(|p|r.assistant_identity.as_ref().is_some_and(|i|i.starts_with(p)))).map(|r|r.id);
+        if a.result_observation_id.is_none(){a.state="RESULT_PENDING".into();}
+       }
+      }
+     }
+    }
+   }
+   sides.push(a);
+  }
+  // A rebind racing this read invalidates the entire row instead of displaying
+  // an old role's activity under a new recipient.
+  let replies=core.store.reply_observations_for_workstream(id)?;
+  let latest_role=replies.iter().filter(|r|[&b.decision,&b.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).max_by_key(|r|r.completed_at.unwrap_or(r.observed_at)).and_then(|r|[&b.decision,&b.execution].into_iter().flatten().find(|side|side.endpoint.id==r.endpoint_id).map(|side|side.role.clone()));
+  if core.store.role_bridge(id)?.binding_revision==b.binding_revision{result.push(DirectoryActivity{workstream_id:id.clone(),binding_revision:b.binding_revision,latest_role,unread_count:replies.iter().filter(|r|r.read_at.is_none()&&r.handled_at.is_none()&&[&b.decision,&b.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).count(),sides});}
+ }
+ Ok(result)
+}

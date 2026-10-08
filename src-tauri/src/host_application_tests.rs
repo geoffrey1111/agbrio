@@ -2634,6 +2634,17 @@ fn structured_codex_response_uses_only_the_exact_offered_one_time_decision() {
 }
 
 #[test]
+fn question_projection_answers_skip_and_resolution_preserve_native_identity(){
+ let request=PendingCodexRequest{action_id:"opaque".into(),raw_request_id:json!("native-string-id"),method:"item/tool/requestUserInput".into(),thread_id:"exact".into(),turn_id:"turn".into(),item_id:Some("item".into()),params:json!({"questions":[{"id":"scope","header":"Scope","question":"Choose the scope?","isOther":true,"isSecret":false,"options":[{"label":"Small","description":"Bounded"}]}]}),revision:4,responded:false};
+ let p=mobile_codex_request_projection(&request).unwrap();assert_eq!(p.questions[0].options[0].description,"Bounded");assert!(p.questions[0].is_other);assert_eq!(p.questions[0].placeholder.as_deref(),Some("Choose the scope?"));
+ assert_eq!(server_request_response_result(&request,MobileCodexResponseInput{revision:4,decision:None,answers:Some(HashMap::from([("scope".into(),"Small".into())]))}).unwrap(),json!({"answers":{"scope":{"answers":["Small"]}}}));
+ assert_eq!(server_request_response_result(&request,MobileCodexResponseInput{revision:4,decision:Some("skip".into()),answers:None}).unwrap(),json!({"answers":{}}));
+ let session=Arc::new(Mutex::new(Session::default()));let frame=json!({"id":request.raw_request_id,"method":request.method,"params":{"threadId":"exact","turnId":"turn","itemId":"item","questions":[{"id":"scope","question":"Scope?"}]}});
+ capture_pending_codex_request(&session,&frame);capture_pending_codex_request(&session,&frame);assert_eq!(session.lock().unwrap().pending_codex_requests.len(),1);
+ clear_resolved_codex_request(&session,&json!({"method":"serverRequest/resolved","params":{"threadId":"exact","requestId":"native-string-id"}}));capture_pending_codex_request(&session,&frame);assert!(session.lock().unwrap().pending_codex_requests.is_empty());
+}
+
+#[test]
 fn review_actions_fail_closed_when_a_retained_result_endpoint_is_superseded() {
     let directory = tempfile::tempdir().unwrap();
     let store = RouterStore::open_at(directory.path().join("router.db")).unwrap();

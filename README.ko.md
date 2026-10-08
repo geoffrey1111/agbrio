@@ -3,7 +3,8 @@
 
 # Agbrio
 
-> **호스팅 연결 프리뷰:** Windows **preview.16**에서는 선택적으로 교환 코드를 사용할 수 있습니다. PC에서 한 번 활성화한 뒤 휴대폰을 페어링하세요. 코드는 별도로 제공되며 무료 자체 배포도 계속 지원합니다. [설정 및 제한](docs/SETUP.md).
+> **Windows 프리뷰0.1.1:** [다운로드](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.1). Bridge 실행 상태, 멈춘 뒤 검토 표시, 이전 결과 선택, Codex 질문 답변과 후속 제어, 설정의 업데이트 확인을 추가했습니다. 선택형 호스팅 코드와 무료 자체 배포도 유지됩니다. [변경 사항과 검증 범위](docs/RELEASE_0.1.1.md).
+
 
 
 **Agent Bridge — 관리하는 대화와 실행하는 대화 사이의 인계.**
@@ -18,7 +19,7 @@
 
 ## 공개 상태
 
-**[v0.1.0-alpha.1](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.0-alpha.1) — MIT 라이선스 Windows Alpha.** 설치 프로그램과 체크섬을 다운로드하거나 소스로 빌드할 수 있습니다. 깨끗한 Windows 설치와 네이티브 초기 설정의 자동 검증, 실제 원격 Codex／파일 인계를 각각 확인했습니다. 앱 UI는 영어, 간체 중국어, 번체 중국어를 지원하며 설정에서 전환할 수 있습니다. Mac과 다른 Agent는 아직 지원 대상이 아닙니다. [설정 절차](docs/SETUP.md).
+**[v0.1.1](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.1) — MIT 라이선스 Windows Alpha.** 설치 프로그램과 체크섬을 다운로드하거나 소스로 빌드할 수 있습니다. 깨끗한 Windows 설치와 네이티브 초기 설정의 자동 검증, 실제 원격 Codex／파일 인계를 각각 확인했습니다. 앱 UI는 영어, 간체 중국어, 번체 중국어를 지원하며 설정에서 전환할 수 있습니다. Mac과 다른 Agent는 아직 지원 대상이 아닙니다. [설정 절차](docs/SETUP.md).
 
 ## 이미 두 대화로 협업하는 사용자를 위한 도구
 

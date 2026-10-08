@@ -23,7 +23,7 @@ export async function lifecycle(options,dependencies={}){
  const load=async(path)=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(e){if(e.code==='ENOENT')return null;throw Error('SHARED_SETTINGS_INVALID');}};
  let saved=await load(settingsPath),cfg=await load(configPath);
  const health=async()=>{try{const v=await(await request(`http://127.0.0.1:${cfg.port}/health`,{signal:AbortSignal.timeout(1500)})).json();return v.instance===cfg.instance?v:null;}catch{return null;}};
- const status=async()=>{const h=cfg?.format===2?await health():null;return{enabled:saved?.enabled===true&&saved?.format===2,ready:!!h?.ready,desktopConnected:!!h?.desktopConnected,state:saved?.format!==2?(saved?.enabled?'LEGACY_REPAIR_REQUIRED':'INDEPENDENT'):saved.phase==='RECOVERY_REQUIRED'?'RECOVERY_REQUIRED':saved.phase==='ACTIVE'?(h?.desktopConnected?'SHARED_CONNECTED':'SHARED_RECONNECTING'):saved.phase==='PREPARED'&&h?.ready?'SHARED_PREPARED':'INDEPENDENT',updatePending:false};};
+ const status=async()=>{const h=cfg?.format===2?await health():null;return{enabled:saved?.enabled===true&&saved?.format===2,ready:!!h?.ready,desktopConnected:!!h?.desktopConnected,state:saved?.format!==2?(saved?.enabled?'LEGACY_REPAIR_REQUIRED':'INDEPENDENT'):saved.phase==='RECOVERY_REQUIRED'?'RECOVERY_REQUIRED':saved.phase==='ACTIVE'?(h?.desktopConnected?'SHARED_CONNECTED':'SHARED_RECONNECTING'):saved.phase==='PREPARED'&&h?.ready?'SHARED_PREPARED':'INDEPENDENT',updatePending:false,launchProgress:await load(join(directory,'launch-progress.json')).catch(()=>null)};};
  const stop=async()=>{
   const h=cfg?.format===2?await health():null;
   if(h?.activeTurns)throw Error('SHARED_DESKTOP_BUSY');
@@ -58,21 +58,36 @@ export async function lifecycle(options,dependencies={}){
  if(action==='status')return status();
  if(action==='disable'){await rollback();return status();}
  if(action==='launch'){
+  const progress=async(step,state='RUNNING',errorCode=null)=>persist(join(directory,'launch-progress.json'),{step,state,errorCode,updatedAt:now()}).catch(()=>{});
+  await progress('CHECKING');
+  try{
   if(saved?.format!==2||!['PREPARED','ACTIVE'].includes(saved.phase)||!(await health())?.ready)throw Error('SHARED_NOT_PREPARED');
   // Never close or launch into the owner's already-running Desktop instance.
   const scan=await execute(ps,['-NoProfile','-NonInteractive','-Command',"$ErrorActionPreference='Stop';$root=(Get-AppxPackage -Name 'OpenAI.Codex').InstallLocation;$desktop=Join-Path $root 'app/ChatGPT.exe';if(!(Test-Path -LiteralPath $desktop)){throw 'SHARED_DESKTOP_BINARY_UNRESOLVED'};$count=@(Get-CimInstance Win32_Process -Filter \"Name='ChatGPT.exe'\" | Where-Object {$_.ExecutablePath -match '^C:\\\\Program Files\\\\WindowsApps\\\\OpenAI\\.Codex_'}).Count;@{desktop=$desktop;count=$count}|ConvertTo-Json -Compress"],{windowsHide:true,timeout:10000});
   let installed;try{installed=JSON.parse(scan.stdout);}catch{throw Error('SHARED_DESKTOP_BINARY_UNRESOLVED');}
   if(!Number.isInteger(installed.count)||typeof installed.desktop!=='string'||!installed.desktop)throw Error('SHARED_DESKTOP_BINARY_UNRESOLVED');
-  if(installed.count>0)throw Error('SHARED_DESKTOP_CLOSE_REQUIRED');
+  if(installed.count>0){
+   if((await health())?.desktopConnected){
+    await progress('SHOWING');
+    const shown=await run(['-Action','ShowDesktop']);
+    if(!shown.visible)throw Error('SHARED_DESKTOP_WINDOW_UNAVAILABLE');
+    await progress('CONNECTED','DONE');return status();
+   }
+   throw Error('SHARED_DESKTOP_CLOSE_REQUIRED');
+  }
+  const originalSaved={...saved},originalConfig={...cfg},reopening=saved.phase==='ACTIVE';
   let child;
   try{
+   await progress('LAUNCHING');
    saved.desktop=installed.desktop;saved.phase='CONNECTING';await persist(settingsPath,saved);
    child=createProcess(saved.desktop,[],desktopLaunchOptions(`ws://127.0.0.1:${cfg.port}/rpc`));
    child.on('error',()=>{});
-   const deadline=now()+45000;let connected=false;
+   await progress('CONNECTING');
+   const deadline=now()+45000;let connected=false,waitingWindow=false;
    while(now()<deadline){
     if(child.exitCode!==null)break;
     if((await health())?.desktopConnected){
+     if(!waitingWindow){waitingWindow=true;await progress('SHOWING');}
      const window=await run(['-Action','DesktopWindow','-DesktopPid',String(child.pid)]);
      if(window.visible){await pause(600);connected=child.exitCode===null&&!!(await health())?.desktopConnected;if(connected)break;}
     }
@@ -86,15 +101,21 @@ export async function lifecycle(options,dependencies={}){
    let iconApplied=false;
    try{const result=await execute(ps,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(options.scripts??join(directory,'runtime'),'desktop-identity.ps1'),'-DesktopPid',String(child.pid),'-Directory',directory],{windowsHide:true,timeout:10000});iconApplied=JSON.parse(result.stdout).applied===true;}catch{/* A cosmetic failure cannot roll back a connected Desktop. */}
    await persist(join(directory,'desktop-launch.json'),{attemptedAt:Date.now(),pid:child.pid,state:'CONNECTED',windowVisible:true,iconApplied}).catch(()=>{});
-   child.unref();return status();
+   child.unref();await progress('CONNECTED','DONE');return status();
   }catch(e){
    await persist(join(directory,'desktop-launch.json'),{attemptedAt:Date.now(),pid:child?.pid??null,state:'FAILED',errorCode:/^SHARED_[A-Z_]+$/.test(e.message)?e.message:'SHARED_LIFECYCLE_FAILED',exitCode:child?.exitCode??null}).catch(()=>{});
-   try{await rollback();}finally{
+   try{
+    // Reopening an existing shared runtime is not a new enable transaction.
+    // A failed window must never stop its backend or other active conversations.
+    if(reopening){saved=originalSaved;cfg=originalConfig;await persist(configPath,cfg);await persist(settingsPath,saved);}
+    else await rollback();
+   }finally{
     // Only our newly launched process can be closed on failed activation.
     if(child&&child.exitCode===null)child.kill();
    }
    throw e;
   }
+  }catch(e){await progress('FAILED','FAILED',/^SHARED_[A-Z_]+$/.test(e.message)?e.message:'SHARED_LIFECYCLE_FAILED');throw e;}
  }
  if(action!=='setup')throw Error('SHARED_ACTION_INVALID');
  if(saved?.format===2&&['ACTIVE','PREPARED'].includes(saved.phase)&&(await health())?.ready)return status();

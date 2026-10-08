@@ -4,6 +4,13 @@ import {SharedCodexConnection,type SharedCodexStatus} from "./SharedCodexConnect
 afterEach(()=>{cleanup();vi.useRealTimers();});
 const independent:SharedCodexStatus={enabled:false,ready:false,desktopConnected:false,state:"INDEPENDENT"};
 const ready:SharedCodexStatus={enabled:false,ready:true,desktopConnected:false,state:"SHARED_PREPARED"};
+it('polls real launch progress during the pending operation',async()=>{
+ vi.useFakeTimers();let finish!:(s:SharedCodexStatus)=>void;
+ const api={status:vi.fn().mockResolvedValueOnce(ready).mockResolvedValue({...ready,launchProgress:{step:'CONNECTING',state:'RUNNING',updatedAt:Date.now()}}),setup:vi.fn(),launch:vi.fn(()=>new Promise<SharedCodexStatus>(r=>{finish=r;}))};
+ render(<SharedCodexConnection api={api}/>);await act(async()=>{});fireEvent.click(screen.getByRole('button',{name:'打开共享 Codex'}));await act(async()=>vi.advanceTimersByTime(1000));
+ expect(screen.getByRole('status')).toHaveTextContent('连接共享后端');expect(screen.getByRole('button',{name:'正在处理…'})).toBeDisabled();await act(async()=>finish({...ready,enabled:true,desktopConnected:true,state:'SHARED_CONNECTED'}));
+ expect(screen.getByText('Desktop 已接入共享连接')).toBeVisible();
+});
 it("requires explicit preparation and a separate launch before reporting shared connection",async()=>{
  const active={...ready,enabled:true,desktopConnected:true,state:"SHARED_CONNECTED"};const api={status:vi.fn().mockResolvedValue(independent),setup:vi.fn().mockResolvedValue(ready),launch:vi.fn().mockResolvedValue(active)};
  render(<SharedCodexConnection api={api}/>);await waitFor(()=>expect(screen.getByRole("button",{name:"准备共享连接"})).toBeEnabled());expect(api.setup).not.toHaveBeenCalled();

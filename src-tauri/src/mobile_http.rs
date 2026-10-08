@@ -280,6 +280,7 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         .route("/v1/mobile/push/test-reply", post(test_reply_push))
         .route("/v1/mobile/push/rendered", post(record_rendered_push))
         .route("/v1/mobile/workstreams", get(workstreams))
+        .route("/v1/mobile/bridge-activity", post(bridge_activity))
         .route("/v1/mobile/workstreams/{workstream_id}", get(workstream))
         .route("/v1/mobile/workstreams/{workstream_id}/role-bridge", get(role_bridge_state).post(role_bridge_command))
         .route(
@@ -560,7 +561,7 @@ async fn codex_watch_command(State(state):State<MobileHttpState>,headers:HeaderM
             WatchCommand::MarkSeen{sequence}=>{core.store.mark_codex_watch_event_seen(sequence)?;Ok(serde_json::json!({"ok":true}))},
               WatchCommand::MarkRead{sequence}=>{core.store.acknowledge_codex_watch_event(sequence)?;Ok(serde_json::json!({"ok":true}))},
             WatchCommand::Pause{thread_id}=>{core.store.pause_codex_watch(&thread_id)?;Ok(serde_json::json!({"ok":true}))},
-            WatchCommand::Threads=>serde_json::to_value(crate::role_bridge::catalog(&core)?).map_err(|_|"WATCH_RESPONSE_INVALID".into()),
+            WatchCommand::Threads=>serde_json::to_value(crate::codex_watch::candidates(&core)?).map_err(|_|"WATCH_RESPONSE_INVALID".into()),
             WatchCommand::Connect=>serde_json::to_value(crate::host_application::connect_codex_service(&core,std::sync::Arc::new(router_core::events::NullEventSink))?).map_err(|_|"WATCH_RESPONSE_INVALID".into()),
         }
     }).await?))
@@ -1139,6 +1140,12 @@ async fn record_rendered_push(
     Ok(Json(serde_json::json!({})))
 }
 
+#[derive(Deserialize)]#[serde(rename_all="camelCase",deny_unknown_fields)]
+struct BridgeActivityInput { workstream_ids:Vec<String> }
+async fn bridge_activity(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<BridgeActivityInput>)->ApiResult<Vec<crate::role_bridge::DirectoryActivity>>{
+ authenticated(&headers,&state,true).await?;let core=state.core.clone();
+ run_core_blocking("Bridge activity",move||crate::role_bridge::directory_activity(&core,&input.workstream_ids)).await.map(Json)
+}
 async fn workstreams(
     State(state): State<MobileHttpState>,
     headers: HeaderMap,

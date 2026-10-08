@@ -1,4 +1,5 @@
 import {useNotificationSeen} from "./useNotificationSeen";
+import {messagePreview} from "./messagePreview";
 import {t as uiText,useLanguage,getLanguage} from "../../i18n";
 import {SwipeDeleteRow} from "./SwipeDeleteRow";
 import {useUndoRemoval} from "./useUndoRemoval";
@@ -26,7 +27,7 @@ export interface NotificationApi { markSeen?(sequence:number):Promise<unknown>; 
 const states:Record<string,string>={get IDLE(){return uiText("尚无任务");},get RUNNING(){return uiText("正在执行");},get ACTION_REQUIRED(){return uiText("需要你确认或回答");},get RESULT_READY(){return uiText("结果已到达");},get RESULT_PENDING(){return uiText("结果尚未读到");},get FAILED(){return uiText("执行失败");},get INTERRUPTED(){return uiText("已中断");},get INCOMPLETE(){return uiText("任务未完成（执行中或已中断）");},get UNKNOWN(){return uiText("状态未确定");}};
 const time=(value:number)=>new Date(value).toLocaleString(getLanguage());
 const watchState=(w:CodexWatch)=>!w.enabled?uiText("已暂停"):w.errorCode?uiText("暂时无法读取"):Date.now()-w.checkedAt>30_000?uiText("最近未成功检查"):states[w.snapshot.state]??w.snapshot.state;
-const notificationError=(error:unknown)=>String(error).includes("WATCH_EVENT_NOT_FOUND")?uiText("这条通知已清理或不可用。请查看最近通知或对话当前内容。"):String(error);
+const notificationError=(error:unknown)=>String(error).includes("WATCH_ALREADY_IN_BRIDGE")?uiText("这条对话已在 Bridge 中，可直接从 Bridge 打开。"):String(error).includes("WATCH_EVENT_NOT_FOUND")?uiText("这条通知已清理或不可用。请查看最近通知或对话当前内容。"):String(error);
 type Removable={kind:"WATCH";item:CodexWatch}|{kind:"EVENT";item:WatchEvent};
 type View="RECENT"|"WATCHES"|"SETTINGS";
 export function CodexNotifications({api,standalone=false,workbenchPage,onCountChange,onDetailChange}:{api:NotificationApi;standalone?:boolean;onCountChange?:(count:number)=>void;onDetailChange?:(active:boolean)=>void;workbenchPage?:{active:boolean;open:()=>void}}) {
@@ -75,7 +76,7 @@ export function CodexNotifications({api,standalone=false,workbenchPage,onCountCh
  },[api]);
  useEffect(()=>{
   let active=true,timer:ReturnType<typeof setTimeout>;
-  async function poll(){const revision=++feedRevision.current;try{const [next,feed]=await Promise.all([api.watches(),api.feed(0)]);if(!active)return;if(next)setWatches(next);if(revision===feedRevision.current)applyFeed(feed,true);setError(null);timer=setTimeout(()=>void poll(),feed.hasMore?100:5000);}catch(e){if(active){setError(String(e));timer=setTimeout(()=>void poll(),10000);}}}
+  async function poll(){const revision=++feedRevision.current;try{const [next,feed]=await Promise.all([api.watches(),api.feed(0)]);if(!active)return;if(next)setWatches(next);if(revision===feedRevision.current)applyFeed(feed,true);setError(null);timer=setTimeout(()=>void poll(),feed.hasMore?100:5000);}catch(e){if(active){setError(String(e).includes("WATCH_ALREADY_IN_BRIDGE")?uiText("这条对话已在 Bridge 中，可直接从 Bridge 打开。"):String(e));timer=setTimeout(()=>void poll(),10000);}}}
   void poll();return()=>{active=false;clearTimeout(timer);};
  },[api,open]);
  async function act(work:()=>Promise<void>){if(busy)return;setBusy(true);setError(null);const mark=++epoch.current;try{await work();}catch(e){if(mounted.current&&mark===epoch.current)setLinkNotice(notificationError(e));}finally{if(mounted.current&&mark===epoch.current)setBusy(false);}}
@@ -105,7 +106,7 @@ export function CodexNotifications({api,standalone=false,workbenchPage,onCountCh
     {!native&&<p className="v4-meta">{uiText("只保留最近 20 条，更早的自动清理。")}</p>}
     {visibleEvents.length===0?<div className="v4-reader-empty"><h2>{uiText("有新结果时，会出现在这里")}</h2><p>{uiText("先在「监听对话」选择你要关注的 Codex 对话。")}</p></div>:[...visibleEvents].reverse().map(e=><SwipeDeleteRow className="agbrio-card-row" key={e.sequence} label={uiText("通知 #{0}", e.sequence)} disabled={!api.remove} onDelete={()=>removal.remove({kind:"EVENT",item:e})}><article className="v4-notification-item" data-notification-sequence={e.sequence} data-unread={!e.seenAt}>
      <header><strong>{e.label}</strong><span className="v4-event-state" data-state={e.snapshot.state}>{uiText(states[e.snapshot.state]??e.snapshot.state)}</span></header>
-     <p className="v4-meta">{time(e.observedAt)}</p><p className="v4-notification-preview">{e.snapshot.text||uiText("本次通知记录了状态变化。")}</p>
+     <p className="v4-meta">{time(e.observedAt)}</p><p className="v4-notification-preview">{messagePreview(e.snapshot.text)||uiText("本次通知记录了状态变化。")}</p>
      <button type="button" data-notification-key={`event-${e.sequence}`} disabled={busy} onClick={click=>{rememberList(click.currentTarget,`event-${e.sequence}`);void act(async()=>{const next=await api.event(e.sequence);if(mounted.current){setDetail(next);setCurrent(null);await markViewed(next);}});}} aria-label={uiText("查看完整通知 #{0}", e.sequence)}>{native?<><Bell size={18}/><span>{uiText("查看")}</span><ChevronRight size={16}/></>:uiText("查看完整通知 #{0}", e.sequence)}</button>
     </article></SwipeDeleteRow>)}
    </section>}

@@ -171,7 +171,7 @@ fn assistant_fixture_for_sdk_and_browser(){
 
 #[test]
 fn instance_oauth_cannot_downgrade_or_elevate_an_old_bridge_token(){
- let(d,core,old_gid,_)=fixture();let old=core.store.assistant_grant(&old_gid).unwrap();let gid=core.store.create_assistant_instance_grant(router_core::store::assistant::InstanceGrantInput{label:"Whole app QA".into(),rules:old.rules,expires_at:now_ms()+600000}).unwrap().id;let host=crate::HostRuntime::default();let runtime=tokio::runtime::Runtime::new().unwrap();runtime.block_on(async { let web=Arc::new(crate::web_auth::WebAuth::open(None).unwrap());
+ let(d,core,old_gid,observation)=fixture();let old=core.store.assistant_grant(&old_gid).unwrap();let gid=core.store.connect_assistant_instance(router_core::store::assistant::AssistantConnectionInput{label:"Whole app QA".into(),expires_at:now_ms()+600000}).unwrap().id;let host=crate::HostRuntime::default();let runtime=tokio::runtime::Runtime::new().unwrap();runtime.block_on(async { let web=Arc::new(crate::web_auth::WebAuth::open(None).unwrap());
  let code=web.issue().unwrap();let owner=web.exchange(&code.code,"QA owner",false).unwrap();let cookie=format!("{}={owner}",crate::web_auth::COOKIE);
  let handle=start_with_web_auth(core.clone(),config(d.path()),host.clone(),web).await.unwrap();let base=format!("http://{}",handle.address);let c=client();
  let request=|path:&str|c.post(format!("{base}{path}")).header("host","assistant.fixture.invalid");
@@ -199,6 +199,17 @@ fn instance_oauth_cannot_downgrade_or_elevate_an_old_bridge_token(){
  assert_eq!(request("/v1/mobile/assistant/grants").bearer_auth(token).send().await.unwrap().status(),StatusCode::METHOD_NOT_ALLOWED);
  assert_eq!(c.get(format!("{base}/v1/mobile/assistant/grants")).header("host","assistant.fixture.invalid").bearer_auth(token).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
  assert_eq!(request("/mcp").bearer_auth(token).header("origin","https://evil.invalid").json(&init).send().await.unwrap().status(),StatusCode::FORBIDDEN);
+ // Exercise review-mode handoff and a whole-app action through actual HTTP,
+ // OAuth/PKCE and the isolated provider adapter, never the owner's conversations.
+ let app=rpc(&c,&base,token,"agbrio_read_app",json!({})).await;assert_eq!(app["result"]["structuredContent"]["grant"]["approvalMode"],"CONVERSATION_REVIEW");
+ let draft=rpc(&c,&base,token,"agbrio_prepare_handoff",json!({"requestId":"conversation-send","workstreamId":old.workstream_id,"bindingRevision":1,"observationId":observation,"role":"DECISION","text":"Continue the reviewed reward display","attachmentIds":[]})).await;
+ assert_eq!(draft["result"]["isError"],false,"{draft}");let h=&draft["result"]["structuredContent"];
+ let send=json!({"handoffId":h["id"],"expectedHash":h["payloadHash"],"ruleId":null,"decisionId":null,"assessment":"Owner conversation permits forwarding this reviewed continuation"});
+ let sent=rpc(&c,&base,token,"agbrio_confirm_and_send",send.clone()).await;assert_eq!(sent["result"]["structuredContent"]["status"],"SENT","{sent}");assert_eq!(rpc(&c,&base,token,"agbrio_confirm_and_send",send).await["result"]["isError"],true);
+ let receipt=rpc(&c,&base,token,"agbrio_receipt",json!({"handoffId":h["id"],"expectedHash":h["payloadHash"]})).await;assert_eq!(receipt["result"]["structuredContent"]["approval"]["basis"],"ASSISTANT_REVIEW");
+ let action=rpc(&c,&base,token,"agbrio_prepare_action",json!({"requestId":"conversation-create","operation":"CREATE_BRIDGE","input":{"name":"Demo conversation review"}})).await;let a=&action["result"]["structuredContent"];
+ let execute=json!({"actionId":a["id"],"expectedHash":a["payloadHash"],"ruleId":null,"useOwnerAnswer":false,"assessment":"The owner requested this Bridge in the Dot conversation"});
+ let applied=rpc(&c,&base,token,"agbrio_execute_action",execute.clone()).await;assert_eq!(applied["result"]["structuredContent"]["status"],"APPLIED");assert_eq!(rpc(&c,&base,token,"agbrio_execute_action",execute).await,applied);assert_eq!(core.store.snapshot().unwrap().workstreams.len(),2);
  core.store.revoke_assistant_grant(&gid).unwrap();assert_eq!(request("/mcp").bearer_auth(token).json(&init).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
  handle.shutdown.send(()).unwrap();handle.task.await.unwrap();});
 }
@@ -220,4 +231,11 @@ fn instance_fixture_for_sdk_and_browser(){
  let info=json!({"base":base,"token":token,"ownerCookie":owner,"grantId":gid,"legacyGrantId":old_gid,"workstreamId":old.workstream_id,"observationId":observation,"fixtureOnly":true});std::fs::write(folder.join("fixture.json"),info.to_string()).unwrap();println!("INSTANCE_DISPOSABLE_FIXTURE_READY");
  let until=Instant::now()+Duration::from_secs(600);while Instant::now()<until&&!folder.join("stop-fixture").exists(){std::thread::sleep(Duration::from_millis(250));}
  rt.block_on(async{let _=handle.shutdown.send(());handle.task.await.unwrap();});core.store.revoke_assistant_grant(&gid).unwrap();std::fs::remove_file(folder.join("fixture.json")).unwrap();drop(d);
+}
+
+#[test]fn bridge_original_conversation_reply_and_status_do_not_register_an_independent_watch(){
+ let(_d,core,gid,_)=fixture();let g=core.store.assistant_grant(&gid).unwrap();let rows=crate::role_bridge::directory_activity(&core,&[g.workstream_id.clone()]).unwrap();assert_eq!(rows.len(),1);assert_eq!(rows[0].unread_count,1);assert_eq!(rows[0].sides.len(),2);assert!(core.store.codex_watches().unwrap().is_empty());
+ let view=crate::watch_chat::state(&core,"qa-source-thread").unwrap();assert!(view.watch.generation<0);let args=json!({"action":"SEND","threadId":"qa-source-thread","id":uuid::Uuid::new_v4().to_string(),"generation":view.watch.generation,"sourceSequence":null,"expectedTurnId":null,"mode":"SEND","text":"Demo additional review note","options":{"attachments":[]}});
+ let sent=crate::watch_chat::command(&core,serde_json::from_value(args.clone()).unwrap()).unwrap();assert_eq!(sent["status"],"SENT");assert_eq!(crate::watch_chat::command(&core,serde_json::from_value(args).unwrap()).unwrap(),sent);assert!(core.store.codex_watches().unwrap().is_empty());
+ assert!(crate::role_bridge::directory_activity(&core,&vec![g.workstream_id;21]).is_err());
 }

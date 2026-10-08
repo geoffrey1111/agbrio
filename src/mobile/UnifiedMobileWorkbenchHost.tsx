@@ -1,3 +1,4 @@
+import {webBridgeActivity} from "../features/workbench/bridgeActivity";
 import {bridgeNotificationRoute,BRIDGE_NOTIFICATION_MESSAGE} from "./bridgeNotificationRoute";
 import {t as uiText,useLanguage,getLanguage} from "../i18n";
 import {flushSync} from "react-dom";
@@ -1155,7 +1156,7 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
   // fixed Reader dock; the workspace menu remains the single clear entry.
   const showPhonePushPanel = pushPanelExpanded;
   return <>{error && <p role="alert" className="v3-mobile-error">{uiText(error)}</p>}<UnifiedWorkbench notificationDetail={notificationDetail} notificationCount={notificationCount} notificationSettings={<><div data-expanded={showPhonePushPanel}>{phonePushPanel}</div>{webNotificationApi.delivery&&<NotificationDeliveryPanel api={webNotificationApi.delivery}/>}<NotificationAssistantSettings api={webNotificationApi}/></>} devicePanel={<WebSessionLogout/>} onRenameBridge={async(id,name)=>{await mobileApi.renameBridge(id,name);await refreshIndex();}} onManageBindings={requestBinding} onCreateBridge={async name=>{const id=await mobileApi.createBridge(name);await refreshIndex();await load(id);flushSync(()=>setSurface("WORKSPACE"));setBindingRequest(v=>v+1);}}
-    items={items} selectedWorkstreamId={selectedId} reply={reply}
+    bridgeActivityApi={webBridgeActivity} items={items} selectedWorkstreamId={selectedId} reply={reply}
     roleCompatible={roleMode}
     globalActions={<CodexNotifications onDetailChange={setNotificationDetail} onCountChange={setNotificationCount} api={webNotificationApi} workbenchPage={{active:surface==="NOTIFICATIONS",open:()=>setSurface("NOTIFICATIONS")}}/>}
     criticalNotice={(browserAuthenticationRequired) ? <BridgeStatus recoveryOnly name={selected?.name || "AI Work Router"} recoveryError={error} decision={snapshot?.activeChatgptEndpoint} execution={snapshot?.activeCodexEndpoint} authenticationRequired={browserAuthenticationRequired} nextAction={items.find(item => item.id === selectedId)?.attentionItems?.[0]?.message} onManage={() => setSurface("PROJECT")} onOpenBrowser={() => mobileApi.openHostChatGptBrowserSetup().then(() => { setError(null); return true; }).catch(cause => { setError(securityRecoveryError(cause, "OPEN")); return false; })} onAuthenticationCompleted={() => mobileApi.confirmChatGptAuthenticationCompleted().then(() => setBrowserAuthenticationRequired(false)).catch(cause => setError(securityRecoveryError(cause, "COMPLETE")))} /> : null}

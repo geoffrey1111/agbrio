@@ -30,6 +30,27 @@ test('only fixed localhost shared URLs are legacy-owned; unrelated endpoints are
  for(const url of ['ws://example.com:47116/rpc','ws://127.0.0.1:47117/rpc','ws://secret@127.0.0.1:47116/rpc','ws://127.0.0.1:47116/rpc?token=secret'])assert.equal(sharedUrl(url),false);
  assert.deepEqual(restoreChanges({A:'original'},{A:'installed'}),[{name:'A',previous:'original',installed:'installed'}]);
 });
+test('launch progress follows real readiness and the window gate',async()=>{
+ const f=await fixture(),steps=[];await lifecycle({...f.options,action:'setup'},f.dependencies);
+ f.dependencies.atomic=async(path,value)=>{if(path.endsWith('launch-progress.json'))steps.push(value.step);await atomic(path,value);};
+ await lifecycle({...f.options,action:'launch'},f.dependencies);
+ assert.deepEqual(steps,['CHECKING','LAUNCHING','CONNECTING','SHOWING','CONNECTED']);
+ assert.equal(JSON.parse(await readFile(join(f.options.directory,'launch-progress.json'),'utf8')).state,'DONE');
+});
+test('reopening failure preserves existing shared backend and active turns',async()=>{
+ const f=await fixture();await lifecycle({...f.options,action:'setup'},f.dependencies);await lifecycle({...f.options,action:'launch'},f.dependencies);f.setDesktop(false);f.setTurns(3);
+ const before=f.calls.length,spawn=f.dependencies.spawn;f.dependencies.spawn=(...args)=>{const c=spawn(...args);c.exitCode=1;f.setDesktop(false);return c;};
+ await assert.rejects(lifecycle({...f.options,action:'launch'},f.dependencies),/SHARED_DESKTOP_CONNECTION_FAILED/);
+ assert.ok(!f.calls.slice(before).includes('Stop'));assert.ok(!f.calls.slice(before).includes('Restore'));
+ assert.equal(JSON.parse(await readFile(join(f.options.directory,'settings.json'),'utf8')).phase,'ACTIVE');
+ assert.equal((await lifecycle({...f.options,action:'status'},f.dependencies)).ready,true);
+});
+test('an already-connected shared Desktop is shown without spawning another process',async()=>{
+ const f=await fixture();await lifecycle({...f.options,action:'setup'},f.dependencies);await lifecycle({...f.options,action:'launch'},f.dependencies);const before=f.calls.length;
+ f.dependencies.exec=async()=>({stdout:JSON.stringify({desktop:'fixture-current-Desktop.exe',count:5})});const run=f.dependencies.run;f.dependencies.run=args=>args.includes('ShowDesktop')?Promise.resolve({visible:true}):run(args);
+ assert.equal((await lifecycle({...f.options,action:'launch'},f.dependencies)).desktopConnected,true);
+ assert.ok(!f.calls.slice(before).includes('spawn-Desktop'));
+});
 test('prepare changes no persistent endpoint and launches no Desktop; active commits only after Desktop initialization; disable restores',async()=>{
  const f=await fixture();let value=await lifecycle({...f.options,action:'setup'},f.dependencies);assert.equal(value.state,'SHARED_PREPARED');assert.equal(value.enabled,false);assert.equal(f.env.CODEX_APP_SERVER_WS_URL,null);assert.ok(!f.calls.includes('spawn-Desktop'));
  value=await lifecycle({...f.options,action:'launch'},f.dependencies);assert.equal(value.state,'SHARED_CONNECTED');assert.equal(value.enabled,true);assert.equal(f.env.CODEX_APP_SERVER_WS_URL,null);

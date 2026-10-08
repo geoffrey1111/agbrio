@@ -58,6 +58,7 @@ const NORMAL_FEATURE_MIGRATIONS: &[(&str, &str)] = &[
     ),
     ("assistant-instance-v1", include_str!("../../migrations/normal/014_assistant_instance.sql")),
     ("notification-seen-v1", include_str!("../../migrations/normal/015_notification_seen.sql")),
+    ("assistant-conversation-review-v1", include_str!("../../migrations/normal/016_assistant_conversation_review.sql")),
 ];
 
 const MIGRATIONS: &[(i64, &str)] = &[
@@ -1428,6 +1429,11 @@ impl RouterStore {
     /// file. `VACUUM INTO` reads a SQLite-consistent view while the Store mutex
     /// protects this Router process; the result is reopened and integrity
     /// checked before its hash is returned. The destination must not exist.
+    pub fn backup_before_application_update(&self)->Result<VerifiedBackup,String>{
+        let file:String=self.with_connection(|c|c.query_row("SELECT file FROM pragma_database_list WHERE name='main'",[],|r|r.get(0)).map_err(db_error))?;
+        let root=Path::new(&file).parent().ok_or("UPDATE_BACKUP_ROOT_UNAVAILABLE")?.join("backups");std::fs::create_dir_all(&root).map_err(|_|"UPDATE_BACKUP_FAILED")?;
+        self.create_verified_backup(root.join(format!("before-app-update-{}.db",id())))
+    }
     pub fn create_verified_backup(
         &self,
         target: impl AsRef<Path>,

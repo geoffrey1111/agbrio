@@ -86,7 +86,7 @@ pub struct CandidateCleanup {
 }
 /// Current native execution is separate from a persisted completed result.
 #[derive(Clone,Debug)]
-pub struct NativeThreadActivity{pub thread_id:String,pub cwd:String,pub state:&'static str,pub turn_id:Option<String>,pub authoritative:bool}
+pub struct NativeThreadActivity{pub thread_id:String,pub cwd:String,pub state:&'static str,pub turn_id:Option<String>,pub authoritative:bool,pub goal_status:Option<String>,pub turn_active:bool}
 fn activity_phase(live:bool,status:Option<&str>)->&'static str{
     if !live{return "UNCONFIRMED";}
     match status{Some("inProgress"|"active"|"pending")=>"RUNNING",Some("completed")=>"COMPLETE",Some("interrupted")=>"INTERRUPTED",Some("failed")=>"FAILED",None=>"EMPTY",_=>"UNCONFIRMED"}
@@ -95,7 +95,7 @@ fn activity_goal_phase(thread_id:&str,response:&Value)->Result<Option<&'static s
     let goal=response.get("goal").ok_or("ACTIVITY_GOAL_PROTOCOL_INVALID")?;
     if goal.is_null(){return Ok(None);}
     if goal["threadId"].as_str()!=Some(thread_id){return Err("ACTIVITY_GOAL_IDENTITY_MISMATCH".into());}
-    Ok(match goal["status"].as_str(){Some("active")=>Some("RUNNING"),Some("blocked")=>Some("ACTION_REQUIRED"),Some("paused")=>Some("PAUSED"),Some("complete"|"completed")=>None,_=>Some("UNCONFIRMED")})
+    Ok(match goal["status"].as_str(){Some("active")=>Some("RUNNING"),Some("blocked")=>Some("ACTION_REQUIRED"),Some("paused")=>Some("PAUSED"),Some("usageLimited"|"budgetLimited")=>Some("LIMITED"),Some("complete"|"completed")=>None,_=>Some("UNCONFIRMED")})
 }
 /// A write-acquisition probe must fail promptly.  It precedes every first
 /// approved write, so retaining the general turn/result timeout here would
@@ -214,6 +214,7 @@ pub struct CodexAdapter {
     /// later turn on the same thread.
     turns:Arc<Mutex<TurnRegistry>>,
     shared_scope:Option<Arc<Mutex<HashSet<String>>>>,
+    shared_subscriptions:HashSet<String>,
     #[cfg(debug_assertions)]
     request_counts: HashMap<String, u64>,
 }
@@ -444,7 +445,7 @@ impl CodexAdapter {
             next_id: AtomicU64::new(1),
             pending,
             closed,
-            turns,shared_scope,
+            turns,shared_scope,shared_subscriptions:HashSet::new(),
             #[cfg(debug_assertions)]
             request_counts: HashMap::new(),
         })
@@ -465,9 +466,20 @@ impl CodexAdapter {
         self.closed.load(Ordering::SeqCst)
     }
 
+    pub fn has_owned_active_turns(&self)->bool{self.turns.lock().map(|r|!r.owned.is_empty()).unwrap_or(true)}
     pub fn is_turn_active(&self,thread:&str)->bool{self.turns.lock().map(|r|r.observed.contains_key(thread)).unwrap_or(true)}
     pub fn is_exact_turn_active(&self,thread:&str,turn:&str)->bool{self.turns.lock().map(|r|r.owned.get(thread).is_some_and(|v|v==turn)&&r.observed.get(thread).is_some_and(|v|v==turn)).unwrap_or(false)}
     pub fn active_turn_id(&self,thread:&str)->Option<String>{self.turns.lock().ok().and_then(|r|r.owned.get(thread).filter(|id|r.observed.get(thread)==Some(*id)).cloned())}
+    pub fn is_shared_subscribed(&self,thread:&str)->bool{self.is_shared()&&self.shared_subscriptions.contains(thread)}
+    pub fn observed_turn_id(&self,thread:&str)->Option<String>{self.turns.lock().ok().and_then(|r|r.observed.get(thread).cloned())}
+    /// Subscribe the same native backend to an explicitly selected conversation.
+    /// No turn is started, no ownership is claimed, and no runtime setting changes.
+    pub fn subscribe_shared_thread(&mut self,thread:&str,cwd:&str)->Result<(),String>{
+        if !self.is_shared()||self.shared_subscriptions.contains(thread){return Ok(())}
+        let response=match self.request_with_timeout("thread/resume",json!({"threadId":thread,"excludeTurns":true}),WRITE_READINESS_TIMEOUT){Ok(v)=>v,Err(e)if e.strip_prefix("Codex JSON-RPC error: ").and_then(|v|serde_json::from_str::<Value>(v).ok()).is_some_and(|v|v["message"].as_str()==Some(format!("no rollout found for thread id {thread}").as_str()))=>return Ok(()),Err(e)=>return Err(e)};
+        if response.pointer("/thread/id").and_then(Value::as_str)!=Some(thread)||response.pointer("/thread/cwd").and_then(Value::as_str)!=Some(cwd){return Err("SHARED_SUBSCRIPTION_IDENTITY_MISMATCH".into());}
+        self.shared_subscriptions.insert(thread.into());Ok(())
+    }
     pub fn mark_turn_started(&self,thread:&str,turn:&str){if let Ok(mut r)=self.turns.lock(){r.acknowledge(thread,turn);}}
     pub fn terminal_turn_status(&self,thread:&str,turn:&str)->Option<String>{self.turns.lock().ok().and_then(|r|r.terminal.get(&(thread.into(),turn.into())).cloned())}
 
@@ -504,18 +516,20 @@ impl CodexAdapter {
         let thread=&metadata["thread"];if thread["id"].as_str()!=Some(thread_id){return Err("ACTIVITY_IDENTITY_MISMATCH".into());}
         let cwd=thread["cwd"].as_str().filter(|p|std::path::Path::new(p).is_absolute()).ok_or("ACTIVITY_PROJECT_UNAVAILABLE")?.to_string();
         let kind=thread.pointer("/status/type").and_then(Value::as_str);
-        if kind==Some("active"){return Ok(NativeThreadActivity{thread_id:thread_id.into(),cwd,state:"RUNNING",turn_id:self.turns.lock().ok().and_then(|r|r.observed.get(thread_id).cloned()),authoritative:true});}
+        if kind==Some("active"){return Ok(NativeThreadActivity{thread_id:thread_id.into(),cwd,state:"RUNNING",turn_id:self.turns.lock().ok().and_then(|r|r.observed.get(thread_id).cloned()),authoritative:true,goal_status:None,turn_active:true});}
         self.begin_latest_turn_observation(thread_id)?;
         let turns=match self.request_with_timeout("thread/turns/list",json!({"threadId":thread_id,"cursor":null,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"}),budget){Ok(v)=>v,Err(e) if e.strip_prefix("Codex JSON-RPC error: ").and_then(|v|serde_json::from_str::<Value>(v).ok()).is_some_and(|v|v["code"]==-32600&&v["message"].as_str()==Some(format!("thread {thread_id} is not materialized yet; thread/turns/list is unavailable before first user message").as_str()))=>json!({"data":[]}),Err(e)=>return Err(e)};
         let rows=turns["data"].as_array().filter(|v|v.len()<=1).ok_or("ACTIVITY_PROTOCOL_INVALID")?;
         let turn_id=rows.first().map(|t|t["id"].as_str().filter(|id|!id.is_empty()&&id.len()<=256).map(str::to_owned).ok_or("ACTIVITY_PROTOCOL_INVALID")).transpose()?;
         let live=kind==Some("idle")&&(self.is_shared()||turn_id.as_deref().is_some_and(|t|self.terminal_turn_status(thread_id,t).is_some()));
+        let mut goal_status=None;
         if live{
             let response=self.request_with_timeout("thread/goal/get",goal_get_params(thread_id),budget)?;
-            if let Some(state)=activity_goal_phase(thread_id,&response)?{return Ok(NativeThreadActivity{thread_id:thread_id.into(),cwd,state,turn_id,authoritative:state!="UNCONFIRMED"});}
+            goal_status=response.pointer("/goal/status").and_then(Value::as_str).map(str::to_owned);
+            if let Some(state)=activity_goal_phase(thread_id,&response)?{return Ok(NativeThreadActivity{thread_id:thread_id.into(),cwd,state,turn_id,authoritative:state!="UNCONFIRMED",goal_status,turn_active:false});}
         }
         let state=activity_phase(live,rows.first().and_then(|t|t["status"].as_str()));
-        Ok(NativeThreadActivity{thread_id:thread_id.into(),cwd,state,turn_id,authoritative:live})
+        Ok(NativeThreadActivity{thread_id:thread_id.into(),cwd,state,turn_id,authoritative:live,goal_status,turn_active:false})
     }
 
     pub fn get_goal(&mut self, thread_id: &str) -> Result<Value, String> {

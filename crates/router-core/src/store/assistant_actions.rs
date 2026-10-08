@@ -58,6 +58,7 @@ impl RouterStore{
   if a.status!="READY"{return Err("ASSISTANT_ACTION_ALREADY_ATTEMPTED".into());}
   let basis=if a.question.is_some(){if a.answer.is_none()||!input.use_owner_answer||input.rule_id.is_some(){return Err("ASSISTANT_OWNER_ANSWER_REQUIRED".into());}"ASSISTANT_ATTESTED_OWNER_ANSWER".to_string()}
    else if !input.use_owner_answer&&input.rule_id.as_ref().is_some_and(|id|g.rules.iter().any(|r|&r.id==id)){format!("BRIEF_RULE:{}",input.rule_id.unwrap())}
+   else if !input.use_owner_answer&&input.rule_id.is_none()&&g.approval_mode=="CONVERSATION_REVIEW"{"ASSISTANT_REVIEW".to_string()}
    else{return Err("ASSISTANT_APPROVAL_BASIS_REQUIRED".into());};
   tx.execute("UPDATE assistant_actions SET status='EXECUTING',basis=?2,assessment=?3,updated_at=?4 WHERE id=?1 AND status='READY'",params![a.id,basis,input.assessment,now()]).map_err(db_error)?;
   let out=action(&tx,gid,&a.id,None)?;tx.commit().map_err(db_error)?;Ok(out)

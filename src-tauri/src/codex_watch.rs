@@ -30,6 +30,12 @@ pub(crate) fn inspect_live(
         .filter(|p| std::path::Path::new(p).is_absolute())
         .ok_or("WATCH_PROJECT_UNAVAILABLE")?
         .to_owned();
+    // Subscribe only to an already loaded native conversation. Loading a cold
+    // thread (potentially with a persisted Goal) is a separate write-readiness
+    // action; a passive watch must not cause that lifecycle transition.
+    if matches!(thread.pointer("/status/type").and_then(Value::as_str),Some("active"|"idle")){
+        adapter.subscribe_shared_thread(thread_id,&cwd)?;
+    }
     let label = thread
         .get("name")
         .and_then(Value::as_str)
@@ -131,6 +137,9 @@ fn select_message(
         return Ok(Some((id(&item["id"])?, text.into())));
     }
     Ok(None)
+}
+pub(crate) fn candidates(core:&RouterCore)->Result<ExistingCodexThreadCatalog,String>{
+ let bound:std::collections::HashSet<_>=core.store.bridge_codex_thread_ids()?.into_iter().collect();let mut catalog=crate::role_bridge::catalog(core)?;catalog.threads.retain(|t|!bound.contains(&t.id));Ok(catalog)
 }
 pub(crate) fn enable(core: &RouterCore, thread_id: &str) -> Result<(), String> {
     let mut s = core

@@ -1,4 +1,3 @@
-import { desktopNotificationApi } from "./notificationApi";
 import {desktopWatchChatApi} from "./watchChatApi";
 import { invoke } from "@tauri-apps/api/core";
 import { codexApi } from "../codex/api";
@@ -7,7 +6,8 @@ import type { RoleBridgeApi, RoleBindings, RoleInput, RoleState, RoleHandoff } f
 
 export const desktopRoleBridgeApi: RoleBridgeApi = {
  chat:desktopWatchChatApi,
- openChat:async thread=>{let all=await desktopNotificationApi.watches();if(!all.some(w=>w.threadId===thread&&w.enabled)){await desktopNotificationApi.enable(thread);all=await desktopNotificationApi.watches();}const watch=all.find(w=>w.threadId===thread);if(!watch)throw Error("未能打开对话");return watch;},
+ markRead:codexApi.markReplyObservationRead,
+ openChat:async thread=>(await desktopWatchChatApi.state(thread)).watch,
  state: workstreamId => invoke<RoleState>("role_bridge_state",{workstreamId}),
  sync: workstreamId => invoke<RoleState>("sync_role_bridge",{workstreamId}),
  bind: (workstreamId,revision,decision:RoleInput,execution:RoleInput) => invoke<RoleBindings>("bind_role_bridge",{workstreamId,revision,decision,execution}),

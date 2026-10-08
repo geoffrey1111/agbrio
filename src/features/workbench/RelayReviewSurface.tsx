@@ -7,11 +7,13 @@ import type {MediaResolver} from "../codex/messageMedia";
 import {RelayBlockSelection} from "./RelayBlockSelection";
 import type {RoleReview} from "./roleReviewDrafts";
 import {CopyAction} from "./NativeReaderActions";
+import {RelaySourcePicker,type RelaySource} from "./RelaySourcePicker";
 
-export function RelayReviewSurface({review,busy,oldReview,sourceLabel,targetLabel,media,error,connectionAction,change,attachmentChange,submit,close,discard,checkStatus}:{
+export function RelayReviewSurface({review,busy,oldReview,sourceLabel,targetLabel,media,error,connectionAction,change,attachmentChange,submit,close,discard,checkStatus,sources=[],sourceStopped=false,onSourceChange}:{
  review:RoleReview;busy:boolean;oldReview:boolean;sourceLabel:string;targetLabel:string;media:MediaResolver;
  error:string|null;connectionAction:ReactNode;change:(value:RoleReview)=>void;
  attachmentChange:(ids:string[])=>void;submit:()=>void;close:()=>void;discard:()=>void;checkStatus:()=>void;
+ sources?:RelaySource[];sourceStopped?:boolean;onSourceChange?:(id:string)=>void;
 }){
  useLanguage();
  const [view,setView]=useState<"BLOCKS"|"EDIT"|"PREVIEW">(review.approved?"PREVIEW":review.blocks?.length?"BLOCKS":"EDIT");
@@ -21,6 +23,7 @@ export function RelayReviewSurface({review,busy,oldReview,sourceLabel,targetLabe
  const [receiptReady,setReceiptReady]=useState(false);
  useEffect(()=>{setReceiptReady(false);if(status!=="SENT")return;const timer=setTimeout(()=>setReceiptReady(true),350);return()=>clearTimeout(timer);},[status]);
  useEffect(()=>{if(review.approved)setView("PREVIEW");},[review.approved?.id]);
+ useEffect(()=>{setView(review.approved?"PREVIEW":review.blocks?.length?"BLOCKS":"EDIT");},[review.reply.id]);
  const settled=status&&!["READY","APPROVED"].includes(status);
  const count=review.blockIds?.length??0;
  const payload=review.choosing&&review.blocks?.length?(count===review.blocks.length?review.reply.text:review.blocks.filter(block=>review.blockIds?.includes(block.id)).map(block=>block.text).join("\n\n")):review.text;
@@ -32,6 +35,7 @@ export function RelayReviewSurface({review,busy,oldReview,sourceLabel,targetLabe
   {menu&&<div className="r2-draft-menu"><button type="button" onClick={()=>{setView("PREVIEW");setMenu(false);}}>{uiText("预览发送内容")}</button><button type="button" onClick={()=>{setMenu(false);discard();}}><Trash2 size={18}/>{uiText("放弃本地编辑")}</button></div>}
   <div className="r2-relay-route"><span title={sourceLabel}>{review.role==="DECISION"?uiText("控制端"):uiText("执行端")} · {sourceLabel}</span><ArrowRight size={18}/><strong title={targetLabel}>{review.role==="DECISION"?uiText("执行端"):uiText("控制端")} · {targetLabel}</strong></div>
   <div className="r2-relay-scroll">
+    {!frozen&&onSourceChange&&<RelaySourcePicker sources={sources} selected={review.reply.id} disabled={busy} stopped={sourceStopped} onChange={onSourceChange}/>}
     {review.reply.observedAt&&<time className="r2-relay-time">{new Intl.DateTimeFormat(getLanguage(),{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}).format(review.reply.observedAt)}</time>}
     {view==="BLOCKS"&&review.blocks?.length?<RelayBlockSelection blocks={review.blocks} selected={review.blockIds??[]} disabled={busy||frozen} media={media} onChange={ids=>{
       const ordered=review.blocks!.filter(block=>ids.includes(block.id)).map(block=>block.id);

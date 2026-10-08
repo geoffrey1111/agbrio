@@ -3,7 +3,8 @@
 
 # Agbrio
 
-> **托管连接预览版:** Windows **preview.16** 支持可选兑换码连接：电脑端激活一次，再配对手机，无需自备域名。兑换码单独提供；自己部署仍免费可用。[设置与限制](docs/SETUP.md)。
+> **Windows 预览版0.1.1：** [下载安装包](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.1)。包含 Bridge 当前活动端、停止后待审提示、选择更早原文、Codex 提问回答和跟进，以及设置中的检查更新。保留可选托管兑换码和免费自部署。[更新与验证范围](docs/RELEASE_0.1.1.md)。
+
 
 
 **Agent Bridge · 让管理对话与执行对话顺畅交接**
@@ -18,7 +19,7 @@
 
 ## 发布状态
 
-**[v0.1.0-alpha.1](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.0-alpha.1) — MIT 开源 Windows Alpha。** 可下载安装包与校验值，或从源码构建。干净 Windows 安装和原生首次设置已通过自动验证，真实远程 Codex／文件交接也已单独验证。应用支持简体中文、繁体中文和英文，可在「设置 → 语言」切换。Mac 与其他 Agent 尚未作为支持平台。[安装与配对](docs/SETUP.md)。
+**[v0.1.1](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.1) — MIT 开源 Windows Alpha。** 可下载安装包与校验值，或从源码构建。干净 Windows 安装和原生首次设置已通过自动验证，真实远程 Codex／文件交接也已单独验证。应用支持简体中文、繁体中文和英文，可在「设置 → 语言」切换。Mac 与其他 Agent 尚未作为支持平台。[安装与配对](docs/SETUP.md)。
 
 ## 适合已经使用双对话协作的人
 

@@ -2187,6 +2187,16 @@
   },
   {
     "ecosystem": "cargo",
+    "name": "minisign-verify",
+    "version": "0.2.5",
+    "license": "MIT",
+    "source": "https://crates.io/api/v1/crates/minisign-verify/0.2.5/download",
+    "notices": [
+      "third-party/cargo/minisign-verify-0.2.5/LICENSE"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
     "name": "miniz_oxide",
     "version": "0.8.9",
     "license": "MIT OR Zlib OR Apache-2.0",
@@ -2876,6 +2886,17 @@
   },
   {
     "ecosystem": "cargo",
+    "name": "reqwest",
+    "version": "0.13.4",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/api/v1/crates/reqwest/0.13.4/download",
+    "notices": [
+      "third-party/cargo/reqwest-0.13.4/LICENSE-APACHE",
+      "third-party/cargo/reqwest-0.13.4/LICENSE-MIT"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
     "name": "rfc6979",
     "version": "0.4.0",
     "license": "Apache-2.0 OR MIT",
@@ -2961,6 +2982,17 @@
     "notices": [
       "third-party/cargo/rustls-pki-types-1.15.1/LICENSE-APACHE",
       "third-party/cargo/rustls-pki-types-1.15.1/LICENSE-MIT"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "rustls-platform-verifier",
+    "version": "0.7.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/api/v1/crates/rustls-platform-verifier/0.7.1/download",
+    "notices": [
+      "third-party/cargo/rustls-platform-verifier-0.7.1/LICENSE-APACHE",
+      "third-party/cargo/rustls-platform-verifier-0.7.1/LICENSE-MIT"
     ]
   },
   {
@@ -3610,6 +3642,18 @@
       "third-party/cargo/tauri-plugin-single-instance-2.4.4/LICENSE.spdx",
       "third-party/cargo/tauri-plugin-single-instance-2.4.4/LICENSE_APACHE-2.0",
       "third-party/cargo/tauri-plugin-single-instance-2.4.4/LICENSE_MIT"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tauri-plugin-updater",
+    "version": "2.12.0",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/api/v1/crates/tauri-plugin-updater/2.12.0/download",
+    "notices": [
+      "third-party/cargo/tauri-plugin-updater-2.12.0/LICENSE.spdx",
+      "third-party/cargo/tauri-plugin-updater-2.12.0/LICENSE_APACHE-2.0",
+      "third-party/cargo/tauri-plugin-updater-2.12.0/LICENSE_MIT"
     ]
   },
   {
@@ -4445,6 +4489,17 @@
   },
   {
     "ecosystem": "cargo",
+    "name": "windows-registry",
+    "version": "0.6.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/api/v1/crates/windows-registry/0.6.1/download",
+    "notices": [
+      "third-party/cargo/windows-registry-0.6.1/license-apache-2.0",
+      "third-party/cargo/windows-registry-0.6.1/license-mit"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
     "name": "windows-result",
     "version": "0.3.4",
     "license": "MIT OR Apache-2.0",
@@ -4456,6 +4511,17 @@
   },
   {
     "ecosystem": "cargo",
+    "name": "windows-result",
+    "version": "0.4.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/api/v1/crates/windows-result/0.4.1/download",
+    "notices": [
+      "third-party/cargo/windows-result-0.4.1/license-apache-2.0",
+      "third-party/cargo/windows-result-0.4.1/license-mit"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
     "name": "windows-strings",
     "version": "0.4.2",
     "license": "MIT OR Apache-2.0",
@@ -4463,6 +4529,28 @@
     "notices": [
       "third-party/cargo/windows-strings-0.4.2/license-apache-2.0",
       "third-party/cargo/windows-strings-0.4.2/license-mit"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows-strings",
+    "version": "0.5.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/api/v1/crates/windows-strings/0.5.1/download",
+    "notices": [
+      "third-party/cargo/windows-strings-0.5.1/license-apache-2.0",
+      "third-party/cargo/windows-strings-0.5.1/license-mit"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows-sys",
+    "version": "0.52.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/api/v1/crates/windows-sys/0.52.0/download",
+    "notices": [
+      "third-party/cargo/windows-sys-0.52.0/license-apache-2.0",
+      "third-party/cargo/windows-sys-0.52.0/license-mit"
     ]
   },
   {
@@ -4728,6 +4816,16 @@
     "source": "https://crates.io/api/v1/crates/zerovec-derive/0.11.6/download",
     "notices": [
       "third-party/cargo/zerovec-derive-0.11.6/LICENSE"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "zip",
+    "version": "4.6.1",
+    "license": "MIT",
+    "source": "https://crates.io/api/v1/crates/zip/4.6.1/download",
+    "notices": [
+      "third-party/cargo/zip-4.6.1/LICENSE"
     ]
   },
   {

@@ -1,0 +1,1 @@
+Agbrio updater signature validation fixture. Not an installer.

@@ -8,7 +8,7 @@ public static class RouterPeerOwner {
  [DllImport("kernel32.dll")] static extern bool GetFileInformationByHandle(IntPtr handle,out FileInfo information);
  static string desktopFile;
  static string FileIdentity(string path){var handle=CreateFile(path,0,7,IntPtr.Zero,3,0,IntPtr.Zero);if(handle==new IntPtr(-1))return null;try{FileInfo file;if(!GetFileInformationByHandle(handle,out file))return null;return file.Volume+":"+file.IndexHigh+":"+file.IndexLow;}finally{CloseHandle(handle);}}
- public static void ConfigureDesktop(string path){desktopFile=FileIdentity(path);}
+ public static void ConfigureDesktop(string path){var next=FileIdentity(path);if(next!=null)desktopFile=next;}
  [DllImport("iphlpapi.dll")] static extern uint GetExtendedTcpTable(IntPtr table,ref uint size,bool order,int family,int cls,uint reserved);
  [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access,bool inherit,uint pid);
  [DllImport("advapi32.dll")] static extern bool OpenProcessToken(IntPtr process,uint access,out IntPtr token);
@@ -34,14 +34,26 @@ public static class RouterPeerOwner {
  }
 }
 "@
-if($QueryPid -eq 0){
+function RefreshDesktop {
  $package=Get-AppxPackage -Name 'OpenAI.Codex'
  if($package.InstallLocation){[RouterPeerOwner]::ConfigureDesktop((Join-Path $package.InstallLocation 'app/ChatGPT.exe'))}
 }
+if($QueryPid -eq 0){RefreshDesktop}
 function Identity([uint32]$processId){$v=[RouterPeerOwner]::Identity($processId);if($v -and $v.Length -eq 3){return @{pid=$processId;imagePath=$v[0];ownerSid=$v[1];createdAt=$v[2]}};return $null}
 if($QueryPid -gt 0){Identity $QueryPid|ConvertTo-Json -Compress;exit}
 $parent=(Get-CimInstance Win32_Process -Filter ('ProcessId='+$PID)).ParentProcessId
 @{ready=$true;supervisorIdentity=(Identity $parent)}|ConvertTo-Json -Depth 4 -Compress|ForEach-Object {[Console]::WriteLine($_)}
 while(($line=[Console]::ReadLine()) -ne $null){
- try{$request=$line|ConvertFrom-Json;$result=[RouterPeerOwner]::Verify([int]$request.peerPort,[int]$request.serverPort,$OwnerSid,[uint32]$request.expectedPid);$reply=@{id=$request.id;owner=($result -gt 0);desktop=($result -eq 2)}|ConvertTo-Json -Compress;[Console]::WriteLine($reply)}catch{[Console]::WriteLine('{"id":0,"owner":false,"desktop":false}')}
+ try{
+  $request=$line|ConvertFrom-Json
+  $result=[RouterPeerOwner]::Verify([int]$request.peerPort,[int]$request.serverPort,$OwnerSid,[uint32]$request.expectedPid)
+  # Store upgrades replace the executable's file object while this service stays
+  # resident. Refresh from the registered package, then recheck the same TCP peer.
+  # A name, clientInfo string or arbitrary child process never proves Desktop.
+  if($result -eq 1 -and [uint32]$request.expectedPid -eq 0){
+   RefreshDesktop
+   $result=[RouterPeerOwner]::Verify([int]$request.peerPort,[int]$request.serverPort,$OwnerSid,0)
+  }
+  $reply=@{id=$request.id;owner=($result -gt 0);desktop=($result -eq 2)}|ConvertTo-Json -Compress;[Console]::WriteLine($reply)
+ }catch{[Console]::WriteLine('{"id":0,"owner":false,"desktop":false}')}
 }

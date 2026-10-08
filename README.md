@@ -3,7 +3,8 @@
 
 # Agbrio
 
-> **Hosted connection preview:** Windows **preview.16** adds optional redemption-code phone access: activate once on the desktop, then pair your phone. Codes are provided separately; free self-deployment remains available. [Setup and limits](docs/SETUP.md).
+> **Windows preview0.1.1:** [Download the signed-update release](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.1). Includes single-side Bridge activity, stopped-only review attention, earlier result selection, native Codex questions/follow-up and Settings → Check for updates. Optional hosted codes and free self-hosting remain. [Changes and limits](docs/RELEASE_0.1.1.md).
+
 
 
 **Agent Bridge — handoffs between the conversation that manages and the conversation that executes.**
@@ -18,7 +19,7 @@ The phone is a convenient place to review and confirm that exchange. The central
 
 ## Release status
 
-**[v0.1.0-alpha.1](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.0-alpha.1) — MIT-licensed Windows alpha.** Download the installer and checksums, or build the included source. Clean Windows installation and native first-setup controls have passed automated validation, separately from the real remote Codex/file handoff. App UI supports English, Simplified Chinese and Traditional Chinese; switch in Settings → Language. Mac and other agents remain future work. [Install and pair](docs/SETUP.md).
+**[v0.1.1](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.1) — MIT-licensed Windows alpha.** Download the installer and checksums, or build the included source. Clean Windows installation and native first-setup controls have passed automated validation, separately from the real remote Codex/file handoff. App UI supports English, Simplified Chinese and Traditional Chinese; switch in Settings → Language. Mac and other agents remain future work. [Install and pair](docs/SETUP.md).
 
 ## For an existing two-conversation workflow
 

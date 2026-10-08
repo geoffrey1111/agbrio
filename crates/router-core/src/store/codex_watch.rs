@@ -101,6 +101,21 @@ fn watch_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CodexWatch> {
         retry_after: row.get(8)?,
     })
 }
+/// A bound Bridge is already an exact conversation authority. Derive its reply
+/// context without registering a separate watch or consuming the watch limit.
+/// Negative generation fingerprints pin Bridge/revision/endpoint/cwd; they cannot
+/// collide with standalone watch generations, which are positive. Keep the
+/// fingerprint within 52 bits so desktop/PWA JSON numbers remain exact.
+pub(super) fn chat_context(c:&Connection,id:&str)->Result<CodexWatch,String>{
+ let binding:Option<(String,String,String,String,i64)>=c.query_row("SELECT e.id,e.label,d.cwd,w.id,w.binding_revision FROM endpoints e JOIN workstreams w ON w.id=e.workstream_id JOIN endpoint_role_details d ON d.endpoint_id=e.id WHERE e.provider='CODEX' AND e.external_id=?1 AND e.status='ACTIVE' AND w.trashed_at IS NULL AND w.archived_at IS NULL AND d.cwd IS NOT NULL ORDER BY w.id,e.id LIMIT 1",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).optional().map_err(db_error)?;
+ if let Some((endpoint,label,cwd,bridge,revision))=binding{
+  if !Path::new(&cwd).is_absolute(){return Err("WATCH_PROJECT_UNAVAILABLE".into());}
+  let hash=length_prefixed_hash(&[bridge.as_bytes(),revision.to_string().as_bytes(),endpoint.as_bytes(),cwd.as_bytes()]);
+  let generation=-(i64::from_str_radix(&hash[..13],16).map_err(|_|"REPLY_CONTEXT_INVALID")?+1);
+  return Ok(CodexWatch{thread_id:id.into(),label,cwd,enabled:true,generation,snapshot:WatchSnapshot{state:"UNKNOWN".into(),turn_id:None,item_id:None,text:String::new()},checked_at:0,error_code:None,retry_after:0});
+ }
+ c.query_row("SELECT thread_id,label,cwd,enabled,generation,snapshot_json,checked_at,error_code,retry_after FROM codex_watches WHERE thread_id=?1 AND NOT EXISTS(SELECT 1 FROM watch_removed_items WHERE kind='WATCH' AND id=codex_watches.thread_id)",[id],watch_row).optional().map_err(db_error)?.ok_or("WATCH_NOT_FOUND".into())
+}
 impl RouterStore {
     /// Reading a notification acknowledges this exact chat through the selected
     /// sequence, including older retained events not loaded on the client yet.
@@ -171,6 +186,7 @@ impl RouterStore {
         }
         let raw = encoded(baseline)?;
         self.with_connection(|c| {
+            let bound:bool=c.query_row("SELECT EXISTS(SELECT 1 FROM endpoints e JOIN workstreams w ON w.id=e.workstream_id WHERE e.provider='CODEX' AND e.external_id=?1 AND e.status='ACTIVE' AND w.trashed_at IS NULL AND w.archived_at IS NULL)",[id],|r|r.get(0)).map_err(db_error)?;if bound{return Err("WATCH_ALREADY_IN_BRIDGE".into());}
             let count:i64=c.query_row("SELECT COUNT(*) FROM codex_watches WHERE enabled=1 AND thread_id!=?1",[id],|r|r.get(0)).map_err(db_error)?;
             if count>=20 {return Err("WATCH_LIMIT_REACHED".into());}
             // Repeated enable of an active subscription does not reset its cursor.
@@ -198,8 +214,10 @@ impl RouterStore {
         let mut statement=c.prepare("SELECT kind,id,removed_at,(SELECT generation FROM codex_watches WHERE thread_id=watch_removed_items.id) FROM watch_removed_items ORDER BY removed_at DESC LIMIT 100").map_err(db_error)?;
         let out=statement.query_map([],|r|Ok(serde_json::json!({"kind":r.get::<_,String>(0)?,"id":r.get::<_,String>(1)?,"removedAt":r.get::<_,i64>(2)?,"generation":r.get::<_,Option<i64>>(3)?}))).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;Ok(out)
     })}
+    pub fn bridge_codex_thread_ids(&self)->Result<Vec<String>,String>{self.with_connection(|c|{let mut q=c.prepare("SELECT DISTINCT e.external_id FROM endpoints e JOIN workstreams w ON w.id=e.workstream_id WHERE e.provider='CODEX' AND e.status='ACTIVE' AND w.trashed_at IS NULL AND w.archived_at IS NULL").map_err(db_error)?;let rows=q.query_map([],|r|r.get(0)).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;Ok(rows)})}
+    pub fn codex_chat_context(&self,id:&str)->Result<CodexWatch,String>{self.with_connection(|c|chat_context(c,id))}
     pub fn codex_watches(&self) -> Result<Vec<CodexWatch>, String> {
-        self.with_connection(|c| { let mut s=c.prepare("SELECT thread_id,label,cwd,enabled,generation,snapshot_json,checked_at,error_code,retry_after FROM codex_watches WHERE NOT EXISTS(SELECT 1 FROM watch_removed_items WHERE kind='WATCH' AND id=codex_watches.thread_id) ORDER BY checked_at DESC,thread_id").map_err(db_error)?; let rows=s.query_map([],watch_row).map_err(db_error)?; rows.collect::<Result<Vec<_>,_>>().map_err(db_error) })
+        self.with_connection(|c| { let mut s=c.prepare("SELECT thread_id,label,cwd,enabled,generation,snapshot_json,checked_at,error_code,retry_after FROM codex_watches WHERE NOT EXISTS(SELECT 1 FROM watch_removed_items WHERE kind='WATCH' AND id=codex_watches.thread_id) AND NOT EXISTS(SELECT 1 FROM endpoints e JOIN workstreams w ON w.id=e.workstream_id WHERE e.provider='CODEX' AND e.external_id=codex_watches.thread_id AND e.status='ACTIVE' AND w.trashed_at IS NULL AND w.archived_at IS NULL) ORDER BY checked_at DESC,thread_id").map_err(db_error)?; let rows=s.query_map([],watch_row).map_err(db_error)?; rows.collect::<Result<Vec<_>,_>>().map_err(db_error) })
     }
     /// Generation prevents a read begun before Pause/Resume from writing a stale event.
     pub fn record_codex_watch(

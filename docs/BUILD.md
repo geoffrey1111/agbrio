@@ -51,3 +51,7 @@ capacity; it is not automatically deployed by building the desktop.
 Run `node --test services/hosted-relay/worker.test.mjs` for isolated service tests.
 The owner issuance utility is source-only. It does not include code strings,
 operator configuration or Cloudflare account credentials.
+
+## Signed0.1.1 builds
+
+See [release identity and validation](RELEASE_0.1.1.md). Set your own TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD securely, then run `pwsh -NoProfile -File scripts/build-signed-update.ps1 -Version 0.1.1`. Nothing is published automatically. Never distribute private keys, passwords or operator/code files. Official builds use the already documented public hosted control origin.

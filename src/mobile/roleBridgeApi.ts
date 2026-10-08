@@ -1,4 +1,3 @@
-import {webNotificationApi} from "../features/workbench/notificationApi";
 import{webWatchChatApi}from"../features/workbench/watchChatApi";
 import { request } from "./api";
 import type { RoleBridgeApi, RoleState } from "../features/workbench/RoleBridgePanel";
@@ -8,7 +7,8 @@ function roleCommand<T>(workstreamId:string,body:unknown){return request<T>(`/wo
 export function mobileRoleBridgeApi(workstreamId:string): RoleBridgeApi {
  return {
   chat:webWatchChatApi,
-  openChat:async thread=>{let all=await webNotificationApi.watches();if(!all.some(w=>w.threadId===thread&&w.enabled)){await webNotificationApi.enable(thread);all=await webNotificationApi.watches();}const watch=all.find(w=>w.threadId===thread);if(!watch)throw Error("未能打开对话");return watch;},
+  markRead:(id,observation)=>request<void>(`/workstreams/${encodeURIComponent(id)}/reply-observations/${encodeURIComponent(observation)}/read`,{method:"POST"}),
+  openChat:async thread=>(await webWatchChatApi.state(thread)).watch,
   state: async id => request<RoleState>(`/workstreams/${encodeURIComponent(id)}/role-bridge`),
   sync: id => roleCommand(id,{action:"SYNC"}),
   bind: (id,revision,decision,execution) => roleCommand(id,{action:"BIND",revision,decision,execution}),

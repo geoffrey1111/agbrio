@@ -17,6 +17,7 @@ pub struct AssistantGrant {
     pub id: String, pub workstream_id: String, pub source_role: String, pub scope:String,
     pub binding_revision: i64, pub label: String, pub rules: Vec<BriefRule>,
     pub created_at: i64, pub expires_at: i64, pub revoked_at: Option<i64>,
+    pub approval_mode: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -35,11 +36,11 @@ pub(super) fn bounded(value: &str, max: usize) -> Result<(), String> {
 }
 fn grant(c: &Connection, id: &str) -> Result<AssistantGrant, String> {
     let mut g: AssistantGrant = c.query_row(
-        "SELECT id,workstream_id,source_role,binding_revision,label,brief_json,created_at,expires_at,revoked_at,scope FROM assistant_grants WHERE id=?1", [id], |r| {
+        "SELECT id,workstream_id,source_role,binding_revision,label,brief_json,created_at,expires_at,revoked_at,scope,approval_mode FROM assistant_grants WHERE id=?1", [id], |r| {
             let rules: String = r.get(5)?;
             Ok(AssistantGrant { id:r.get(0)?,workstream_id:r.get::<_,Option<String>>(1)?.unwrap_or_default(),source_role:r.get(2)?,binding_revision:r.get(3)?,label:r.get(4)?,
                 rules: serde_json::from_str(&rules).map_err(|e|rusqlite::Error::FromSqlConversionFailure(5,rusqlite::types::Type::Text,Box::new(e)))?,
-                created_at:r.get(6)?,expires_at:r.get(7)?,revoked_at:r.get(8)?,scope:r.get(9)? })
+                created_at:r.get(6)?,expires_at:r.get(7)?,revoked_at:r.get(8)?,scope:r.get(9)?,approval_mode:r.get(10)? })
         }).map_err(|_| "ASSISTANT_GRANT_UNAVAILABLE".to_string())?;
     // The serialized version is the immutable grant ID, not an editable label.
     g.rules.shrink_to_fit(); Ok(g)
@@ -56,14 +57,14 @@ pub(super) fn active(c: &Connection, id: &str) -> Result<AssistantGrant, String>
 }
 fn draft(c: &Connection, gid: &str, hid: &str, hash: &str) -> Result<(AssistantGrant,HandoffHistoryItem),String> {
     let g = active(c,gid)?;
-    let (owner,obs):(String,String) = c.query_row("SELECT grant_id,observation_id FROM assistant_drafts WHERE handoff_id=?1",[hid],|r|Ok((r.get(0)?,r.get(1)?)))
+    let (owner,obs,head):(String,String,Option<String>) = c.query_row("SELECT grant_id,observation_id,review_head_id FROM assistant_drafts WHERE handoff_id=?1",[hid],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?)))
         .map_err(|_|"ASSISTANT_DRAFT_UNAVAILABLE".to_string())?;
     let h = handoff_by_id(c,hid)?;
     if owner != gid || (g.scope!="INSTANCE"&&h.workstream_id != g.workstream_id) || h.payload_hash != hash { return Err("ASSISTANT_DRAFT_CHANGED_OR_OUT_OF_SCOPE".into()); }
     role_bridge::validate_handoff(c,&h)?;
     let latest:String = c.query_row("SELECT id FROM reply_observations WHERE endpoint_id=?1 ORDER BY observed_at DESC,rowid DESC LIMIT 1",
         [h.endpoint_source()?.id.as_str()],|r|r.get(0)).map_err(db_error)?;
-    if latest != obs { return Err("ASSISTANT_SOURCE_CHANGED".into()); }
+    if latest != head.as_deref().unwrap_or(&obs) { return Err("ASSISTANT_SOURCE_CHANGED".into()); }
     let role:String = c.query_row("SELECT source_role FROM role_handoff_details WHERE handoff_id=?1",[hid],|r|r.get(0)).map_err(db_error)?;
     if g.source_role!="BOTH" && role != g.source_role { return Err("ASSISTANT_DIRECTION_OUT_OF_SCOPE".into()); }
     Ok((g,h))
@@ -92,7 +93,7 @@ impl RouterStore {
             if b.binding_revision!=input.binding_revision || w.trashed_at.is_some() || w.archived_at.is_some(){return Err("ASSISTANT_BRIDGE_CHANGED_OR_REMOVED".into());}
             if !matches!(input.source_role.as_str(),"DECISION"|"EXECUTION"|"BOTH") || b.decision.is_none() || b.execution.is_none(){return Err("ASSISTANT_BRIDGE_NOT_BOUND".into());}
             let gid=id();
-            tx.execute("INSERT INTO assistant_grants VALUES(?1,?2,?3,?4,?5,?6,?7,?8,NULL,'BRIDGE')",params![gid,input.workstream_id,input.source_role,input.binding_revision,input.label,rules,now(),input.expires_at]).map_err(db_error)?;
+            tx.execute("INSERT INTO assistant_grants(id,workstream_id,source_role,binding_revision,label,brief_json,created_at,expires_at,revoked_at,scope) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,NULL,'BRIDGE')",params![gid,input.workstream_id,input.source_role,input.binding_revision,input.label,rules,now(),input.expires_at]).map_err(db_error)?;
             tx.commit().map_err(db_error)?;grant(c,&gid)
         })
     }
@@ -127,7 +128,11 @@ impl RouterStore {
         let g=active(&tx,gid)?;let h=handoff_by_id(&tx,hid)?;
         let role:String=tx.query_row("SELECT source_role FROM role_handoff_details WHERE handoff_id=?1",[hid],|r|r.get(0)).map_err(db_error)?;
         if h.status!="READY"||(g.scope!="INSTANCE"&&h.workstream_id!=g.workstream_id)||(g.source_role!="BOTH"&&role!=g.source_role){return Err("ASSISTANT_DRAFT_OUT_OF_SCOPE".into());}
-        tx.execute("INSERT INTO assistant_drafts(handoff_id,grant_id,observation_id,request_id,request_hash) VALUES(?1,?2,?3,?4,?5)",params![hid,gid,observation,request.map(|v|v.0),request.map(|v|v.1)]).map_err(db_error)?;
+        let source=h.endpoint_source()?;
+        let original_identity:String=tx.query_row("SELECT assistant_identity FROM reply_observations WHERE id=?1 AND workstream_id=?2 AND endpoint_id=?3",params![observation,h.workstream_id,source.id],|r|r.get(0)).map_err(db_error)?;
+        if h.source_response_identity.as_deref()!=Some(original_identity.as_str()){return Err("ASSISTANT_SOURCE_CHANGED".into());}
+        let head:String=if g.approval_mode=="CONVERSATION_REVIEW"{tx.query_row("SELECT id FROM reply_observations WHERE endpoint_id=?1 ORDER BY observed_at DESC,rowid DESC LIMIT 1",[source.id.as_str()],|r|r.get(0)).map_err(db_error)?}else{observation.to_string()};
+        tx.execute("INSERT INTO assistant_drafts(handoff_id,grant_id,observation_id,request_id,request_hash,review_head_id) VALUES(?1,?2,?3,?4,?5,?6)",params![hid,gid,observation,request.map(|v|v.0),request.map(|v|v.1),head]).map_err(db_error)?;
         draft(&tx,gid,hid,&h.payload_hash)?;tx.commit().map_err(db_error)
     })}
     pub fn ask_assistant_decision(&self,gid:&str,hid:&str,hash:&str,question:&str)->Result<PendingDecision,String>{
@@ -167,6 +172,7 @@ impl RouterStore {
             let asked:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM assistant_decisions WHERE handoff_id=?1)",params![h.id],|r|r.get(0)).map_err(db_error)?;
             if asked&&input.decision_id.is_none(){return Err("ASSISTANT_OWNER_ANSWER_REQUIRED".into());}
             let(basis,reference)=match(input.rule_id,input.decision_id){
+                (None,None) if g.scope=="INSTANCE" && g.approval_mode=="CONVERSATION_REVIEW"=>("ASSISTANT_REVIEW",g.id.clone()),
                 (Some(r),None) if g.rules.iter().any(|v|v.id==r)=>("BRIEF_RULE",r),
                 (None,Some(did))=>{let d=decision(&tx,&did)?;if d.handoff_id!=h.id||d.payload_hash!=h.payload_hash||d.answer.is_none(){return Err("ASSISTANT_OWNER_ANSWER_REQUIRED".into());}("ASSISTANT_ATTESTED_OWNER_ANSWER",did)},
                 _=>return Err("ASSISTANT_APPROVAL_BASIS_REQUIRED".into())};
@@ -211,10 +217,23 @@ impl RouterStore{
   if input.rules.is_empty()||input.rules.len()>30||input.expires_at<=now()||input.expires_at>now()+90*86_400_000{return Err("ASSISTANT_GRANT_INVALID".into());}
   let mut ids=std::collections::HashSet::new();for r in &input.rules{bounded(&r.id,80)?;bounded(&r.text,8000)?;if !ids.insert(&r.id){return Err("ASSISTANT_RULE_DUPLICATE".into());}}
   let rules=serde_json::to_string(&input.rules).map_err(|_|"ASSISTANT_BRIEF_INVALID")?;if rules.len()>32000{return Err("ASSISTANT_BRIEF_INVALID".into());}
-  self.with_connection(|c|{let gid=id();c.execute("INSERT INTO assistant_grants VALUES(?1,NULL,'BOTH',0,?2,?3,?4,?5,NULL,'INSTANCE')",params![gid,input.label,rules,now(),input.expires_at]).map_err(db_error)?;grant(c,&gid)})
+  self.with_connection(|c|{let gid=id();c.execute("INSERT INTO assistant_grants(id,workstream_id,source_role,binding_revision,label,brief_json,created_at,expires_at,revoked_at,scope) VALUES(?1,NULL,'BOTH',0,?2,?3,?4,?5,NULL,'INSTANCE')",params![gid,input.label,rules,now(),input.expires_at]).map_err(db_error)?;grant(c,&gid)})
  }
  pub fn require_assistant_bridge(&self,gid:&str,wid:&str,revision:Option<i64>)->Result<Workstream,String>{self.with_connection(|c|{
   let g=active(c,gid)?;let w=workstream_by_id(c,wid)?;
   if(g.scope!="INSTANCE"&&g.workstream_id!=wid)||w.trashed_at.is_some()||w.archived_at.is_some()||revision.is_some_and(|r|r!=w.binding_revision){return Err("ASSISTANT_BRIDGE_CHANGED_OR_REMOVED".into());}Ok(w)
  })}
+}
+
+/// Owner connects one assistant to the instance. Business decisions live in the
+/// owner's assistant conversation; never convert legacy grants automatically.
+#[derive(Clone,Debug,Serialize,Deserialize)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+pub struct AssistantConnectionInput { pub label:String, pub expires_at:i64 }
+impl RouterStore {
+ pub fn connect_assistant_instance(&self,input:AssistantConnectionInput)->Result<AssistantGrant,String>{
+  bounded(&input.label,80)?;
+  if input.expires_at<=now()||input.expires_at>now()+90*86_400_000{return Err("ASSISTANT_GRANT_INVALID".into());}
+  self.with_connection(|c|{let gid=id();c.execute("INSERT INTO assistant_grants(id,workstream_id,source_role,binding_revision,label,brief_json,created_at,expires_at,revoked_at,scope,approval_mode) VALUES(?1,NULL,'BOTH',0,?2,'[]',?3,?4,NULL,'INSTANCE','CONVERSATION_REVIEW')",params![gid,input.label,now(),input.expires_at]).map_err(db_error)?;grant(c,&gid)})
+ }
 }

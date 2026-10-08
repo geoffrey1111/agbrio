@@ -1,4 +1,4 @@
-param([ValidateSet('Snapshot','Restore','Protect','Stop','CleanCertificate','DesktopWindow')][string]$Action,[string]$Directory,[string]$SnapshotPath,[string]$Url,[string]$TestRegistryPath,[uint32]$DesktopPid)
+param([ValidateSet('Snapshot','Restore','Protect','Stop','CleanCertificate','DesktopWindow','ShowDesktop')][string]$Action,[string]$Directory,[string]$SnapshotPath,[string]$Url,[string]$TestRegistryPath,[uint32]$DesktopPid)
 $ErrorActionPreference='Stop'
 $names=@('CODEX_APP_SERVER_WS_URL','NODE_EXTRA_CA_CERTS','NODE_USE_SYSTEM_CA')
 if($TestRegistryPath -and $TestRegistryPath -notmatch '^Software\\AIWorkRouter\\Tests\\[a-f0-9-]{36}$'){throw 'SHARED_TEST_REGISTRY_INVALID'}
@@ -15,6 +15,31 @@ public static class AIWREnvironmentBroadcast {
  [void][AIWREnvironmentBroadcast]::SendMessageTimeout([IntPtr]0xffff,0x1a,[IntPtr]::Zero,'Environment',2,2000,[ref]$result)
 }
 switch($Action){
+ 'ShowDesktop' {
+  Add-Type -TypeDefinition @'
+using System;using System.Runtime.InteropServices;
+public static class AIWRDesktopRestore {
+ [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h,int action);
+ [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+ [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+}
+'@
+  $root=(Get-AppxPackage -Name 'OpenAI.Codex').InstallLocation
+  $desktop=Join-Path $root 'app/ChatGPT.exe'
+  $owner=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+  $visible=$false
+  foreach($entry in @(Get-CimInstance Win32_Process -Filter "Name='ChatGPT.exe'")){
+   if(![string]::Equals($entry.ExecutablePath,$desktop,[StringComparison]::OrdinalIgnoreCase)){continue}
+   if((Invoke-CimMethod -InputObject $entry -MethodName GetOwnerSid).Sid -cne $owner){continue}
+   $target=Get-Process -Id $entry.ProcessId -ErrorAction SilentlyContinue
+   if(!$target -or $target.MainWindowHandle -eq [IntPtr]::Zero){continue}
+   [void][AIWRDesktopRestore]::ShowWindowAsync($target.MainWindowHandle,9)
+   [void][AIWRDesktopRestore]::SetForegroundWindow($target.MainWindowHandle)
+   $visible=[AIWRDesktopRestore]::IsWindowVisible($target.MainWindowHandle)
+   if($visible){break}
+  }
+  @{visible=$visible}|ConvertTo-Json -Compress
+ }
  'DesktopWindow' {
   Add-Type -TypeDefinition @'
 using System;using System.Runtime.InteropServices;
