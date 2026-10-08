@@ -799,5 +799,9 @@
   "任务进行中，仍然重启？": "Restart while a task is running?",
   "将安装 Agbrio {0}。重启期间同步与回执记录会暂停，由 Agbrio 启动的任务可能中断。共享 Codex 不会重启。": "Agbrio {0} will be installed. Sync and receipt recording will pause during restart; tasks started by Agbrio may be interrupted. Shared Codex will not restart.",
   "安装前会备份数据。交接结果不确定时，请恢复后核对；不会自动重发。": "Data will be backed up before installation. Verify any uncertain handoff after reconnecting; it will not be resent automatically.",
-  "仍然重启并安装": "Restart and install anyway"
+  "仍然重启并安装": "Restart and install anyway",
+  "交给 AI 助手部署与诊断": "Ask your AI assistant to deploy and diagnose",
+  "复制整段给你的助手，包含当前 MCP 地址、连接步骤、诊断与交接规则。登录和同意连接仍由你完成。": "Copy the full instructions to your assistant, including this MCP URL, setup, diagnostics and handoff rules. You complete login and consent.",
+  "部署与接管指令": "Setup and assistant instructions",
+  "复制助手接管指令": "Copy assistant setup instructions"
 }

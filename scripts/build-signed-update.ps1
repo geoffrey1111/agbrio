@@ -1,14 +1,22 @@
 [CmdletBinding()]
-param([Parameter(Mandatory=$true)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$')][string]$Version,[string]$NotesFile='',[ValidateSet('lzma','zlib')][string]$Compression='lzma')
+param([Parameter(Mandatory=$true)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$')][string]$Version,[string]$NotesFile='',[ValidateSet('lzma','zlib')][string]$Compression='lzma',[string]$HostedControlOrigin=$env:AGBRIO_HOSTED_CONTROL_ORIGIN,[switch]$SelfHostedOnly)
 $ErrorActionPreference='Stop'
 $baseVersion=[version]($Version.Split('-')[0])
 if($baseVersion -lt [version]'0.1.1'){throw 'The first signed update must use version 0.1.1 or higher; installed 0.1.0 clients cannot update to a 0.1.0 prerelease'}
+if($SelfHostedOnly -and $HostedControlOrigin){throw 'Choose a hosted origin or explicit SelfHostedOnly, not both'}
+if(!$SelfHostedOnly){
+ if(!$HostedControlOrigin){throw 'Set HostedControlOrigin for a hosted-code publisher build, or explicitly choose SelfHostedOnly; never silently remove hosted activation'}
+ $publisherOrigin=$null
+ if(![Uri]::TryCreate($HostedControlOrigin,[UriKind]::Absolute,[ref]$publisherOrigin) -or $publisherOrigin.Scheme -ne 'https' -or !$publisherOrigin.IsDefaultPort -or $publisherOrigin.UserInfo -or $publisherOrigin.AbsolutePath -ne '/' -or $publisherOrigin.Query -or $publisherOrigin.Fragment){throw 'HostedControlOrigin must be an HTTPS origin without credentials, path or query'}
+ $HostedControlOrigin=$publisherOrigin.GetLeftPart([UriPartial]::Authority)
+}
 $repoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $releaseRoot=Join-Path $repoRoot ('runtime/signed-release-'+$Version)
 if(Test-Path -LiteralPath $releaseRoot){throw 'Preserve the existing release directory; choose a new version'}
 New-Item -ItemType Directory -Path $releaseRoot | Out-Null
-$savedPrivate=$env:TAURI_SIGNING_PRIVATE_KEY;$savedPassword=$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD;$savedVersion=$env:VITE_AGBRIO_APP_VERSION
+$savedPrivate=$env:TAURI_SIGNING_PRIVATE_KEY;$savedPassword=$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD;$savedVersion=$env:VITE_AGBRIO_APP_VERSION;$savedHostedOrigin=$env:AGBRIO_HOSTED_CONTROL_ORIGIN
 try{
+ $env:AGBRIO_HOSTED_CONTROL_ORIGIN=if($SelfHostedOnly){$null}else{$HostedControlOrigin}
  if(!$env:TAURI_SIGNING_PRIVATE_KEY){
   $privateRoot=Join-Path $repoRoot 'runtime/desktop-update-20261008/private'
   $keyPath=Join-Path $privateRoot 'agbrio-updater.key';$passwordPath=Join-Path $privateRoot 'signing-password.dpapi'
@@ -35,4 +43,4 @@ try{
  }finally{Pop-Location}
  Write-Output ('Signed artifacts prepared locally: '+$releaseRoot)
  Write-Output 'Not published. Upload the exact installer, its signature and latest.json only after reviewing the release.'
-}finally{$env:TAURI_SIGNING_PRIVATE_KEY=$savedPrivate;$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$savedPassword;$env:VITE_AGBRIO_APP_VERSION=$savedVersion}
+}finally{$env:TAURI_SIGNING_PRIVATE_KEY=$savedPrivate;$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$savedPassword;$env:VITE_AGBRIO_APP_VERSION=$savedVersion;$env:AGBRIO_HOSTED_CONTROL_ORIGIN=$savedHostedOrigin}

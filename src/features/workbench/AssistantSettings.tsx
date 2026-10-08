@@ -3,6 +3,7 @@ import {invoke} from "@tauri-apps/api/core";
 import {Bot,Plus,ShieldOff} from "lucide-react";
 import {t,useLanguage,getLanguage} from "../../i18n";
 import {CopyAction} from "./NativeReaderActions";
+import {assistantSetupInstructions} from "./assistantSetupInstructions";
 type Endpoint={endpoint:{label:string;externalId:string}};
 type Bridge={id:string;name:string;bindings:{bindingRevision:number;decision:Endpoint;execution:Endpoint}};
 type Grant={id:string;scope?:"INSTANCE"|"BRIDGE";approvalMode?:"BRIEF_RULES"|"CONVERSATION_REVIEW";workstreamId:string;sourceRole:string;label:string;rules:{id:string;text:string}[];expiresAt:number;revokedAt:number|null};
@@ -17,8 +18,10 @@ export function AssistantSettings({api=desktopApi}:{api?:AssistantSettingsApi}){
  
  async function create(){if(!label.trim())return;await act(async()=>{await api.create({label:label.trim(),expiresAt:Date.now()+30*86400000});if(mounted.current){setForm(false);setStatus(t("授权已添加"));}});}
  const current=view?.grants.filter(g=>!g.revokedAt&&g.expiresAt>Date.now())??[];
+ const setupInstructions=assistantSetupInstructions(view?.mcpUrl??null);
  return <div className="r2-assistant-settings"><p className="r2-assistant-description">{t("助手读取结果后处理交接；需要你决策时，在助手对话里问你。")}</p>{view?.mcpUrl?<div className="r2-device-url"><code>{view.mcpUrl}</code><CopyAction text={view.mcpUrl} label={t("复制 MCP 地址")} onError={()=>setError(t("网址未复制，请选择链接复制。"))}/></div>:view&&<p className="v4-meta">{t("先在设备设置中配置 HTTPS 入口。")}</p>}
  {!view&&!error&&<p role="status">{t("加载中…")}</p>}
+ {view&&<details className="r2-assistant-guide"><summary>{t("交给 AI 助手部署与诊断")}</summary><p className="v4-meta">{t("复制整段给你的助手，包含当前 MCP 地址、连接步骤、诊断与交接规则。登录和同意连接仍由你完成。")}</p><div className="r2-assistant-guide-copy"><span>{t("部署与接管指令")}</span><CopyAction text={setupInstructions} label={t("复制助手接管指令")}/></div><pre>{setupInstructions}</pre></details>}
  {view&&!form&&<><div className="r2-settings-group">{current.map(g=><div className="r2-assistant-grant" key={g.id}><Bot size={20}/><div><strong>{g.label}</strong><small>{g.scope==="INSTANCE"?t("整个 Agbrio · 包含以后新建的 Bridge"):t("旧版单 Bridge 授权")+" · "+(view.bridges.find(b=>b.id===g.workstreamId)?.name??g.workstreamId)}</small><small>{t("至")} {new Date(g.expiresAt).toLocaleDateString(getLanguage())}</small></div><button type="button" className="r2-icon" disabled={busy} aria-label={t("撤销 {0} 的授权",g.label)} onClick={()=>void act(async()=>{await api.revoke(g.id);setStatus(t("授权已撤销"));})}><ShieldOff size={20}/></button></div>)}</div>{!current.length&&<p className="v4-meta">{t("先添加助手，再用 MCP 地址在 ChatGPT 中连接。")}</p>}<button type="button" className="r2-action" disabled={busy} onClick={()=>setForm(true)}><Plus size={18}/>{t("添加助手")}</button></>}
  {form&&<form onSubmit={e=>{e.preventDefault();void create();}}><label>{t("助手名称")}<input value={label} maxLength={80} onChange={e=>setLabel(e.target.value)} disabled={busy} required/></label><p className="r2-assistant-target">{t("整个 Agbrio · 包含以后新建的 Bridge")}</p><p className="v4-meta">{t("决策要求直接告诉助手即可。连接有效 30 天，可随时撤销。")}</p><div className="r2-assistant-actions"><button type="button" disabled={busy} onClick={()=>setForm(false)}>{t("取消")}</button><button className="r2-action" type="submit" disabled={busy||!label.trim()}>{busy?t("正在处理…"):t("连接助手")}</button></div></form>}
  {error&&<div role="alert"><p>{error}</p><button type="button" disabled={busy} onClick={()=>void act(async()=>{})}>{t("重试")}</button></div>}{status&&<p role="status">{status}</p>}

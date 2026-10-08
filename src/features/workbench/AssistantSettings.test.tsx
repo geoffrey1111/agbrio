@@ -18,3 +18,10 @@ it("identifies old grants without elevating them and allows explicit revocation 
  expect(await screen.findByText(/舊版單 Bridge/)).toBeVisible();fireEvent.click(screen.getByRole('button',{name:'撤銷 Old client 的授權'}));await waitFor(()=>expect(a.revoke).toHaveBeenCalledExactlyOnceWith('old'));
  fireEvent.click(screen.getByRole('button',{name:'新增助手'}));expect(screen.getByText('整個 Agbrio · 包含以後新建的 Bridge')).toBeVisible();fireEvent.change(screen.getByLabelText('助手名稱'),{target:{value:' '}});expect(screen.getByRole('button',{name:'連接助手'})).toBeDisabled();
 });
+
+it("copies the complete locale-specific deployment and delegation prompt with the configured endpoint without creating authority",async()=>{
+ const write=vi.fn().mockResolvedValue(undefined);Object.defineProperty(navigator,"clipboard",{value:{writeText:write},configurable:true});setLanguagePreference("en");const a=api();render(<AssistantSettings api={a}/>);fireEvent.click(await screen.findByText("Ask your AI assistant to deploy and diagnose"));fireEvent.click(screen.getByRole("button",{name:"Copy assistant setup instructions"}));await waitFor(()=>expect(write).toHaveBeenCalledOnce());const prompt=write.mock.calls[0][0];expect(prompt).toContain("https://qa.invalid/mcp");expect(prompt).toContain("scope=INSTANCE");expect(prompt).toContain("401/invalid_token is expected");expect(prompt).toContain("requestId");expect(prompt).toContain("actual user-message reference");expect(a.create).not.toHaveBeenCalled();expect(a.revoke).not.toHaveBeenCalled();
+});
+it("uses a visible placeholder when an HTTPS MCP entrance is not configured",async()=>{
+ const a=api();vi.mocked(a.view).mockResolvedValue({mcpUrl:null,grants:[],bridges:[]});render(<AssistantSettings api={a}/>);fireEvent.click(await screen.findByText("交给 AI 助手部署与诊断"));expect(screen.getByText(/<MCP_URL_FROM_AGBRIO_SETTINGS>/)).toBeVisible();expect(a.create).not.toHaveBeenCalled();
+});

@@ -3,7 +3,7 @@
 
 # Agbrio
 
-> **Windows プレビュー0.1.3：** [ダウンロード](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.3)。Bridgeの動作状況、停止後の確認通知、過去の回答選択、Codexの質問への回答とフォローアップ、設定の更新確認を追加しました。任意のホスト接続と無料セルフホストは引き続き利用できます。[変更と検証範囲](docs/RELEASE_0.1.3.md)。
+> **Windows プレビュー0.1.4：** [ダウンロード](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.4)。Bridgeの動作状況、停止後の確認通知、過去の回答選択、Codexの質問への回答とフォローアップ、設定の更新確認を追加しました。任意のホスト接続と無料セルフホストは引き続き利用できます。[変更と検証範囲](docs/RELEASE_0.1.4.md)。
 
 
 
@@ -19,7 +19,7 @@
 
 ## 公開状況
 
-**[v0.1.3](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.3) — MIT ライセンスの Windows Alpha。** インストーラーとチェックサムをダウンロードするか、ソースからビルドできます。クリーンな Windows のインストールとネイティブ初期設定の自動検証、実際の Codex／ファイル引き継ぎを別々に確認しています。アプリは英語・簡体字中国語・繁体字中国語に対応し、設定で切り替えられます。Mac と他の Agent は未対応です。[設定手順](docs/SETUP.md)。
+**[v0.1.4](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.4) — MIT ライセンスの Windows Alpha。** インストーラーとチェックサムをダウンロードするか、ソースからビルドできます。クリーンな Windows のインストールとネイティブ初期設定の自動検証、実際の Codex／ファイル引き継ぎを別々に確認しています。アプリは英語・簡体字中国語・繁体字中国語に対応し、設定で切り替えられます。Mac と他の Agent は未対応です。[設定手順](docs/SETUP.md)。
 
 ## すでに二つの会話で協働している人向け
 
@@ -79,3 +79,5 @@ PC の図は同じ Bridge の両側を並べた画面です。スマートフォ
 [作者のプロフィール](mailto:geoffreyzjx@qq.com) · [GitHub](https://github.com/geoffrey1111) · [問題を報告する](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [ワークフローの改善を提案する](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
 
 使い方の質問も Issues に投稿できます。公開の場なので、デモデータを使い私的な情報を除いてください。
+
+[Copyable AI assistant deployment, connection diagnostics and whole-app delegation instructions](docs/ASSISTANT_COPY_PROMPT.en.md). The app includes the same guide in Settings → AI assistant with your configured MCP URL.

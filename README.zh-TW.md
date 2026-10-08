@@ -3,7 +3,7 @@
 
 # Agbrio
 
-> **Windows 預覽版0.1.3：** [下載安裝包](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.3)。包含 Bridge 目前活動端、停止後待審提示、選擇較早原文、Codex 提問回答與跟進，以及設定中的檢查更新。保留可選託管兌換碼和免費自行部署。[更新與驗證範圍](docs/RELEASE_0.1.3.md)。
+> **Windows 預覽版0.1.4：** [下載安裝包](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.4)。包含 Bridge 目前活動端、停止後待審提示、選擇較早原文、Codex 提問回答與跟進，以及設定中的檢查更新。保留可選託管兌換碼和免費自行部署。[更新與驗證範圍](docs/RELEASE_0.1.4.md)。
 
 
 
@@ -19,7 +19,7 @@
 
 ## 發布狀態
 
-**[v0.1.3](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.3) — MIT 開源 Windows Alpha。** 可下載安裝包與校驗值，或從原始碼建置。乾淨 Windows 安裝及原生首次設定已通過自動驗證，實際遠端 Codex／檔案交接亦已獨立驗證。介面支援繁體中文、簡體中文及英文，可在「設定 → 語言」切換。Mac 與其他 Agent 尚未列為支援平台。[安裝與配對](docs/SETUP.md)。
+**[v0.1.4](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.4) — MIT 開源 Windows Alpha。** 可下載安裝包與校驗值，或從原始碼建置。乾淨 Windows 安裝及原生首次設定已通過自動驗證，實際遠端 Codex／檔案交接亦已獨立驗證。介面支援繁體中文、簡體中文及英文，可在「設定 → 語言」切換。Mac 與其他 Agent 尚未列為支援平台。[安裝與配對](docs/SETUP.md)。
 
 ## 適合已經使用雙對話協作的人
 
@@ -79,3 +79,5 @@
 [作者頁面](mailto:geoffreyzjx@qq.com) · [GitHub](https://github.com/geoffrey1111) · [回報問題](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [提出工作流程建議](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
 
 使用問題也可以在 Issues 中交流。這是公開管道，請使用示例資料，並於發布前移除私人內容。
+
+[Copyable AI assistant deployment, connection diagnostics and whole-app delegation instructions](docs/ASSISTANT_COPY_PROMPT.zh-TW.md). The app includes the same guide in Settings → AI assistant with your configured MCP URL.
