@@ -98,13 +98,25 @@ fn dispatch(core:&RouterCore,s:&mut Session,w:&CodexWatch,r:&WatchReply)->Result
  let o:ReplyOptions=serde_json::from_value(r.options.clone()).map_err(|_|"REPLY_OPTIONS_INVALID")?;validate_options(s.adapter.as_mut().unwrap(),&o)?;let (mut input,extra)=files(w,&o)?;
  input.insert(0,json!({"type":"text","text":format!("{}{}",r.text,extra)}));
  let mut params=json!({"threadId":w.thread_id,"input":input});
- if r.mode=="STEER"{params["expectedTurnId"]=json!(r.expected_turn_id);}else{if let Some(m)=o.model{params["model"]=json!(m);}if let Some(e)=o.effort{params["effort"]=json!(e);}}
+ if r.mode=="STEER"{params["expectedTurnId"]=json!(r.expected_turn_id);params["clientUserMessageId"]=json!(r.id);}else{if let Some(m)=o.model{params["model"]=json!(m);}if let Some(e)=o.effort{params["effort"]=json!(e);}}
  core.store.claim_watch_reply(&r.id)?;
  let a=s.adapter.as_mut().unwrap();let response=a.request(if r.mode=="STEER"{"turn/steer"}else{"turn/start"},params);
- match response {Ok(v)=>{let t=if r.mode=="STEER"{v["turnId"].as_str()}else{v.pointer("/turn/id").and_then(Value::as_str)}.filter(|s|!s.is_empty()&&s.len()<=256);
+ match response {Ok(v)=>{let t=reply_ack_turn(&r,&v);
    if let Some(t)=t{if r.mode!="STEER"{a.mark_turn_started(&w.thread_id,t);}core.store.finish_watch_reply(&r.id,"SENT",Some(t),None)?;}else{core.store.finish_watch_reply(&r.id,"UNKNOWN",None,Some("REPLY_ACK_UNOBSERVED"))?;}
  },Err(_)=>{core.store.finish_watch_reply(&r.id,"UNKNOWN",None,Some("REPLY_ACK_UNOBSERVED"))?;}}
  core.store.watch_reply(&r.id)?.ok_or("REPLY_NOT_FOUND".into())
+}
+fn reply_ack_turn<'a>(r:&WatchReply,v:&'a Value)->Option<&'a str>{
+ let id=if r.mode=="STEER"{v["turnId"].as_str().filter(|t|Some(*t)==r.expected_turn_id.as_deref())}else{v.pointer("/turn/id").and_then(Value::as_str)};
+ id.filter(|s|!s.is_empty()&&s.len()<=256)
+}
+#[cfg(test)]
+mod ack_tests{
+ use super::*;
+ #[test]fn a_steer_ack_must_match_the_expected_turn_not_another_valid_id(){
+  let r=WatchReply{id:Uuid::new_v4().to_string(),thread_id:"exact".into(),cwd:String::new(),generation:0,source_sequence:None,expected_turn_id:Some("expected".into()),mode:"STEER".into(),text:"fixture".into(),options:json!({}),payload_hash:String::new(),status:String::new(),turn_id:None,error_code:None,created_at:0,updated_at:0};
+  assert_eq!(reply_ack_turn(&r,&json!({"turnId":"expected"})),Some("expected"));assert!(reply_ack_turn(&r,&json!({"turnId":"other"})).is_none());assert!(reply_ack_turn(&r,&json!({"turn":{"id":"expected"}})).is_none());assert!(reply_ack_turn(&r,&json!({})).is_none());
+ }
 }
 pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{match c{
  ChatCommand::Upload{thread_id,name,data}=>upload(core,&thread_id,&name,&data),

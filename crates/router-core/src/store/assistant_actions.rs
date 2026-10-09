@@ -56,6 +56,7 @@ impl RouterStore{
  pub fn claim_assistant_action(&self,gid:&str,input:ActionApproval)->Result<AssistantAction,String>{bounded(&input.assessment,8000)?;self.with_connection(|c|{
   let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;let a=action(&tx,gid,&input.action_id,Some(&input.expected_hash))?;let g=active(&tx,gid)?;
   if a.status!="READY"{return Err("ASSISTANT_ACTION_ALREADY_ATTEMPTED".into());}
+  if a.operation=="ACKNOWLEDGE_UNKNOWN_CHAT"&&(a.question.is_none()||a.answer.is_none()||!input.use_owner_answer||input.rule_id.is_some()){return Err("ASSISTANT_OWNER_ANSWER_REQUIRED".into());}
   let basis=if a.question.is_some(){if a.answer.is_none()||!input.use_owner_answer||input.rule_id.is_some(){return Err("ASSISTANT_OWNER_ANSWER_REQUIRED".into());}"ASSISTANT_ATTESTED_OWNER_ANSWER".to_string()}
    else if !input.use_owner_answer&&input.rule_id.as_ref().is_some_and(|id|g.rules.iter().any(|r|&r.id==id)){format!("BRIEF_RULE:{}",input.rule_id.unwrap())}
    else if !input.use_owner_answer&&input.rule_id.is_none()&&g.approval_mode=="CONVERSATION_REVIEW"{"ASSISTANT_REVIEW".to_string()}

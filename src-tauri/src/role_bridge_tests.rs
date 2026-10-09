@@ -53,6 +53,32 @@ fn assistant_reviewed_handoff_roundtrip_sends_exactly_once(){
     assert_eq!(guidance_methods(&dir).iter().filter(|r|r["method"]=="turn/start").count(),1);
 }
 #[test]
+fn assistant_unknown_reply_release_requires_a_real_answer_and_never_resends(){
+    let(dir,core,_w,_)=active_guidance_fixture("IDLE",None);let ctx=core.store.codex_chat_context("target-fixture").unwrap();
+    let reply=router_core::store::watch_reply::WatchReply{id:uuid::Uuid::new_v4().to_string(),thread_id:ctx.thread_id.clone(),cwd:ctx.cwd.clone(),generation:ctx.generation,source_sequence:None,expected_turn_id:Some("old-turn".into()),mode:"STEER".into(),text:"fictional old supplement".into(),options:json!({}),payload_hash:String::new(),status:String::new(),turn_id:None,error_code:None,created_at:0,updated_at:0};
+    core.store.prepare_watch_reply(&reply).unwrap();core.store.claim_watch_reply(&reply.id).unwrap();core.store.finish_watch_reply(&reply.id,"UNKNOWN",None,Some("REPLY_ACK_UNOBSERVED")).unwrap();
+    let g=core.store.connect_assistant_instance(router_core::store::assistant::AssistantConnectionInput{label:"fixture owner-reviewed assistant".into(),expires_at:std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64+600000}).unwrap();
+    let input=json!({"threadId":ctx.thread_id,"replyId":reply.id,"generation":ctx.generation});
+    let action=crate::assistant_mcp::call(&core,&g.id,"agbrio_prepare_action",json!({"requestId":"acknowledge-original-once","operation":"ACKNOWLEDGE_UNKNOWN_CHAT","input":input})).unwrap();
+    let execute=|owner|json!({"actionId":action["id"],"expectedHash":action["payloadHash"],"ruleId":null,"useOwnerAnswer":owner,"assessment":"Checked, still unknown, no resend."});
+    assert!(crate::assistant_mcp::call(&core,&g.id,"agbrio_execute_action",execute(false)).is_err());
+    crate::assistant_mcp::call(&core,&g.id,"agbrio_ask_action_decision",json!({"actionId":action["id"],"expectedHash":action["payloadHash"],"question":"May we mark this exact old reply checked, preserving unknown delivery?"})).unwrap();
+    assert!(crate::assistant_mcp::call(&core,&g.id,"agbrio_execute_action",execute(true)).is_err());
+    crate::assistant_mcp::call(&core,&g.id,"agbrio_answer_action",json!({"actionId":action["id"],"expectedHash":action["payloadHash"],"answer":"Yes, release future work only; never resend.","answerReference":"fixture-actual-owner-message"})).unwrap();
+    assert!(crate::assistant_mcp::call(&core,&g.id,"agbrio_execute_action",execute(false)).is_err());
+    let applied=crate::assistant_mcp::call(&core,&g.id,"agbrio_execute_action",execute(true)).unwrap();assert_eq!(applied["status"],"APPLIED");assert_eq!(applied["basis"],"ASSISTANT_ATTESTED_OWNER_ANSWER");
+    assert_eq!(core.store.watch_reply(&reply.id).unwrap().unwrap().status,"ACKNOWLEDGED");assert!(core.store.claim_watch_reply(&reply.id).is_err());assert!(core.store.require_no_watch_reply_writer(&ctx.thread_id).is_ok());
+    assert_eq!(crate::assistant_mcp::call(&core,&g.id,"agbrio_execute_action",execute(true)).unwrap(),applied);
+    assert!(core.store.codex_watches().unwrap().is_empty());assert!(!guidance_methods(&dir).iter().any(|r|matches!(r["method"].as_str(),Some("turn/start"|"turn/steer"))));
+}
+#[test]
+fn assistant_direct_reply_prepares_against_bound_context_without_standalone_watch(){
+    let(_dir,core,_w,_)=active_guidance_fixture("IDLE",None);let ctx=core.store.codex_chat_context("target-fixture").unwrap();
+    let g=core.store.connect_assistant_instance(router_core::store::assistant::AssistantConnectionInput{label:"fixture context".into(),expires_at:std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64+600000}).unwrap();
+    let input=json!({"threadId":ctx.thread_id,"generation":ctx.generation,"sourceSequence":null,"expectedTurnId":null,"mode":"SEND","text":"fictional reply","options":{"model":null,"effort":null,"attachments":[]}});
+    let prepared=crate::assistant_mcp::call(&core,&g.id,"agbrio_prepare_action",json!({"requestId":"bound-reply-preparation","operation":"SEND_CHAT","input":input})).unwrap();assert_eq!(prepared["status"],"READY");assert!(core.store.codex_watches().unwrap().is_empty());
+}
+#[test]
 fn active_goal_bridge_guidance_steers_once_without_resume_pause_or_new_execution_owner(){
     let(dir,core,w,h)=active_guidance_fixture("ACTIVE",None);
     assert_eq!(send(&core,&h).unwrap().handoffs[0].status,"SENT");assert!(send(&core,&h).is_err());

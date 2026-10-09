@@ -30,6 +30,24 @@ failure is resolved. Do not disable authentication or repeat a production send
 as a diagnostic test. No credentials, OAuth query URLs or conversation text are
 needed in a bug report.
 
+An UNKNOWN original-chat reply can block later Bridge sends even while the native
+conversation is idle. Read `agbrio_read_chat` and its exact `state.replies` first.
+To release future work without claiming old delivery, prepare the existing global
+action flow with operation `ACKNOWLEDGE_UNKNOWN_CHAT` and input
+`{threadId, replyId, generation}`. Ask the owner through `agbrio_ask_action_decision`,
+record the actual answer/reference with `agbrio_answer_action`, and execute with
+`ruleId=null, useOwnerAnswer=true`. Routine review and brief rules cannot bypass
+this operation's owner-answer requirement. It applies the existing checked-but-
+still-unknown marker, never sends and never makes the old request replayable.
+Refresh the assistant's tool list after updating the server; the tool count and
+OAuth grant stay unchanged.
+
+Bound Bridge conversations use their exact current chat context/generation for
+direct assistant replies; they do not require an extra standalone watch. Future
+STEER requests include the durable reply ID as clientUserMessageId and require
+an acknowledgement for the expected turn. A missing or mismatched ACK remains
+UNKNOWN. This does not retrospectively prove delivery of an older request.
+
 INSTANCE global Bridge operations resolve the requested exact workspace across
 projects. Desktop-selected project is a display preference, not MCP authority.
 Removed/archived Bridges and stale binding versions remain rejected for writes.
