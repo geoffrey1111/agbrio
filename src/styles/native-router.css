@@ -269,3 +269,12 @@ html[data-agbrio-input=keyboard] :where(.r2-router,.r2-relay,.r2-sheet,.v5-role-
 /* Empty readers use the same inset and scrolling boundary as reply content. */
 .r2-router .v4-reader-empty{padding:12px 26px 24px;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
 @media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1100px){.r2-router .v4-reader-empty{padding-inline:22px}}
+
+/* Active execution has a readable signal in both directory and reader. */
+.r2-agent-state:is([data-phase=RUNNING],[data-phase=THINKING],[data-phase=GOAL_ACTIVE],[data-phase=RESULT_PENDING]){min-height:28px;padding:4px 8px;border-radius:8px;background:var(--r2-selected);color:var(--r2-accent)}
+.r2-agent-state:is([data-phase=RUNNING],[data-phase=THINKING],[data-phase=GOAL_ACTIVE],[data-phase=RESULT_PENDING]) strong{font-weight:600;color:var(--r2-accent)}
+.r2-bridge-active-status{margin:0 26px 10px;padding:10px 12px;background:var(--r2-selected);border-radius:12px;flex:none}
+.r2-bridge-active-status .r2-agent-state{font-size:14px;gap:8px;padding:0;min-height:24px;white-space:normal}
+.r2-bridge-active-status .r2-agent-state strong{font-size:14px;font-weight:600}
+.r2-bridge-active-status .r2-agent-symbol{width:20px;height:20px}
+@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1100px){.r2-bridge-active-status{margin-inline:22px}}

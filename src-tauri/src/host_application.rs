@@ -2864,6 +2864,7 @@ pub(crate) fn attempt_reply_push_with(
     observation: &ReplyObservation,
     push: &mut dyn FnMut(&[u8]) -> Result<crate::push::PushDeliveryOutcome, String>,
 ) -> Result<(), String> {
+    if !store.endpoint_notification_enabled(&endpoint.id)? {return Ok(());}
     let workstream_name = store.workstream_name(&endpoint.workstream_id)?;
     let payload = serde_json::json!({"type":if endpoint.provider == "CODEX" { "codex_reply" } else { "chatgpt_reply" },"workstreamId":endpoint.workstream_id,"observationId":observation.id,"workstreamName":workstream_name});
     let (push_state, invalid_fingerprints) = match push(payload.to_string().as_bytes()) {
@@ -4179,6 +4180,7 @@ pub(crate) fn check_new_codex_replies_with(
 pub(crate) fn check_new_codex_endpoint_replies_with(
     store:&RouterStore,session:&Arc<Mutex<Session>>,workstream_id:&str,endpoint:Endpoint,push:&mut dyn FnMut(&[u8])->Result<crate::push::PushDeliveryOutcome,String>
 )->Result<CodexManualRefreshResult,String>{
+    if !store.endpoint_notification_enabled(&endpoint.id)? {return Err("BRIDGE_NOT_ACTIVE".into());}
     let latest = {
         let mut current = session
             .lock()
@@ -4348,7 +4350,7 @@ pub(crate) fn active_initialized_codex_observer_workstreams(
         .into_iter()
         .filter(|endpoint| endpoint.provider == "CODEX" && endpoint.status == "ACTIVE")
     {
-        if store.codex_reply_observer_is_initialized(&endpoint.id)? {
+        if store.endpoint_notification_enabled(&endpoint.id)? && store.codex_reply_observer_is_initialized(&endpoint.id)? {
             workstream_ids.insert(endpoint.workstream_id);
         }
     }
@@ -4394,7 +4396,7 @@ pub(crate) fn active_initialized_chatgpt_observer_workstreams(
         .into_iter()
         .filter(|endpoint| endpoint.provider == "CHATGPT" && endpoint.status == "ACTIVE")
     {
-        if store.chatgpt_reply_observer_is_initialized(&endpoint.id)? {
+        if store.endpoint_notification_enabled(&endpoint.id)? && store.chatgpt_reply_observer_is_initialized(&endpoint.id)? {
             workstream_ids.insert(endpoint.workstream_id);
         }
     }

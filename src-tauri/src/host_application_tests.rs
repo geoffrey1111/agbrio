@@ -643,6 +643,13 @@ fn observer_context() -> (tempfile::TempDir, RouterStore, Workstream, Endpoint) 
 }
 
 #[test]
+fn deleted_bridge_completion_never_invokes_a_push_transport_and_restore_can_notify_future_results(){
+ let(_d,store,w,endpoint)=observer_context();store.trash_workstream(&w.id).unwrap();let mut calls=0;let mut transport=|_:&[u8]|{calls+=1;Ok(crate::push::PushDeliveryOutcome::NoSubscription)};
+ record_provider_surface_reply_with(&store,&endpoint,"while-deleted","audited result",&mut transport).unwrap();assert_eq!(calls,0);
+ store.restore_workstream(&w.id).unwrap();let mut transport=|_:&[u8]|{calls+=1;Ok(crate::push::PushDeliveryOutcome::NoSubscription)};record_provider_surface_reply_with(&store,&endpoint,"after-restore","future result",&mut transport).unwrap();assert_eq!(calls,1);
+}
+
+#[test]
 fn direct_carrier_terminal_identity_creates_one_observation_and_one_push_attempt() {
     let (_directory, store, workstream, endpoint) = observer_context();
     let mut push_attempts = 0;

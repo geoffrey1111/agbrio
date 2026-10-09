@@ -34,7 +34,11 @@ fn channel_valid(channel: &str) -> Result<(), String> {
         Err("DELIVERY_CHANNEL_INVALID".into())
     }
 }
+pub(super) fn event_delivery_enabled(c:&Connection,thread:&str)->Result<bool,String>{
+ c.query_row("SELECT EXISTS(SELECT 1 FROM codex_watches cw WHERE cw.thread_id=?1 AND cw.enabled=1 AND NOT EXISTS(SELECT 1 FROM watch_removed_items WHERE kind='WATCH' AND id=cw.thread_id) AND NOT EXISTS(SELECT 1 FROM endpoints e JOIN workstreams w ON w.id=e.workstream_id WHERE e.provider='CODEX' AND e.external_id=cw.thread_id AND e.status='ACTIVE' AND w.trashed_at IS NULL AND w.archived_at IS NULL))",[thread],|r|r.get(0)).map_err(db_error)
+}
 impl RouterStore {
+    pub fn watch_event_delivery_enabled(&self,thread:&str)->Result<bool,String>{self.with_connection(|c|event_delivery_enabled(c,thread))}
     pub fn watch_delivery_settings(&self) -> Result<DeliverySettings, String> {
         self.with_connection(|c| {
             c.execute(
@@ -113,7 +117,7 @@ impl RouterStore {
    let rows=s.query_map([cursor],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?))).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;
    for (seq,thread,raw) in rows {
     let snapshot:codex_watch::WatchSnapshot=serde_json::from_str(&raw).map_err(|_|"WATCH_SNAPSHOT_INVALID")?;
-    if matches!(snapshot.state.as_str(),"RESULT_READY"|"FAILED"|"ACTION_REQUIRED"){
+    if event_delivery_enabled(&tx,&thread)? && matches!(snapshot.state.as_str(),"RESULT_READY"|"FAILED"|"ACTION_REQUIRED"){
      let key=if snapshot.state=="ACTION_REQUIRED"{length_prefixed_hash(&[thread.as_bytes(),snapshot.turn_id.as_deref().unwrap_or("").as_bytes(),snapshot.state.as_bytes(),snapshot.item_id.as_deref().unwrap_or("").as_bytes()])}else{length_prefixed_hash(&[thread.as_bytes(),snapshot.turn_id.as_deref().unwrap_or("").as_bytes(),snapshot.state.as_bytes()])};
      tx.execute("INSERT OR IGNORE INTO watch_deliveries(event_sequence,channel,notification_key,status,updated_at) VALUES(?1,?2,?3,'PENDING',?4)",params![seq,channel,key,now()]).map_err(db_error)?;
     }
@@ -130,6 +134,7 @@ impl RouterStore {
     pub fn claim_watch_delivery(&self) -> Result<Option<(String, WatchEvent)>, String> {
         self.with_connection(|c|{
    let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
+   tx.execute("UPDATE watch_deliveries SET status='SKIPPED',error_code='WATCH_DISABLED_OR_BOUND',updated_at=?1 WHERE status IN ('PENDING','FAILED') AND event_sequence IN (SELECT e.sequence FROM codex_watch_events e WHERE NOT EXISTS(SELECT 1 FROM codex_watches cw WHERE cw.thread_id=e.thread_id AND cw.enabled=1 AND NOT EXISTS(SELECT 1 FROM watch_removed_items WHERE kind='WATCH' AND id=cw.thread_id)) OR EXISTS(SELECT 1 FROM endpoints ep JOIN workstreams w ON w.id=ep.workstream_id WHERE ep.provider='CODEX' AND ep.external_id=e.thread_id AND ep.status='ACTIVE' AND w.trashed_at IS NULL AND w.archived_at IS NULL))",[now()]).map_err(db_error)?;
    let row=tx.query_row("SELECT d.event_sequence,d.channel FROM watch_deliveries d JOIN codex_watch_events e ON e.sequence=d.event_sequence JOIN watch_delivery_channels ch ON ch.channel=d.channel WHERE ch.enabled=1 AND d.status IN ('PENDING','FAILED') AND d.attempts<3 AND d.retry_at<=?1 ORDER BY d.event_sequence,d.channel LIMIT 1",[now()],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?))).optional().map_err(db_error)?;
    let result=if let Some((seq,channel))=row {
     let event=tx.query_row("SELECT sequence,thread_id,label,cwd,snapshot_json,observed_at,(SELECT seen_at FROM watch_seen_events WHERE watch_seen_events.sequence=codex_watch_events.sequence) FROM codex_watch_events WHERE sequence=?1",[seq],codex_watch::event_row).map_err(db_error)?;

@@ -290,8 +290,7 @@ pub fn start(store: Arc<RouterStore>) {
             if let Ok(Some((channel, event))) = store.claim_watch_delivery() {
                 if let Ok(s) = store.watch_delivery_settings() {
                     let id = format!("aiwr-{}-{}", s.host_id, event.sequence);
-                    let (status, code) = deliver(&channel, &s, &id, Some(&event));
-                    let _ = store.finish_watch_delivery(event.sequence, &channel, status, code);
+                    let _=deliver_claimed_event_with(&store,&channel,&event,||deliver(&channel,&s,&id,Some(&event)));
                 } else {
                     let _ = store.finish_watch_delivery(
                         event.sequence,
@@ -305,6 +304,11 @@ pub fn start(store: Arc<RouterStore>) {
             }
         }
     });
+}
+
+fn deliver_claimed_event_with(store:&RouterStore,channel:&str,event:&WatchEvent,send:impl FnOnce()->(&'static str,Option<&'static str>))->Result<(),String>{
+    if !store.watch_event_delivery_enabled(&event.thread_id)?{return store.finish_watch_delivery(event.sequence,channel,"SKIPPED",Some("WATCH_DISABLED_OR_BOUND"));}
+    let(status,code)=send();store.finish_watch_delivery(event.sequence,channel,status,code)
 }
 
 pub fn sequence_from_url(input: &str) -> Option<i64> {
@@ -543,6 +547,7 @@ pub fn repair_legacy_toasts(store: &RouterStore) -> Result<usize, String> {
         if legacy && !foreground {
             continue;
         }
+        if event.as_ref().is_some_and(|e|!store.watch_event_delivery_enabled(&e.thread_id).unwrap_or(false)){continue;}
         show_windows_inner(event.as_ref(), true)?;
         repaired += 1;
     }
@@ -559,6 +564,9 @@ fn show_windows(_: Option<&WatchEvent>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]fn a_watch_paused_after_claim_never_reaches_the_physical_delivery_callback(){
+        let d=tempfile::tempdir().unwrap();let store=RouterStore::open_at(d.path().join("router.db")).unwrap();let base=router_core::store::codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()};store.enable_codex_watch("fixture-thread","fixture",d.path().to_str().unwrap(),&base).unwrap();store.set_watch_delivery_channel("EMAIL",true).unwrap();let result=router_core::store::codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some("turn".into()),item_id:Some("item".into()),text:"fictional".into()};store.record_codex_watch("fixture-thread",1,&result).unwrap();store.enqueue_watch_deliveries().unwrap();let(channel,event)=store.claim_watch_delivery().unwrap().unwrap();store.pause_codex_watch("fixture-thread").unwrap();let mut calls=0;deliver_claimed_event_with(&store,&channel,&event,||{calls+=1;("SENT",None)}).unwrap();assert_eq!(calls,0);assert!(store.watch_delivery_history().unwrap().iter().any(|d|d.status=="SKIPPED"&&d.attempts==1));
+    }
     #[test]
     fn windows_alert_activates_desktop_original_without_browser_protocol() {
         let body = windows_toast_xml(
@@ -598,7 +606,7 @@ mod tests {
         let s = DeliverySettings {
             host_id: "host".into(),
             account: "sender@gmail.com".into(),
-            recipient: "agbrio.fixture@gmail.com".into(),
+            recipient: "geoffreyzjx826@gmail.com".into(),
             channels: vec![],
         };
         let e = WatchEvent {
@@ -676,7 +684,7 @@ mod tests {
             let settings = DeliverySettings {
                 host_id: "fixture".into(),
                 account: "sender@gmail.com".into(),
-                recipient: "agbrio.fixture@gmail.com".into(),
+                recipient: "geoffreyzjx826@gmail.com".into(),
                 channels: vec![],
             };
             let message = email_message(
@@ -694,7 +702,7 @@ mod tests {
             assert_eq!(smtp_outcome(transport.send(&message)).0, expected);
             let body = server.join().unwrap();
             assert!(body.contains("Message-ID: <fixture-stable-id@ai-work-router.local>"));
-            assert!(body.contains("To: agbrio.fixture@gmail.com"));
+            assert!(body.contains("To: geoffreyzjx826@gmail.com"));
         }
     }
 }

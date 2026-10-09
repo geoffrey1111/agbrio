@@ -8,6 +8,8 @@ pub mod role_bridge;
 pub mod codex_watch;
 pub mod watch_delivery;
 pub mod watch_reply;
+mod bridge_notifications;
+#[cfg(test)]mod watch_usage_tests;
 use crate::identity::{length_prefixed_hash, ScopeIdentity};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::Serialize;
@@ -757,6 +759,7 @@ impl RouterStore {
         run_migrations(&mut connection)?;
         run_normal_feature_migrations(&mut connection)?;
         role_bridge::migrate(&mut connection, &path)?;
+        bridge_notifications::migrate(&mut connection)?;
         let store=Self {
             connection: Mutex::new(connection),
             _preview_profile: None,
@@ -1249,6 +1252,8 @@ impl RouterStore {
     /// deletes external provider resources or historical records.
     pub fn trash_workstream(&self, workstream_id: &str) -> Result<Workstream, String> {
         self.with_connection(|connection| {
+            let transaction=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
+            let connection=&transaction;
             let workstream = workstream_by_id(connection, workstream_id)?;
             if workstream.trashed_at.is_some() {
                 return Ok(workstream);
@@ -1258,7 +1263,8 @@ impl RouterStore {
                 "UPDATE workstreams SET lifecycle_previous_status=status,trashed_at=?2,updated_at=?2 WHERE id=?1 AND trashed_at IS NULL",
                 params![workstream_id, timestamp],
             ).map_err(db_error)?;
-            workstream_by_id(connection, workstream_id)
+            bridge_notifications::suspend_bound_watches(connection,workstream_id,timestamp)?;
+            let updated=workstream_by_id(connection,workstream_id)?;transaction.commit().map_err(db_error)?;Ok(updated)
         })
     }
 
@@ -2120,6 +2126,8 @@ impl RouterStore {
         }
         let timestamp = now();
         self.with_connection(|connection| {
+            let transaction=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
+            let connection=&transaction;
             if migration::preflight(connection, migration::PREVIEW_SCHEMA)? >= 14 {
                 let source_kind:String=connection.query_row("SELECT source_kind FROM handoffs WHERE id=?1",params![handoff_id],|r|r.get(0)).map_err(db_error)?;
                 if source_kind != "ENDPOINT" { return Err("CONTROL_CONTEXT_REQUIRES_REVIEW_SERVICE".into()); }
@@ -2139,7 +2147,8 @@ impl RouterStore {
                 ));
             }
             connection.execute("UPDATE handoffs SET status=?2, approved_at=CASE WHEN ?2='APPROVED' THEN ?3 ELSE approved_at END, sent_at=CASE WHEN ?2='SENT' THEN ?3 ELSE sent_at END, failed_at=CASE WHEN ?2='FAILED' THEN ?3 ELSE failed_at END, error_code=CASE WHEN ?2='SENT' THEN NULL WHEN ?2='FAILED' THEN ?4 ELSE error_code END, error_message=CASE WHEN ?2='SENT' THEN NULL WHEN ?2='FAILED' THEN ?5 ELSE error_message END WHERE id=?1", params![handoff_id,status,timestamp,error.as_ref().map(|value| &value.0),error.as_ref().map(|value| &value.1)]).map_err(db_error)?;
-            Ok(())
+            if status=="SENT"{bridge_notifications::mark_sent_source_handled(connection,handoff_id,timestamp)?;}
+            transaction.commit().map_err(db_error)
         })
     }
 
@@ -2720,7 +2729,7 @@ impl RouterStore {
                     return Err("Matching ProviderRun terminal state conflicts with exact Bridge diagnostics".into());
                 }
             }
-            match handoff_status { "SENT" => { transaction.execute("UPDATE handoffs SET status='SENT',sent_at=?2 WHERE id=?1",params![handoff_id,timestamp]).map_err(db_error)?; }, "FAILED" => { let (error_code,error_message)=handoff_error.ok_or("Failed recovery needs error detail")?; transaction.execute("UPDATE handoffs SET status='FAILED',failed_at=?2,error_code=?3,error_message=?4 WHERE id=?1",params![handoff_id,timestamp,error_code,error_message]).map_err(db_error)?; }, _=>return Err("Unsupported recovery Handoff status".into()) }
+            match handoff_status { "SENT" => { transaction.execute("UPDATE handoffs SET status='SENT',sent_at=?2 WHERE id=?1",params![handoff_id,timestamp]).map_err(db_error)?; bridge_notifications::mark_sent_source_handled(&transaction,handoff_id,timestamp)?; }, "FAILED" => { let (error_code,error_message)=handoff_error.ok_or("Failed recovery needs error detail")?; transaction.execute("UPDATE handoffs SET status='FAILED',failed_at=?2,error_code=?3,error_message=?4 WHERE id=?1",params![handoff_id,timestamp,error_code,error_message]).map_err(db_error)?; }, _=>return Err("Unsupported recovery Handoff status".into()) }
             transaction.commit().map_err(db_error)
         })
     }

@@ -18,7 +18,7 @@ export function focusedBridgeActivity(row:BridgeActivity,age:number){
  const sides=row.sides.map(side=>({...side,phase:activityPhase(row,side.role,age)}));
  const running=sides.filter(s=>["RUNNING","THINKING"].includes(s.phase));
  if(running.length>1)return {side:running[0],concurrent:true};
- const side=running[0]??sides.find(s=>["ACTION_REQUIRED","PAUSED","LIMITED","FAILED","INTERRUPTED"].includes(s.phase))??sides.find(s=>s.role===row.latestRole)??sides.find(s=>["COMPLETE","RESULT_PENDING","GOAL_ACTIVE"].includes(s.phase));
+ const side=running[0]??sides.find(s=>["ACTION_REQUIRED","PAUSED","LIMITED","FAILED","INTERRUPTED"].includes(s.phase))??sides.find(s=>["GOAL_ACTIVE","RESULT_PENDING"].includes(s.phase))??sides.find(s=>s.role===row.latestRole)??sides.find(s=>s.phase==="COMPLETE");
  return side?{side,concurrent:false}:null;
 }
 

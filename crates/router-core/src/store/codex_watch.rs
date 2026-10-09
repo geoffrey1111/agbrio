@@ -42,6 +42,7 @@ pub struct CodexWatch {
     pub checked_at: i64,
     pub error_code: Option<String>,
     pub retry_after: i64,
+    pub send_count: i64,
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -99,6 +100,7 @@ fn watch_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CodexWatch> {
         checked_at: row.get(6)?,
         error_code: row.get(7)?,
         retry_after: row.get(8)?,
+        send_count: if row.as_ref().column_count()>9 {row.get(9)?}else{0},
     })
 }
 /// A bound Bridge is already an exact conversation authority. Derive its reply
@@ -112,7 +114,7 @@ pub(super) fn chat_context(c:&Connection,id:&str)->Result<CodexWatch,String>{
   if !Path::new(&cwd).is_absolute(){return Err("WATCH_PROJECT_UNAVAILABLE".into());}
   let hash=length_prefixed_hash(&[bridge.as_bytes(),revision.to_string().as_bytes(),endpoint.as_bytes(),cwd.as_bytes()]);
   let generation=-(i64::from_str_radix(&hash[..13],16).map_err(|_|"REPLY_CONTEXT_INVALID")?+1);
-  return Ok(CodexWatch{thread_id:id.into(),label,cwd,enabled:true,generation,snapshot:WatchSnapshot{state:"UNKNOWN".into(),turn_id:None,item_id:None,text:String::new()},checked_at:0,error_code:None,retry_after:0});
+  return Ok(CodexWatch{thread_id:id.into(),label,cwd,enabled:true,generation,snapshot:WatchSnapshot{state:"UNKNOWN".into(),turn_id:None,item_id:None,text:String::new()},checked_at:0,error_code:None,retry_after:0,send_count:0});
  }
  c.query_row("SELECT thread_id,label,cwd,enabled,generation,snapshot_json,checked_at,error_code,retry_after FROM codex_watches WHERE thread_id=?1 AND NOT EXISTS(SELECT 1 FROM watch_removed_items WHERE kind='WATCH' AND id=codex_watches.thread_id)",[id],watch_row).optional().map_err(db_error)?.ok_or("WATCH_NOT_FOUND".into())
 }
@@ -217,7 +219,7 @@ impl RouterStore {
     pub fn bridge_codex_thread_ids(&self)->Result<Vec<String>,String>{self.with_connection(|c|{let mut q=c.prepare("SELECT DISTINCT e.external_id FROM endpoints e JOIN workstreams w ON w.id=e.workstream_id WHERE e.provider='CODEX' AND e.status='ACTIVE' AND w.trashed_at IS NULL AND w.archived_at IS NULL").map_err(db_error)?;let rows=q.query_map([],|r|r.get(0)).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;Ok(rows)})}
     pub fn codex_chat_context(&self,id:&str)->Result<CodexWatch,String>{self.with_connection(|c|chat_context(c,id))}
     pub fn codex_watches(&self) -> Result<Vec<CodexWatch>, String> {
-        self.with_connection(|c| { let mut s=c.prepare("SELECT thread_id,label,cwd,enabled,generation,snapshot_json,checked_at,error_code,retry_after FROM codex_watches WHERE NOT EXISTS(SELECT 1 FROM watch_removed_items WHERE kind='WATCH' AND id=codex_watches.thread_id) AND NOT EXISTS(SELECT 1 FROM endpoints e JOIN workstreams w ON w.id=e.workstream_id WHERE e.provider='CODEX' AND e.external_id=codex_watches.thread_id AND e.status='ACTIVE' AND w.trashed_at IS NULL AND w.archived_at IS NULL) ORDER BY checked_at DESC,thread_id").map_err(db_error)?; let rows=s.query_map([],watch_row).map_err(db_error)?; rows.collect::<Result<Vec<_>,_>>().map_err(db_error) })
+        self.with_connection(|c| { let mut s=c.prepare("SELECT thread_id,label,cwd,enabled,generation,snapshot_json,checked_at,error_code,retry_after,(SELECT COUNT(*) FROM watch_replies r WHERE r.thread_id=codex_watches.thread_id AND r.source_sequence IS NULL AND r.generation>0 AND r.status!='FAILED' AND (r.mode='QUEUE' OR r.status!='QUEUED') AND NOT EXISTS(SELECT 1 FROM assistant_actions a WHERE a.id=r.id)) AS send_count FROM codex_watches WHERE NOT EXISTS(SELECT 1 FROM watch_removed_items WHERE kind='WATCH' AND id=codex_watches.thread_id) AND NOT EXISTS(SELECT 1 FROM endpoints e JOIN workstreams w ON w.id=e.workstream_id WHERE e.provider='CODEX' AND e.external_id=codex_watches.thread_id AND e.status='ACTIVE' AND w.trashed_at IS NULL AND w.archived_at IS NULL) ORDER BY send_count DESC,thread_id").map_err(db_error)?; let rows=s.query_map([],watch_row).map_err(db_error)?; rows.collect::<Result<Vec<_>,_>>().map_err(db_error) })
     }
     /// Generation prevents a read begun before Pause/Resume from writing a stale event.
     pub fn record_codex_watch(

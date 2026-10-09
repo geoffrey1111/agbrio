@@ -282,7 +282,7 @@ it("does not label an empty endpoint as a latest-read result",async()=>{
  expect(api.prepare).not.toHaveBeenCalled();expect(api.send).not.toHaveBeenCalled();
 });
 
-it("native manual read never relabels a retained prior result as latest during a new running turn",async()=>{const{api,state,activity}=runningFixture();api.read=vi.fn().mockResolvedValue({...state,activities:[activity],snapshotAt:Date.now()});render(<NativeSurfaceContext.Provider value><RoleBridgePanel workstreamId="work-a" api={api}/></NativeSurfaceContext.Provider>);await screen.findByText("执行中 · 上次结果");fireEvent.click(screen.getByRole("button",{name:"检查控制端回复"}));await waitFor(()=>expect(api.read).toHaveBeenCalled());expect(screen.getByText("执行中 · 上次结果")).toBeInTheDocument();expect(screen.queryByText("最新已读取")).not.toBeInTheDocument();expect(api.send).not.toHaveBeenCalled();});
+it("native manual read never relabels a retained prior result as latest during a new running turn",async()=>{const{api,state,activity}=runningFixture();api.read=vi.fn().mockResolvedValue({...state,activities:[activity],snapshotAt:Date.now()});render(<NativeSurfaceContext.Provider value><RoleBridgePanel workstreamId="work-a" api={api}/></NativeSurfaceContext.Provider>);await screen.findByText("上次结果");fireEvent.click(screen.getByRole("button",{name:"检查控制端回复"}));await waitFor(()=>expect(api.read).toHaveBeenCalled());expect(screen.getByText("上次结果")).toBeInTheDocument();expect(screen.queryByText("最新已读取")).not.toBeInTheDocument();expect(api.send).not.toHaveBeenCalled();});
 
 
 it("refreshes untouched cached segmentation and selects the instruction without its introduction",async()=>{

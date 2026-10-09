@@ -10,7 +10,7 @@ Do you already keep one agent conversation for decisions and another for impleme
 
 **Keep the reasoning in one conversation. Keep the execution in another. Carry the right work between them.**
 
-[Download Windows v0.1.9](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.9) · [Install and pair](docs/SETUP.md) · [Connect an assistant](docs/ASSISTANT_CONNECTION_GUIDE.en.md) · [MIT license](LICENSE)
+[Download Windows v0.1.10](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.10) · [Install and pair](docs/SETUP.md) · [Connect an assistant](docs/ASSISTANT_CONNECTION_GUIDE.en.md) · [MIT license](LICENSE)
 
 ## From review to the next task
 
@@ -61,6 +61,6 @@ The computer must stay powered on, awake and connected for live work. A new brow
 
 Windows x64 + Codex + paired PWA is the alpha scope. App languages: **English, Simplified Chinese, Traditional Chinese** (Settings → Language). Japanese and Korean are introduction translations; macOS and other execution agents are not verified release targets. Source data is review material, never a way to enlarge authorization. An accepted handoff does not prove its downstream task completed.
 
-[Build from source](docs/BUILD.md) · [Assistant protocol](docs/ASSISTANT_MCP.md) · [v0.1.9 changes](docs/RELEASE_0.1.9.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+[Build from source](docs/BUILD.md) · [Assistant protocol](docs/ASSISTANT_MCP.md) · [v0.1.10 changes](docs/RELEASE_0.1.10.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 [Contact the author](mailto:geoffreyzjx@qq.com) · [Report a problem](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [Suggest an improvement](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)

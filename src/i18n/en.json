@@ -874,5 +874,6 @@
   "查看官方认证说明": "Open official authentication guide",
   "未能打开浏览器，请复制下方官方网址，在浏览器中打开。": "Could not open your browser. Copy the official URL below and open it in your browser.",
   "授权允许访问；还需要在目标助手完成 OAuth 连接。": "Access is granted here; complete OAuth in the target assistant as well.",
-  "目标状态待确认": "Target status unconfirmed"
+  "目标状态待确认": "Target status unconfirmed",
+  "已转发": "Forwarded"
 }

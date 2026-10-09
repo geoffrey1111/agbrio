@@ -28,3 +28,7 @@ it("review red dots appear only after stopping for owner attention, never while 
  expect(bridgeReviewAttention({...activity,unreadCount:2,sides:[{...activity.sides[1],state:"COMPLETE"}]},0)).toBe(2);
  expect(bridgeReviewAttention({...activity,unreadCount:2,sides:[{...activity.sides[1],state:"COMPLETE"}]},15000)).toBe(0);
 });
+
+it("an active Goal wins over another side's older completed result without inventing an active turn",()=>{
+ render(<BridgeActivityStrip activity={{...activity,latestRole:"DECISION",sides:[{...activity.sides[0],state:"COMPLETE"},{...activity.sides[1],state:"RUNNING",turnActive:false,goalStatus:"active"}]}} age={0}/>);expect(screen.queryByText("最新回复")).toBeNull();expect(screen.getByText("执行")).toBeVisible();expect(screen.queryByText("两端同时执行")).toBeNull();
+});

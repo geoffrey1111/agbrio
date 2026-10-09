@@ -10,3 +10,12 @@ export function latestBridgeReply(state:RoleState){
  rows.sort((a,b)=>(byCompletion?b.reply.completedAt!-a.reply.completedAt!:(b.reply.observedAt??0)-(a.reply.observedAt??0)));
  return rows[0]?{...rows[0],byCompletion}:null;
 }
+
+/** Reading arrival still uses chronology; attention is about the current cycle. */
+export function bridgeReplyAttention(state:RoleState){
+ const busy=state.activities?.some(a=>[state.bindings.decision,state.bindings.execution].some(side=>side?.endpoint.id===a.endpointId)&&Date.now()-a.checkedAt<15000&&["RUNNING","THINKING","RESULT_PENDING"].includes(a.state));
+ if(busy)return null;
+ const latest=latestBridgeReply(state);if(!latest||latest.reply.handledAt)return null;
+ if(state.handoffs.some(h=>h.status==="SENT"&&h.sourceEndpoint?.id===latest.reply.endpointId&&h.sourceResponseIdentity&&h.sourceResponseIdentity===latest.reply.assistantIdentity))return null;
+ return latest;
+}

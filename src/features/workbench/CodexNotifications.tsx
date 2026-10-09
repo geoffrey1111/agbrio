@@ -17,9 +17,10 @@ import {WatchChat} from "./WatchChat";
 import {Bell,ChevronRight,Plus} from "lucide-react";
 import {NativeSurfaceContext} from "./NativeSurfaceContext";
 import type {WatchChatApi} from "./watchChatApi";
+import {useWatchVisitOrder} from "./useWatchVisitOrder";
 
 export type WatchSnapshot = { state:string; turnId:string|null; itemId:string|null; text:string };
-export type CodexWatch = { threadId:string; label:string; cwd:string; enabled:boolean; generation:number; snapshot:WatchSnapshot; checkedAt:number; errorCode:string|null };
+export type CodexWatch = { threadId:string; label:string; cwd:string; enabled:boolean; generation:number; snapshot:WatchSnapshot; checkedAt:number; errorCode:string|null;sendCount?:number };
 export type WatchEvent = { sequence:number; threadId:string; label:string; cwd:string; snapshot:WatchSnapshot; observedAt:number;seenAt?:number|null };
 export type WatchFeed = { events:WatchEvent[]; nextCursor:number; hasMore:boolean; hiddenSequences?:number[] };
 export interface NotificationApi { markSeen?(sequence:number):Promise<unknown>; markRead?(sequence:number):Promise<unknown>; remove?(kind:"WATCH"|"EVENT",id:string,removed:boolean):Promise<unknown>; watches():Promise<CodexWatch[]>; connect():Promise<unknown>; threads():Promise<ExistingCodexThreadCatalog>; enable(id:string):Promise<unknown>; pause(id:string):Promise<unknown>; feed(after:number):Promise<WatchFeed>; event(sequence:number):Promise<WatchEvent>; webUrl():Promise<string|null>; delivery?:DeliveryApi; chat?:WatchChatApi; onOpen?:(callback:(sequence:number)=>void)=>Promise<()=>void> }
@@ -41,6 +42,7 @@ export function CodexNotifications({api,standalone=false,workbenchPage,onCountCh
  const [catalog,setCatalog]=useState<ExistingCodexThreadCatalog|null>(null),[selected,setSelected]=useState("");
  useBackLayer(Boolean(catalog),()=>setCatalog(null));
  const [error,setError]=useState<string|null>(null),[busy,setBusy]=useState(false);
+ const[watchLoading,setWatchLoading]=useState(true),[watchError,setWatchError]=useState<string|null>(null);
  const [detail,setDetail]=useState<WatchEvent|null>(null),[current,setCurrent]=useState<CodexWatch|null>(null),[linkNotice,setLinkNotice]=useState<string|null>(null);
  const [keptThisVisit,setKeptThisVisit]=useState<Set<number>>(()=>new Set());
  const recentActive=Boolean((workbenchPage?workbenchPage.active:open||standalone)&&view==="RECENT"&&!detail&&!current);
@@ -51,7 +53,8 @@ export function CodexNotifications({api,standalone=false,workbenchPage,onCountCh
  useEffect(()=>{onDetailChange?.(Boolean(detail||current));},[Boolean(detail||current),onDetailChange]);
  const removal=useUndoRemoval<Removable>(row=>row.kind=== "WATCH"?`watch:${row.item.threadId}`:`event:${row.item.sequence}`,async(row,removed)=>{if(!api.remove)throw Error("WATCH_REMOVAL_UNAVAILABLE");await api.remove(row.kind,row.kind==="WATCH"?row.item.threadId:String(row.item.sequence),removed);await Promise.all([refreshWatches(),refreshFeed()]);},message=>setLinkNotice(message));
  const shown=removal.project([...watches.map(item=>({kind:"WATCH" as const,item})),...events.filter(e=>!hiddenSequences.includes(e.sequence)&&(!e.seenAt||keptThisVisit.has(e.sequence))).map(item=>({kind:"EVENT" as const,item}))]);
- const visibleWatches=shown.filter((row):row is {kind:"WATCH";item:CodexWatch}=>row.kind==="WATCH").map(row=>row.item);
+ const watchVisitActive=Boolean((workbenchPage?workbenchPage.active:open||standalone)&&view==="WATCHES");
+ const visibleWatches=useWatchVisitOrder(shown.filter((row):row is {kind:"WATCH";item:CodexWatch}=>row.kind==="WATCH").map(row=>row.item),watchVisitActive);
  const seenContainer=useRef<HTMLDivElement>(null);
  const visibleEvents=shown.filter((row):row is {kind:"EVENT";item:WatchEvent}=>row.kind==="EVENT").map(row=>row.item).sort((a,b)=>a.sequence-b.sequence);
  const unread=visibleEvents.filter(e=>!e.seenAt).map(e=>e.sequence);
@@ -76,11 +79,14 @@ export function CodexNotifications({api,standalone=false,workbenchPage,onCountCh
  },[api]);
  useEffect(()=>{
   let active=true,timer:ReturnType<typeof setTimeout>;
-  async function poll(){const revision=++feedRevision.current;try{const [next,feed]=await Promise.all([api.watches(),api.feed(0)]);if(!active)return;if(next)setWatches(next);if(revision===feedRevision.current)applyFeed(feed,true);setError(null);timer=setTimeout(()=>void poll(),feed.hasMore?100:5000);}catch(e){if(active){setError(String(e).includes("WATCH_ALREADY_IN_BRIDGE")?uiText("这条对话已在 Bridge 中，可直接从 Bridge 打开。"):String(e));timer=setTimeout(()=>void poll(),10000);}}}
+  async function poll(){const revision=++feedRevision.current;const results=await Promise.allSettled([
+   api.watches().then(next=>{if(active){setWatches(next);setWatchLoading(false);setWatchError(null);}}).catch(e=>{if(active){setWatchLoading(false);setWatchError(notificationError(e));}throw e;}),
+   api.feed(0).then(feed=>{if(active&&revision===feedRevision.current){applyFeed(feed,true);setError(null);}return feed;}).catch(e=>{if(active)setError(notificationError(e));throw e;})
+  ]);if(active){const feed=results[1];timer=setTimeout(()=>void poll(),feed.status==="fulfilled"?(feed.value.hasMore?100:5000):10000);}}
   void poll();return()=>{active=false;clearTimeout(timer);};
  },[api,open]);
  async function act(work:()=>Promise<void>){if(busy)return;setBusy(true);setError(null);const mark=++epoch.current;try{await work();}catch(e){if(mounted.current&&mark===epoch.current)setLinkNotice(notificationError(e));}finally{if(mounted.current&&mark===epoch.current)setBusy(false);}}
- async function refreshWatches(){const next=await api.watches();if(mounted.current)setWatches(next);}
+ async function refreshWatches(){setWatchLoading(true);try{const next=await api.watches();if(mounted.current){setWatches(next);setWatchError(null);}}catch(e){if(mounted.current)setWatchError(notificationError(e));throw e;}finally{if(mounted.current)setWatchLoading(false);}}
  function changeView(next:View){setView(next);setDetail(null);setCurrent(null);setLinkNotice(null);}
  function rememberList(button:HTMLButtonElement,key:string){returnKey.current=key;let element=button.closest<HTMLElement>(".v3-notifications-body");if(element&&getComputedStyle(element).overflowY==="visible")element=button.closest<HTMLElement>(".r2-content")??element;returnScroll.current={element,top:element?.scrollTop??window.scrollY};}
  useBackLayer(Boolean(detail||current),()=>{restoreList.current=true;setDetail(null);setCurrent(null);},"event");
@@ -113,7 +119,8 @@ export function CodexNotifications({api,standalone=false,workbenchPage,onCountCh
    {view==="WATCHES"&&<section id="notification-panel" role="tabpanel" aria-labelledby="notification-tab-WATCHES" aria-label={uiText("已监听对话")}>
     <div className="v4-section-heading"><h2>{uiText("已监听对话")}</h2><button type="button" className="v3-primary" aria-label={uiText("选择监听对话")} disabled={busy} onClick={()=>void act(async()=>{await api.connect();const next=await api.threads();if(mounted.current)setCatalog(next);})}>{native?<Plus size={20}/>:busy&&!catalog?uiText("正在扫描本地对话…"):uiText("选择监听对话")}</button></div>
     {catalog&&<section aria-label={uiText("添加监听")} className="v4-watch-picker"><CodexThreadPicker threads={catalog.threads} complete={catalog.complete} value={selected} onChange={setSelected} ariaLabel={uiText("本地 Codex 对话")} searchLabel={uiText("搜索对话或项目")} disabled={busy}/><div className="v3-notification-actions"><button type="button" onClick={()=>setCatalog(null)} disabled={busy}>{uiText("取消")}</button><button type="button" className="v3-primary" disabled={busy||!catalog.threads.some(t=>t.id===selected)} onClick={()=>void act(async()=>{await api.enable(selected);await refreshWatches();if(mounted.current){setSelected("");setCatalog(null);}})}>{uiText("开始监听所选对话")}</button></div></section>}
-    {visibleWatches.length===0?<div className="v4-reader-empty"><p>{uiText("选择后会展示当前内容；后续变化进入最近通知。")}</p></div>:visibleWatches.map(w=><SwipeDeleteRow className="agbrio-card-row" key={w.threadId} label={uiText("监听 {0}", w.label)} disabled={!api.remove} onDelete={()=>removal.remove({kind:"WATCH",item:w})}><article className="v4-watch-item"><header><strong>{w.label}</strong><span>{uiText(watchState(w))}</span></header><p className="v4-meta">{uiText("最后成功检查：")}{time(w.checkedAt)}</p><div className="v3-notification-actions"><button type="button" data-notification-key={`watch-${w.threadId}`} onClick={click=>{rememberList(click.currentTarget,`watch-${w.threadId}`);setDetail(null);setCurrent(w);}}>{uiText("查看当前内容")}</button><button type="button" disabled={busy} onClick={()=>void act(async()=>{if(w.enabled)await api.pause(w.threadId);else await api.enable(w.threadId);await refreshWatches();})}>{w.enabled?uiText("暂停监听"):uiText("恢复监听")}</button></div><details className="v4-secondary-details"><summary>{uiText("对话信息")}</summary><p>{w.cwd}</p><code>{w.threadId}</code></details></article></SwipeDeleteRow>)}
+    {watchError&&<p role="alert">{uiText(watchError)}<button type="button" disabled={busy||watchLoading} onClick={()=>void act(refreshWatches)}>{uiText("重试")}</button></p>}
+    {visibleWatches.length===0?watchLoading?<p className="r2-role-loading" role="status">{uiText("正在读取…")}</p>:watchError?null:<div className="v4-reader-empty"><p>{uiText("选择后会展示当前内容；后续变化进入最近通知。")}</p></div>:visibleWatches.map(w=><SwipeDeleteRow className="agbrio-card-row" key={w.threadId} label={uiText("监听 {0}", w.label)} disabled={!api.remove} onDelete={()=>removal.remove({kind:"WATCH",item:w})}><article className="v4-watch-item" data-watch-id={w.threadId}><header><strong>{w.label}</strong><span>{uiText(watchState(w))}</span></header><p className="v4-meta">{uiText("最后成功检查：")}{time(w.checkedAt)}</p><div className="v3-notification-actions"><button type="button" data-notification-key={`watch-${w.threadId}`} onClick={click=>{rememberList(click.currentTarget,`watch-${w.threadId}`);setDetail(null);setCurrent(w);}}>{uiText("查看当前内容")}</button><button type="button" disabled={busy} onClick={()=>void act(async()=>{if(w.enabled)await api.pause(w.threadId);else await api.enable(w.threadId);await refreshWatches();})}>{w.enabled?uiText("暂停监听"):uiText("恢复监听")}</button></div><details className="v4-secondary-details"><summary>{uiText("对话信息")}</summary><p>{w.cwd}</p><code>{w.threadId}</code></details></article></SwipeDeleteRow>)}
    </section>}
    {view==="SETTINGS"&&<section id="notification-panel" role="tabpanel" aria-labelledby="notification-tab-SETTINGS" aria-label={uiText("通知设置内容")}>
     <WebSessionLogout/>
