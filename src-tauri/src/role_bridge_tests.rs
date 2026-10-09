@@ -14,13 +14,44 @@ fn active_guidance_fixture(mode:&str,run:Option<(&str,Option<&str>)>)->(tempfile
     let source=store.record_reply_observation(&w.id,&binding.decision.unwrap().endpoint.id,Some("codex:source-turn:source-message"),"exact supplemental instruction",None).unwrap().unwrap();
     let h=store.prepare_role_handoff(&w.id,"DECISION",&source.id,"exact supplemental instruction").unwrap();store.approve_role_handoff_checked(&h.id,&h.payload_hash).unwrap();
     if let Some((status,turn))=run{store.create_provider_run(&w.id,&binding.execution.unwrap().endpoint.id,"CODEX",None,turn,status).unwrap();}
-    let script=r#"const fs=require('node:fs'),rl=require('node:readline').createInterface({input:process.stdin});const root=process.argv[1],mode=process.argv[2];rl.on('line',line=>{const r=JSON.parse(line);if(r.id===undefined)return;fs.appendFileSync(root+'/rpc.jsonl',JSON.stringify(r)+'\n');let v={};if(r.method==='thread/read')v={thread:{id:mode==='WRONG_THREAD'?'other':r.params.threadId,cwd:root,status:{type:mode==='IDLE'?'idle':'active'}}};else if(r.method==='thread/goal/get')v={goal:{threadId:r.params.threadId,status:'active',objective:'fictional',tokenBudget:null}};else if(r.method==='thread/turns/list')v={data:mode==='NO_TURN'?[]:[{id:'active-turn',status:mode==='TERMINAL'?'completed':'inProgress'}],nextCursor:null};else if(r.method==='turn/steer'){if(r.params.threadId!=='target-fixture'||r.params.expectedTurnId!=='active-turn'||r.params.input[0].text!=='exact supplemental instruction')throw Error('Wrong physical input');v={turnId:mode==='WRONG_ACK'?'other-turn':'active-turn'};}else if(r.method==='turn/start')v={turn:{id:'new-turn'}};else if(r.method!=='initialize'){process.stdout.write(JSON.stringify({id:r.id,error:{code:-32600,message:'Unexpected operation '+r.method}})+'\n');return;}process.stdout.write(JSON.stringify({id:r.id,result:v})+'\n');});"#;
+    let script=r#"const fs=require('node:fs'),rl=require('node:readline').createInterface({input:process.stdin});const root=process.argv[1],initialMode=process.argv[2];rl.on('line',line=>{const mode=fs.existsSync(root+'/metadata-fail.flag')?'METADATA_ERROR':initialMode;const r=JSON.parse(line);if(r.id===undefined)return;fs.appendFileSync(root+'/rpc.jsonl',JSON.stringify(r)+'\n');let v={};if(r.method==='thread/read'&&mode==='METADATA_ERROR'){process.stdout.write(JSON.stringify({id:r.id,error:{code:-32602,message:'INVALID_ARGUMENT'}})+'\n');return;}if(r.method==='thread/read')v={thread:{id:mode==='WRONG_THREAD'?'other':r.params.threadId,cwd:root,status:{type:mode==='IDLE'?'idle':'active'}}};else if(r.method==='thread/goal/get')v={goal:{threadId:r.params.threadId,status:'active',objective:'fictional',tokenBudget:null}};else if(r.method==='thread/turns/list')v={data:mode==='NO_TURN'?[]:[{id:'active-turn',status:mode==='TERMINAL'?'completed':'inProgress'}],nextCursor:null};else if(r.method==='turn/steer'){if(r.params.threadId!=='target-fixture'||r.params.expectedTurnId!=='active-turn'||r.params.input[0].text!=='exact supplemental instruction')throw Error('Wrong physical input');v={turnId:mode==='WRONG_ACK'?'other-turn':'active-turn'};}else if(r.method==='turn/start')v={turn:{id:'new-turn'}};else if(r.method!=='initialize'){process.stdout.write(JSON.stringify({id:r.id,error:{code:-32600,message:'Unexpected operation '+r.method}})+'\n');return;}process.stdout.write(JSON.stringify({id:r.id,result:v})+'\n');});"#;
     let mut cmd=std::process::Command::new("node");cmd.args(["-e",script]).arg(dir.path()).arg(mode);
     let mut adapter=CodexAdapter::start_shared_validation(cmd,Arc::new(|_|{})).unwrap();adapter.initialize().unwrap();
     let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session{adapter:Some(adapter),..Default::default()})),completed_chatgpt_responses:Arc::default()};
     (dir,core,w.id,h.id)
 }
 fn guidance_methods(dir:&tempfile::TempDir)->Vec<Value>{fs::read_to_string(dir.path().join("rpc.jsonl")).unwrap().lines().map(|line|serde_json::from_str(line).unwrap()).collect()}
+#[test]
+fn assistant_confirm_failure_has_a_persisted_stage_and_receipt_without_send(){
+    for mode in ["METADATA_ERROR","DISCONNECTED"] {
+        let(dir,core,w,_)=active_guidance_fixture("IDLE",None);
+        let g=core.store.connect_assistant_instance(router_core::store::assistant::AssistantConnectionInput{label:"fixture assistant".into(),expires_at:std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64+600000}).unwrap();
+        let b=core.store.role_bridge(&w).unwrap();let obs=core.store.reply_observations_for_workstream(&w).unwrap().remove(0);
+        let h=crate::assistant_mcp::call(&core,&g.id,"agbrio_prepare_handoff",json!({"workstreamId":w,"bindingRevision":b.binding_revision,"requestId":"diagnostic-one","observationId":obs.id,"role":"DECISION","text":"exact supplemental instruction","attachmentIds":[]})).unwrap();
+        if mode=="DISCONNECTED"{core.session.lock().unwrap().adapter.take();}else{fs::write(dir.path().join("metadata-fail.flag"),"fail only after prepare").unwrap();}
+        let failed=crate::assistant_mcp::rpc(&core,&g.id,json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"agbrio_confirm_and_send","arguments":{"handoffId":h["id"],"expectedHash":h["payloadHash"],"ruleId":null,"decisionId":null,"assessment":"Within the exact owner-authorized fictional task."}}}));
+        let expected=if mode=="DISCONNECTED"{"BRIDGE_PRECLAIM_ADAPTER"}else{"BRIDGE_PRECLAIM_TARGET_METADATA"};
+        assert_eq!(failed["result"]["isError"],true);assert_eq!(failed["result"]["structuredContent"]["error_code"],expected);
+        let receipt=crate::assistant_mcp::call(&core,&g.id,"agbrio_receipt",json!({"handoffId":h["id"],"expectedHash":h["payloadHash"]})).unwrap();
+        assert_eq!(receipt["handoff"]["status"],"APPROVED");assert_eq!(receipt["handoff"]["errorCode"],expected);assert_eq!(receipt["lastPreclaimFailure"]["physicalSendStarted"],false);assert!(receipt["lastPreclaimFailure"]["cause"].is_string());
+        let stranger=core.store.connect_assistant_instance(router_core::store::assistant::AssistantConnectionInput{label:"other fixture client".into(),expires_at:std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64+600000}).unwrap();
+        assert!(crate::assistant_mcp::call(&core,&stranger.id,"agbrio_confirm_and_send",json!({"handoffId":h["id"],"expectedHash":h["payloadHash"],"ruleId":null,"decisionId":null,"assessment":"Not the draft owner."})).is_err());
+        assert_eq!(core.store.role_handoff(h["id"].as_str().unwrap()).unwrap().error_code.as_deref(),Some(expected));
+        assert!(!guidance_methods(&dir).iter().any(|r|matches!(r["method"].as_str(),Some("turn/start"|"turn/steer"))));
+    }
+}
+#[test]
+fn assistant_reviewed_handoff_roundtrip_sends_exactly_once(){
+    let(dir,core,w,_)=active_guidance_fixture("IDLE",None);
+    let g=core.store.connect_assistant_instance(router_core::store::assistant::AssistantConnectionInput{label:"fixture assistant".into(),expires_at:std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64+600000}).unwrap();
+    let b=core.store.role_bridge(&w).unwrap();let obs=core.store.reply_observations_for_workstream(&w).unwrap().remove(0);
+    let h=crate::assistant_mcp::call(&core,&g.id,"agbrio_prepare_handoff",json!({"workstreamId":w,"bindingRevision":b.binding_revision,"requestId":"one-roundtrip","observationId":obs.id,"role":"DECISION","text":"exact supplemental instruction","attachmentIds":[]})).unwrap();
+    let args=json!({"handoffId":h["id"],"expectedHash":h["payloadHash"],"ruleId":null,"decisionId":null,"assessment":"Reviewed fictional task and exact recipient."});
+    assert_eq!(crate::assistant_mcp::call(&core,&g.id,"agbrio_confirm_and_send",args.clone()).unwrap()["status"],"SENT");
+    assert!(crate::assistant_mcp::call(&core,&g.id,"agbrio_confirm_and_send",args).is_err());
+    let receipt=crate::assistant_mcp::call(&core,&g.id,"agbrio_receipt",json!({"handoffId":h["id"],"expectedHash":h["payloadHash"]})).unwrap();assert_eq!(receipt["handoff"]["status"],"SENT");assert!(receipt["handoff"]["errorCode"].is_null());
+    assert_eq!(guidance_methods(&dir).iter().filter(|r|r["method"]=="turn/start").count(),1);
+}
 #[test]
 fn active_goal_bridge_guidance_steers_once_without_resume_pause_or_new_execution_owner(){
     let(dir,core,w,h)=active_guidance_fixture("ACTIVE",None);
@@ -59,14 +90,14 @@ fn actual_native_active_goal_bridge_guidance(){
     let root=std::path::PathBuf::from(std::env::var("AIWR_GUIDANCE_ROOT").unwrap());let thread=std::env::var("AIWR_GUIDANCE_THREAD").unwrap();
     let store=Arc::new(crate::RouterStore::open_at(root.join("native-guidance.db")).unwrap());let p=store.create_project("fictional native guidance".into(),None).unwrap();let w=store.create_workstream(&p.id,"fixture".into()).unwrap();
     let side=|id:&str|RoleBindingInput{provider:"CODEX".into(),external_id:id.into(),label:"fictional".into(),cwd:Some(root.to_string_lossy().into())};let binding=store.bind_role_bridge(&w.id,0,side("unused-source-fixture"),side(&thread)).unwrap();
-    let obs=store.record_reply_observation(&w.id,&binding.decision.unwrap().endpoint.id,Some("fictional-native-source"),"FICTIONAL_SUPPLEMENTAL_GUIDANCE",None).unwrap().unwrap();let h=store.prepare_role_handoff(&w.id,"DECISION",&obs.id,"FICTIONAL_SUPPLEMENTAL_GUIDANCE").unwrap();store.approve_role_handoff_checked(&h.id,&h.payload_hash).unwrap();
+    let obs=store.record_reply_observation(&w.id,&binding.decision.unwrap().endpoint.id,Some("fictional-native-source"),"FICTIONAL_SUPPLEMENTAL_GUIDANCE",None).unwrap().unwrap();let h=store.prepare_role_handoff(&w.id,"DECISION",&obs.id,"FICTIONAL_SUPPLEMENTAL_GUIDANCE").unwrap();
     let mut cmd=std::process::Command::new(std::env::var("AIWR_GUIDANCE_NODE").unwrap());cmd.arg(root.join("transport.mjs")).arg(std::env::var("AIWR_GUIDANCE_URL").unwrap());let mut adapter=CodexAdapter::start_shared_validation(cmd,Arc::new(|_|{})).unwrap();adapter.initialize().unwrap();
     let before=adapter.get_goal(&thread).unwrap();assert_eq!(before["goal"]["status"],"active");
     let native=metadata(&mut adapter,&thread).unwrap();assert_eq!(native["thread"]["status"]["type"],"active");let expected=exact_active_turn(&mut adapter,&thread).unwrap();
     let core=RouterCore{store:store.clone(),chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session{adapter:Some(adapter),..Default::default()})),completed_chatgpt_responses:Arc::default()};
-    let result=send(&core,&h.id).unwrap();assert_eq!(result.handoffs[0].status,"SENT");assert!(send(&core,&h.id).is_err());assert!(store.provider_runs_for_workstream(&w.id).unwrap().is_empty());
+    let grant=store.connect_assistant_instance(router_core::store::assistant::AssistantConnectionInput{label:"isolated native MCP QA".into(),expires_at:std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64+600000}).unwrap();store.register_assistant_prepare(&grant.id,&h.id,&obs.id,"native-mcp-request","native-only-test").unwrap();let result=crate::assistant_mcp::call(&core,&grant.id,"agbrio_confirm_and_send",json!({"handoffId":h.id,"expectedHash":h.payload_hash,"ruleId":null,"decisionId":null,"assessment":"Exact fictional instruction under isolated owner-authorized validation."})).unwrap();assert_eq!(result["status"],"SENT");assert!(send(&core,&h.id).is_err());assert!(store.provider_runs_for_workstream(&w.id).unwrap().is_empty());
     let mut session=core.session.lock().unwrap();let adapter=session.adapter.as_mut().unwrap();assert!(adapter.active_turn_id(&thread).is_none());let after=adapter.get_goal(&thread).unwrap();assert_eq!(after["goal"]["status"],"active");assert_eq!(before["goal"]["objective"],after["goal"]["objective"]);
-    fs::write(root.join("host-native-proof.json"),serde_json::to_vec_pretty(&json!({"result":"AUTOMATED_VALIDATION_PASS","nativeActiveGoal":true,"sameActiveTurn":expected,"handoffId":h.id,"receipt":"SENT","duplicateRejected":true,"goalStatusRetained":true,"goalObjectiveRetained":true,"externalExecutionStillExternal":true,"newProviderRuns":0,"ownerThreadsTouched":false})).unwrap()).unwrap();
+    fs::write(root.join("host-native-proof.json"),serde_json::to_vec_pretty(&json!({"result":"AUTOMATED_VALIDATION_PASS","nativeActiveGoal":true,"sameActiveTurn":expected,"handoffId":h.id,"receipt":"SENT","duplicateRejected":true,"throughAssistantMcp":true,"goalStatusRetained":true,"goalObjectiveRetained":true,"externalExecutionStillExternal":true,"newProviderRuns":0,"ownerThreadsTouched":false})).unwrap()).unwrap();
 }
 
 #[test]

@@ -234,6 +234,14 @@ impl RouterStore {
         let owner:String=c.query_row("SELECT grant_id FROM assistant_drafts WHERE handoff_id=?1",[hid],|r|r.get(0)).map_err(|_|"ASSISTANT_DRAFT_UNAVAILABLE")?;
         if owner!=gid||(g.scope!="INSTANCE"&&h.workstream_id!=g.workstream_id)||h.payload_hash!=hash{return Err("ASSISTANT_DRAFT_CHANGED_OR_OUT_OF_SCOPE".into());}Ok(())
     })}
+    /// History reads are scoped to the live grant and exact Bridge/hash, not
+    /// ownership of a writable assistant draft. This never makes it sendable.
+    pub fn require_assistant_receipt_scope(&self,gid:&str,hid:&str,hash:&str)->Result<(),String>{self.with_connection(|c|{
+        let g=active(c,gid)?;let h=handoff_by_id(c,hid)?;
+        if (g.scope!="INSTANCE"&&h.workstream_id!=g.workstream_id)||h.payload_hash!=hash{return Err("ASSISTANT_RECEIPT_CHANGED_OR_OUT_OF_SCOPE".into());}
+        let (_,role)=c.query_row("SELECT binding_revision,source_role FROM role_handoff_details WHERE handoff_id=?1",[hid],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?))).map_err(db_error)?;
+        if g.source_role!="BOTH"&&g.source_role!=role{return Err("ASSISTANT_DIRECTION_OUT_OF_SCOPE".into());}Ok(())
+    })}
     pub fn assistant_prepare_receipt(&self,gid:&str,request:&str,hash:&str)->Result<Option<HandoffHistoryItem>,String>{
         bounded(request,100)?;self.with_connection(|c|{
             active(c,gid)?;

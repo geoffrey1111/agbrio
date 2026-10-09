@@ -66,11 +66,13 @@ pub(crate) fn call(core:&RouterCore,gid:&str,name:&str,args:Value)->Result<Value
         "agbrio_edit_handoff"=>{let a:Edit=decode(args)?;require_draft(core,&g,&a.handoff_id,&a.expected_hash)?;encode(core.store.edit_role_handoff(&a.handoff_id,&a.expected_hash,&a.text)?)},
         "agbrio_request_decision"=>{let a:Ask=decode(args)?;encode(core.store.ask_assistant_decision(gid,&a.handoff_id,&a.expected_hash,&a.question)?)},
         "agbrio_record_answer"=>{let a:Answer=decode(args)?;encode(core.store.answer_assistant_decision(gid,&a.decision_id,&a.expected_hash,&a.answer,&a.answer_reference)?)},
-        "agbrio_confirm_and_send"=>{let a:ApprovalInput=decode(args)?;let h=core.store.role_handoff(&a.handoff_id)?;
+        "agbrio_confirm_and_send"=>{let a:ApprovalInput=decode(args)?;require_draft(core,&g,&a.handoff_id,&a.expected_hash)?;let h=core.store.role_handoff(&a.handoff_id)?;
             if h.status=="READY"{crate::role_bridge::verify_handoff_files(core,&a.handoff_id)?;core.store.approve_assistant_handoff(gid,a.clone())?;}
-            core.store.require_assistant_send(gid,&a.handoff_id,&a.expected_hash)?;
+            crate::role_bridge::preclaim(core,&h,"ASSISTANT_SCOPE",core.store.require_assistant_send(gid,&a.handoff_id,&a.expected_hash))?;
             crate::role_bridge::send(core,&a.handoff_id)?;encode(core.store.role_handoff(&a.handoff_id)?)},
-        "agbrio_receipt"=>{let a:Draft=decode(args)?;require_draft(core,&g,&a.handoff_id,&a.expected_hash)?;Ok(json!({"handoff":core.store.role_handoff(&a.handoff_id)?,"approval":core.store.assistant_approval(&a.handoff_id)?,"decisions":core.store.assistant_decisions(gid)?}))},
+        "agbrio_receipt"=>{let a:Draft=decode(args)?;core.store.require_assistant_receipt_scope(gid,&a.handoff_id,&a.expected_hash)?;let h=core.store.role_handoff(&a.handoff_id)?;
+            let diagnostic=h.error_message.as_deref().and_then(|s|serde_json::from_str::<Value>(s).ok()).filter(|v|v.get("stage").is_some());
+            Ok(json!({"handoff":h,"approval":core.store.assistant_approval(&a.handoff_id)?,"decisions":core.store.assistant_decisions(gid)?,"lastPreclaimFailure":diagnostic,"deliveryNotice":"APPROVED is not SENT. Preclaim diagnostics never authorize a retry. Inspect the original receipt; do not replace the handoff or request identity."}))},
         "agbrio_read_app"=>{instance(&g)?;if args!=json!({}){return Err("ASSISTANT_ARGUMENTS_INVALID".into());}let index=core.store.assistant_app_bridge_index(gid)?;Ok(json!({"grant":g,"bridges":index.bridges,"archivedBridges":index.archived_bridges,"trashedBridges":index.trashed_bridges,"bridgeListScope":"ALL_PROJECTS","watches":core.store.codex_watches()?,"inbox":core.store.codex_watch_feed(0)?,"removedWatchItems":core.store.removed_watch_items()?,"handoffDecisions":core.store.assistant_decisions(gid)?,"actions":core.store.assistant_actions(gid)?,"boundaries":["Only ACTIVE bridges are takeover candidates; archived and trashed entries are history, not delegated work","No shell or credentials","No grant/rule editing","No provider process restart","Trash is reversible; no permanent delete"]}))},
         "agbrio_list_conversations"=>{instance(&g)?;if args!=json!({}){return Err("ASSISTANT_ARGUMENTS_INVALID".into());}encode(crate::role_bridge::catalog(core)?)},
         "agbrio_read_chat"=>{instance(&g)?;let a:Chat=decode(args)?;Ok(json!({"state":crate::watch_chat::state(core,&a.thread_id)?,"history":crate::watch_chat::command(core,crate::watch_chat::ChatCommand::History{thread_id:a.thread_id,cursor:a.cursor})?}))},
@@ -97,7 +99,11 @@ pub(crate) fn rpc(core:&RouterCore,gid:&str,input:Value)->Value{
         "ping"=>json!({}),"tools/list"=>{let mut list=tools();if core.store.assistant_grant(gid).map(|g|g.scope!="INSTANCE").unwrap_or(true){let legacy=["agbrio_read_bridge","agbrio_read_source","agbrio_prepare_handoff","agbrio_edit_handoff","agbrio_request_decision","agbrio_record_answer","agbrio_confirm_and_send","agbrio_receipt"];if let Some(rows)=list["tools"].as_array_mut(){rows.retain(|v|v["name"].as_str().is_some_and(|n|legacy.contains(&n)));}}list},
         "tools/call"=>{let Some(name)=input.pointer("/params/name").and_then(Value::as_str)else{return error(-32602,"Tool name required")};
             let args=input.pointer("/params/arguments").cloned().unwrap_or(json!({}));
-            match call(core,gid,name,args){Ok(v)=>json!({"content":[{"type":"text","text":v.to_string()}],"structuredContent":v,"isError":false}),Err(e)=>json!({"content":[{"type":"text","text":e}],"isError":true})}},
+            match call(core,gid,name,args){Ok(v)=>json!({"content":[{"type":"text","text":v.to_string()}],"structuredContent":v,"isError":false}),Err(e)=>{
+                let stage=e.strip_prefix("BRIDGE_PRECLAIM_").and_then(|s|s.split_once(": ").map(|(stage,_)|stage));
+                let code=stage.map(|s|format!("BRIDGE_PRECLAIM_{s}")).unwrap_or_else(||e.clone());
+                let detail=json!({"error_code":code,"message":e,"stage":stage,"receiptRequired":true});
+                json!({"content":[{"type":"text","text":e}],"structuredContent":detail,"isError":true})}}},
         _=>return error(-32601,"Method not found")
     };json!({"jsonrpc":"2.0","id":id,"result":result})
 }

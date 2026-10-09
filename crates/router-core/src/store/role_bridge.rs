@@ -377,6 +377,16 @@ impl RouterStore {
     pub fn claim_role_handoff(&self, handoff: &str) -> Result<HandoffHistoryItem, String> {
         self.claim_role_handoff_for_delivery(handoff, None)
     }
+    /// A preclaim failure is diagnostic evidence, never a delivery attempt or a
+    /// permission to replay. A racing claim/hash change must win over this update.
+    pub fn record_role_preclaim_failure(&self, handoff: &str, hash: &str, stage: &str, cause: &str) -> Result<bool, String> {
+        if !matches!(stage, "FILES"|"ASSISTANT_SCOPE"|"WATCH_WRITER"|"BINDING"|"ADAPTER"|"TARGET_METADATA"|"TARGET_ROOT"|"ACQUISITION"|"GOAL"|"TARGET_REFRESH"|"ACTIVE_TURN"|"RECONCILIATION"|"CLAIM") {
+            return Err("BRIDGE_DIAGNOSTIC_STAGE_INVALID".into());
+        }
+        let cause: String = cause.chars().take(4096).collect();
+        let message = serde_json::json!({"stage":stage,"cause":cause,"physicalSendStarted":false}).to_string();
+        self.with_connection(|c| c.execute("UPDATE handoffs SET error_code=?3,error_message=?4 WHERE id=?1 AND payload_hash=?2 AND status='APPROVED'", params![handoff,hash,format!("BRIDGE_PRECLAIM_{stage}"),message]).map(|rows| rows==1).map_err(db_error))
+    }
     /// Supplemental input shares the exact already-running turn; it never
     /// claims a second execution writer or relaxes an unresolved delivery.
     pub fn claim_role_handoff_steer(&self, handoff: &str, thread: &str, turn: &str) -> Result<HandoffHistoryItem, String> {
@@ -395,7 +405,7 @@ impl RouterStore {
             if duplicate {return Err("BRIDGE_ALREADY_SENT".into());}
             let busy:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM handoffs WHERE workstream_id=?1 AND status='SENDING') OR EXISTS(SELECT 1 FROM provider_runs WHERE workstream_id=?1 AND status IN ('STARTING','RUNNING','UNKNOWN') AND NOT COALESCE(?2 IS NOT NULL AND status='RUNNING' AND provider='CODEX' AND endpoint_id=?3 AND external_run_id=?2,0))",params![h.workstream_id,steer.map(|(_,turn)|turn),h.destination_endpoint.id],|r|r.get(0)).map_err(db_error)?;
             if busy {return Err("BRIDGE_WRITER_UNRESOLVED".into());}
-            if tx.execute("UPDATE handoffs SET status='SENDING' WHERE id=?1 AND status='APPROVED'",params![handoff]).map_err(db_error)?!=1 {return Err("BRIDGE_ALREADY_ATTEMPTED_OR_NOT_APPROVED".into());}
+            if tx.execute("UPDATE handoffs SET status='SENDING',error_code=NULL,error_message=NULL WHERE id=?1 AND status='APPROVED'",params![handoff]).map_err(db_error)?!=1 {return Err("BRIDGE_ALREADY_ATTEMPTED_OR_NOT_APPROVED".into());}
             tx.commit().map_err(db_error)?;handoff_by_id(c,handoff)
         })
     }

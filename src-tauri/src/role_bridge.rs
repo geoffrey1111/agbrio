@@ -492,13 +492,20 @@ pub(crate) fn approve(
 
 pub(crate) fn verify_handoff_files(core:&RouterCore,handoff:&str)->Result<(),String>{handoff_files(&core.store.role_handoff(handoff)?).map(|_|())}
 
+pub(crate) fn preclaim<T>(core: &RouterCore, h: &HandoffHistoryItem, stage: &str, result: Result<T,String>) -> Result<T,String> {
+    result.map_err(|cause| {
+        // Never overwrite SENDING/SENT/UNKNOWN or alter an approval/hash.
+        let _ = core.store.record_role_preclaim_failure(&h.id,&h.payload_hash,stage,&cause);
+        format!("BRIDGE_PRECLAIM_{stage}: {cause}")
+    })
+}
 pub(crate) fn send(core: &RouterCore, handoff: &str) -> Result<BridgeState, String> {
     let preview = core.store.role_handoff(handoff)?;
     if preview.status != "APPROVED" {
         return Err("BRIDGE_NOT_APPROVED_OR_ALREADY_ATTEMPTED".into());
     }
     let destination = preview.destination_endpoint.clone();
-    let mut files = handoff_files(&preview)?;
+    let mut files = preclaim(core,&preview,"FILES",handoff_files(&preview))?;
     if destination.provider == "CHATGPT" {
         let h = core.store.claim_role_handoff(handoff)?;
         let run = core.store.create_chatgpt_dispatch_run(
@@ -520,42 +527,46 @@ pub(crate) fn send(core: &RouterCore, handoff: &str) -> Result<BridgeState, Stri
             Err(e) => return Err(e),
         }
     } else {
-        core.store.require_no_watch_reply_writer(&destination.external_id)?;
-        let bindings = core.store.role_bridge(&preview.workstream_id)?;
+        preclaim(core,&preview,"WATCH_WRITER",core.store.require_no_watch_reply_writer(&destination.external_id))?;
+        let bindings = preclaim(core,&preview,"BINDING",core.store.role_bridge(&preview.workstream_id))?;
         let target = [bindings.decision, bindings.execution]
             .into_iter()
             .flatten()
             .find(|s| s.endpoint.id == destination.id)
-            .ok_or("BRIDGE_BINDING_CHANGED")?;
+            .ok_or("BRIDGE_BINDING_CHANGED").map_err(String::from);
+        let target=preclaim(core,&preview,"BINDING",target)?;
         let (mut adapter, needs_acquisition) = {
-            let mut s = core
+            let s = core
                 .session
                 .lock()
-                .map_err(|_| "Router session unavailable")?;
+                .map_err(|_| "Router session unavailable".to_string());
+            let mut s=preclaim(core,&preview,"ADAPTER",s)?;
             let needs = thread_needs_write_acquisition(&s.ready_threads, &destination.external_id);
-            let adapter=s.adapter.take().ok_or("Codex backend disconnected. Use Reconnect first.")?;
+            let adapter=preclaim(core,&preview,"ADAPTER",s.adapter.take().ok_or_else(||"Codex backend disconnected. Use Reconnect first.".into()))?;
             s.codex_adapter_borrowed=true;
             (adapter,needs)
         };
         let result = (|| {
-            let native = metadata(&mut adapter, &destination.external_id)?;
-            verify_root(&native, &target)?;
+            let native = preclaim(core,&preview,"TARGET_METADATA",metadata(&mut adapter, &destination.external_id))?;
+            preclaim(core,&preview,"TARGET_ROOT",verify_root(&native, &target))?;
             let loaded_shared=adapter.is_shared()&&matches!(native.pointer("/thread/status/type").and_then(Value::as_str),Some("active"|"idle"));
             if !loaded_shared {
-                ensure_adapter_thread_ready_for_write(&mut adapter,needs_acquisition,&destination.external_id)?;
-                require_idle_goal(&destination.external_id,&adapter.get_goal(&destination.external_id)?)?;
+                preclaim(core,&preview,"ACQUISITION",ensure_adapter_thread_ready_for_write(&mut adapter,needs_acquisition,&destination.external_id))?;
+                let goal=preclaim(core,&preview,"GOAL",adapter.get_goal(&destination.external_id))?;
+                preclaim(core,&preview,"GOAL",require_idle_goal(&destination.external_id,&goal))?;
             }
-            let current=metadata(&mut adapter,&destination.external_id)?;verify_root(&current,&target)?;
+            let current=preclaim(core,&preview,"TARGET_REFRESH",metadata(&mut adapter,&destination.external_id))?;
+            preclaim(core,&preview,"TARGET_ROOT",verify_root(&current,&target))?;
             let steer=match current.pointer("/thread/status/type").and_then(Value::as_str){
-                Some("active")=>Some(exact_active_turn(&mut adapter,&destination.external_id)?),
+                Some("active")=>Some(preclaim(core,&preview,"ACTIVE_TURN",exact_active_turn(&mut adapter,&destination.external_id))?),
                 Some("idle")=>None,
-                _=>return Err("BRIDGE_ACTIVE_TURN_UNCONFIRMED".into()),
+                _=>return preclaim(core,&preview,"ACTIVE_TURN",Err("BRIDGE_ACTIVE_TURN_UNCONFIRMED".into())),
             };
-            if steer.is_none(){crate::runtime_reconciler::RuntimeReconciler::reconcile_codex_workstream(&core.store,&mut adapter,&preview.workstream_id)?;}
-            let h = match &steer {
-                Some(turn)=>core.store.claim_role_handoff_steer(handoff,&destination.external_id,turn)?,
-                None=>core.store.claim_role_handoff(handoff)?,
-            };
+            if steer.is_none(){preclaim(core,&preview,"RECONCILIATION",crate::runtime_reconciler::RuntimeReconciler::reconcile_codex_workstream(&core.store,&mut adapter,&preview.workstream_id))?;}
+            let h = preclaim(core,&preview,"CLAIM",match &steer {
+                Some(turn)=>core.store.claim_role_handoff_steer(handoff,&destination.external_id,turn),
+                None=>core.store.claim_role_handoff(handoff),
+            })?;
             let staged = (|| -> Result<(), String> {
                 if !files.is_empty() {
                     let root = std::fs::canonicalize(

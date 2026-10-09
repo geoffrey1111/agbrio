@@ -23,9 +23,24 @@ pub(crate) fn decode(operation:&str,input:Value)->Result<Operation,String>{
  if obj.contains_key("operation"){return Err("ASSISTANT_ARGUMENTS_INVALID".into());}obj.insert("operation".into(),json!(operation));
  serde_json::from_value(Value::Object(obj)).map_err(|_|"ASSISTANT_OPERATION_OR_ARGUMENTS_INVALID".into())
 }
+#[cfg(test)]
+mod scope_tests {
+ use super::*;
+ #[test]
+ fn global_bridge_operation_checks_exact_project_independently_of_selection(){
+  let dir=tempfile::tempdir().unwrap();let store=std::sync::Arc::new(crate::RouterStore::open_at(dir.path().join("test.db")).unwrap());
+  let first=store.create_project("first".into(),None).unwrap();let a=store.create_workstream(&first.id,"a".into()).unwrap();
+  let second=store.create_project("second".into(),None).unwrap();store.create_workstream(&second.id,"b".into()).unwrap();
+  let core=RouterCore{store:store.clone(),chatgpt:std::sync::Arc::default(),session:std::sync::Arc::new(std::sync::Mutex::new(crate::host_application::Session::default())),completed_chatgpt_responses:std::sync::Arc::default()};
+  let operation=Operation::RenameBridge{workstream_id:a.id.clone(),binding_revision:a.binding_revision,name:"new".into()};
+  assert!(validate(&core,&operation).is_ok());
+  assert!(validate(&core,&Operation::RenameBridge{workstream_id:a.id.clone(),binding_revision:a.binding_revision+1,name:"wrong".into()}).is_err());
+  store.trash_workstream(&a.id).unwrap();assert!(validate(&core,&operation).is_err());
+ }
+}
 fn bridge(core:&RouterCore,id:&str,revision:i64)->Result<(),String>{
- let w=core.store.snapshot()?.workstreams.into_iter().find(|w|w.id==id).ok_or("ASSISTANT_BRIDGE_UNAVAILABLE")?;
- if w.binding_revision!=revision{return Err("ASSISTANT_BRIDGE_CHANGED_OR_REMOVED".into());}Ok(())
+ let w=core.store.snapshot_for_workstream(id)?.workstreams.into_iter().find(|w|w.id==id).ok_or("ASSISTANT_BRIDGE_UNAVAILABLE")?;
+ if w.binding_revision!=revision||w.trashed_at.is_some()||w.archived_at.is_some(){return Err("ASSISTANT_BRIDGE_CHANGED_OR_REMOVED".into());}Ok(())
 }
 fn watch(core:&RouterCore,id:&str,generation:i64)->Result<(),String>{
  if !core.store.codex_watches()?.iter().any(|w|w.thread_id==id&&w.generation==generation){return Err("REPLY_TARGET_CHANGED_REFRESH".into());}Ok(())

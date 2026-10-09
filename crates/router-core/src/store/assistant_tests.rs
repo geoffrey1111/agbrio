@@ -11,6 +11,35 @@ fn fixture()->(tempfile::TempDir,RouterStore,String,AssistantGrant,HandoffHistor
     (dir,s,w.id,g,h)
 }
 fn approval(h:&HandoffHistoryItem)->ApprovalInput{ApprovalInput{handoff_id:h.id.clone(),expected_hash:h.payload_hash.clone(),rule_id:Some("continue".into()),decision_id:None,assessment:"The result matches the owner's continuation rule".into()}}
+#[test]
+fn historical_receipt_read_does_not_adopt_or_make_a_draft_sendable(){
+    let(_d,s,w,g,_)=fixture();let obs=s.reply_observations_for_workstream(&w).unwrap().remove(0);
+    let manual=s.prepare_role_handoff(&w,"DECISION",&obs.id,"historical manual bytes").unwrap();
+    s.approve_role_handoff_checked(&manual.id,&manual.payload_hash).unwrap();
+    assert!(s.require_assistant_receipt_scope(&g.id,&manual.id,&manual.payload_hash).is_ok());
+    assert!(s.require_assistant_receipt_scope(&g.id,&manual.id,"wrong").is_err());
+    assert!(s.require_assistant_draft_scope(&g.id,&manual.id,&manual.payload_hash).is_err());
+    assert!(s.require_assistant_send(&g.id,&manual.id,&manual.payload_hash).is_err());
+    let p=s.create_project("unrelated".into(),None).unwrap();let other=s.create_workstream(&p.id,"other".into()).unwrap();
+    let side=|native:&str|role_bridge::RoleBindingInput{provider:"CODEX".into(),external_id:native.into(),label:native.into(),cwd:Some(_d.path().to_string_lossy().into())};
+    let binding=s.bind_role_bridge(&other.id,0,side("other-source"),side("other-target")).unwrap();
+    let other_grant=s.create_assistant_grant(GrantInput{workstream_id:other.id,source_role:"BOTH".into(),binding_revision:binding.binding_revision,label:"other".into(),rules:g.rules.clone(),expires_at:now()+600000}).unwrap();
+    assert!(s.require_assistant_receipt_scope(&other_grant.id,&manual.id,&manual.payload_hash).is_err());
+    s.revoke_assistant_grant(&g.id).unwrap();
+    assert!(s.require_assistant_receipt_scope(&g.id,&manual.id,&manual.payload_hash).is_err());
+}
+#[test]
+fn preclaim_diagnostic_preserves_approval_and_cannot_overwrite_an_attempt(){
+    let(_d,s,_w,g,h)=fixture();s.approve_assistant_handoff(&g.id,approval(&h)).unwrap();
+    assert!(s.record_role_preclaim_failure(&h.id,&h.payload_hash,"TARGET_METADATA","INVALID_ARGUMENT").unwrap());
+    let before=s.role_handoff(&h.id).unwrap();assert_eq!(before.status,"APPROVED");assert_eq!(before.error_code.as_deref(),Some("BRIDGE_PRECLAIM_TARGET_METADATA"));assert_eq!(before.payload_hash,h.payload_hash);assert!(before.sent_at.is_none());
+    assert!(!s.record_role_preclaim_failure(&h.id,"wrong","GOAL","wrong").unwrap());
+    assert!(s.record_role_preclaim_failure(&h.id,&h.payload_hash,"injected stage","wrong").is_err());
+    s.claim_role_handoff(&h.id).unwrap();
+    assert!(!s.record_role_preclaim_failure(&h.id,&h.payload_hash,"ADAPTER","late diagnostic").unwrap());
+    let after=s.role_handoff(&h.id).unwrap();assert_eq!(after.status,"SENDING");assert!(after.error_code.is_none());assert!(after.error_message.is_none());
+    assert!(s.claim_role_handoff(&h.id).is_err());
+}
 #[test]fn concurrent_prepare_registration_has_one_owner_and_no_sendable_loser(){
     let(d,s,w,g,_)=fixture();let obs=s.reply_observations_for_workstream(&w).unwrap().remove(0);
     let a=s.prepare_role_handoff(&w,"DECISION",&obs.id,"first racing preparation").unwrap();
