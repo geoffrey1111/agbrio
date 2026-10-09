@@ -1,0 +1,6 @@
+import {useSyncExternalStore} from 'react';import {RefreshCw} from 'lucide-react';import {t,useLanguage} from '../i18n';
+import {applyPwaUpdate,checkPwaUpdate,pwaUpdateSnapshot,subscribePwaUpdates} from './pwaUpdates';
+import '../styles/pwa-update.css';
+const useUpdate=()=>useSyncExternalStore(subscribePwaUpdates,pwaUpdateSnapshot,pwaUpdateSnapshot);
+export function PwaUpdateNotice(){useLanguage();const s=useUpdate();if(s.status!=='READY')return null;return <aside className="pwa-update-notice" role="status"><span>{t(s.busy?'正在提交，完成后可更新界面。':'新界面已准备好，草稿和配对会保留。')}</span><button type="button" disabled={s.busy} onClick={()=>applyPwaUpdate()}>{t('更新界面')}</button></aside>;}
+export function PwaUpdateSettings(){useLanguage();const s=useUpdate();return <div className="pwa-update-settings"><button type="button" disabled={s.status==='CHECKING'} onClick={()=>void checkPwaUpdate()}><RefreshCw size={18}/>{t(s.status==='CHECKING'?'正在检查界面更新…':'检查界面更新')}</button>{s.status==='CURRENT'&&<p role="status">{t('当前已是最新界面。')}</p>}{s.status==='UNAVAILABLE'&&<p role="status">{t('暂时无法检查界面更新，请检查网络后重试。')}</p>}{s.status==='READY'&&<button type="button" disabled={s.busy} onClick={()=>applyPwaUpdate()}>{t('更新界面')}</button>}</div>;}

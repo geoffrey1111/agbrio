@@ -3,8 +3,11 @@
 // with a reconnect screen; it does not grant offline authenticated access.
 // Isolate this corrected layout from still-running legacy workers. They must
 // not overwrite its HTML while committing an older background refresh.
-const SHELL_CACHE = "aiwr-public-shell-v12";
+const SHELL_CACHE = "aiwr-public-shell-v13";
 const SHELL_KEY = "/mobile";
+let shellCommit=Promise.resolve();
+function olderRevision(next,previous){const parse=s=>s?.match(/^(\d{4})\.(\d{2})\.(\d{2})-(\d+)$/)?.slice(1).map(Number);const a=parse(next),b=parse(previous);if(!a||!b)return false;for(let i=0;i<a.length;i++){if(a[i]!==b[i])return a[i]<b[i];}return false;}
+function commitShell(cache,response,html,signal){const work=shellCommit.then(async()=>{const previous=await cache.match?.(SHELL_KEY);if(previous){const old=shellIdentity(await previous.text());if(olderRevision(shellIdentity(html).revision,old.revision))return old;}if(signal.aborted)throw Error("connection timeout");await cache.put(SHELL_KEY,response.clone());return shellIdentity(html);});shellCommit=work.catch(()=>undefined);return work;}
 function shellResponse(response) { return response.ok && !response.redirected && (response.headers.get("content-type") || "").includes("text/html"); }
 function staticAsset(url) { return url.origin === self.location.origin && (url.pathname.startsWith("/assets/") || url.pathname.startsWith("/fonts/") || ["/icon.ico","/manifest.webmanifest"].includes(url.pathname)); }
 async function withDeadline(work) {
@@ -26,7 +29,7 @@ async function fetchNavigation(request) {
 async function prepareShell(response) {
   return withDeadline(async signal => {
     const next = response || await fetch(SHELL_KEY,{credentials:"omit",cache:"no-store",signal});
-    await cacheShell(next,signal);
+    return await cacheShell(next,signal);
   });
 }
 async function cacheShell(response,signal) {
@@ -45,7 +48,7 @@ async function cacheShell(response,signal) {
       // Avoid re-downloading the full app on every warm open, competing with
       // live auth and message requests. Inline public-shell changes still update.
       if(signal.aborted)throw new Error("connection timeout");
-      await cache.put(SHELL_KEY,response.clone());return;
+      return await commitShell(cache,response,html,signal);
     }
   }
   if(manifest){
@@ -62,8 +65,16 @@ async function cacheShell(response,signal) {
   }));
   for (const [path,asset] of resources) {if(signal.aborted)throw new Error("connection timeout");await cache.put(path,asset);}
   if(signal.aborted)throw new Error("connection timeout");
-  await cache.put(SHELL_KEY,response.clone());
+  return await commitShell(cache,response,html,signal);
 }
+function shellIdentity(html){return {manifest:html.match(/name="aiwr-shell-assets" content="(\/assets\/[A-Za-z0-9_-]+\.json)"/)?.[1]??null,revision:html.match(/name="aiwr-shell-revision" content="([0-9.-]+)"/)?.[1]??null};}
+// Resume is not navigation on iOS. Refresh the complete public graph on request;
+// leave reload, private data, pairing and in-flight operations to the page.
+self.addEventListener("message",event=>{
+ const data=event.data;
+ if(data?.type!=="AIWR_CHECK_SHELL"||typeof data.id!=="string"||data.id.length>100)return;
+ event.waitUntil((async()=>{try{const shell=await prepareShell();if(!shell?.manifest)throw Error("shell unavailable");event.ports?.[0]?.postMessage({type:"AIWR_SHELL_READY",id:data.id,...shell});}catch{event.ports?.[0]?.postMessage({type:"AIWR_SHELL_UNAVAILABLE",id:data.id});}})());
+});
 self.addEventListener("fetch", event => {
   const request = event.request, url = new URL(request.url);
   if (request.method !== "GET" || url.origin !== self.location.origin) return;

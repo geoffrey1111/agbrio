@@ -10,7 +10,7 @@ export type PushSetupState = "UNSUPPORTED" | "NOT_REQUESTED" | "DENIED" | "SUPPO
 export const CURRENT_SERVICE_WORKER_URL = "/service-worker.js?build=agbrio-bridge-entry-v1";
 
 export async function registerCurrentServiceWorker() {
-  const registration = await navigator.serviceWorker.register(CURRENT_SERVICE_WORKER_URL, { scope: "/" });
+  const registration = await navigator.serviceWorker.register(CURRENT_SERVICE_WORKER_URL, { scope: "/", updateViaCache:"none" });
   // `register()` may hand back an existing registration while its replacement
   // is still waiting. Ask the browser to revalidate now, but never treat a
   // failed revalidation as permission to rotate a subscription.

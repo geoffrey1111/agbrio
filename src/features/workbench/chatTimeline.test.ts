@@ -45,6 +45,25 @@ it('puts a newly observed current watched turn after the previous native window'
  const rows=chatTimeline([m('old','prompt','user'),m('old','answer','assistant')],[current],[],current,true);
  expect(rows.map(m=>m.id)).toEqual(['prompt','answer','report']);
 });
+it('does not pin historical terminal attempts below a newer reply, even before history loads',()=>{
+ const replies=[receipt('cancelled',null,'old cancelled queue',1,'CANCELLED'),receipt('failed',null,'old failed attempt',2,'FAILED'),receipt('checked',null,'old checked attempt',3,'ACKNOWLEDGED'),receipt('sending',null,'sending now',250,'SENDING'),receipt('unknown',null,'check delivery',251,'UNKNOWN'),receipt('queued',null,'queued next',252,'QUEUED')];
+ for(const loaded of [false,true]){
+  const result=chatTimeline(loaded?[source]:[],[],replies,source,loaded);
+  expect(result.map(x=>x.id)).toEqual(['a2','receipt:sending','receipt:unknown','receipt:queued']);
+ }
+ expect(replies[0].status).toBe('CANCELLED');
+});
+it('retains current terminal attempt feedback and exact native historical user messages',()=>{
+ for(const status of ['FAILED','CANCELLED','ACKNOWLEDGED'] as const){
+  const failed=receipt('current',null,'current attempt',250,status);
+  const result=chatTimeline([source],[],[failed],source,true,undefined,false,new Set(['current']));
+  expect(result.map(x=>x.id)).toEqual(['a2','receipt:current']);
+  expect(result.at(-1)?.receipt?.status).toBe(status);
+ }
+ const history=[m('t0','u0','user','native historical prompt'),m('t0','a0','assistant'),source];
+ const result=chatTimeline(history,[],[receipt('cancelled','t0','native historical prompt',1,'CANCELLED')],source,true);
+ expect(result.map(x=>x.id)).toEqual(['u0','a0','a2']);expect(result[0].receipt?.id).toBe('cancelled');
+});
 it('a refreshed native prompt comes before an already cached report in that turn',()=>{
  const merged=mergeHistory([m('t','report','assistant')],[m('t','prompt','user'),m('t','report','assistant'),m('t','next','assistant')]);
  expect(merged.map(m=>m.id)).toEqual(['prompt','report','next']);

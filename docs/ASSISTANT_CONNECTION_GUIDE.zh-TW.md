@@ -1,5 +1,12 @@
 # 自己操作：連接 AI 助手
 
+## 交給 agent 設定，自己完成必要步驟
+
+在**設定 → AI 助手**先選 **ChatGPT / dot 雲端**或 **Codex 本地**，再點**複製給 agent 的指令**。指令使用你的實例位址，agent 先檢查並復用現有部署和授權；你只需選擇授權、本人登入同意，並告訴助手接管哪些 Bridge。詳細手動教學保留折疊入口。本地認證不代表雲端連接成功。
+
+Bridge 的 **Codex 額度**入口顯示原生週期、剩餘、重置與上次讀取，可手動刷新；不支援時顯示暫不可讀取，離線舊結果明確標示。手機設定及關於可手動檢查介面更新，準備好後點擊套用，不必刪除 PWA 或重新配對。
+
+
 [English](ASSISTANT_CONNECTION_GUIDE.en.md) · [简体中文](ASSISTANT_CONNECTION_GUIDE.zh-CN.md) · [繁體中文](ASSISTANT_CONNECTION_GUIDE.zh-TW.md)
 
 開啟 **設定 → AI 助手 → 連接你的助手**。可以逐步操作，也可複製部署與診斷指令交給助手。ChatGPT 入口取決於帳號實際權限；受限時說明前提，不在管理頁與桌面認證間反覆跳轉。

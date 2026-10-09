@@ -5,6 +5,11 @@ import {UnifiedWorkbench,type UnifiedWorkbenchProps,type WorkbenchSurface} from 
 
 afterEach(()=>{cleanup();localStorage.clear();});
 const base:UnifiedWorkbenchProps={items:[{id:"exact-a",name:"同名 Bridge",lifecycle:"ACTIVE"},{id:"exact-b",name:"同名 Bridge",lifecycle:"ACTIVE"}],draft:{value:""},onDraftChange:()=>{},onSelectWorkstream:()=>{}};
+it('offers interface updates in mobile About without replacing desktop installer controls',()=>{
+ const previous=location.pathname;history.replaceState({},'', '/mobile');
+ try{render(<UnifiedWorkbench {...base} surface='SETTINGS'/>);fireEvent.click(screen.getByRole('button',{name:'关于'}));expect(screen.getByRole('button',{name:'检查界面更新'})).toBeVisible();}
+ finally{history.replaceState({},'',previous);}
+});
 it("has three stable destinations and routes same-named Bridges by their own ID",()=>{
  const select=vi.fn();render(<UnifiedWorkbench {...base} onSelectWorkstream={select}/>);
  const nav=screen.getByRole("navigation",{name:"桌面导航"});

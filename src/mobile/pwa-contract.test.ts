@@ -208,6 +208,28 @@ it("caches a complete dynamic resource version before replacing its public HTML"
  await background;expect(put.mock.calls.map(call=>call[0])).toEqual(['/assets/entry-new.js','/assets/main-new.js','/assets/main-new.css','/mobile']);
 });
 
+it('explicit update readiness is returned only after the full public graph commits',async()=>{
+ const handlers=new Map<string,(event:any)=>void>(),put=vi.fn().mockResolvedValue(undefined);
+ const html='<html><meta name="aiwr-shell-assets" content="/assets/pwa-shell-next.json"><meta name="aiwr-shell-revision" content="2026.10.09-31"><script src="/assets/next.js"></script></html>';
+ const fetch=vi.fn(async(input:string)=>input.endsWith('.json')?new Response(JSON.stringify(['/assets/next.js'])):input.endsWith('.js')?new Response('public code'):new Response(html,{headers:{'content-type':'text/html'}}));
+ vi.stubGlobal('self',{addEventListener:(name:string,fn:(e:any)=>void)=>handlers.set(name,fn),location:{origin:'https://router.example'}});vi.stubGlobal('caches',{open:vi.fn(async()=>({put,match:vi.fn(async()=>undefined)}))});vi.stubGlobal('fetch',fetch);new Function(workerSource)();
+ const postMessage=vi.fn();let pending!:Promise<unknown>;handlers.get('message')!({data:{type:'AIWR_CHECK_SHELL',id:'exact-check'},ports:[{postMessage}],waitUntil:(p:Promise<unknown>)=>pending=p});expect(postMessage).not.toHaveBeenCalled();await pending;
+ expect(put.mock.calls.map(c=>c[0])).toEqual(['/assets/next.js','/mobile']);expect(postMessage).toHaveBeenCalledWith({type:'AIWR_SHELL_READY',id:'exact-check',manifest:'/assets/pwa-shell-next.json',revision:'2026.10.09-31'});
+ expect(fetch.mock.calls.map(c=>c[0]).some(p=>p.includes('/v1/'))).toBe(false);
+});
+it('failed public graph download never advertises readiness or replaces the shell',async()=>{
+ const handlers=new Map<string,(event:any)=>void>(),put=vi.fn();const html='<html><meta name="aiwr-shell-assets" content="/assets/pwa-shell-next.json"></html>';
+ vi.stubGlobal('self',{addEventListener:(name:string,fn:(e:any)=>void)=>handlers.set(name,fn),location:{origin:'https://router.example'}});vi.stubGlobal('caches',{open:vi.fn(async()=>({put,match:vi.fn(async()=>undefined)}))});vi.stubGlobal('fetch',vi.fn(async(input:string)=>input.endsWith('.json')?new Response(JSON.stringify(['/assets/missing.js'])):input.endsWith('.js')?new Response('',{status:503}):new Response(html,{headers:{'content-type':'text/html'}})));new Function(workerSource)();
+ const postMessage=vi.fn();let pending!:Promise<unknown>;handlers.get('message')!({data:{type:'AIWR_CHECK_SHELL',id:'exact-check'},ports:[{postMessage}],waitUntil:(p:Promise<unknown>)=>pending=p});await pending;expect(put).not.toHaveBeenCalled();expect(postMessage).toHaveBeenCalledWith({type:'AIWR_SHELL_UNAVAILABLE',id:'exact-check'});
+});
+it('a late older public graph cannot roll the committed interface back',async()=>{
+ const handlers=new Map<string,(event:any)=>void>();let committed:Response|undefined;let release:(r:Response)=>void=()=>{};let reads=0;
+ const html=(id:string,rev:number)=>`<html><meta name="aiwr-shell-assets" content="/assets/pwa-shell-${id}.json"><meta name="aiwr-shell-revision" content="2026.10.09-${rev}"></html>`;
+ vi.stubGlobal('self',{addEventListener:(n:string,h:(e:any)=>void)=>handlers.set(n,h),location:{origin:'https://router.example'}});vi.stubGlobal('caches',{open:vi.fn(async()=>({match:vi.fn(async()=>committed?.clone()),put:vi.fn(async(key:string,r:Response)=>{if(key==='/mobile')committed=r.clone();})}))});
+ vi.stubGlobal('fetch',vi.fn(async(input:string)=>input==='/mobile'?new Response(++reads===1?html('old',31):html('new',32),{headers:{'content-type':'text/html'}}):input.endsWith('.json')?new Response(JSON.stringify([input.includes('old')?'/assets/old.js':'/assets/new.js'])):input.includes('old')?new Promise<Response>(r=>{release=r;}):new Response('new code')));new Function(workerSource)();
+ const send=(id:string)=>{let wait!:Promise<unknown>;handlers.get('message')!({data:{type:'AIWR_CHECK_SHELL',id},ports:[{postMessage:vi.fn()}],waitUntil:(p:Promise<unknown>)=>wait=p});return wait;};
+ const old=send('old');await vi.waitFor(()=>expect(reads).toBe(1));const next=send('next');await next;release(new Response('old code'));await old;expect(await committed!.text()).toContain('pwa-shell-new');
+});
 it("does not re-download a complete unchanged version during a warm navigation",async()=>{
  const html='<html><meta name="aiwr-shell-assets" content="/assets/pwa-shell-same.json"><script src="/assets/entry-same.js"></script></html>';
  const handlers=new Map<string,(event:any)=>void>(),put=vi.fn().mockResolvedValue(undefined),match=vi.fn().mockImplementation(()=>Promise.resolve(new Response(html)));
@@ -238,7 +260,7 @@ it("refreshes an old shell from the network rather than recycling HTTP-cached na
 it("does not serve a late legacy worker's cached shell over the new layout",async()=>{
  const handlers=new Map<string,(event:any)=>void>();
  const legacy=new Response('legacy layout'),current=new Response('corrected layout');
- const cacheContents=new Map([['aiwr-public-shell-v9',legacy],['aiwr-public-shell-v12',current]]);
+ const cacheContents=new Map([['aiwr-public-shell-v9',legacy],['aiwr-public-shell-v13',current]]);
  vi.stubGlobal('self',{addEventListener:(n:string,h:(e:any)=>void)=>handlers.set(n,h),location:{origin:'https://router.example'}});
  vi.stubGlobal('caches',{match:vi.fn(async(_key:string,options:{cacheName:string})=>cacheContents.get(options.cacheName))});
  vi.stubGlobal('fetch',vi.fn(async()=>new Response('network unavailable',{status:503})));
@@ -267,7 +289,7 @@ it("falls through to current network HTML when new-version precache stalls, with
   expect(skipWaiting).toHaveBeenCalledOnce();expect(put).not.toHaveBeenCalled();
   let foreground!:Promise<Response>,background!:Promise<unknown>;
   handlers.get('fetch')!({request:{url:'https://router.example/mobile',method:'GET',mode:'navigate'},respondWith:(p:Promise<Response>)=>foreground=p,waitUntil:(p:Promise<unknown>)=>background=p});
-  expect(await (await foreground).text()).toBe(html);expect(cacheNames).toEqual(['aiwr-public-shell-v12']);
+  expect(await (await foreground).text()).toBe(html);expect(cacheNames).toEqual(['aiwr-public-shell-v13']);
   await vi.advanceTimersByTimeAsync(8000);await background;
  }finally{vi.useRealTimers();vi.unstubAllGlobals();}
 });

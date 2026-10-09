@@ -1,3 +1,4 @@
+import {beginPwaMutation} from './pwaUpdates';
 export type MobileWorkstream = {
   id: string;
   name: string;
@@ -277,6 +278,8 @@ export class MobileApiError extends Error {
 }
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const end=init?.method&&!['GET','HEAD'].includes(init.method.toUpperCase())?beginPwaMutation():()=>{};
+  try{
   const response = await fetch(`/v1/mobile${path}`, {
     ...init,
     cache: "no-store",
@@ -292,7 +295,8 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new MobileApiError(response.status, `${detail} (Router HTTP ${response.status})`);
   }
   if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
+  return await response.json() as T;
+  }finally{end();}
 }
 
 export const mobileApi = {

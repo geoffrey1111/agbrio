@@ -1,4 +1,6 @@
 import {registerCurrentServiceWorker} from "./mobile/push";
+import {startPwaUpdates} from './mobile/pwaUpdates';
+import {PwaUpdateNotice} from './mobile/PwaUpdateNotice';
 import { WebLoginGate } from "./mobile/WebLogin";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -10,11 +12,11 @@ import "./styles/watch-chat.css";
 import { UnifiedWorkbenchHost } from "./app/UnifiedWorkbenchHost";
 import { UnifiedMobileWorkbenchHost } from "./mobile/UnifiedMobileWorkbenchHost";
 
-if(location.pathname.startsWith("/mobile")&&window.isSecureContext&&"serviceWorker" in navigator){void registerCurrentServiceWorker().catch(()=>undefined);}
+if(location.pathname.startsWith("/mobile")&&window.isSecureContext&&"serviceWorker" in navigator){void registerCurrentServiceWorker().then(startPwaUpdates).catch(()=>undefined);}
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {location.pathname.startsWith("/mobile") ? <WebLoginGate><UnifiedMobileWorkbenchHost initialSurface={location.pathname==="/mobile/notifications"?"NOTIFICATIONS":"BRIDGES"}/></WebLoginGate> : <UnifiedWorkbenchHost />}
+    {location.pathname.startsWith("/mobile") ? <><WebLoginGate><UnifiedMobileWorkbenchHost initialSurface={location.pathname==="/mobile/notifications"?"NOTIFICATIONS":"BRIDGES"}/></WebLoginGate><PwaUpdateNotice/></> : <UnifiedWorkbenchHost />}
   </StrictMode>,
 );
 

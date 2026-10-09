@@ -91,11 +91,36 @@ it("leaving before acknowledgement keeps the empty composer and exact receipt ac
  fireEvent.click(screen.getByRole('button',{name:'检查发送记录'}));await waitFor(()=>expect(sessionStorage.getItem('aiwr-watch-draft:exact-original:pending')).toBeNull());
  expect(command.mock.calls.filter(([v])=>v.action==="SEND")).toHaveLength(1);
 });
+it('does not display an old cancelled queue after the current result or replay it',async()=>{
+ const cancelled={...response('cancelled','CANCELLED'),turnId:null,text:'几天前取消的排队消息'};
+ const command=vi.fn(async(input)=>{if(input.action==='HISTORY')return {messages:[{id:'item-a',turnId:'turn-a',role:'assistant',text:'完整原文'}],nextCursor:null};throw Error('unexpected mutation');});
+ const view=render(<WatchChat original={original} api={{state:vi.fn(async()=>({...state,replies:[cancelled]})),command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
+ await waitFor(()=>expect(command).toHaveBeenCalled());await screen.findByText('完整原文');
+ expect(screen.queryByText(cancelled.text)).toBeNull();expect(screen.queryByText('你 · 已取消排队')).toBeNull();
+ expect(view.container.querySelectorAll('[data-message-kind="receipt"]')).toHaveLength(0);
+ expect(command.mock.calls.every(([input])=>input.action==='HISTORY')).toBe(true);
+});
+it('unknown receipt recovery requires the owner click, preserves uncertainty and never sends',async()=>{
+ let status:WatchReply['status']='UNKNOWN';
+ const unknown={...response('exact-unknown','UNKNOWN'),turnId:null,text:'待核查的旧跟进'};
+ const command=vi.fn(async(input)=>{if(input.action==='HISTORY')return {messages:[],nextCursor:null};if(input.action==='ACKNOWLEDGE_UNKNOWN'){status='ACKNOWLEDGED';return {ok:true};}throw Error('unexpected write');});
+ const api={state:vi.fn(async()=>({...state,replies:[{...unknown,status,errorCode:status==='UNKNOWN'?'REPLY_ACK_UNOBSERVED':'OWNER_CHECKED_DELIVERY_STILL_UNKNOWN'}]})),command:command as WatchChatApi['command']};
+ render(<WatchChat original={original} api={api} onBack={()=>{}}/>);
+ const check=await screen.findByRole('button',{name:'我已检查原对话，继续输入新回复'});
+ expect(command.mock.calls.every(([input])=>input.action==='HISTORY')).toBe(true);
+ fireEvent.click(check);
+ await screen.findByText('已结束这条回复的送达检查，原文仍保留。可以输入新的要求。');
+ expect(command.mock.calls.find(([input])=>input.action==='ACKNOWLEDGE_UNKNOWN')?.[0]).toMatchObject({threadId:'exact-original',id:'exact-unknown',confirmed:true});
+ expect(status).toBe('ACKNOWLEDGED');expect(screen.getByText('待核查的旧跟进')).toBeVisible();
+ expect(command.mock.calls.filter(([input])=>['SEND','QUEUE','STEER'].includes(input.action))).toHaveLength(0);
+});
 it("a known unsent attempt restores its draft without losing newer input",async()=>{
- const command=vi.fn(async(input)=>input.action==="HISTORY"?{messages:[],nextCursor:null}:{...response(input.id),status:'FAILED'});
- render(<WatchChat original={original} api={{state:vi.fn(async()=>state),command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
+ let failed:WatchReply|null=null;
+ const command=vi.fn(async(input)=>input.action==="HISTORY"?{messages:[],nextCursor:null}:(failed={...response(input.id),status:'FAILED'}));
+ render(<WatchChat original={original} api={{state:vi.fn(async()=>({...state,replies:failed?[failed]:[]})),command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
  fireEvent.change(screen.getByLabelText('回复这个 Codex 对话'),{target:{value:'第一条回复'}});
  await waitFor(()=>expect(screen.getByRole('button',{name:'发送回复'})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:'发送回复'}));
  await screen.findByText('已确认这次没有发送。草稿保留，可检查后重新发送。');expect(screen.getByLabelText('回复这个 Codex 对话')).toHaveValue('第一条回复');
+ expect(screen.getByText('你 · 未发送成功')).toBeVisible();
  expect(sessionStorage.getItem('aiwr-watch-draft:exact-original:pending')).toBeNull();
 });

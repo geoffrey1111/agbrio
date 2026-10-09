@@ -34,7 +34,7 @@ describe("enableWebPush", () => {
 
     await enableWebPush();
 
-    expect(navigator.serviceWorker.register).toHaveBeenCalledWith(CURRENT_SERVICE_WORKER_URL, { scope: "/" });
+    expect(navigator.serviceWorker.register).toHaveBeenCalledWith(CURRENT_SERVICE_WORKER_URL, { scope: "/", updateViaCache: "none" });
     expect(mobileApi.removePushSubscription).toHaveBeenCalledWith("https://push.example/stale");
     expect(stale.unsubscribe).toHaveBeenCalledOnce();
     expect(subscribe).toHaveBeenCalledWith({ userVisibleOnly: true, applicationServerKey: new Uint8Array([4, 5, 6]) });
@@ -57,7 +57,7 @@ describe("enableWebPush", () => {
     vi.stubGlobal("Notification", window.Notification);
 
     await expect(pushSetupState()).resolves.toBe("SUBSCRIBED");
-    expect(register).toHaveBeenCalledWith(CURRENT_SERVICE_WORKER_URL, { scope: "/" });
+    expect(register).toHaveBeenCalledWith(CURRENT_SERVICE_WORKER_URL, { scope: "/", updateViaCache: "none" });
     expect(registration.update).toHaveBeenCalledOnce();
   });
 

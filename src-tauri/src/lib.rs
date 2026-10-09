@@ -1,3 +1,4 @@
+mod codex_quota;
 mod desktop_update;
 use desktop_update::{desktop_update_check,desktop_update_status,desktop_update_download,desktop_update_install,desktop_update_open_release};
 mod message_media;
@@ -32,7 +33,9 @@ mod assistant_operations;
 
 #[tauri::command]
 fn assistant_settings(state:tauri::State<'_,RouterState>)->Result<serde_json::Value,String>{
-    let core=state.inner();
+    assistant_settings_view(state.inner())
+}
+pub(crate) fn assistant_settings_view(core:&RouterCore)->Result<serde_json::Value,String>{
     let bridges=core.store.snapshot()?.workstreams.into_iter().filter(|w|w.trashed_at.is_none()&&w.archived_at.is_none()).filter_map(|w|{
         core.store.role_bridge(&w.id).ok().filter(|b|b.decision.is_some()&&b.execution.is_some()).map(|bindings|serde_json::json!({"id":w.id,"name":w.name,"bindings":bindings}))
     }).collect::<Vec<_>>();
@@ -657,6 +660,11 @@ fn confirm_rollover(
 #[tauri::command]
 fn cancel_rollover(workstream_id: String, state: State<'_, RouterState>) -> Result<(), String> {
     host_application::service_cancel_rollover(workstream_id, state.inner())
+}
+
+#[tauri::command]
+async fn codex_quota_read(state: State<'_, RouterState>) -> Result<codex_quota::Quota,String> {
+ let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||codex_quota::read(&core)).await.map_err(|_|"QUOTA_UNAVAILABLE".to_string())
 }
 
 #[tauri::command]
@@ -1484,7 +1492,7 @@ pub fn run() {
         verify_codex_rollover,
         confirm_rollover,
         cancel_rollover,
-        codex_status,
+        codex_status,codex_quota_read,
         host_environment_status,
         connect_codex,
         list_existing_codex_threads,
@@ -1569,7 +1577,7 @@ pub fn run() {
         verify_codex_rollover,
         confirm_rollover,
         cancel_rollover,
-        codex_status,
+        codex_status,codex_quota_read,
         host_environment_status,
         connect_codex,
         list_existing_codex_threads,

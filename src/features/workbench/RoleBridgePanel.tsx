@@ -54,6 +54,7 @@ const label = (role: BridgeRole) => role === "DECISION" ? uiText("控制端") : 
 const initial = (side?: Side | null): RoleInput => ({ provider: side?.endpoint.provider ?? "CODEX", externalId: side?.endpoint.provider === "CHATGPT" ? `https://chatgpt.com/c/${side.endpoint.externalId}` : side?.endpoint.externalId ?? "", label: side?.endpoint.label ?? "" });
 function errorText(error: unknown) {
   const text = String(error);
+  if(text.includes("REPLY_PREVIOUS_PENDING_CHECK_FIRST"))return uiText("接收端有一条旧回复的送达状态尚未确认，本次还没有发送。请核查接收端发送记录；确认后只继续一个交接，不要重复发送。");
   if (text.includes("owned by another application") || text.includes("THREAD_OWNED")) return uiText("对话正在 Codex Desktop 中使用。请在电脑端 Router 的设置 → 连接中准备共享连接，再自行退出 Desktop，点“打开共享 Codex”。已批准内容保留，尚未发送。");
   if (text.includes("BRIDGE_SAME_NATIVE_TARGET")) return uiText("两端必须选择不同的 Codex 对话。");
   if (text.includes("BRIDGE_BINDING_CHANGED")) return uiText("绑定已发生变化，请重新打开审阅。旧批准不能用于新目标。");
@@ -175,8 +176,9 @@ export function RoleBridgePanel({ workstreamId, workstreamName, api, onModeChang
   useReaderCopy(copiedReply?.text??null);
   const oldReview=review?.bindingRevision!=null&&review.bindingRevision!==bindings?.bindingRevision;
   const goalBlocked=Boolean(errorCause&&(errorCause.includes("SHARED_TARGET_GOAL_NOT_IDLE")||errorCause.includes("BRIDGE_TARGET_GOAL_ACTIVE")));
+  const watchWriterBlocked=Boolean(errorCause?.includes("REPLY_PREVIOUS_PENDING_CHECK_FIRST"));
   const reviewTarget=review?.role==="DECISION"?bindings?.execution:bindings?.decision;
-  const connectionAction=sharedConnectionAction??(goalBlocked&&reviewTarget?.endpoint.provider==="CODEX"&&api.openChat&&api.chat?<button type="button" className="r2-open-receiver" disabled={busy} onClick={()=>void act(async valid=>{const original=await api.openChat!(reviewTarget.endpoint.externalId);if(valid()){setReviewOpen(false);setChat(original);}})}><MessageSquareReply size={17}/>{uiText("打开接收端原对话")}</button>:null);
+  const connectionAction=sharedConnectionAction??(!oldReview&&(goalBlocked||watchWriterBlocked)&&reviewTarget?.endpoint.provider==="CODEX"&&api.openChat&&api.chat?<button type="button" className="r2-open-receiver" disabled={busy} onClick={()=>void act(async valid=>{const original=await api.openChat!(reviewTarget.endpoint.externalId);if(original.threadId!==reviewTarget.endpoint.externalId)throw Error("BRIDGE_BINDING_CHANGED");if(valid()){setReviewOpen(false);setChat(original);}})}><MessageSquareReply size={17}/>{uiText(watchWriterBlocked?"核查接收端发送记录":"打开接收端原对话")}</button>:null);
 
   useEffect(()=>{
     if(!api.markRead||!readerActive||!state||panel.current?.closest("[hidden]")||typeof IntersectionObserver==="undefined")return;

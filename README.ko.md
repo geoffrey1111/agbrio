@@ -8,7 +8,7 @@
 
 계획용 대화와 실행용 대화를 따로 사용하시나요? Agbrio는 이 작업 방식에 맞춘 인계 도구입니다. 결과를 읽고, 다음 작업에 필요한 부분을 선택하고, 받을 대화를 확인한 뒤 전달합니다. 두 대화의 문맥을 유지하면서 여러 프로젝트에서도 정확한 대상으로 보낼 수 있습니다.
 
-[Windows v0.1.11 다운로드](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.11) · [설치와 연결](docs/SETUP.md) · [MIT](LICENSE)
+[Windows v0.1.14 다운로드](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.14) · [설치와 연결](docs/SETUP.md) · [MIT](LICENSE)
 
 ## 검토에서 다음 작업까지
 
@@ -39,3 +39,7 @@ INSTANCE + CONVERSATION_REVIEW 권한은 30일이며 취소할 수 있습니다.
 현재 Alpha 범위는 Windows x64 + Codex + PWA입니다. macOS와 다른 실행 Agent는 검증된 대상이 아닙니다. 인계 수락은 후속 작업 완료를 뜻하지 않습니다. 선택한 파일은 수신 프로젝트에 복사되며 경로와 SHA-256이 포함됩니다.[소스 빌드](docs/BUILD.md) · [비서 프로토콜](docs/ASSISTANT_MCP.md).
 
 [작성자 연락처](mailto:geoffreyzjx@qq.com) · [문제 제보](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [개선 제안](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
+
+## 사용량과 연결 안내
+
+Codex의 실제 사용량 기간, 잔여량과 초기화 시간을 확인하고 수동 새로고침할 수 있습니다. AI 도우미 연결은 클라우드/로컬 경로를 선택하고 설정 지침을 복사합니다. 사용자는 인증과 위임할 Bridge 선택을 담당합니다. PWA 설정에서 수동 업데이트할 수 있으며 재설치나 재페어링은 필요하지 않습니다.

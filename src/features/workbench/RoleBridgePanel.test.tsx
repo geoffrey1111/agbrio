@@ -61,6 +61,27 @@ describe("role-compatible Bridge", () => {
     expect(api.send).toHaveBeenCalledTimes(1);expect(api.approve).toHaveBeenCalledTimes(1);
   });
 
+  it.each(['DECISION','EXECUTION'] as const)('opens the exact receiving chat for %s pending-writer rejection, preserving the original draft without replay',async(role)=>{
+    const{api:base,state:initialState,prepared:initialPrepared}=fixture();
+    const source=role==='DECISION'?decision:execution,target=role==='DECISION'?execution:decision;
+    const prepared={...initialPrepared,sourceEndpoint:source,destinationEndpoint:target,approvedText:'original',status:'APPROVED' as const};
+    const state={...initialState,replies:[{...initialState.replies[0],endpointId:source.id}],handoffs:[prepared]};
+    const watch={threadId:target.externalId,label:'准确接收端',cwd:role==='DECISION'?'D:\\execution-project':'D:\\decision-project',enabled:true,generation:4,checkedAt:1,errorCode:null,snapshot:{state:'RESULT_READY',turnId:'receiver-turn',itemId:'receiver-item',text:'接收端当前结果'}};
+    const chat={state:vi.fn().mockResolvedValue({watch,host:'演示电脑',ownedTurnId:null,externalBusy:false,replies:[],requests:[],goal:null}),command:vi.fn().mockResolvedValue({messages:[],nextCursor:null})};
+    const api={...base,chat,openChat:vi.fn().mockResolvedValue(watch)};
+    api.prepare.mockResolvedValue(prepared);api.approve.mockResolvedValue(prepared);api.state.mockResolvedValue(state);api.send.mockRejectedValue(Error('MobileApiError: BRIDGE_PRECLAIM_WATCH_WRITER: REPLY_PREVIOUS_PENDING_CHECK_FIRST (Router HTTP 400)'));
+    render(<RoleBridgePanel workstreamId='work-a' api={api}/>);
+    fireEvent.click(await screen.findByRole('button',{name:role==='DECISION'?'转给执行端':'转给控制端'}));
+    fireEvent.click(await screen.findByRole('button',{name:role==='DECISION'?'确认并发送给执行端':'确认并发送给控制端'}));
+    expect(await screen.findByRole('alert')).toHaveTextContent('本次还没有发送');
+    fireEvent.click(screen.getByRole('button',{name:'核查接收端发送记录'}));
+    await screen.findByRole('heading',{name:'准确接收端'});expect(api.openChat).toHaveBeenCalledExactlyOnceWith(target.externalId);
+    expect(api.send).toHaveBeenCalledTimes(1);expect(api.approve).toHaveBeenCalledTimes(1);
+    expect(chat.command.mock.calls.every(([input])=>input.action==='HISTORY')).toBe(true);
+    fireEvent.click(screen.getByRole('button',{name:'‹ Bridge'}));fireEvent.click(await screen.findByRole('button',{name:'继续审阅交接'}));
+    expect(await screen.findByRole('button',{name:role==='DECISION'?'确认并发送给执行端':'确认并发送给控制端'})).toBeEnabled();
+    expect(api.send).toHaveBeenCalledTimes(1);expect(api.prepare).toHaveBeenCalledTimes(1);expect(api.approve).toHaveBeenCalledTimes(1);
+  });
   it("retains edited unsent content when review closes and resumes without preparing or sending", async () => {
     const {api}=fixture();render(<RoleBridgePanel workstreamId="work-a" api={api}/>);
     fireEvent.click(await screen.findByRole("button",{name:"转给执行端"}));

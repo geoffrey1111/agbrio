@@ -2,7 +2,7 @@ import {useId,useRef,useState} from "react";
 import {ArrowLeft,ArrowRight,Check,Cloud,ExternalLink,Laptop,Link2,ShieldCheck} from "lucide-react";
 import {t,getLanguage,useLanguage} from "../../i18n";
 import {CopyAction} from "./NativeReaderActions";
-import {assistantReadOnlyInstructions,assistantTakeoverInstructions,type AssistantRoute} from "./assistantSetupInstructions";
+import {assistantSetupInstructions,assistantReadOnlyInstructions,assistantTakeoverInstructions,type AssistantRoute} from "./assistantSetupInstructions";
 import "../../styles/assistant-guide.css";
 
 type ExistingGrant={id:string;scope?:string;approvalMode?:string;label:string;expiresAt:number;revokedAt:number|null};
@@ -17,7 +17,7 @@ export function AssistantConnectionGuide({mcpUrl,grants,onAddGrant,onRouteChange
  function navigate(value:number){setStep(value);setOpenError("");requestAnimationFrame(()=>heading.current?.focus({preventScroll:true}));}
  async function external(page:AssistantHelpPage){setOpenError("");try{await openHelp(page);}catch{setOpenError(t("未能打开浏览器，请复制下方官方网址，在浏览器中打开。"));}}
  return <section className="r2-assistant-tutorial" aria-labelledby={`${id}-title`}>
-  <div className="assistant-guide-heading"><div><h2 id={`${id}-title`}>{t("连接你的助手")}</h2><p>{t("按步骤自己操作，也可以把指令交给 AI 助手。")}</p></div><button type="button" aria-expanded={expanded} aria-controls={`${id}-body`} onClick={()=>setExpanded(!expanded)}>{t(expanded?"收起教程":"展开教程")}</button></div>
+  <div className="assistant-guide-heading"><div><h2 id={`${id}-title`}>{t("连接你的助手")}</h2><p>{t("配置和诊断交给 agent；你只完成授权、登录和接管选择。")}</p></div><button type="button" aria-expanded={expanded} aria-controls={`${id}-body`} onClick={()=>setExpanded(!expanded)}>{t(expanded?"收起教程":"展开教程")}</button></div>
   {expanded&&<div id={`${id}-body`}>
    <p className="assistant-route-question">{t("你要连接哪类助手？")}</p>
    <div className="assistant-route-options" role="group" aria-label={t("助手类型")}>
@@ -25,6 +25,16 @@ export function AssistantConnectionGuide({mcpUrl,grants,onAddGrant,onRouteChange
     <button type="button" aria-pressed={route==="local"} onClick={()=>choose("local")}><Laptop size={22}/><span><strong>Codex</strong><small>{t("本地客户端 · 单独验收")}</small></span>{route==="local"&&<Check size={18}/>}</button>
    </div>
    {!route?<p className="assistant-route-hint">{t("两条路线分别连接。桌面端认证成功，不代表 dot 云端已经可用。")}</p>:<>
+    <div className="assistant-agent-start"><CopyAction showLabel text={assistantSetupInstructions(mcpUrl,getLanguage(),route)} label={t("复制给 agent 的指令")}/><p>{t("发送给能操作你电脑的 agent，先复用现有部署和有效授权。")}</p></div>
+    <section className="assistant-human-steps" aria-label={t("只需要你完成")}><h3>{t("只需要你完成")}</h3>
+     <ol><li><strong>{t("选择助手授权")}</strong>{active.length?<p>{t("已有有效的整个应用授权，可直接复用。")}</p>:<button type="button" onClick={onAddGrant}>{t("创建 30 天授权")}</button>}<p>{t("旧版单 Bridge 授权不会自动升级。")}</p></li>
+     <li><strong>{t("本人登录并同意连接")}</strong>{route==="cloud"&&<button type="button" onClick={()=>void external("CHATGPT_PLUGINS")}>{t("在浏览器打开插件首页")}</button>}<p>{t(route==="cloud"?"按 agent 指引添加云端连接，核对范围并同意，再在目标 dot 中启用。":"按 agent 指引连接本地 Codex，核对范围并同意。")}</p></li>
+     <li><strong>{t("告诉助手接管哪些 Bridge")}</strong><p>{t("说明任务、需要询问的情况和暂停条件；不需要另填 Brief。")}</p></li></ol>
+    </section>
+    {openError&&<p role="alert">{openError}</p>}
+    {!mcpUrl&&<p>{t("尚未配置 MCP 入口。先到设备设置选择已有 HTTPS 服务或部署方式。")}</p>}
+    <details className="assistant-prompt-preview"><summary>{t("预览要复制的指令")}</summary><pre>{assistantSetupInstructions(mcpUrl,getLanguage(),route)}</pre></details>
+    <details className="assistant-manual"><summary>{t("自己操作：查看详细教程")}</summary>
     <nav className="assistant-guide-steps" aria-label={t("连接教程步骤")}>{labels.map((label,index)=><button key={index} type="button" aria-current={index===step?"step":undefined} aria-controls={`${id}-step`} onClick={()=>navigate(index)}><span className="assistant-step-number">{index+1}</span><span>{t(label)}</span></button>)}</nav>
     <div className="assistant-guide-content" id={`${id}-step`}>
      <p className="assistant-guide-count">{t("步骤 {0} / {1}",step+1,labels.length)}</p><h3 tabIndex={-1} ref={heading}>{t(labels[step])}</h3>
@@ -37,6 +47,7 @@ export function AssistantConnectionGuide({mcpUrl,grants,onAddGrant,onRouteChange
      {openError&&<p role="alert">{openError}</p>}
      <div className="assistant-guide-footer"><button type="button" disabled={step===0} onClick={()=>navigate(step-1)}><ArrowLeft size={16}/>{t("上一步")}</button><button type="button" className="r2-action" disabled={step===labels.length-1} onClick={()=>navigate(step+1)}>{t("下一步")}<ArrowRight size={16}/></button></div>
     </div>
+    </details>
    </>}
    <details className="assistant-guide-troubleshoot"><summary>{t("连接遇到问题")}</summary><dl>
     <dt>{t("服务或发现")}</dt><dd>{t("GET /mcp 返回 405、匿名 POST 返回 401 / invalid_token，可能是正常保护，不要关闭认证。")}</dd>

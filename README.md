@@ -10,7 +10,7 @@ Do you already keep one agent conversation for decisions and another for impleme
 
 **Keep the reasoning in one conversation. Keep the execution in another. Carry the right work between them.**
 
-[Download Windows v0.1.11](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.11) · [Install and pair](docs/SETUP.md) · [Connect an assistant](docs/ASSISTANT_CONNECTION_GUIDE.en.md) · [MIT license](LICENSE)
+[Download Windows v0.1.14](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.14) · [Install and pair](docs/SETUP.md) · [Connect an assistant](docs/ASSISTANT_CONNECTION_GUIDE.en.md) · [MIT license](LICENSE)
 
 ## From review to the next task
 
@@ -61,6 +61,18 @@ The computer must stay powered on, awake and connected for live work. A new brow
 
 Windows x64 + Codex + paired PWA is the alpha scope. App languages: **English, Simplified Chinese, Traditional Chinese** (Settings → Language). Japanese and Korean are introduction translations; macOS and other execution agents are not verified release targets. Source data is review material, never a way to enlarge authorization. An accepted handoff does not prove its downstream task completed.
 
-[Build from source](docs/BUILD.md) · [Assistant protocol](docs/ASSISTANT_MCP.md) · [v0.1.11 changes](docs/RELEASE_0.1.11.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+[Build from source](docs/BUILD.md) · [Assistant protocol](docs/ASSISTANT_MCP.md) · [v0.1.14 changes](docs/RELEASE_0.1.11.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 [Contact the author](mailto:geoffreyzjx@qq.com) · [Report a problem](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [Suggest an improvement](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
+
+## Native usage and simpler assistant setup
+
+## Quick setup with your agent
+
+In **Settings → AI assistant**, choose **ChatGPT / dot cloud** or **Codex local**, then **Copy instructions for your agent**. The prompt uses your configured instance URL. Your agent checks existing deployment and access; you choose authorization, sign in and consent, and tell the assistant which Bridges to handle. Valid grants are reused. Detailed self-service steps remain under **Do it yourself: detailed guide**. Desktop authentication alone does not prove cloud readiness.
+
+Bridge now has a quiet **Codex usage** row. Open it to see native quota windows, remaining percentage, reset time, last reading and **Refresh usage**. Sparse or unsupported accounts show unavailable, and offline readings are labelled. No inferred five-hour bucket or quota purchases. Phone **Settings** and **About** include **Check interface updates**; prepared changes apply on your click, with pending writes protected. Do not reinstall or pair again.
+
+<p><img src="docs/assets/en/codex-quota.png" width="320" alt="Actual native quota UI with fictional usage"> <img src="docs/assets/en/assistant-guide-simple.png" width="320" alt="Agent-first connection steps in English"></p>
+
+These use actual UI components and fictional demo data; they are browser captures, not physical iPhone recordings.

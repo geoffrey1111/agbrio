@@ -237,6 +237,7 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         assistant_oauth,
     };
     let watch_api = Router::new()
+        .route("/v1/mobile/codex-quota",get(codex_quota_read))
         .route("/v1/mobile/bridges",post(create_bridge))
         .route("/v1/mobile/bridges/{workstream_id}/rename",post(rename_bridge))
         .route("/v1/mobile/media",post(read_message_media))
@@ -259,6 +260,7 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         .route("/oauth/token",post(assistant_http::token))
         .route("/assistant/connect",get(assistant_http::page))
         .route("/v1/mobile/assistant/consent",get(assistant_http::consent_info).post(assistant_http::consent))
+        .route("/v1/mobile/assistant/settings",get(assistant_settings_view).post(assistant_connect_instance))
         .route("/v1/mobile/assistant/grants",get(assistant_http::grants))
         .route("/v1/mobile/assistant/grants/{gid}/revoke",post(assistant_http::revoke))
         .route("/v1/mobile/auth/session",get(web_auth_session))
@@ -527,6 +529,15 @@ fn pairing_real_http_authenticates_and_revokes_without_access_jwt() {
  let response=pair("https://router.fixture.invalid",&c.code);assert_eq!(response.status(),StatusCode::OK);assert_eq!(response.headers()["cache-control"],"no-store");
  let raw=response.headers()["set-cookie"].to_str().unwrap().to_string();assert!(raw.contains("Secure; HttpOnly; SameSite=Strict"));assert!(raw.contains("Max-Age=7776000"));let cookie=raw.split(';').next().unwrap();
  assert_eq!(get("/v1/mobile/health",cookie).status(),StatusCode::OK);
+ for path in ["/v1/mobile/codex-quota","/v1/mobile/assistant/settings"] {assert_eq!(get(path,"").status(),StatusCode::UNAUTHORIZED);assert_eq!(get(path,cookie).status(),StatusCode::OK);}
+ let quota=get("/v1/mobile/codex-quota",cookie).json::<serde_json::Value>().unwrap();assert_eq!(quota["status"],"UNAVAILABLE");assert_eq!(quota["buckets"],serde_json::json!([]));
+ let expiry=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64+30*86400000;
+ let create=|origin:&str|client.post(format!("{base}/v1/mobile/assistant/settings")).header("host","router.fixture.invalid").header("cookie",cookie).header("origin",origin).json(&serde_json::json!({"label":"Fixture assistant","expiresAt":expiry})).send().unwrap();
+ assert_eq!(create("https://wrong.invalid").status(),StatusCode::FORBIDDEN);
+ assert!(get("/v1/mobile/assistant/settings",cookie).json::<serde_json::Value>().unwrap()["grants"].as_array().unwrap().is_empty());
+ let grant=create("https://router.fixture.invalid").json::<serde_json::Value>().unwrap();assert_eq!(grant["scope"],"INSTANCE");assert_eq!(grant["approvalMode"],"CONVERSATION_REVIEW");
+
+
  let session=get("/v1/mobile/auth/session",cookie);assert!(session.headers()["set-cookie"].to_str().unwrap().contains("Max-Age=7776000"));assert_eq!(session.headers()["x-aiwr-host-instance"],host.instance_id());assert_eq!(session.json::<serde_json::Value>().unwrap()["method"],"DEVICE");
  assert_eq!(client.get(format!("{base}/v1/mobile/auth/session")).header("host","router.fixture.invalid").header("cookie",cookie).header("origin","https://other.router.fixture.invalid").send().unwrap().status(),StatusCode::FORBIDDEN);
  assert_eq!(pair("https://router.fixture.invalid",&c.code).status(),StatusCode::UNAUTHORIZED);
@@ -549,6 +560,16 @@ struct WatchFeedQuery { #[serde(default)] after:i64, #[serde(default)] wait_seco
 async fn codex_watches(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<Vec<router_core::store::codex_watch::CodexWatch>> {
     authenticated(&headers,&state,false).await?;
     Ok(Json(state.core.store.codex_watches().map_err(|e|ApiError(StatusCode::BAD_REQUEST,e))?))
+}
+async fn assistant_settings_view(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<serde_json::Value>{
+ authenticated(&headers,&state,false).await?;crate::assistant_settings_view(&state.core).map(Json).map_err(core_error)
+}
+async fn assistant_connect_instance(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<router_core::store::assistant::AssistantConnectionInput>)->ApiResult<router_core::store::assistant::AssistantGrant>{
+ authenticated(&headers,&state,true).await?;state.core.store.connect_assistant_instance(input).map(Json).map_err(core_error)
+}
+async fn codex_quota_read(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<crate::codex_quota::Quota>{
+ authenticated(&headers,&state,false).await?;
+ Ok(Json(run_core_blocking("Codex quota",move||Ok(crate::codex_quota::read(&state.core))).await?))
 }
 async fn watch_chat_state(State(state):State<MobileHttpState>,headers:HeaderMap,Path(thread_id):Path<String>)->ApiResult<crate::watch_chat::ChatState>{authenticated(&headers,&state,false).await?;Ok(Json(run_core_blocking("Codex conversation",move||crate::watch_chat::state(&state.core,&thread_id)).await?))}
 async fn watch_chat_command(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<crate::watch_chat::ChatCommand>)->ApiResult<serde_json::Value>{authenticated(&headers,&state,true).await?;Ok(Json(run_core_blocking("Codex reply",move||crate::watch_chat::command(&state.core,input)).await?))}

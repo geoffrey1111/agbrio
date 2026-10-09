@@ -1,3 +1,5 @@
+import {AssistantSettings,mobileAssistantSettingsApi} from "../features/workbench/AssistantSettings";
+import {CodexQuota,mobileQuotaApi} from "../features/workbench/CodexQuota";
 import {webBridgeActivity} from "../features/workbench/bridgeActivity";
 import {bridgeNotificationRoute,BRIDGE_NOTIFICATION_MESSAGE} from "./bridgeNotificationRoute";
 import {t as uiText,useLanguage,getLanguage} from "../i18n";
@@ -1155,7 +1157,7 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
   // consume the first phone viewport or push a focused exact reply below the
   // fixed Reader dock; the workspace menu remains the single clear entry.
   const showPhonePushPanel = pushPanelExpanded;
-  return <>{error && <p role="alert" className="v3-mobile-error">{uiText(error)}</p>}<UnifiedWorkbench notificationDetail={notificationDetail} notificationCount={notificationCount} notificationSettings={<><div data-expanded={showPhonePushPanel}>{phonePushPanel}</div>{webNotificationApi.delivery&&<NotificationDeliveryPanel api={webNotificationApi.delivery}/>}<NotificationAssistantSettings api={webNotificationApi}/></>} devicePanel={<WebSessionLogout/>} onRenameBridge={async(id,name)=>{await mobileApi.renameBridge(id,name);await refreshIndex();}} onManageBindings={requestBinding} onCreateBridge={async name=>{const id=await mobileApi.createBridge(name);await refreshIndex();await load(id);flushSync(()=>setSurface("WORKSPACE"));setBindingRequest(v=>v+1);}}
+  return <>{error && <p role="alert" className="v3-mobile-error">{uiText(error)}</p>}<UnifiedWorkbench assistantPanel={<AssistantSettings api={mobileAssistantSettingsApi}/>} quotaPanel={<CodexQuota api={mobileQuotaApi}/>} notificationDetail={notificationDetail} notificationCount={notificationCount} notificationSettings={<><div data-expanded={showPhonePushPanel}>{phonePushPanel}</div>{webNotificationApi.delivery&&<NotificationDeliveryPanel api={webNotificationApi.delivery}/>}<NotificationAssistantSettings api={webNotificationApi}/></>} devicePanel={<WebSessionLogout/>} onRenameBridge={async(id,name)=>{await mobileApi.renameBridge(id,name);await refreshIndex();}} onManageBindings={requestBinding} onCreateBridge={async name=>{const id=await mobileApi.createBridge(name);await refreshIndex();await load(id);flushSync(()=>setSurface("WORKSPACE"));setBindingRequest(v=>v+1);}}
     bridgeActivityApi={webBridgeActivity} items={items} selectedWorkstreamId={selectedId} reply={reply}
     roleCompatible={roleMode}
     globalActions={<CodexNotifications onDetailChange={setNotificationDetail} onCountChange={setNotificationCount} api={webNotificationApi} workbenchPage={{active:surface==="NOTIFICATIONS",open:()=>setSurface("NOTIFICATIONS")}}/>}

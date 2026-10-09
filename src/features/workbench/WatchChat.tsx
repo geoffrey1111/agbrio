@@ -52,6 +52,9 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
  }
 
  const [unconfirmed,setUnconfirmed]=useState(()=>loadReceipt(original.threadId));
+ // Keep feedback for this visit, including an exact pending request restored on
+ // reopen, without bringing old terminal delivery records back to the tail.
+ const currentAttemptIds=useRef(new Set(unconfirmed?[unconfirmed.id]:[]));
  const [publicMessages,setPublicMessages]=useState(()=>loadPublicMessages(original.threadId));
  useEffect(()=>{const text=JSON.stringify(publicMessages);if(text.length<2_000_000)try{sessionStorage.setItem(`aiwr-watch-public:${original.threadId}`,text);}catch{/* full messages still retained in memory and native public history */}},[publicMessages,original.threadId]);
  const [state, setState] = useState<WatchChatState | null>(null), [error, setError] = useState<string | null>(null), [notice, setNotice] = useState<string | null>(null), [busy, setBusy] = useState(false);
@@ -83,12 +86,13 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
  function command<T>(action: string, extra: object = {}) { return api.command<T>({ action, threadId: original.threadId, ...extra }); }
  function clearReceipt(){setUnconfirmed(null);try{sessionStorage.removeItem(`${key(original.threadId)}:pending`);}catch{/* no credentials stored */}}
  async function checkReceipt(){if(!unconfirmed)return;const r=await command<WatchReply|null>("RECEIPT",{id:unconfirmed.id});if(!mounted.current)return;if(r&&(r.id!==unconfirmed.id||r.threadId!==original.threadId))throw Error("REPLY_TARGET_CHANGED_REFRESH");if(r&&["SENT","QUEUED"].includes(r.status)){const sent=unconfirmed;if(!sent.composerCleared)setDraft(d=>d.text===sent.text&&JSON.stringify(d.files.map(f=>f.id))===JSON.stringify(sent.options.attachments)?{...d,text:"",files:[]}:d);clearReceipt();setNotice(r.status==="SENT"?uiText("已确认回复发到原对话。"):uiText("已确认回复排队。"));}else if(r&&r.status==="ACKNOWLEDGED"){clearReceipt();setNotice(uiText("这条回复已结束送达检查，送达状态仍未确定，可以输入新的要求。"));}else if(r&&["FAILED","CANCELLED"].includes(r.status)){restoreAttempt(unconfirmed);clearReceipt();setNotice(uiText("已确认这次没有发送。草稿保留，可检查后重新发送。"));}else setNotice(uiText("送达尚未确认。不会自动重发；请查看原对话或取消尚未发送的尝试。"));await refresh();}
- async function acknowledgeUnknown(r:WatchReply){await command("ACKNOWLEDGE_UNKNOWN",{id:r.id,confirmed:true});if(unconfirmed?.id===r.id)clearReceipt();if(!unconfirmed?.composerCleared)setDraft(d=>d.text===r.text?{...d,text:"",files:[]}:d);setNotice(uiText("已结束这条回复的送达检查，原文仍保留。可以输入新的要求。"));await refresh();input.current?.focus();}
+ async function acknowledgeUnknown(r:WatchReply){await command("ACKNOWLEDGE_UNKNOWN",{id:r.id,confirmed:true});currentAttemptIds.current.add(r.id);if(unconfirmed?.id===r.id)clearReceipt();if(!unconfirmed?.composerCleared)setDraft(d=>d.text===r.text?{...d,text:"",files:[]}:d);setNotice(uiText("已结束这条回复的送达检查，原文仍保留。可以输入新的要求。"));await refresh();input.current?.focus();}
  async function send(mode: "SEND" | "QUEUE" | "STEER") {
   const submitted=draftRef.current;
   if (!state || !submitted.text.trim() || blocked) return;
   const options: ReplyOptions = { model: mode === "STEER" ? null : submitted.model || null, effort: mode === "STEER" ? null : submitted.effort || null, attachments: submitted.files.map(f => f.id) };
   const request = { id: crypto.randomUUID(), generation: state.watch.generation, sourceSequence: "sequence" in original ? original.sequence : null, expectedTurnId: mode === "STEER" ? controlTurn : state.watch.snapshot.turnId, mode, text: submitted.text, options };
+  currentAttemptIds.current.add(request.id);
   // Retain the exact id after an ambiguous HTTP outcome; never mint a retry.
   const receiptKey = `${key(original.threadId)}:pending`;
   const attempt={...request,createdAt:Date.now(),files:submitted.files,composerCleared:true};
@@ -114,7 +118,7 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
  const sourceMessage={id:original.snapshot.itemId??'notification',turnId:original.snapshot.turnId??'notification',role:'assistant' as const,text:original.snapshot.text||uiText("暂时没有可读取的公开消息。"),seenAt:('observedAt' in original?original.observedAt:original.checkedAt)??Date.now()};
  const currentMessage=latest?.turnId&&latest?.itemId&&latest.text?{id:latest.itemId,turnId:latest.turnId,role:'assistant' as const,text:latest.text}:undefined;
  const localPending:WatchReply|undefined=unconfirmed&&!state?.replies.some(r=>r.id===unconfirmed.id)?{id:unconfirmed.id,threadId:original.threadId,sourceSequence:unconfirmed.sourceSequence??null,expectedTurnId:unconfirmed.expectedTurnId??null,mode:unconfirmed.mode??"SEND",text:unconfirmed.text,options:unconfirmed.options,status:busy?"SENDING":"UNKNOWN",turnId:null,errorCode:null,createdAt:unconfirmed.createdAt??Date.now()}:undefined;
- const timeline=chatTimeline(history,publicMessages,[...(state?.replies??[]),...(localPending?[localPending]:[])],sourceMessage,historyLoaded,currentMessage,"sequence" in original&&latest?.turnId!==sourceMessage.turnId);
+ const timeline=chatTimeline(history,publicMessages,[...(state?.replies??[]),...(localPending?[localPending]:[])],sourceMessage,historyLoaded,currentMessage,"sequence" in original&&latest?.turnId!==sourceMessage.turnId,currentAttemptIds.current);
  const historyReading=useRef(false),historyRevision=useRef(''),followLatest=useRef(true),initialScroll=useRef(true);
  async function readHistory(cursor:string|null=null){
   if(historyReading.current)return;historyReading.current=true;

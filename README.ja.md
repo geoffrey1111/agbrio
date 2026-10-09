@@ -8,7 +8,7 @@
 
 計画用の会話と実行用の会話を分けていませんか？Agbrio は、その使い方のための引き継ぎツールです。結果を読み、次の作業に必要な部分を選び、受信側を確認して送信します。計画の文脈と実装の文脈を保ちながら、複数のプロジェクトでも正確な相手へ渡せます。
 
-[Windows v0.1.11 をダウンロード](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.11) · [セットアップ](docs/SETUP.md) · [MIT](LICENSE)
+[Windows v0.1.14 をダウンロード](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.14) · [セットアップ](docs/SETUP.md) · [MIT](LICENSE)
 
 ## レビューから次の作業へ
 
@@ -39,3 +39,7 @@ INSTANCE + CONVERSATION_REVIEW は30日間・取り消し可能です。アシ�
 現在は Windows x64 + Codex + PWA の Alpha です。macOS と他の実行 Agent は未検証です。受信確認は、その後の作業完了を証明しません。選択ファイルは受信側プロジェクトへコピーされ、パスと SHA-256 が付きます。[ビルド](docs/BUILD.md) · [助手プロトコル](docs/ASSISTANT_MCP.md)。
 
 [作者に連絡](mailto:geoffreyzjx@qq.com) · [問題を報告](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [改善を提案](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
+
+## 使用量と接続ガイド
+
+Codex の実際の使用量ウィンドウ、残りとリセット時刻を確認でき、手動で更新できます。AI アシスタント接続はクラウド／ローカルを選び、設定用の指示をコピー。ユーザーは認証と委任する Bridge の選択を行います。PWA は設定から手動更新でき、再インストールや再ペアリングは不要です。

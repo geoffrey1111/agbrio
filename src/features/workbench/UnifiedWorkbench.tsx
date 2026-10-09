@@ -30,6 +30,7 @@ export interface UnifiedWorkbenchProps {
   notificationDetail?:boolean;
   devicePanel?:ReactNode;
   assistantPanel?:ReactNode;
+  quotaPanel?:ReactNode;
   updatePanel?:ReactNode;
   onOpenWebAccess?:()=>void;
   onCreateBridge?: (name:string)=>Promise<void>;

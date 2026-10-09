@@ -22,9 +22,11 @@ export function mergeHistory(older:ChatMessage[],newer:ChatMessage[]){
 }
 /** Native turn/item order owns the transcript. Local receipts decorate matching
  * user items once; they are not a second list of all the user's sent messages.
- * Receipts outside the loaded native window reappear when older pages load.
+ * Sent receipts outside the loaded native window reappear when older pages load.
+ * Historical unsent/acknowledged attempts are delivery records, not new chat
+ * messages. Only attempts handled in this reader visit stay as standalone rows.
  */
-export function chatTimeline(history:ChatMessage[],observed:ObservedMessage[],replies:WatchReply[],source:ObservedMessage,loaded:boolean,current?:ChatMessage,sourceIsOlder=false):TimelineMessage[]{
+export function chatTimeline(history:ChatMessage[],observed:ObservedMessage[],replies:WatchReply[],source:ObservedMessage,loaded:boolean,current?:ChatMessage,sourceIsOlder=false,currentAttemptIds:ReadonlySet<string>=new Set()):TimelineMessage[]{
  const nativeTurns=new Set(history.map(m=>m.turnId));
  const groups=new Map<string,TimelineMessage[]>();
  const times=new Map<string,number>();
@@ -49,6 +51,7 @@ export function chatTimeline(history:ChatMessage[],observed:ObservedMessage[],re
    // contain several prompts in one turn and must not use this fallback.
    (receipt.mode!=='STEER'&&receipt.status==='SENT'?group.find(m=>m.role==='user'&&!m.receipt):undefined);
   if(match){match.receipt=receipt;continue;}
+  if(['CANCELLED','FAILED','ACKNOWLEDGED'].includes(receipt.status)&&!currentAttemptIds.has(receipt.id))continue;
   if(loaded&&receipt.status==='SENT'&&!nativeTurns.has(turn))continue;
   const message:TimelineMessage={id:`receipt:${receipt.id}`,turnId:turn,role:'user',text:receipt.text,receipt};
   times.set(turn,Math.min(times.get(turn)??Infinity,receipt.createdAt));
