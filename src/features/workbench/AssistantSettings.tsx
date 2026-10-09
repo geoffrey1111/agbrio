@@ -20,7 +20,7 @@ export function AssistantSettings({api=desktopApi}:{api?:AssistantSettingsApi}){
  
  async function create(){if(!label.trim())return;await act(async()=>{await api.create({label:label.trim(),expiresAt:Date.now()+30*86400000});if(mounted.current){setForm(false);setStatus(t("授权已添加"));}});}
  const current=view?.grants.filter(g=>!g.revokedAt&&g.expiresAt>Date.now())??[];
- return <div className="r2-assistant-settings"><p className="r2-assistant-description">{t("助手读取结果后处理交接；需要你决策时，在助手对话里问你。")}</p>{view?.mcpUrl?<div className="r2-device-url"><code>{view.mcpUrl}</code><CopyAction text={view.mcpUrl} label={t("复制 MCP 地址")} onError={()=>setError(t("网址未复制，请选择链接复制。"))}/></div>:view&&<p className="v4-meta">{t("先在设备设置中配置 HTTPS 入口。")}</p>}
+ return <div className="r2-assistant-settings"><p className="r2-assistant-description">{t("配置和诊断交给 agent；你只完成授权、登录和接管选择。")}</p>
  {!view&&!error&&<p role="status">{t("加载中…")}</p>}
  {view&&<AssistantConnectionGuide mcpUrl={view.mcpUrl} grants={view.grants} onAddGrant={()=>setForm(true)} onRouteChange={()=>{}} openHelp={api.openHelp??(async page=>{window.open(page==="CHATGPT_PLUGINS"?"https://chatgpt.com/plugins":"https://developers.openai.com/plugins/build/auth","_blank","noopener,noreferrer");})}/>}
 

@@ -1,4 +1,4 @@
-.r2-quota-overlay{position:fixed;inset:0;z-index:159;background:#342d2740}
+.r2-quota-overlay{position:fixed;inset:0;z-index:159;background:#342d2733}
 .r2-quota-row{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;margin:0 0 24px;padding:0;background:none;color:var(--r2-muted);border:0;font:14px var(--r2-font);text-align:left;touch-action:manipulation}
 .r2-router button.r2-quota-row{background:none;border-radius:0;padding:0;font-size:14px}
 .r2-quota-row>span:first-child{color:var(--r2-ink)}.r2-quota-row>span:nth-child(2){margin-left:auto;min-width:0;overflow-wrap:anywhere}.r2-quota-row svg{flex:none}
@@ -7,3 +7,7 @@
 .r2-quota-sheet>p,.r2-quota-window>p{color:var(--r2-muted,#76675a);font-size:13px}.r2-quota-window{margin:24px 0}.r2-quota-window>div:first-child{display:flex;align-items:center;justify-content:space-between;gap:16px}.r2-quota-window strong{font-weight:500}.r2-quota-track{height:6px;margin:12px 0;background:var(--r2-soft,#f0ebe4);border-radius:6px;overflow:hidden}.r2-quota-track i{display:block;height:100%;background:var(--r2-accent,#a55735);border-radius:6px}.r2-quota-window p{margin:8px 0}.r2-quota-refresh{display:flex;align-items:center;gap:8px;justify-content:center;min-height:44px;width:100%;background:var(--r2-soft,#f0ebe4);border:0;border-radius:12px;font:inherit;color:inherit}.r2-quota-refresh:disabled{opacity:.65}.r2-quota-spinning{animation:r2-quota-turn 1s linear infinite}@keyframes r2-quota-turn{to{transform:rotate(360deg)}}
 @media(max-width:720px){.r2-quota-sheet{top:auto;bottom:var(--aiwr-shell-bottom,0px);left:0;width:100%;transform:none;border-radius:24px 24px 0 0;padding:24px 20px calc(24px + var(--aiwr-safe-area-bottom,env(safe-area-inset-bottom,0px)));max-height:calc(var(--aiwr-shell-height,100dvh) - 24px);box-sizing:border-box}}
 @media(hover:hover) and (pointer:fine){.r2-quota-row:hover{color:var(--r2-accent)}}@media(prefers-reduced-motion:reduce){.r2-quota-spinning{animation:none}}
+
+/* Approved Figma327:233, using the same R2 tokens and Lucide instances. */
+.r2-quota-handle{width:36px;height:4px;border-radius:2px;background:var(--r2-divider);margin-bottom:20px}.r2-quota-sheet h2{font-size:23px}.r2-quota-track{height:8px}.r2-quota-track i{background:var(--r2-ink)}.r2-quota-freshness{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:20px 0}.r2-quota-freshness p{font-size:13px;color:var(--r2-muted);margin:0}.r2-quota-refresh{width:44px;height:44px;flex:none;border-radius:50%;margin-left:auto}.r2-quota-window>div:first-child{font-size:16px}
+@media(max-width:720px){.r2-quota-sheet{min-height:472px;padding-inline:22px;padding-top:22px}}

@@ -62,3 +62,5 @@ Owner-reported cloud dot acceptance: **16 tools, INSTANCE + CONVERSATION_REVIEW,
 MCP Events can support dots, but Agbrio has not implemented event discovery, subscriptions, signed callbacks, deduplication, revocation stop or missed-event recovery. A connection is not automatic wakeup or an unattended loop. These require separate implementation and acceptance after explicit Bridge delegation.
 
 [Copy full instructions to an assistant](ASSISTANT_COPY_PROMPT.en.md) · [Protocol and tools](ASSISTANT_MCP.md) · [Official plugin authentication](https://developers.openai.com/plugins/build/auth) · [Official dot apps guide](https://learn.chatgpt.com/docs/dots/computers-and-apps)
+
+The compact route tabs and copy control are shown first. Open **View my steps** for your authorization, sign-in and delegation actions; technical details remain optional.

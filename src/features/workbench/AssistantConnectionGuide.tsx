@@ -1,5 +1,5 @@
 import {useId,useRef,useState} from "react";
-import {ArrowLeft,ArrowRight,Check,Cloud,ExternalLink,Laptop,Link2,ShieldCheck} from "lucide-react";
+import {ArrowLeft,ArrowRight,Check,ExternalLink,Link2,ShieldCheck} from "lucide-react";
 import {t,getLanguage,useLanguage} from "../../i18n";
 import {CopyAction} from "./NativeReaderActions";
 import {assistantSetupInstructions,assistantReadOnlyInstructions,assistantTakeoverInstructions,type AssistantRoute} from "./assistantSetupInstructions";
@@ -9,7 +9,7 @@ type ExistingGrant={id:string;scope?:string;approvalMode?:string;label:string;ex
 export type AssistantHelpPage="CHATGPT_PLUGINS"|"AUTH_DOCUMENTATION";
 export function AssistantConnectionGuide({mcpUrl,grants,onAddGrant,onRouteChange,openHelp}:{mcpUrl:string|null;grants:ExistingGrant[];onAddGrant:()=>void;onRouteChange:(route:AssistantRoute)=>void;openHelp:(page:AssistantHelpPage)=>Promise<void>}){
  useLanguage();const id=useId(),heading=useRef<HTMLHeadingElement>(null);
- const[route,setRoute]=useState<AssistantRoute|null>(null),[step,setStep]=useState(0),[expanded,setExpanded]=useState(true),[openError,setOpenError]=useState("");
+ const[route,setRoute]=useState<AssistantRoute|null>(null),[step,setStep]=useState(0),[openError,setOpenError]=useState("");
  const active=grants.filter(g=>g.scope==="INSTANCE"&&g.approvalMode==="CONVERSATION_REVIEW"&&!g.revokedAt&&g.expiresAt>Date.now());
  let https=false;try{const u=new URL(mcpUrl??"");https=u.protocol==="https:"&&!u.username&&!u.password;}catch{/* Unconfigured address is not a connection. */}
  const labels=["检查入口","准备授权",route==="local"?"添加到 Codex":"注册云端插件","本人同意","只读验收","选择 Bridge"];
@@ -17,22 +17,22 @@ export function AssistantConnectionGuide({mcpUrl,grants,onAddGrant,onRouteChange
  function navigate(value:number){setStep(value);setOpenError("");requestAnimationFrame(()=>heading.current?.focus({preventScroll:true}));}
  async function external(page:AssistantHelpPage){setOpenError("");try{await openHelp(page);}catch{setOpenError(t("未能打开浏览器，请复制下方官方网址，在浏览器中打开。"));}}
  return <section className="r2-assistant-tutorial" aria-labelledby={`${id}-title`}>
-  <div className="assistant-guide-heading"><div><h2 id={`${id}-title`}>{t("连接你的助手")}</h2><p>{t("配置和诊断交给 agent；你只完成授权、登录和接管选择。")}</p></div><button type="button" aria-expanded={expanded} aria-controls={`${id}-body`} onClick={()=>setExpanded(!expanded)}>{t(expanded?"收起教程":"展开教程")}</button></div>
-  {expanded&&<div id={`${id}-body`}>
-   <p className="assistant-route-question">{t("你要连接哪类助手？")}</p>
+  <h2 id={`${id}-title`} className="r2-sr-only">{t("连接你的助手")}</h2>
+  <div id={`${id}-body`}>
+   <p className="r2-sr-only">{t("你要连接哪类助手？")}</p>
    <div className="assistant-route-options" role="group" aria-label={t("助手类型")}>
-    <button type="button" aria-pressed={route==="cloud"} onClick={()=>choose("cloud")}><Cloud size={22}/><span><strong>ChatGPT / dot</strong><small>{t("云端助手 · 在浏览器注册")}</small></span>{route==="cloud"&&<Check size={18}/>}</button>
-    <button type="button" aria-pressed={route==="local"} onClick={()=>choose("local")}><Laptop size={22}/><span><strong>Codex</strong><small>{t("本地客户端 · 单独验收")}</small></span>{route==="local"&&<Check size={18}/>}</button>
+    <button type="button" aria-pressed={route==="cloud"} onClick={()=>choose("cloud")}><span>ChatGPT / dot {t("云端")}</span></button>
+    <button type="button" aria-pressed={route==="local"} onClick={()=>choose("local")}><span>Codex {t("本地")}</span></button>
    </div>
    {!route?<p className="assistant-route-hint">{t("两条路线分别连接。桌面端认证成功，不代表 dot 云端已经可用。")}</p>:<>
-    <div className="assistant-agent-start"><CopyAction showLabel text={assistantSetupInstructions(mcpUrl,getLanguage(),route)} label={t("复制给 agent 的指令")}/><p>{t("发送给能操作你电脑的 agent，先复用现有部署和有效授权。")}</p></div>
-    <section className="assistant-human-steps" aria-label={t("只需要你完成")}><h3>{t("只需要你完成")}</h3>
+    <div className="assistant-agent-start"><CopyAction showLabel text={assistantSetupInstructions(mcpUrl,getLanguage(),route)} label={t("复制给 agent 的指令")}/><p>{t("检查现有部署、完成连接、排错和只读验收。")}</p></div>
+    <div className="assistant-current-connection"><p>{t("当前 MCP 地址")}</p>{mcpUrl?<div className="assistant-guide-value"><code>{mcpUrl}</code><CopyAction text={mcpUrl} label={t("复制 MCP 地址")}/></div>:<p>{t("尚未配置 MCP 入口。先到设备设置选择已有 HTTPS 服务或部署方式。")}</p>}{active.length>0&&<p className="assistant-grant-summary"><Check size={18}/>{t("有效授权将直接复用 · 可随时撤销")}</p>}</div>
+    <details className="assistant-human-details"><summary>{t("查看我需要做的步骤")}</summary><section className="assistant-human-steps" aria-label={t("只需要你完成")}><h3>{t("只需要你完成")}</h3>
      <ol><li><strong>{t("选择助手授权")}</strong>{active.length?<p>{t("已有有效的整个应用授权，可直接复用。")}</p>:<button type="button" onClick={onAddGrant}>{t("创建 30 天授权")}</button>}<p>{t("旧版单 Bridge 授权不会自动升级。")}</p></li>
      <li><strong>{t("本人登录并同意连接")}</strong>{route==="cloud"&&<button type="button" onClick={()=>void external("CHATGPT_PLUGINS")}>{t("在浏览器打开插件首页")}</button>}<p>{t(route==="cloud"?"按 agent 指引添加云端连接，核对范围并同意，再在目标 dot 中启用。":"按 agent 指引连接本地 Codex，核对范围并同意。")}</p></li>
      <li><strong>{t("告诉助手接管哪些 Bridge")}</strong><p>{t("说明任务、需要询问的情况和暂停条件；不需要另填 Brief。")}</p></li></ol>
-    </section>
+    </section></details>
     {openError&&<p role="alert">{openError}</p>}
-    {!mcpUrl&&<p>{t("尚未配置 MCP 入口。先到设备设置选择已有 HTTPS 服务或部署方式。")}</p>}
     <details className="assistant-prompt-preview"><summary>{t("预览要复制的指令")}</summary><pre>{assistantSetupInstructions(mcpUrl,getLanguage(),route)}</pre></details>
     <details className="assistant-manual"><summary>{t("自己操作：查看详细教程")}</summary>
     <nav className="assistant-guide-steps" aria-label={t("连接教程步骤")}>{labels.map((label,index)=><button key={index} type="button" aria-current={index===step?"step":undefined} aria-controls={`${id}-step`} onClick={()=>navigate(index)}><span className="assistant-step-number">{index+1}</span><span>{t(label)}</span></button>)}</nav>
@@ -54,6 +54,6 @@ export function AssistantConnectionGuide({mcpUrl,grants,onAddGrant,onRouteChange
     <dt>{t("注册或授权跳转")}</dt><dd>{t("0.1.5 修复 SDK 注册 grant_types 兼容；0.1.6 修复多 scope 授权请求。请求多个 scope 不会扩大本人所选授权。")}</dd>
     <dt>{t("token、工具发现或实际调用")}</dt><dd>{t("核对实际失败阶段、状态码、有效期、撤销状态及精确资源地址。没有底层证据时标为未知，不只反复点验证。")}</dd>
    </dl><p>{t("诊断只分享版本、阶段、时间、固定路径和错误码，不分享 Cookie、token、密钥、授权码、PKCE verifier、完整 OAuth 查询网址或私人对话。")}</p><button type="button" onClick={()=>void external("AUTH_DOCUMENTATION")}><ExternalLink size={16}/>{t("查看官方认证说明")}</button><p className="assistant-guide-note">https://developers.openai.com/plugins/build/auth</p></details>
-  </div>}
+  </div>
  </section>;
 }

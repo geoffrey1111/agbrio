@@ -919,5 +919,12 @@
   "重置时间暂不可用": "Reset time unavailable",
   "暂不可读取。部分登录方式不提供 Codex 额度。": "Usage unavailable. Some sign-in methods do not provide Codex limits.",
   "上次读取 {0}": "Last read {0}",
-  "刷新额度": "Refresh usage"
+  "刷新额度": "Refresh usage",
+  "云端": "cloud",
+  "本地": "local",
+  "当前 MCP 地址": "Current MCP URL",
+  "有效授权将直接复用 · 可随时撤销": "Reuse valid access · revoke at any time",
+  "查看我需要做的步骤": "View my steps",
+  "检查现有部署、完成连接、排错和只读验收。": "Check existing deployment, connect, diagnose and validate read-only.",
+  "查看和刷新额度，不会打断正在执行的任务。": "Reading and refreshing usage does not interrupt running tasks."
 }

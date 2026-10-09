@@ -62,3 +62,5 @@ GET /mcp 的 405、未授權 POST 的 401 / invalid_token 可能是正常保護�
 官方 Events 可用於 dots，但 Agbrio 尚未實作探索、訂閱、簽章回呼、去重、撤權停發及遺漏恢復。連接不是自動喚醒或無人循環；持續接管需先選 Bridge 並明確委託，事件能力另行驗收。
 
 [完整複製指令](ASSISTANT_COPY_PROMPT.zh-TW.md) · [協定與工具](ASSISTANT_MCP.md) · [官方認證](https://developers.openai.com/plugins/build/auth) · [dot 應用](https://learn.chatgpt.com/docs/dots/computers-and-apps)
+
+預設先顯示緊湊的類型切換和複製按鈕。展開**查看我需要做的步驟**，再完成授權、本人登入與接管選擇；技術細節保持可選。

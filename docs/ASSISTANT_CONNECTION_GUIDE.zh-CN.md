@@ -62,3 +62,5 @@ GET /mcp 返回 405、未授权 POST 返回 401 / invalid_token 可能是正常�
 官方 MCP Events 可用于 dots，但 Agbrio 仍未实现事件发现、订阅、签名回调、去重、撤权停发与遗漏恢复。连接不等于自动唤醒或无人值守循环；持续接管必须先选择 Bridge 并明确委托，未来事件实现单独验收。
 
 [完整复制指令](ASSISTANT_COPY_PROMPT.zh-CN.md) · [协议与工具](ASSISTANT_MCP.md) · [官方认证说明](https://developers.openai.com/plugins/build/auth) · [dot 应用说明](https://learn.chatgpt.com/docs/dots/computers-and-apps)
+
+默认先显示紧凑的类型切换和复制按钮。展开**查看我需要做的步骤**，再完成授权、本人登录与接管选择；技术细节保持可选。
