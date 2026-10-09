@@ -283,7 +283,9 @@ export async function request<T>(path:string,init?:RequestInit):Promise<T>{
  const key=path==="/workstreams"?"directory:mobile":/^\/workstreams\/[^/]+$/.test(path)?`workstream:${decodeURIComponent(path.split("/")[2])}`:null;
  if(reading&&key)return readModels.read(key,()=>liveRequest<T>(path,init),5000);
  const result=await liveRequest<T>(path,init);
- if(!reading&&path!=="/bridge-activity"){readModels.invalidate("directory:");if(/\/(trash|purge|endpoints|role-bridge)$/.test(path))readModels.invalidate("bridge:",true);}
+ const action=typeof init?.body==="string"?(()=>{try{return JSON.parse(init.body).action;}catch{return null;}})():null;
+ const passive=path==="/bridge-activity"||(/\/role-bridge$/.test(path)&&["SYNC","READ","THREADS","BLOCKS","ATTACHMENTS"].includes(action));
+ if(!reading&&!passive){readModels.invalidate("directory:");if(/\/(trash|purge|endpoints)$/.test(path)||(/\/role-bridge$/.test(path)&&action==="BIND"))readModels.invalidate("bridge:",true);}
  return result;
 }
 export async function liveRequest<T>(path: string, init?: RequestInit): Promise<T> {
