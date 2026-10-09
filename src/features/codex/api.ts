@@ -9,8 +9,8 @@ function invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>{
  if(key)return readModels.read(key,()=>tauriInvoke<T>(command,args));
  return tauriInvoke<T>(command,args).then(result=>{
   if(/^(create_bridge|rename_bridge|create_project|create_workstream|archive_workstream|set_workstream_pinned|trash_workstream|restore_workstream|purge_trashed_workstream|bind_workspace_endpoint|pair_workstream_endpoints|confirm_explicit_chatgpt|confirm_rollover|send_|approve_|acknowledge_)/.test(command)){
-   readModels.invalidate('directory:');readModels.invalidate('workspace:');readModels.invalidate('workstream:');
-   if(/^(trash_|purge_|bind_|pair_|confirm_explicit|confirm_rollover)/.test(command))readModels.invalidate('bridge:',true);
+   readModels.invalidate('bridge-activity:');readModels.invalidate('directory:');readModels.invalidate('workspace:');readModels.invalidate('workstream:');
+   if(/^(trash_|purge_|bind_|pair_|confirm_explicit|confirm_rollover)/.test(command)){readModels.invalidate('bridge:',true);readModels.invalidate('bridge-activity:',true);}
   }
   return result;
  });

@@ -285,7 +285,7 @@ export async function request<T>(path:string,init?:RequestInit):Promise<T>{
  const result=await liveRequest<T>(path,init);
  const action=typeof init?.body==="string"?(()=>{try{return JSON.parse(init.body).action;}catch{return null;}})():null;
  const passive=path==="/bridge-activity"||(/\/role-bridge$/.test(path)&&["SYNC","READ","THREADS","BLOCKS","ATTACHMENTS"].includes(action));
- if(!reading&&!passive){readModels.invalidate("directory:");if(/\/(trash|purge|endpoints)$/.test(path)||(/\/role-bridge$/.test(path)&&action==="BIND"))readModels.invalidate("bridge:",true);}
+ if(!reading&&!passive){readModels.invalidate("bridge-activity:");readModels.invalidate("directory:");if(/\/(trash|purge|endpoints)$/.test(path)||(/\/role-bridge$/.test(path)&&action==="BIND")){readModels.invalidate("bridge:",true);readModels.invalidate("bridge-activity:",true);}}
  return result;
 }
 export async function liveRequest<T>(path: string, init?: RequestInit): Promise<T> {

@@ -1,6 +1,8 @@
 import {act,cleanup,fireEvent,render,screen,waitFor,within} from "@testing-library/react";
 import {afterEach,expect,it,vi} from "vitest";
 import {useState} from "react";
+import {cachedBridgeActivity} from "./bridgeActivity";
+import {ReadModelCache} from "./readModelCache";
 import {UnifiedWorkbench,type UnifiedWorkbenchProps,type WorkbenchSurface} from "./UnifiedWorkbench";
 
 afterEach(()=>{cleanup();localStorage.clear();});
@@ -81,4 +83,20 @@ it("shows the one current side and Bridge review hints without deriving a task f
  const bounds=vi.spyOn(Element.prototype,"getBoundingClientRect").mockReturnValue({x:20,y:100,top:100,bottom:218,left:20,right:400,width:380,height:118,toJSON:()=>({})});
  const api=vi.fn().mockResolvedValue([{workstreamId:"exact-a",bindingRevision:1,unreadCount:2,sides:[{role:"DECISION",endpointId:"d",state:"THINKING",checkedAt:Date.now()},{role:"EXECUTION",endpointId:"e",state:"ACTION_REQUIRED",checkedAt:Date.now()}]}]);
  try{render(<UnifiedWorkbench {...base} surface="BRIDGES" bridgeActivityApi={api}/>);expect(await screen.findByText("正在思考")).toBeVisible();expect(screen.queryByText("待你处理")).toBeNull();expect(screen.queryAllByLabelText("有新回复待审阅")).toHaveLength(0);expect(api).toHaveBeenCalledWith(["exact-a","exact-b"]);}finally{bounds.mockRestore();}
+});
+
+it.each(["/","/mobile"])("%s full Bridge navigation reuses activity; only the shared clock requests again",async(path)=>{
+ vi.useFakeTimers();const oldPath=location.pathname;history.replaceState({},"",path);
+ const bounds=vi.spyOn(Element.prototype,"getBoundingClientRect").mockReturnValue({x:20,y:100,top:100,bottom:218,left:20,right:400,width:380,height:118,toJSON:()=>({})});
+ const cache=new ReadModelCache(()=>undefined);const load=vi.fn(async()=>[{workstreamId:"exact-a",bindingRevision:1,sides:[{role:"EXECUTION" as const,endpointId:"e",state:"THINKING" as const,checkedAt:Date.now()}]}]);const api=cachedBridgeActivity(load,cache);
+ function App(){const[surface,setSurface]=useState<WorkbenchSurface>("BRIDGES");return <UnifiedWorkbench {...base} surface={surface} onSurfaceChange={setSurface} bridgeActivityApi={api}/>;}
+ try{
+  render(<App/>);await act(async()=>{});expect(load).toHaveBeenCalledTimes(1);
+  const nav=screen.getByRole("navigation",{name:path==="/mobile"?"主导航":"桌面导航"});
+  for(let n=0;n<5;n++)for(const name of ["通知","Bridge","设置","Bridge"]){await act(async()=>{fireEvent.click(within(nav).getByRole("button",{name}));});}
+  expect(load).toHaveBeenCalledTimes(1);expect(screen.getByText("正在思考")).toBeVisible();
+  await act(async()=>{await vi.advanceTimersByTimeAsync(5000);});expect(load).toHaveBeenCalledTimes(2);
+  await act(async()=>{fireEvent.click(within(nav).getByRole("button",{name:"通知"}));await vi.advanceTimersByTimeAsync(5000);});expect(load).toHaveBeenCalledTimes(3);
+  await act(async()=>{fireEvent.click(within(nav).getByRole("button",{name:"Bridge"}));});expect(load).toHaveBeenCalledTimes(3);
+ }finally{cleanup();cache.dispose();bounds.mockRestore();history.replaceState({},"",oldPath);vi.useRealTimers();}
 });

@@ -36,3 +36,11 @@ it("a visible online wake retries a failed refresh immediately, without waiting 
 it("entering a warm resource upgrades its slower background cadence",async()=>{
  vi.useFakeTimers();const c=cache(),load=vi.fn().mockResolvedValue("body");c.warm("bridge:a",load,30000);await vi.advanceTimersByTimeAsync(1000);expect(load).toHaveBeenCalledTimes(1);c.subscribe("bridge:a",()=>{});await c.read("bridge:a",load,2000);await vi.advanceTimersByTimeAsync(2000);expect(load).toHaveBeenCalledTimes(2);
 });
+it("navigation reads never refresh an expired warm snapshot, even after invalidation",async()=>{
+ vi.useFakeTimers();const c=cache(),load=vi.fn().mockResolvedValue("body");await c.read("bridge:a",load,5000);const at=c.observedAt("bridge:a");
+ vi.setSystemTime(Date.now()+16000);for(let n=0;n<8;n++)expect(await c.read("bridge:a",load,5000)).toBe("body");c.invalidate("bridge:a");expect(await c.read("bridge:a",load,5000)).toBe("body");expect(load).toHaveBeenCalledTimes(1);expect(c.observedAt("bridge:a")).toBe(at);
+ await vi.advanceTimersByTimeAsync(1000);expect(load).toHaveBeenCalledTimes(2);
+});
+it("a resource keeps the same synchronization period after its last page listener leaves",async()=>{
+ vi.useFakeTimers();const c=cache(),load=vi.fn().mockResolvedValue("body"),stop=c.subscribe("bridge:a",()=>{});await c.read("bridge:a",load,5000);stop();await vi.advanceTimersByTimeAsync(10000);expect(load).toHaveBeenCalledTimes(3);
+});

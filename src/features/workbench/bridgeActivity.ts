@@ -1,10 +1,23 @@
 import {invoke} from "@tauri-apps/api/core";
 import {request} from "../../mobile/api";
 import type {BridgeRole,RoleActivity} from "./RoleBridgePanel";
+import {readModels, type ReadModelCache} from "./readModelCache";
 export type BridgeActivity={workstreamId:string;bindingRevision:number;unreadCount?:number;latestRole?:BridgeRole|null;sides:RoleActivity[]};
-export type BridgeActivityApi=(workstreamIds:string[])=>Promise<BridgeActivity[]>;
-export const desktopBridgeActivity:BridgeActivityApi=workstreamIds=>invoke("bridge_directory_activity",{workstreamIds});
-export const webBridgeActivity:BridgeActivityApi=workstreamIds=>request("/bridge-activity",{method:"POST",body:JSON.stringify({workstreamIds})});
+export type BridgeActivityApi=((workstreamIds:string[])=>Promise<BridgeActivity[]>) & {
+ cached?:(ids:string[])=>BridgeActivity[]|undefined;
+ observedAt?:(ids:string[])=>number;
+ subscribe?:(ids:string[],listener:()=>void)=>()=>void;
+};
+export function cachedBridgeActivity(loader:BridgeActivityApi, cache:ReadModelCache=readModels):BridgeActivityApi{
+ const key=(ids:string[])=>`bridge-activity:${JSON.stringify([...new Set(ids)].sort())}`;
+ return Object.assign((ids:string[])=>cache.read(key(ids),()=>loader(ids),5000),{
+  cached:(ids:string[])=>cache.peek<BridgeActivity[]>(key(ids)),
+  observedAt:(ids:string[])=>cache.observedAt(key(ids)),
+  subscribe:(ids:string[],listener:()=>void)=>cache.subscribe(key(ids),listener),
+ });
+}
+export const desktopBridgeActivity=cachedBridgeActivity(workstreamIds=>invoke("bridge_directory_activity",{workstreamIds}));
+export const webBridgeActivity=cachedBridgeActivity(workstreamIds=>request("/bridge-activity",{method:"POST",body:JSON.stringify({workstreamIds})}));
 export type ActivityPhase="GOAL_ACTIVE"|"THINKING"|"RUNNING"|"ACTION_REQUIRED"|"COMPLETE"|"RESULT_PENDING"|"EMPTY"|"PAUSED"|"LIMITED"|"FAILED"|"INTERRUPTED"|"UNCONFIRMED";
 export function activityPhase(row:BridgeActivity|undefined,role:BridgeRole,age:number):ActivityPhase{
  const side=row?.sides.find(s=>s.role===role);if(!side||!side.checkedAt||age>=15000)return "UNCONFIRMED";

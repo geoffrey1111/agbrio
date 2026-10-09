@@ -12,7 +12,7 @@ export function cachedRoleBridgeApi(raw:RoleBridgeApi):RoleBridgeApi {
   state:id=>readModels.read(key(id),load(id,()=>raw.state(id)),15000),
   sync:raw.sync?id=>readModels.read(key(id),load(id,()=>raw.sync!(id)),2000):undefined,
   read:async(id,role)=>{const value=await raw.read(id,role);readModels.put(key(id),value);return value;},
-  bind:async(id,...args)=>{const value=await raw.bind(id,...args);readModels.invalidate(key(id),true);readModels.invalidate(`workstream:${id}`,true);readModels.invalidate("directory:");return value;},
-  send:async id=>{const value=await raw.send(id);readModels.put(key(value.bindings.workstreamId),value);readModels.invalidate("directory:");readModels.invalidate("notifications:");return value;},
+  bind:async(id,...args)=>{const value=await raw.bind(id,...args);readModels.invalidate(key(id),true);readModels.invalidate("bridge-activity:",true);readModels.invalidate(`workstream:${id}`,true);readModels.invalidate("directory:");return value;},
+  send:async id=>{const value=await raw.send(id);readModels.put(key(value.bindings.workstreamId),value);readModels.invalidate("bridge-activity:");readModels.invalidate("directory:");readModels.invalidate("notifications:");return value;},
  };
 }
