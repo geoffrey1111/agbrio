@@ -18,9 +18,10 @@ export function quotaPeriod(minutes:number|null){
 }
 const percent=(value:number)=>new Intl.NumberFormat(getLanguage(),{maximumFractionDigits:1}).format(value);
 const timestamp=(ms:number)=>new Intl.DateTimeFormat(getLanguage(),{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(ms);
-export function CodexQuota({api}:{api:CodexQuotaApi}){
+export function CodexQuota({api,active=true}:{api:CodexQuotaApi;active?:boolean}){
  useLanguage();const [data,setData]=useState<CodexQuotaSnapshot|null>(null),[stale,setStale]=useState(false),[busy,setBusy]=useState(false),[open,setOpen]=useState(false);
  const pending=useRef(false),last=useRef(0),mounted=useRef(true),epoch=useRef(0);
+ useEffect(()=>{if(!active)setOpen(false);},[active]);
  const refresh=useCallback(async(force=false)=>{
   if(pending.current||(!force&&Date.now()-last.current<60000)||document.visibilityState==='hidden')return;
   pending.current=true;last.current=Date.now();setBusy(true);const generation=epoch.current;

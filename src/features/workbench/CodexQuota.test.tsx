@@ -20,3 +20,6 @@ it.each(['en','zh-TW'] as const)('uses consistent %s chrome for multi-window nat
 it('ignores a late response from a replaced API instance',async()=>{
  let resolve!:(d:CodexQuotaSnapshot)=>void;const first={read:()=>new Promise<CodexQuotaSnapshot>(r=>{resolve=r;})};const {rerender}=render(<CodexQuota api={first}/>);rerender(<CodexQuota api={{read:async()=>({status:'UNAVAILABLE',reason:'ACCOUNT_UNSUPPORTED',observedAt:1,buckets:[]})}}/>);await screen.findByText('暂不可读取');await act(async()=>resolve(native));expect(screen.queryByText(/64%/)).toBeNull();
 });
+it('closes a hidden quota sheet while retaining its last reading and refresh clock',async()=>{
+ const api={read:vi.fn().mockResolvedValue(native)};const{rerender}=render(<CodexQuota api={api} active/>);await screen.findByText('每周剩余 64%');fireEvent.click(screen.getByRole('button',{name:'查看 Codex 额度'}));expect(screen.getByRole('dialog')).toBeVisible();rerender(<CodexQuota api={api} active={false}/>);expect(screen.queryByRole('dialog')).toBeNull();rerender(<CodexQuota api={api} active/>);expect(screen.getByText('每周剩余 64%')).toBeVisible();expect(api.read).toHaveBeenCalledTimes(1);
+});

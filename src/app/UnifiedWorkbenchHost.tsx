@@ -1456,7 +1456,7 @@ export function UnifiedWorkbenchHost({initialSurface="BRIDGES"}:{initialSurface?
     onRenameBridge={async(id,name)=>{await codexApi.renameBridge(id,name);await refreshIndex();}}
     onManageBindings={requestBinding}
     onCreateBridge={async name=>{const id=await codexApi.createBridge(name);const exact=await codexApi.workstreamSnapshot(id);const created=exact.workstreams.find(item=>item.id===id);if(!created)throw Error("新建 Bridge 暂时不可读取，请返回列表检查。");await codexApi.selectWorkspace(created.projectId,id);await refreshIndex();await loadSelected(id);flushSync(()=>setSurface("WORKSPACE"));setBindingRequest(v=>v+1);}}
-    quotaPanel={<CodexQuota api={desktopQuotaApi}/>} updatePanel={<DesktopUpdateSettings/>} bridgeActivityApi={desktopBridgeActivity} items={items}
+    quotaPanel={<CodexQuota api={desktopQuotaApi} active={surface==="BRIDGES"}/>} updatePanel={<DesktopUpdateSettings/>} bridgeActivityApi={desktopBridgeActivity} items={items}
     selectedWorkstreamId={selectedWorkstreamId}
     reply={reply}
     roleCompatible={roleMode}

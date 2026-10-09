@@ -3,6 +3,7 @@ import {afterEach,expect,it,vi} from "vitest";
 import {useState} from "react";
 import {cachedBridgeActivity} from "./bridgeActivity";
 import {ReadModelCache} from "./readModelCache";
+import {CodexQuota} from "./CodexQuota";
 import {UnifiedWorkbench,type UnifiedWorkbenchProps,type WorkbenchSurface} from "./UnifiedWorkbench";
 
 afterEach(()=>{cleanup();localStorage.clear();});
@@ -99,4 +100,13 @@ it.each(["/","/mobile"])("%s full Bridge navigation reuses activity; only the sh
   await act(async()=>{fireEvent.click(within(nav).getByRole("button",{name:"通知"}));await vi.advanceTimersByTimeAsync(5000);});expect(load).toHaveBeenCalledTimes(3);
   await act(async()=>{fireEvent.click(within(nav).getByRole("button",{name:"Bridge"}));});expect(load).toHaveBeenCalledTimes(3);
  }finally{cleanup();cache.dispose();bounds.mockRestore();history.replaceState({},"",oldPath);vi.useRealTimers();}
+});
+
+it("keeps the real quota reading and Bridge directory mounted across rapid main navigation",async()=>{
+ vi.useFakeTimers();const read=vi.fn(async()=>({status:"AVAILABLE" as const,reason:null,observedAt:Date.now(),buckets:[{id:"codex",windows:[{slot:"primary",usedPercent:36,remainingPercent:64,windowDurationMins:10080,resetsAt:null}]}]}));const quotaApi={read};
+ function App(){const[surface,setSurface]=useState<WorkbenchSurface>("BRIDGES");return <UnifiedWorkbench {...base} surface={surface} onSurfaceChange={setSurface} quotaPanel={<CodexQuota api={quotaApi}/>}/>;}
+ try{render(<App/>);await act(async()=>{});expect(screen.getByText("每周剩余 64%")).toBeVisible();const directory=screen.getByText("最近").parentElement;const nav=screen.getByRole("navigation",{name:"桌面导航"});
+  for(let n=0;n<4;n++)for(const name of ["通知","Bridge","设置","Bridge"]){await act(async()=>{fireEvent.click(within(nav).getByRole("button",{name}));});if(name==="Bridge"){expect(screen.getByText("每周剩余 64%")).toBeVisible();expect(screen.queryByText("读取中…")).toBeNull();expect(read).toHaveBeenCalledTimes(1);expect(screen.getByText("最近").parentElement).toBe(directory);}}
+  expect(read).toHaveBeenCalledTimes(1);
+ }finally{cleanup();vi.useRealTimers();}
 });
