@@ -14,6 +14,19 @@ function fixture(explicit = true) {
   return { state, prepared, api };
 }
 describe("role-compatible Bridge", () => {
+  it("positions the latest message when a previously hidden Bridge becomes visible instead of restoring saved zero",async()=>{
+    const{api,state}=fixture();localStorage.setItem("aiwr.role-scroll.work-a",JSON.stringify({DECISION:0,EXECUTION:0}));
+    api.state.mockResolvedValue({...state,replies:[{...state.replies[0],id:"old",text:"older reply",observedAt:1000},{...state.replies[0],id:"new",text:"latest reply",observedAt:2000}]});
+    const rect=vi.spyOn(Element.prototype,"getBoundingClientRect").mockImplementation(function(this:Element){const top=this.classList.contains("r2-bridge-message")?600-(this.parentElement?.scrollTop??0):100;return {top,bottom:top+300,left:0,right:440,x:0,y:top,width:440,height:300,toJSON:()=>({})};});
+    const view=(active:boolean)=><div hidden={!active}><NativeSurfaceContext.Provider value><RoleBridgePanel workstreamId="work-a" api={api} readerActive={active}/></NativeSurfaceContext.Provider></div>;
+    try{const{rerender}=render(view(false));await screen.findByText("latest reply");expect(document.querySelector(".v4-role-original")?.scrollTop).toBe(0);rerender(view(true));await waitFor(()=>expect(document.querySelector(".v4-role-original")!.scrollTop).toBeGreaterThan(0));expect(api.prepare).not.toHaveBeenCalled();expect(api.send).not.toHaveBeenCalled();}finally{rect.mockRestore();}
+  });
+  it("positions each role at its latest message on every explicit role entry",async()=>{
+    const{api,state}=fixture();api.state.mockResolvedValue({...state,replies:[{...state.replies[0],text:"control latest",observedAt:2000},{id:"exec-old",endpointId:execution.id,text:"execution old",observedAt:500},{id:"exec-new",endpointId:execution.id,text:"execution latest",observedAt:1000}]});
+    const rect=vi.spyOn(Element.prototype,"getBoundingClientRect").mockImplementation(function(this:Element){const top=this.classList.contains("r2-bridge-message")?600-(this.parentElement?.scrollTop??0):100;return {top,bottom:top+300,left:0,right:440,x:0,y:top,width:440,height:300,toJSON:()=>({})};});
+    try{render(<NativeSurfaceContext.Provider value><RoleBridgePanel workstreamId="work-a" api={api}/></NativeSurfaceContext.Provider>);await screen.findByText("control latest");fireEvent.click(screen.getByRole("tab",{name:"执行端 · Codex"}));await screen.findByText("execution latest");await waitFor(()=>expect(document.querySelector(".v4-role-original")!.scrollTop).toBeGreaterThan(0));const reader=document.querySelector<HTMLElement>(".v4-role-original")!;fireEvent.wheel(reader);reader.scrollTop=0;fireEvent.click(screen.getByRole("tab",{name:"执行端 · Codex"}));await waitFor(()=>expect(reader.scrollTop).toBeGreaterThan(0));expect(api.send).not.toHaveBeenCalled();}finally{rect.mockRestore();}
+  });
+
   it("opens the most recently completed side instead of a saved old selection",async()=>{
     const{api,state}=fixture();localStorage.setItem("aiwr.role-selected.work-a","DECISION");api.state.mockResolvedValue({...state,replies:[{...state.replies[0],observedAt:5000,completedAt:1000},{id:"obs-b",endpointId:execution.id,text:"new execution reply",observedAt:3000,completedAt:2000}]});
     render(<NativeSurfaceContext.Provider value><RoleBridgePanel workstreamId="work-a" api={api}/></NativeSurfaceContext.Provider>);

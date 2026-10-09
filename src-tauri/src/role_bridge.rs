@@ -156,6 +156,23 @@ pub(crate) fn require_idle_goal(thread:&str,response:&Value)->Result<(),String>{
     if goal.as_ref().is_some_and(|g|matches!(g.status.as_str(),"active"|"blocked")){return Err("BRIDGE_TARGET_GOAL_ACTIVE".into());}
     Ok(())
 }
+
+/// Passive metadata resolves one exact in-flight turn. The native expected-turn
+/// precondition, not a title/cache/Goal flag, fences the subsequent physical input.
+fn exact_active_turn(adapter:&mut crate::codex::adapter::CodexAdapter,thread:&str)->Result<String,String>{
+    adapter.begin_latest_turn_observation(thread)?;
+    let page=adapter.request_with_timeout("thread/turns/list",json!({"threadId":thread,"cursor":null,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"}),CODEX_OBSERVER_REQUEST_TIMEOUT)?;
+    let rows=page["data"].as_array().filter(|rows|rows.len()==1).ok_or("BRIDGE_ACTIVE_TURN_UNCONFIRMED")?;
+    let row=&rows[0];
+    if row["status"].as_str()!=Some("inProgress"){return Err("BRIDGE_ACTIVE_TURN_UNCONFIRMED".into());}
+    row["id"].as_str().filter(|id|!id.is_empty()&&id.len()<=256).map(str::to_owned).ok_or("BRIDGE_ACTIVE_TURN_UNCONFIRMED".into())
+}
+fn steer_turn(adapter:&mut crate::codex::adapter::CodexAdapter,thread:&str,turn:&str,handoff:&str,text:&str)->Result<TurnStartResult,String>{
+    let result=adapter.request("turn/steer",json!({"threadId":thread,"expectedTurnId":turn,"clientUserMessageId":handoff,"input":[{"type":"text","text":text}]}))?;
+    if result["turnId"].as_str()!=Some(turn){return Err("BRIDGE_STEER_ACK_UNOBSERVED".into());}
+    // Do not mark_turn_started: the preexisting external execution stays external.
+    Ok(TurnStartResult{turn_id:turn.into()})
+}
 pub(crate) fn bind(
     core: &RouterCore,
     workstream: &str,
@@ -523,22 +540,22 @@ pub(crate) fn send(core: &RouterCore, handoff: &str) -> Result<BridgeState, Stri
         let result = (|| {
             let native = metadata(&mut adapter, &destination.external_id)?;
             verify_root(&native, &target)?;
-            if native
-                .pointer("/thread/status/type")
-                .and_then(Value::as_str)
-                == Some("active")
-                || adapter.is_turn_active(&destination.external_id)
-            {
-                return Err("BRIDGE_TARGET_ALREADY_RUNNING".into());
+            let loaded_shared=adapter.is_shared()&&matches!(native.pointer("/thread/status/type").and_then(Value::as_str),Some("active"|"idle"));
+            if !loaded_shared {
+                ensure_adapter_thread_ready_for_write(&mut adapter,needs_acquisition,&destination.external_id)?;
+                require_idle_goal(&destination.external_id,&adapter.get_goal(&destination.external_id)?)?;
             }
-            ensure_adapter_thread_ready_for_write(
-                &mut adapter,
-                needs_acquisition,
-                &destination.external_id,
-            )?;
-            require_idle_goal(&destination.external_id,&adapter.get_goal(&destination.external_id)?)?;
-            crate::runtime_reconciler::RuntimeReconciler::reconcile_codex_workstream(&core.store,&mut adapter,&preview.workstream_id)?;
-            let h = core.store.claim_role_handoff(handoff)?;
+            let current=metadata(&mut adapter,&destination.external_id)?;verify_root(&current,&target)?;
+            let steer=match current.pointer("/thread/status/type").and_then(Value::as_str){
+                Some("active")=>Some(exact_active_turn(&mut adapter,&destination.external_id)?),
+                Some("idle")=>None,
+                _=>return Err("BRIDGE_ACTIVE_TURN_UNCONFIRMED".into()),
+            };
+            if steer.is_none(){crate::runtime_reconciler::RuntimeReconciler::reconcile_codex_workstream(&core.store,&mut adapter,&preview.workstream_id)?;}
+            let h = match &steer {
+                Some(turn)=>core.store.claim_role_handoff_steer(handoff,&destination.external_id,turn)?,
+                None=>core.store.claim_role_handoff(handoff)?,
+            };
             let staged = (|| -> Result<(), String> {
                 if !files.is_empty() {
                     let root = std::fs::canonicalize(
@@ -583,7 +600,7 @@ pub(crate) fn send(core: &RouterCore, handoff: &str) -> Result<BridgeState, Stri
                 )?;
                 return Err(error);
             }
-            let run = match core.store.create_provider_run(
+            let run = if steer.is_some(){None}else{Some(match core.store.create_provider_run(
                 &h.workstream_id,
                 &destination.id,
                 "CODEX",
@@ -600,10 +617,14 @@ pub(crate) fn send(core: &RouterCore, handoff: &str) -> Result<BridgeState, Stri
                     )?;
                     return Err(error);
                 }
-            };
+            })};
             // SENDING persists before the single physical call. Lost acknowledgement
             // remains unresolved; no retry, expiry or UI refresh can repeat it.
-            let ack = match start_turn(&mut adapter, &destination.external_id, &h.approved_text) {
+            let delivery=match &steer {
+                Some(turn)=>steer_turn(&mut adapter,&destination.external_id,turn,&h.id,&h.approved_text),
+                None=>start_turn(&mut adapter,&destination.external_id,&h.approved_text),
+            };
+            let ack = match delivery {
                 Ok(ack) => ack,
                 Err(error) => {
                     let _ = core.store.record_sending_handoff_uncertainty(
@@ -614,8 +635,7 @@ pub(crate) fn send(core: &RouterCore, handoff: &str) -> Result<BridgeState, Stri
                     return Err(error);
                 }
             };
-            core.store
-                .attach_provider_run_external_identity(&run.id, "CODEX", &ack.turn_id)?;
+            if let Some(run)=run{core.store.attach_provider_run_external_identity(&run.id,"CODEX",&ack.turn_id)?;}
             core.store.transition_handoff(&h.id, "SENT", None)?;
             Ok(())
         })();

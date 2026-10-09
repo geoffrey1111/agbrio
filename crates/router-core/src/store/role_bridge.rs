@@ -375,13 +375,25 @@ impl RouterStore {
         })
     }
     pub fn claim_role_handoff(&self, handoff: &str) -> Result<HandoffHistoryItem, String> {
+        self.claim_role_handoff_for_delivery(handoff, None)
+    }
+    /// Supplemental input shares the exact already-running turn; it never
+    /// claims a second execution writer or relaxes an unresolved delivery.
+    pub fn claim_role_handoff_steer(&self, handoff: &str, thread: &str, turn: &str) -> Result<HandoffHistoryItem, String> {
+        if thread.is_empty() || thread.len() > 256 || turn.is_empty() || turn.len() > 256 { return Err("BRIDGE_STEER_IDENTITY_INVALID".into()); }
+        self.claim_role_handoff_for_delivery(handoff, Some((thread, turn)))
+    }
+    fn claim_role_handoff_for_delivery(&self, handoff: &str, steer: Option<(&str, &str)>) -> Result<HandoffHistoryItem, String> {
         self.with_connection(|c| {
             let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
             let h=handoff_by_id(&tx,handoff)?;validate_handoff(&tx,&h)?;
+            if let Some((thread, _)) = steer {
+                if h.destination_endpoint.provider != "CODEX" || h.destination_endpoint.external_id != thread { return Err("BRIDGE_STEER_IDENTITY_INVALID".into()); }
+            }
             super::assistant::validate_claim(&tx,&h)?;
             let duplicate:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM handoffs WHERE status='SENT' AND source_response_identity=?1 AND destination_endpoint_id=?2 AND payload_hash=?3)",params![h.source_response_identity,h.destination_endpoint.id,h.payload_hash],|r|r.get(0)).map_err(db_error)?;
             if duplicate {return Err("BRIDGE_ALREADY_SENT".into());}
-            let busy:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM handoffs WHERE workstream_id=?1 AND status='SENDING') OR EXISTS(SELECT 1 FROM provider_runs WHERE workstream_id=?1 AND status IN ('STARTING','RUNNING','UNKNOWN'))",params![h.workstream_id],|r|r.get(0)).map_err(db_error)?;
+            let busy:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM handoffs WHERE workstream_id=?1 AND status='SENDING') OR EXISTS(SELECT 1 FROM provider_runs WHERE workstream_id=?1 AND status IN ('STARTING','RUNNING','UNKNOWN') AND NOT COALESCE(?2 IS NOT NULL AND status='RUNNING' AND provider='CODEX' AND endpoint_id=?3 AND external_run_id=?2,0))",params![h.workstream_id,steer.map(|(_,turn)|turn),h.destination_endpoint.id],|r|r.get(0)).map_err(db_error)?;
             if busy {return Err("BRIDGE_WRITER_UNRESOLVED".into());}
             if tx.execute("UPDATE handoffs SET status='SENDING' WHERE id=?1 AND status='APPROVED'",params![handoff]).map_err(db_error)?!=1 {return Err("BRIDGE_ALREADY_ATTEMPTED_OR_NOT_APPROVED".into());}
             tx.commit().map_err(db_error)?;handoff_by_id(c,handoff)

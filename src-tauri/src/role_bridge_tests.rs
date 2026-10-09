@@ -3,6 +3,72 @@ use crate::codex::adapter::CodexAdapter;
 use crate::host_application::{exact_codex_completed_event_result, start_turn};
 use serde_json::{json, Value};
 
+/// Executes the real Host/store/adapter against a bounded fictional RPC peer.
+/// Every physical method is recorded; no production provider or model is used.
+fn active_guidance_fixture(mode:&str,run:Option<(&str,Option<&str>)>)->(tempfile::TempDir,RouterCore,String,String){
+    let dir=tempfile::tempdir().unwrap();
+    let store=Arc::new(crate::RouterStore::open_at(dir.path().join("router.db")).unwrap());
+    let p=store.create_project("fictional guidance".into(),None).unwrap();let w=store.create_workstream(&p.id,"fixture".into()).unwrap();
+    let side=|id:&str|RoleBindingInput{provider:"CODEX".into(),external_id:id.into(),label:"fixture".into(),cwd:Some(dir.path().to_string_lossy().into())};
+    let binding=store.bind_role_bridge(&w.id,0,side("source-fixture"),side("target-fixture")).unwrap();
+    let source=store.record_reply_observation(&w.id,&binding.decision.unwrap().endpoint.id,Some("codex:source-turn:source-message"),"exact supplemental instruction",None).unwrap().unwrap();
+    let h=store.prepare_role_handoff(&w.id,"DECISION",&source.id,"exact supplemental instruction").unwrap();store.approve_role_handoff_checked(&h.id,&h.payload_hash).unwrap();
+    if let Some((status,turn))=run{store.create_provider_run(&w.id,&binding.execution.unwrap().endpoint.id,"CODEX",None,turn,status).unwrap();}
+    let script=r#"const fs=require('node:fs'),rl=require('node:readline').createInterface({input:process.stdin});const root=process.argv[1],mode=process.argv[2];rl.on('line',line=>{const r=JSON.parse(line);if(r.id===undefined)return;fs.appendFileSync(root+'/rpc.jsonl',JSON.stringify(r)+'\n');let v={};if(r.method==='thread/read')v={thread:{id:mode==='WRONG_THREAD'?'other':r.params.threadId,cwd:root,status:{type:mode==='IDLE'?'idle':'active'}}};else if(r.method==='thread/goal/get')v={goal:{threadId:r.params.threadId,status:'active',objective:'fictional',tokenBudget:null}};else if(r.method==='thread/turns/list')v={data:mode==='NO_TURN'?[]:[{id:'active-turn',status:mode==='TERMINAL'?'completed':'inProgress'}],nextCursor:null};else if(r.method==='turn/steer'){if(r.params.threadId!=='target-fixture'||r.params.expectedTurnId!=='active-turn'||r.params.input[0].text!=='exact supplemental instruction')throw Error('Wrong physical input');v={turnId:mode==='WRONG_ACK'?'other-turn':'active-turn'};}else if(r.method==='turn/start')v={turn:{id:'new-turn'}};else if(r.method!=='initialize'){process.stdout.write(JSON.stringify({id:r.id,error:{code:-32600,message:'Unexpected operation '+r.method}})+'\n');return;}process.stdout.write(JSON.stringify({id:r.id,result:v})+'\n');});"#;
+    let mut cmd=std::process::Command::new("node");cmd.args(["-e",script]).arg(dir.path()).arg(mode);
+    let mut adapter=CodexAdapter::start_shared_validation(cmd,Arc::new(|_|{})).unwrap();adapter.initialize().unwrap();
+    let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session{adapter:Some(adapter),..Default::default()})),completed_chatgpt_responses:Arc::default()};
+    (dir,core,w.id,h.id)
+}
+fn guidance_methods(dir:&tempfile::TempDir)->Vec<Value>{fs::read_to_string(dir.path().join("rpc.jsonl")).unwrap().lines().map(|line|serde_json::from_str(line).unwrap()).collect()}
+#[test]
+fn active_goal_bridge_guidance_steers_once_without_resume_pause_or_new_execution_owner(){
+    let(dir,core,w,h)=active_guidance_fixture("ACTIVE",None);
+    assert_eq!(send(&core,&h).unwrap().handoffs[0].status,"SENT");assert!(send(&core,&h).is_err());
+    let requests=guidance_methods(&dir);let writes:Vec<_>=requests.iter().filter(|r|r["method"]=="turn/steer").collect();assert_eq!(writes.len(),1);assert_eq!(writes[0]["params"]["clientUserMessageId"],h);
+    assert!(!requests.iter().any(|r|matches!(r["method"].as_str(),Some("turn/start"|"thread/resume"|"turn/interrupt"|"thread/goal/set"|"thread/goal/clear"))));
+    assert!(core.store.provider_runs_for_workstream(&w).unwrap().is_empty());assert!(core.session.lock().unwrap().adapter.as_ref().unwrap().active_turn_id("target-fixture").is_none());
+}
+#[test]
+fn guidance_can_share_one_exact_known_running_provider_run_without_creating_another(){
+    let(dir,core,w,h)=active_guidance_fixture("ACTIVE",Some(("RUNNING",Some("active-turn"))));
+    assert!(send(&core,&h).is_ok());let runs=core.store.provider_runs_for_workstream(&w).unwrap();assert_eq!(runs.len(),1);assert_eq!(runs[0].external_run_id.as_deref(),Some("active-turn"));assert_eq!(runs[0].status,"RUNNING");
+    assert_eq!(guidance_methods(&dir).iter().filter(|r|r["method"]=="turn/steer").count(),1);
+}
+#[test]
+fn guidance_keeps_unknown_starting_missing_and_different_turn_writers_blocked(){
+    for(status,turn)in[("STARTING",Some("active-turn")),("RUNNING",None),("RUNNING",Some("different-turn"))]{let(dir,core,_w,h)=active_guidance_fixture("ACTIVE",Some((status,turn)));assert!(send(&core,&h).is_err());assert_eq!(core.store.role_handoff(&h).unwrap().status,"APPROVED");assert!(!guidance_methods(&dir).iter().any(|r|r["method"]=="turn/steer"));}
+}
+#[test]
+fn guidance_requires_an_exact_current_nonterminal_turn_before_claim(){
+    for mode in ["NO_TURN","TERMINAL","WRONG_THREAD"]{let(dir,core,_w,h)=active_guidance_fixture(mode,None);assert!(send(&core,&h).is_err());assert_eq!(core.store.role_handoff(&h).unwrap().status,"APPROVED");assert!(!guidance_methods(&dir).iter().any(|r|r["method"]=="turn/steer"||r["method"]=="turn/start"));}
+}
+#[test]
+fn guidance_wrong_ack_is_uncertain_and_never_replayed_or_falls_back_to_start(){
+    let(dir,core,w,h)=active_guidance_fixture("WRONG_ACK",None);assert!(send(&core,&h).is_err());assert!(send(&core,&h).is_err());assert_eq!(core.store.role_handoff(&h).unwrap().status,"SENDING");assert!(core.store.provider_runs_for_workstream(&w).unwrap().is_empty());let requests=guidance_methods(&dir);assert_eq!(requests.iter().filter(|r|r["method"]=="turn/steer").count(),1);assert!(!requests.iter().any(|r|r["method"]=="turn/start"));
+}
+#[test]
+fn guidance_idle_loaded_shared_goal_uses_original_start_without_pausing_goal(){
+    let(dir,core,w,h)=active_guidance_fixture("IDLE",None);assert!(send(&core,&h).is_ok());let requests=guidance_methods(&dir);assert_eq!(requests.iter().filter(|r|r["method"]=="turn/start").count(),1);assert!(!requests.iter().any(|r|r["method"]=="turn/steer"||r["method"]=="thread/goal/set"));assert_eq!(core.store.provider_runs_for_workstream(&w).unwrap().len(),1);
+}
+
+#[test]
+#[ignore="Explicit isolated official native WS + localhost model; never production threads"]
+fn actual_native_active_goal_bridge_guidance(){
+    assert_eq!(std::env::var("AIWR_LOCAL_MODEL_ONLY").as_deref(),Ok("1"));
+    let root=std::path::PathBuf::from(std::env::var("AIWR_GUIDANCE_ROOT").unwrap());let thread=std::env::var("AIWR_GUIDANCE_THREAD").unwrap();
+    let store=Arc::new(crate::RouterStore::open_at(root.join("native-guidance.db")).unwrap());let p=store.create_project("fictional native guidance".into(),None).unwrap();let w=store.create_workstream(&p.id,"fixture".into()).unwrap();
+    let side=|id:&str|RoleBindingInput{provider:"CODEX".into(),external_id:id.into(),label:"fictional".into(),cwd:Some(root.to_string_lossy().into())};let binding=store.bind_role_bridge(&w.id,0,side("unused-source-fixture"),side(&thread)).unwrap();
+    let obs=store.record_reply_observation(&w.id,&binding.decision.unwrap().endpoint.id,Some("fictional-native-source"),"FICTIONAL_SUPPLEMENTAL_GUIDANCE",None).unwrap().unwrap();let h=store.prepare_role_handoff(&w.id,"DECISION",&obs.id,"FICTIONAL_SUPPLEMENTAL_GUIDANCE").unwrap();store.approve_role_handoff_checked(&h.id,&h.payload_hash).unwrap();
+    let mut cmd=std::process::Command::new(std::env::var("AIWR_GUIDANCE_NODE").unwrap());cmd.arg(root.join("transport.mjs")).arg(std::env::var("AIWR_GUIDANCE_URL").unwrap());let mut adapter=CodexAdapter::start_shared_validation(cmd,Arc::new(|_|{})).unwrap();adapter.initialize().unwrap();
+    let before=adapter.get_goal(&thread).unwrap();assert_eq!(before["goal"]["status"],"active");
+    let native=metadata(&mut adapter,&thread).unwrap();assert_eq!(native["thread"]["status"]["type"],"active");let expected=exact_active_turn(&mut adapter,&thread).unwrap();
+    let core=RouterCore{store:store.clone(),chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session{adapter:Some(adapter),..Default::default()})),completed_chatgpt_responses:Arc::default()};
+    let result=send(&core,&h.id).unwrap();assert_eq!(result.handoffs[0].status,"SENT");assert!(send(&core,&h.id).is_err());assert!(store.provider_runs_for_workstream(&w.id).unwrap().is_empty());
+    let mut session=core.session.lock().unwrap();let adapter=session.adapter.as_mut().unwrap();assert!(adapter.active_turn_id(&thread).is_none());let after=adapter.get_goal(&thread).unwrap();assert_eq!(after["goal"]["status"],"active");assert_eq!(before["goal"]["objective"],after["goal"]["objective"]);
+    fs::write(root.join("host-native-proof.json"),serde_json::to_vec_pretty(&json!({"result":"AUTOMATED_VALIDATION_PASS","nativeActiveGoal":true,"sameActiveTurn":expected,"handoffId":h.id,"receipt":"SENT","duplicateRejected":true,"goalStatusRetained":true,"goalObjectiveRetained":true,"externalExecutionStillExternal":true,"newProviderRuns":0,"ownerThreadsTouched":false})).unwrap()).unwrap();
+}
+
 #[test]
 fn target_goal_is_exact_and_active_or_blocked_never_authorizes_delivery(){
     assert!(require_idle_goal("thread-a",&json!({"goal":null})).is_ok());
