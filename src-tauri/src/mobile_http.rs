@@ -538,7 +538,7 @@ fn pairing_real_http_authenticates_and_revokes_without_access_jwt() {
  let grant=create("https://router.fixture.invalid").json::<serde_json::Value>().unwrap();assert_eq!(grant["scope"],"INSTANCE");assert_eq!(grant["approvalMode"],"CONVERSATION_REVIEW");
 
 
- let session=get("/v1/mobile/auth/session",cookie);assert!(session.headers()["set-cookie"].to_str().unwrap().contains("Max-Age=7776000"));assert_eq!(session.headers()["x-aiwr-host-instance"],host.instance_id());assert_eq!(session.json::<serde_json::Value>().unwrap()["method"],"DEVICE");
+ let session=get("/v1/mobile/auth/session",cookie);assert!(session.headers()["set-cookie"].to_str().unwrap().contains("Max-Age=7776000"));assert_eq!(session.headers()["x-aiwr-host-instance"],host.instance_id());let session=session.json::<serde_json::Value>().unwrap();assert_eq!(session["method"],"DEVICE");assert_eq!(session["cacheScope"],format!("device:{}",auth.devices().unwrap()[0].id));assert!(!session.to_string().contains(cookie.split('=').nth(1).unwrap()));
  assert_eq!(client.get(format!("{base}/v1/mobile/auth/session")).header("host","router.fixture.invalid").header("cookie",cookie).header("origin","https://other.router.fixture.invalid").send().unwrap().status(),StatusCode::FORBIDDEN);
  assert_eq!(pair("https://router.fixture.invalid",&c.code).status(),StatusCode::UNAUTHORIZED);
  let forbidden=client.post(format!("{base}/v1/mobile/auth/logout")).header("host","router.fixture.invalid").header("cookie",cookie).header("origin","https://wrong.invalid").send().unwrap();assert_eq!(forbidden.status(),StatusCode::FORBIDDEN);assert_eq!(get("/v1/mobile/health",cookie).status(),StatusCode::OK);
@@ -932,7 +932,7 @@ async fn web_auth_session(State(state):State<MobileHttpState>,headers:HeaderMap)
     let mut out=HeaderMap::new();out.insert("cache-control",HeaderValue::from_static("no-store"));
     if let (Some(token),Some(remember))=(&token,renewed){out.insert("set-cookie",crate::web_auth::session_cookie(token,remember).parse().map_err(|_|ApiError(StatusCode::INTERNAL_SERVER_ERROR,"WEB_AUTH_UNAVAILABLE".into()))?);}
     out.insert("x-aiwr-host-instance",state.host.instance_id().parse().unwrap());
-    Ok((out,Json(serde_json::json!({"authenticated":device||cf,"method":if device{Some("DEVICE")}else if cf{Some("CLOUDFLARE")}else{None}}))))
+    Ok((out,Json(serde_json::json!({"authenticated":device||cf,"cacheScope":if device{token.as_deref().and_then(|t|state.web_auth.cache_scope(t))}else{None},"method":if device{Some("DEVICE")}else if cf{Some("CLOUDFLARE")}else{None}}))))
 }
 #[derive(Deserialize)]
 #[serde(rename_all="camelCase")]

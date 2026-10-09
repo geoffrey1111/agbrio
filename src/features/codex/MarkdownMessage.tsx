@@ -1,7 +1,7 @@
 import {t as uiText,useLanguage} from "../../i18n";
 import ReactMarkdown, {defaultUrlTransform,type Components} from "react-markdown";
 import remarkGfm from "remark-gfm";
-import {useContext,useEffect,useState,useMemo,useRef,type ReactNode} from "react";
+import {memo,useContext,useEffect,useState,useMemo,useRef,type ReactNode} from "react";
 import {Check,Copy} from "lucide-react";
 import {MediaPreviewBoundary,MediaPreviewContext} from "./MediaPreview";
 import type {MediaResolver} from "./messageMedia";
@@ -36,7 +36,7 @@ function CodeBlock({children}:{children:ReactNode}){
  * react-markdown's default parser, outbound links are isolated, and images are
  * rendered with anonymous/no-referrer image requests or exact-source local media.
  */
-export function MarkdownMessage({ text,media }: Props) {
+export const MarkdownMessage = memo(function MarkdownMessage({ text,media }: Props) {
  useLanguage();
   const[fileError,setFileError]=useState("");
   const components=useMemo<Components>(()=>({
@@ -57,4 +57,4 @@ export function MarkdownMessage({ text,media }: Props) {
       {fileError&&<p role="status">{uiText(fileError)}</p>}
     </div></MediaPreviewBoundary>
   );
-}
+}, (previous,next)=>previous.text===next.text&&(previous.media===next.media||Boolean(previous.media?.scopeKey&&previous.media.scopeKey===next.media?.scopeKey)));

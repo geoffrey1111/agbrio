@@ -1,3 +1,4 @@
+import {readModels} from "../features/workbench/readModelCache";
 import {LanguagePicker} from "../i18n/LanguagePicker";
 import {t as uiText,useLanguage} from "../i18n";
 import {useVisibleViewport} from "../features/workbench/mobileViewport";
@@ -21,6 +22,7 @@ const explain=(error:unknown)=>{
  if(text.includes("Host is not allowed")||text.includes("Origin is not allowed"))return uiText("网页地址与电脑端设置不一致。请使用 Router 电脑端显示的网址。");
  return uiText("暂时无法连接 Router。请确认电脑上的 Router 正在运行，再重试。");
 };
+function scopeSession(next:Session){if(!next.authenticated){readModels.clear();readModels.setScope(null);}else readModels.setScope(next.cacheScope?`web:${location.origin}:${next.cacheScope}`:null);return next;}
 const WebSessionContext=createContext<{logout:()=>void;busy:boolean;available:boolean}|null>(null);
 export function WebSessionLogout(){
  useLanguage();const session=useContext(WebSessionContext);return session?.available?<button type="button" className="v4-web-logout" disabled={session.busy} onClick={session.logout}>{session.busy?uiText("正在退出…"):uiText("退出此设备")}</button>:null;}
@@ -29,16 +31,16 @@ export function WebLoginGate({children,api=webLoginApi}:{children:ReactNode;api?
  useVisibleViewport();
  const[session,setSession]=useState<Session|null>(null),[code,setCode]=useState(""),[remember,setRemember]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null),[name,setName]=useState("");
  const pending=useRef(false),alive=useRef(true),revision=useRef(0);
- useEffect(()=>{alive.current=true;let disposed=false;async function check(){if(pending.current)return;const mark=revision.current;try{const next=await api.session();if(!disposed&&mark===revision.current){setSession(next);setError(null);}}catch(e){if(!disposed&&mark===revision.current)setError(explain(e));}}
-  void check();const timer=setInterval(()=>void check(),15000);const invalid=()=>{revision.current++;if(!disposed)setSession({authenticated:false});};window.addEventListener("aiwr-login-required",invalid);
+ useEffect(()=>{alive.current=true;let disposed=false;async function check(){if(pending.current)return;const mark=revision.current;try{const next=await api.session();if(!disposed&&mark===revision.current){setSession(scopeSession(next));setError(null);}}catch(e){if(!disposed&&mark===revision.current)setError(explain(e));}}
+  void check();const timer=setInterval(()=>void check(),15000);const invalid=()=>{readModels.clear();readModels.setScope(null);revision.current++;if(!disposed)setSession({authenticated:false});};window.addEventListener("aiwr-login-required",invalid);
   const online=()=>void check();window.addEventListener("online",online);
   return()=>{disposed=true;alive.current=false;clearInterval(timer);window.removeEventListener("aiwr-login-required",invalid);window.removeEventListener("online",online);};
  },[api]);
- async function pair(){if(pending.current)return;pending.current=true;revision.current++;setBusy(true);setError(null);try{await api.pair(code,name,remember);if(alive.current){setCode("");setSession(await api.session());}}catch(e){if(alive.current)setError(explain(e));}finally{pending.current=false;if(alive.current)setBusy(false);}}
- async function logout(){if(pending.current)return;pending.current=true;revision.current++;setBusy(true);try{await api.logout();clearRoleReviewCache();if(alive.current){setSession({authenticated:false});setCode("");setError(null);}}catch(e){if(alive.current)setError(explain(e));}finally{pending.current=false;if(alive.current)setBusy(false);}}
- async function retry(){if(pending.current)return;pending.current=true;revision.current++;setBusy(true);try{const next=await api.session();if(alive.current){setSession(next);setError(null);}}catch(e){if(alive.current)setError(explain(e));}finally{pending.current=false;if(alive.current)setBusy(false);}}
+ async function pair(){if(pending.current)return;pending.current=true;revision.current++;setBusy(true);setError(null);try{readModels.clear();await api.pair(code,name,remember);if(alive.current){setCode("");setSession(scopeSession(await api.session()));}}catch(e){if(alive.current)setError(explain(e));}finally{pending.current=false;if(alive.current)setBusy(false);}}
+ async function logout(){if(pending.current)return;pending.current=true;revision.current++;setBusy(true);try{await api.logout();readModels.clear();readModels.setScope(null);clearRoleReviewCache();if(alive.current){setSession({authenticated:false});setCode("");setError(null);}}catch(e){if(alive.current)setError(explain(e));}finally{pending.current=false;if(alive.current)setBusy(false);}}
+ async function retry(){if(pending.current)return;pending.current=true;revision.current++;setBusy(true);try{const next=await api.session();if(alive.current){setSession(scopeSession(next));setError(null);}}catch(e){if(alive.current)setError(explain(e));}finally{pending.current=false;if(alive.current)setBusy(false);}}
  if(session===null)return <main className="v4-web-login"><div><LanguagePicker/><p className="v4-meta r2-login-brand"><BrandMark size={40}/>Agbrio · Agent Bridge</p><h1>{error?uiText("正在重新连接"):uiText("正在连接工作台")}</h1><p role="status">{uiText(error??uiText("正在检查设备登录…"))}</p><button type="button" className="v3-primary" disabled={busy} onClick={()=>void retry()}>{busy?uiText("正在检查…"):uiText("重新检查连接")}</button>{error&&<p className="v4-meta">{uiText("临时掉线无需重新配对，连接恢复后会自动继续。")}</p>}</div></main>;
- if(session?.authenticated)return <WebSessionContext.Provider value={{logout:()=>void logout(),busy,available:session.method!=="CLOUDFLARE"}}>{error&&<p className="v4-login-status" role="status">{uiText(error)}</p>}{children}</WebSessionContext.Provider>;
+ if(session?.authenticated)return <WebSessionContext.Provider key={session.cacheScope??session.method??"authenticated"} value={{logout:()=>void logout(),busy,available:session.method!=="CLOUDFLARE"}}>{error&&<p className="v4-login-status" role="status">{uiText(error)}</p>}{children}</WebSessionContext.Provider>;
  return <main className="v4-web-login"><div><LanguagePicker/><p className="v4-meta r2-login-brand"><BrandMark size={40}/>Agbrio · Agent Bridge</p><h1>{uiText("连接你的工作台")}</h1><p>{uiText("在电脑端「设置 → 设备」生成配对码。")}</p>
   <form onSubmit={event=>{event.preventDefault();void pair();}}><label htmlFor="web-pairing-code">{uiText("6 位配对码")}</label><input id="web-pairing-code" name="pairingCode" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} placeholder="000000" value={code} onChange={event=>setCode(event.target.value.replace(/\D/g,"").slice(0,6))} disabled={busy} required/>
    <label className="v4-login-remember"><input type="checkbox" checked={remember} disabled={busy} onChange={event=>setRemember(event.target.checked)}/>{uiText("记住这台设备 90 天")}</label>

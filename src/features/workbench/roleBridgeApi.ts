@@ -1,10 +1,11 @@
 import {desktopWatchChatApi} from "./watchChatApi";
+import {cachedRoleBridgeApi} from "./cachedRoleBridgeApi";
 import { invoke } from "@tauri-apps/api/core";
 import { codexApi } from "../codex/api";
 import type { ExistingCodexThreadCatalog } from "../codex/types";
 import type { RoleBridgeApi, RoleBindings, RoleInput, RoleState, RoleHandoff } from "./RoleBridgePanel";
 
-export const desktopRoleBridgeApi: RoleBridgeApi = {
+export const desktopRoleBridgeApi: RoleBridgeApi = cachedRoleBridgeApi({
  chat:desktopWatchChatApi,
  markRead:codexApi.markReplyObservationRead,
  openChat:async thread=>(await desktopWatchChatApi.state(thread)).watch,
@@ -20,4 +21,4 @@ export const desktopRoleBridgeApi: RoleBridgeApi = {
  send: handoffId => invoke<RoleState>("send_role_handoff",{handoffId}),
  threads: () => invoke<ExistingCodexThreadCatalog>("role_bridge_threads"),
  connect: () => codexApi.connect(),
-};
+});

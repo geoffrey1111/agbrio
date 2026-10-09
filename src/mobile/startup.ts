@@ -1,4 +1,4 @@
-export type WebSession={authenticated:boolean;method?:"DEVICE"|"CLOUDFLARE"|null};
+export type WebSession={authenticated:boolean;method?:"DEVICE"|"CLOUDFLARE"|null;cacheScope?:string|null};
 
 async function requestSession():Promise<WebSession>{
  const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),10000);

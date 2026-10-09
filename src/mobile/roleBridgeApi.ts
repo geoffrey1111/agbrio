@@ -1,11 +1,12 @@
 import{webWatchChatApi}from"../features/workbench/watchChatApi";
+import {cachedRoleBridgeApi} from "../features/workbench/cachedRoleBridgeApi";
 import { request } from "./api";
 import type { RoleBridgeApi, RoleState } from "../features/workbench/RoleBridgePanel";
 
 function roleCommand<T>(workstreamId:string,body:unknown){return request<T>(`/workstreams/${encodeURIComponent(workstreamId)}/role-bridge`,{method:"POST",body:JSON.stringify(body)});}
 // Scope the instance to its selected Workstream; never use global selection for routing.
 export function mobileRoleBridgeApi(workstreamId:string): RoleBridgeApi {
- return {
+ return cachedRoleBridgeApi({
   chat:webWatchChatApi,
   markRead:(id,observation)=>request<void>(`/workstreams/${encodeURIComponent(id)}/reply-observations/${encodeURIComponent(observation)}/read`,{method:"POST"}),
   openChat:async thread=>(await webWatchChatApi.state(thread)).watch,
@@ -21,5 +22,5 @@ export function mobileRoleBridgeApi(workstreamId:string): RoleBridgeApi {
   send: handoffId => roleCommand(workstreamId,{action:"SEND",handoffId}),
   threads: id => roleCommand(id,{action:"THREADS"}),
   connect: () => roleCommand(workstreamId,{action:"CONNECT"}),
- };
+ });
 }

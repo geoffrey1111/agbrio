@@ -1,3 +1,4 @@
+import {readModels} from "../features/workbench/readModelCache";
 import {beginPwaMutation} from './pwaUpdates';
 export type MobileWorkstream = {
   id: string;
@@ -277,7 +278,15 @@ export class MobileApiError extends Error {
   }
 }
 
-export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path:string,init?:RequestInit):Promise<T>{
+ const reading=!init?.method||init.method.toUpperCase()==="GET";
+ const key=path==="/workstreams"?"directory:mobile":/^\/workstreams\/[^/]+$/.test(path)?`workstream:${decodeURIComponent(path.split("/")[2])}`:null;
+ if(reading&&key)return readModels.read(key,()=>liveRequest<T>(path,init),5000);
+ const result=await liveRequest<T>(path,init);
+ if(!reading&&path!=="/bridge-activity"){readModels.invalidate("directory:");if(/\/(trash|purge|endpoints|role-bridge)$/.test(path))readModels.invalidate("bridge:",true);}
+ return result;
+}
+export async function liveRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const end=init?.method&&!['GET','HEAD'].includes(init.method.toUpperCase())?beginPwaMutation():()=>{};
   try{
   const response = await fetch(`/v1/mobile${path}`, {

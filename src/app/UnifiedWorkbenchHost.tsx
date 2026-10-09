@@ -1,3 +1,4 @@
+import {readModels} from "../features/workbench/readModelCache";
 import {CodexQuota,desktopQuotaApi} from "../features/workbench/CodexQuota";
 import {DesktopUpdateSettings} from "../features/workbench/DesktopUpdateSettings";
 import {desktopBridgeActivity} from "../features/workbench/bridgeActivity";
@@ -164,11 +165,11 @@ export function UnifiedWorkbenchHost({initialSurface="BRIDGES"}:{initialSurface?
   const [nativeAcceptanceResult, setNativeAcceptanceResult] = useState("");
   const nativeAcceptanceInFlight = useRef(false);
   useEffect(() => { void codexApi.nativeWriterAcceptanceAvailable().then(setNativeAcceptanceAvailable).catch(() => {}); }, []);
-  const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(()=>readModels.peek<WorkspaceSnapshot>("workspace:desktop")??null);
   // The workspace snapshot carries only the selected Workstream's active
   // Endpoints.  The dashboard projection is the separate Core-owned index
   // used to distinguish otherwise identical visible Workstream names.
-  const [dashboard, setDashboard] = useState<DashboardProjection | null>(null);
+  const [dashboard, setDashboard] = useState<DashboardProjection | null>(()=>readModels.peek<DashboardProjection>("directory:desktop")??null);
   const [selectedWorkstreamId, setSelectedWorkstreamId] = useState<string | null>(null);
   const [history, setHistory] = useState<FeedEvent[]>([]);
   const [codexHistoryError, setCodexHistoryError] = useState<string | null>(null);
@@ -276,6 +277,8 @@ export function UnifiedWorkbenchHost({initialSurface="BRIDGES"}:{initialSurface?
   }, [refreshDashboard]);
 
   useEffect(() => { void refreshIndex().catch((error) => setRuntimeError(String(error))); }, [refreshIndex]);
+  useEffect(()=>readModels.subscribe("directory:desktop",()=>{const next=readModels.peek<DashboardProjection>("directory:desktop");if(next){setDashboard(next);setSnapshot(current=>current?{...current,workstreams:next.workstreams.map(item=>item.workstream)}:current);}}),[]);
+  useEffect(()=>{if(!dashboard)return;const ids=new Set(dashboard.workstreams.filter(row=>!row.workstream.trashedAt&&row.workstream.status!=="ARCHIVED").map(row=>row.workstream.id));readModels.retain("bridge:",ids);for(const id of ids)desktopRoleBridgeApi.warmState?.(id);},[dashboard]);
   useDirectorySync(async()=>{
     const next=await codexApi.dashboardProjection();setDashboard(next);
     setSnapshot(current=>current?{...current,workstreams:next.workstreams.map(item=>item.workstream)}:current);

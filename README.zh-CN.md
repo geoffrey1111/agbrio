@@ -10,7 +10,7 @@
 
 **思考留在思考端，执行留在执行端，Bridge 负责准确交接。**
 
-[下载 Windows v0.1.15](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.15) · [安装与配对](docs/SETUP.md) · [连接 AI 助手](docs/ASSISTANT_CONNECTION_GUIDE.zh-CN.md) · [MIT 许可证](LICENSE)
+[下载 Windows v0.1.16](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.16) · [安装与配对](docs/SETUP.md) · [连接 AI 助手](docs/ASSISTANT_CONNECTION_GUIDE.zh-CN.md) · [MIT 许可证](LICENSE)
 
 ## 从审阅到下一项任务
 
@@ -61,7 +61,7 @@
 
 当前为 Windows x64 + Codex + 配对 PWA 的 Alpha。应用支持**简体中文、繁体中文、英语**，在设置 → 语言切换。日语和韩语目前仅翻译产品介绍；macOS 和其他执行 Agent 尚未列入已验证发行范围。来源正文不能扩大授权，收到交接回执不等于下游任务已经完成。
 
-[从源码构建](docs/BUILD.md) · [助手协议](docs/ASSISTANT_MCP.md) · [v0.1.15 更新](docs/RELEASE_0.1.11.md) · [第三方声明](THIRD_PARTY_NOTICES.md)
+[从源码构建](docs/BUILD.md) · [助手协议](docs/ASSISTANT_MCP.md) · [v0.1.16 更新](docs/RELEASE_0.1.11.md) · [第三方声明](THIRD_PARTY_NOTICES.md)
 
 [联系作者](mailto:geoffreyzjx@qq.com) · [反馈问题](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [提出建议](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
 

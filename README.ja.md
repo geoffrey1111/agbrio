@@ -8,7 +8,7 @@
 
 計画用の会話と実行用の会話を分けていませんか？Agbrio は、その使い方のための引き継ぎツールです。結果を読み、次の作業に必要な部分を選び、受信側を確認して送信します。計画の文脈と実装の文脈を保ちながら、複数のプロジェクトでも正確な相手へ渡せます。
 
-[Windows v0.1.15 をダウンロード](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.15) · [セットアップ](docs/SETUP.md) · [MIT](LICENSE)
+[Windows v0.1.16 をダウンロード](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.16) · [セットアップ](docs/SETUP.md) · [MIT](LICENSE)
 
 ## レビューから次の作業へ
 

@@ -1,6 +1,20 @@
-import { invoke } from "@tauri-apps/api/core";
+import {readModels} from "../workbench/readModelCache";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type { AttachmentCandidate } from "../../domain/attachmentCandidate";
 import type { BackendStatus, BoundChatGptProviderSurfaceStatus, ChatGptConversationHistory, ChatGptManualRefreshResult, ChatGptProviderSurfaceSnapshot, CodexFeedbackDraft, CodexGoal, CodexManualRefreshResult, CodexStructuredRequest, CodexTurnInterruptResult, CompletedChatGptResponse, DashboardProjection, DeliveryRecoveryCheck, EndpointPairingInput, EndpointPairingResult, EndpointPairingSideInput, ExistingCodexThreadCandidate, ExistingCodexThreadCatalog, ExplicitChatGptBindingCandidate, ExternalProjectLink, ExternalProjectLinkInput, FeedEvent, HandoffDraft, HandoffReviewSession, HostEnvironmentStatus, OutboundHandoffResult, ProviderRunStatus, ReadHistoryResult, ReplyObservation, ReverseHandoffDraft, ResumeResult, RolloverCandidate, RouterEndpoint, RouterProject, RouterWorkstream, ThreadSummary, TurnStartResult, UnprojectedThreadStart, VerifiedBackup, WorkspaceSnapshot, WorkstreamDraft, WorkstreamReviewResult } from "./types";
+
+
+function invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>{
+ const key=command==='workspace_snapshot'?'workspace:desktop':command==='dashboard_projection'?'directory:desktop':command==='workstream_snapshot'?`workstream:${args?.workstreamId}`:null;
+ if(key)return readModels.read(key,()=>tauriInvoke<T>(command,args));
+ return tauriInvoke<T>(command,args).then(result=>{
+  if(/^(create_bridge|rename_bridge|create_project|create_workstream|archive_workstream|set_workstream_pinned|trash_workstream|restore_workstream|purge_trashed_workstream|bind_workspace_endpoint|pair_workstream_endpoints|confirm_explicit_chatgpt|confirm_rollover|send_|approve_|acknowledge_)/.test(command)){
+   readModels.invalidate('directory:');readModels.invalidate('workspace:');readModels.invalidate('workstream:');
+   if(/^(trash_|purge_|bind_|pair_|confirm_explicit|confirm_rollover)/.test(command))readModels.invalidate('bridge:',true);
+  }
+  return result;
+ });
+}
 
 export const codexApi = {
   createBridge: (name:string)=>invoke<string>("create_bridge_workstream",{name}),

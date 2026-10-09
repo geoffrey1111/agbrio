@@ -34,6 +34,9 @@ export type RoleHandoff = { id: string; workstreamId: string; approvedText: stri
 export type RoleActivity={role:BridgeRole;endpointId:string;state:string;checkedAt:number;turnId?:string|null;resultObservationId?:string|null;goalStatus?:string|null;turnActive?:boolean};
 export type RoleState = { bindings: RoleBindings; replies: Reply[]; handoffs: RoleHandoff[];handoffSources?:{id:string;role:BridgeRole;bindingRevision:number}[];activities?:RoleActivity[];snapshotAt?:number;readOutcome?:{role:BridgeRole;endpointId:string;state:string;retainedReply:boolean} };
 export type RoleBridgeApi = {
+  cachedState?: (workstream:string) => RoleState | undefined;
+  subscribeState?: (workstream:string, listener:()=>void) => () => void;
+  warmState?: (workstream:string) => void;
   markRead?:(workstream:string,observationId:string)=>Promise<void>;
   state: (workstream: string) => Promise<RoleState>;
   sync?: (workstream:string)=>Promise<RoleState>;
@@ -79,7 +82,7 @@ export function RoleBridgePanel({ workstreamId, workstreamName, api, onModeChang
   const reducedMotion=useReducedMotion();
   const [replyLimits,setReplyLimits]=useState({DECISION:10,EXECUTION:10});
   const [savedReviewSources,setSavedReviewSources]=useState<Partial<Record<BridgeRole,string>>>({});
-  const [state, setState] = useState<RoleState | null>(null);
+  const [state, setState] = useState<RoleState | null>(()=>api.cachedState?.(workstreamId)??null);
   const [editing, setEditing] = useState(false);
   const [bindingStep, setBindingStep] = useState<0 | 1 | 2>(0);
   const [decision, setDecision] = useState<RoleInput>(initial());
@@ -117,7 +120,8 @@ export function RoleBridgePanel({ workstreamId, workstreamName, api, onModeChang
   useEffect(() => {
     const current = ++generation.current;
     pending.current=false;pollBusy.current=false;setBusy(false);
-    try{readingPositions.current=JSON.parse(localStorage.getItem(`aiwr.role-scroll.${workstreamId}`)??"{}");}catch{readingPositions.current={};} setReviewOpen(false); setState(null); setEditing(false); setCurrentReview(null); setDrafts({workstream:workstreamId,values:readRoleReviews(workstreamId)});setChecked({});setSavedReviewSources({});setReplyLimits({DECISION:10,EXECUTION:10});setChat(null);setError(null); onModeChange?.(false);
+    try{readingPositions.current=JSON.parse(localStorage.getItem(`aiwr.role-scroll.${workstreamId}`)??"{}");}catch{readingPositions.current={};} setReviewOpen(false); setState(api.cachedState?.(workstreamId)??null); setEditing(false); setCurrentReview(null); setDrafts({workstream:workstreamId,values:readRoleReviews(workstreamId)});setChecked({});setSavedReviewSources({});setReplyLimits({DECISION:10,EXECUTION:10});setChat(null);setError(null); onModeChange?.(Boolean(api.cachedState?.(workstreamId)?.bindings.explicitRoles));
+
     void api.state(workstreamId).then(value => {
       if (generation.current !== current) return;
       if(value.bindings.workstreamId!==workstreamId)throw Error("BRIDGE_BINDING_CHANGED");
@@ -126,6 +130,8 @@ export function RoleBridgePanel({ workstreamId, workstreamName, api, onModeChang
     }).catch(() => { if(nativeSurface&&generation.current===current)setError(uiText("此 Bridge 暂时无法读取，请重试。")); });
     return () => { generation.current++; };
   }, [workstreamId, api]);
+  useEffect(()=>{if(!readerActive)return;const current=generation.current;return api.subscribeState?.(workstreamId,()=>{const next=api.cachedState?.(workstreamId);if(generation.current!==current||pending.current)return;const old=stateRef.current;if(protectedView.current){if(old&&next?.bindings.bindingRevision===old.bindings.bindingRevision)setState({...old,activities:next.activities,snapshotAt:next.snapshotAt});return;}if(next?.bindings.workstreamId===workstreamId){setState(next);onModeChange?.(Boolean(next.bindings.explicitRoles));}});
+  },[api,workstreamId,readerActive]);
   useEffect(()=>{autoPickLatest.current=true;if(entryRequest){setReviewOpen(false);setEditing(false);setChat(null);readingPositions.current={};}},[workstreamId,readerActive,entryRequest]);
   useEffect(()=>{if(nativeSurface&&readerActive&&state&&autoPickLatest.current){setActiveRole(latestBridgeReply(state)?.role??"DECISION");if(!api.sync)autoPickLatest.current=false;}},[state,readerActive,entryRequest,nativeSurface,api]);
   async function act(operation: (valid: () => boolean) => Promise<void>) {
@@ -145,7 +151,7 @@ export function RoleBridgePanel({ workstreamId, workstreamName, api, onModeChang
       try{const next=await sync(workstreamId);if(!alive||current!==generation.current||revision!==operationRevision.current)return;
         const old=stateRef.current;if(!old||next.bindings.workstreamId!==workstreamId)return;
         if(protectedView.current&&old.bindings.bindingRevision!==next.bindings.bindingRevision){setState({...old,activities:undefined,snapshotAt:0});receivedAt.current=0;return;}
-        receivedAt.current=Date.now();setClock(receivedAt.current);
+        receivedAt.current=next.snapshotAt??0;setClock(Date.now());
         if(protectedView.current){setState({...old,activities:next.activities,snapshotAt:next.snapshotAt});}
         else {setState(next);if(nativeSurface&&autoPickLatest.current){setActiveRole(latestBridgeReply(next)?.role??"DECISION");autoPickLatest.current=false;}}
       }catch{if(alive&&current===generation.current&&revision===operationRevision.current){setState(old=>old?{...old,activities:[old.bindings.decision,old.bindings.execution].filter(Boolean).map(side=>({role:side!.role,endpointId:side!.endpoint.id,state:"UNCONFIRMED",checkedAt:0})),snapshotAt:0}:old);}}

@@ -1,3 +1,4 @@
+import {readModels} from "../features/workbench/readModelCache";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MobileWorkbench } from "./MobileWorkbench";
@@ -7,6 +8,7 @@ const failure = (status: number, body: unknown) => new Response(JSON.stringify(b
 
 describe("Mobile workbench", () => {
   beforeEach(() => {
+    readModels.clear();readModels.dispose();
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/workstreams")) return Promise.resolve(response([{ id: "ws-1", name: "Mobile slice", attentionCount: 1, attentionItems: [{ kind: "CODEX_STRUCTURED_REQUEST", priority: 0 }], chatgptStatus: "READY", codexStatus: "IDLE" }]));

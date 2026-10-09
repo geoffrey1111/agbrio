@@ -73,6 +73,12 @@ impl WebAuth {
   self.save(&next)?;inner.saved.sessions=next;inner.code=None;Ok(token)
  }
  pub(crate) fn valid(&self,token:&str)->bool {self.valid_at(token,now())}
+ // An opaque, non-credential partition for private presentation snapshots.
+ // Pair/replacement creates a new device UUID; expiry/revocation returns none.
+ pub(crate) fn cache_scope(&self,token:&str)->Option<String>{
+  if !self.valid(token){return None;}let digest=hash(token);
+  self.inner.lock().ok()?.saved.sessions.iter().find(|s|s.device.expires_at>now()&&same(&s.token_hash,&digest)).map(|s|format!("device:{}",s.device.id))
+ }
  fn valid_at(&self,token:&str,time:u64)->bool {
   if token.len()!=64 || !token.bytes().all(|b|b.is_ascii_hexdigit()){return false;}
   let digest=hash(token);self.inner.lock().map(|i|i.saved.sessions.iter().any(|s|s.device.expires_at>time&&same(&s.token_hash,&digest))).unwrap_or(false)

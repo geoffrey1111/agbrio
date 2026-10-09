@@ -23,7 +23,7 @@ export type WatchSnapshot = { state:string; turnId:string|null; itemId:string|nu
 export type CodexWatch = { threadId:string; label:string; cwd:string; enabled:boolean; generation:number; snapshot:WatchSnapshot; checkedAt:number; errorCode:string|null;sendCount?:number };
 export type WatchEvent = { sequence:number; threadId:string; label:string; cwd:string; snapshot:WatchSnapshot; observedAt:number;seenAt?:number|null };
 export type WatchFeed = { events:WatchEvent[]; nextCursor:number; hasMore:boolean; hiddenSequences?:number[] };
-export interface NotificationApi { markSeen?(sequence:number):Promise<unknown>; markRead?(sequence:number):Promise<unknown>; remove?(kind:"WATCH"|"EVENT",id:string,removed:boolean):Promise<unknown>; watches():Promise<CodexWatch[]>; connect():Promise<unknown>; threads():Promise<ExistingCodexThreadCatalog>; enable(id:string):Promise<unknown>; pause(id:string):Promise<unknown>; feed(after:number):Promise<WatchFeed>; event(sequence:number):Promise<WatchEvent>; webUrl():Promise<string|null>; delivery?:DeliveryApi; chat?:WatchChatApi; onOpen?:(callback:(sequence:number)=>void)=>Promise<()=>void> }
+export interface NotificationApi { cachedWatches?():CodexWatch[]|undefined; cachedFeed?():WatchFeed|undefined; subscribe?(listener:()=>void):()=>void; markSeen?(sequence:number):Promise<unknown>; markRead?(sequence:number):Promise<unknown>; remove?(kind:"WATCH"|"EVENT",id:string,removed:boolean):Promise<unknown>; watches():Promise<CodexWatch[]>; connect():Promise<unknown>; threads():Promise<ExistingCodexThreadCatalog>; enable(id:string):Promise<unknown>; pause(id:string):Promise<unknown>; feed(after:number):Promise<WatchFeed>; event(sequence:number):Promise<WatchEvent>; webUrl():Promise<string|null>; delivery?:DeliveryApi; chat?:WatchChatApi; onOpen?:(callback:(sequence:number)=>void)=>Promise<()=>void> }
 
 const states:Record<string,string>={get IDLE(){return uiText("尚无任务");},get RUNNING(){return uiText("正在执行");},get ACTION_REQUIRED(){return uiText("需要你确认或回答");},get RESULT_READY(){return uiText("结果已到达");},get RESULT_PENDING(){return uiText("结果尚未读到");},get FAILED(){return uiText("执行失败");},get INTERRUPTED(){return uiText("已中断");},get INCOMPLETE(){return uiText("任务未完成（执行中或已中断）");},get UNKNOWN(){return uiText("状态未确定");}};
 const time=(value:number)=>new Date(value).toLocaleString(getLanguage());
@@ -37,12 +37,12 @@ export function CodexNotifications({api,standalone=false,workbenchPage,onCountCh
  const tabs:readonly (readonly [View,string])[]=native?[["RECENT",uiText("最近")],["WATCHES",uiText("监听")]]:[["RECENT",uiText("最近通知")],["WATCHES",uiText("监听对话")],["SETTINGS",uiText("通知设置")]];
  const pageNavigation=useRef(workbenchPage);pageNavigation.current=workbenchPage;
  const [open,setOpen]=useState(standalone),[view,setView]=useState<View>("RECENT");
- const [watches,setWatches]=useState<CodexWatch[]>([]),[events,setEvents]=useState<WatchEvent[]>([]);
- const [hiddenSequences,setHiddenSequences]=useState<number[]>([]);
+ const [watches,setWatches]=useState<CodexWatch[]>(()=>api.cachedWatches?.()??[]),[events,setEvents]=useState<WatchEvent[]>(()=>api.cachedFeed?.()?.events??[]);
+ const [hiddenSequences,setHiddenSequences]=useState<number[]>(()=>api.cachedFeed?.()?.hiddenSequences??[]);
  const [catalog,setCatalog]=useState<ExistingCodexThreadCatalog|null>(null),[selected,setSelected]=useState("");
  useBackLayer(Boolean(catalog),()=>setCatalog(null));
  const [error,setError]=useState<string|null>(null),[busy,setBusy]=useState(false);
- const[watchLoading,setWatchLoading]=useState(true),[watchError,setWatchError]=useState<string|null>(null);
+ const[watchLoading,setWatchLoading]=useState(()=>!api.cachedWatches?.()),[watchError,setWatchError]=useState<string|null>(null);
  const [detail,setDetail]=useState<WatchEvent|null>(null),[current,setCurrent]=useState<CodexWatch|null>(null),[linkNotice,setLinkNotice]=useState<string|null>(null);
  const [keptThisVisit,setKeptThisVisit]=useState<Set<number>>(()=>new Set());
  const recentActive=Boolean((workbenchPage?workbenchPage.active:open||standalone)&&view==="RECENT"&&!detail&&!current);
@@ -79,11 +79,12 @@ export function CodexNotifications({api,standalone=false,workbenchPage,onCountCh
  },[api]);
  useEffect(()=>{
   let active=true,timer:ReturnType<typeof setTimeout>;
-  async function poll(){const revision=++feedRevision.current;const results=await Promise.allSettled([
+  async function poll(){if(document.visibilityState==="hidden"){timer=setTimeout(()=>void poll(),5000);return;}const revision=++feedRevision.current;const results=await Promise.allSettled([
    api.watches().then(next=>{if(active){setWatches(next);setWatchLoading(false);setWatchError(null);}}).catch(e=>{if(active){setWatchLoading(false);setWatchError(notificationError(e));}throw e;}),
    api.feed(0).then(feed=>{if(active&&revision===feedRevision.current){applyFeed(feed,true);setError(null);}return feed;}).catch(e=>{if(active)setError(notificationError(e));throw e;})
   ]);if(active){const feed=results[1];timer=setTimeout(()=>void poll(),feed.status==="fulfilled"?(feed.value.hasMore?100:5000):10000);}}
-  void poll();return()=>{active=false;clearTimeout(timer);};
+  const unsubscribe=api.subscribe?.(()=>{if(!active)return;const watches=api.cachedWatches?.();if(watches){setWatches(watches);setWatchLoading(false);}const feed=api.cachedFeed?.();if(feed)applyFeed(feed,true);});
+  const wake=()=>{if(document.visibilityState!=="hidden"){clearTimeout(timer);void poll();}};document.addEventListener("visibilitychange",wake);window.addEventListener("online",wake);void poll();return()=>{active=false;clearTimeout(timer);unsubscribe?.();document.removeEventListener("visibilitychange",wake);window.removeEventListener("online",wake);};
  },[api,open]);
  async function act(work:()=>Promise<void>){if(busy)return;setBusy(true);setError(null);const mark=++epoch.current;try{await work();}catch(e){if(mounted.current&&mark===epoch.current)setLinkNotice(notificationError(e));}finally{if(mounted.current&&mark===epoch.current)setBusy(false);}}
  async function refreshWatches(){setWatchLoading(true);try{const next=await api.watches();if(mounted.current){setWatches(next);setWatchError(null);}}catch(e){if(mounted.current)setWatchError(notificationError(e));throw e;}finally{if(mounted.current)setWatchLoading(false);}}

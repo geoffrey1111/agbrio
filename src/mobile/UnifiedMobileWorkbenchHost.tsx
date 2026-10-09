@@ -1,3 +1,4 @@
+import {readModels} from "../features/workbench/readModelCache";
 import {AssistantSettings,mobileAssistantSettingsApi} from "../features/workbench/AssistantSettings";
 import {CodexQuota,mobileQuotaApi} from "../features/workbench/CodexQuota";
 import {webBridgeActivity} from "../features/workbench/bridgeActivity";
@@ -280,7 +281,7 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
   useLanguage();
   const [notificationCount,setNotificationCount]=useState(0);
   const [notificationDetail,setNotificationDetail]=useState(false);
-  const [index, setIndex] = useState<MobileWorkstream[]>([]);
+  const [index, setIndex] = useState<MobileWorkstream[]>(()=>readModels.peek<MobileWorkstream[]>("directory:mobile")??[]);
   const [snapshot, setSnapshot] = useState<MobileSnapshot | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selectedWorkstreamRef = useRef<string | null>(null);
@@ -426,6 +427,8 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
     setSelectedId((current) => current ?? next[0]?.id ?? null);
   }, [notificationTarget]);
 
+  useEffect(()=>readModels.subscribe("directory:mobile",()=>{const next=readModels.peek<MobileWorkstream[]>("directory:mobile");if(next)setIndex(next);}),[]);
+  useEffect(()=>{if(!index.length&&!readModels.peek("directory:mobile"))return;const ids=new Set(index.filter(row=>!row.trashedAt&&row.status!=="ARCHIVED").map(row=>row.id));readModels.retain("bridge:",ids);for(const id of ids)mobileRoleBridgeApi(id).warmState?.(id);},[index]);
   useDirectorySync(async()=>{setIndex(await mobileApi.workstreams());});
 
   const load = useCallback(async (workstreamId: string, preserveExplicitChatGptCandidate = false) => {
@@ -449,6 +452,9 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
     const nextSnapshot=await mobileApi.workstream(workstreamId);
     if(ticket!==loadGeneration.current)return;
     if(!LEGACY_WORKBENCH_DETAILS&&nextSnapshot.selectedWorkstreamId!==workstreamId)throw Error("通知指定的工作区当前不可用，未回退到其他工作区。");
+    // The native reader can mount immediately; unrelated legacy projections
+    // and live draft CAS reads must not delay its cached first paint.
+    setSnapshot(nextSnapshot);
     const hasCodex=LEGACY_WORKBENCH_DETAILS&&Boolean(nextSnapshot.activeCodexEndpoint);
     const hasProvider=LEGACY_WORKBENCH_DETAILS&&(hasCodex||Boolean(nextSnapshot.activeChatgptEndpoint));
     const [history, nextGoal, nextDraft, nextObservations, nextReviewResults, nextProjectLinks, nextCodexRequests] = await Promise.all([
