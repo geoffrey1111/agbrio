@@ -21,7 +21,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 55
     env:
-      VITE_AGBRIO_APP_VERSION: 0.1.10
+      VITE_AGBRIO_APP_VERSION: 0.1.11
       AGBRIO_HOSTED_CONTROL_ORIGIN: https://agbrio-connect.geoffreygroup.cc
     steps:
       - uses: actions/checkout@v4
