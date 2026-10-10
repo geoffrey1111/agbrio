@@ -11,18 +11,28 @@
     "hostPassed": 214,
     "mainPassed": 1,
     "sourceWindowsCI": 38047960955,
-    "sourceWindowsCIStatus": "PENDING",
+    "sourceWindowsCIStatus": "SUCCESS",
     "publisherSignatureAndTamper": "PASS",
-    "exactReleasedInstallerWindowsCIStatus": "NOT_RUN"
+    "exactReleasedInstallerWindowsCIStatus": "SUCCESS",
+    "exactReleasedInstallerWindowsCI": 38049264991,
+    "safeCallbackDiagnosticPrivacyAndRealHttp": "PASS"
   },
   "runtime": {
-    "installedVersion": "0.1.23",
-    "diagnosticDeployment": "PENDING"
+    "installedVersion": "0.1.24",
+    "hostPid": 13976,
+    "diagnosticDeployment": "PASS_LIVE_ENDPOINT_FIELDS",
+    "trustedNativeUpdate": "PASS",
+    "nativeByteParity": "OFFICIAL_UNK_TO_NSS_MARKER_ONLY",
+    "staticFilesExact": 15,
+    "grantAndPairingIdentitiesPreserved": true,
+    "sharedProcessCreationIdentitiesPreserved": true,
+    "sqliteQuickCheck": "ok",
+    "upToDate": "PASS"
   },
   "mcpEvents": {
-    "actualEventCatalog": "PREVIOUS23_PASS",
-    "safeCallbackDiagnosticLabels": "IMPLEMENTED_UNDEPLOYED",
-    "realDotWakeAndOneAuthorizedHandoff": "OPEN_SUBSCRIPTION_PENDING",
+    "actualEventCatalog": "PREVIOUS23_PASS_UNCHANGED_DEFINITIONS",
+    "safeCallbackDiagnosticLabels": "DEPLOYED_AND_FIELDS_PROVEN",
+    "realDotWakeAndOneAuthorizedHandoff": "OPEN_OWNER_SINGLE_SUBSCRIPTION_RETRY_PENDING",
     "webhook2xxIsBusinessAcceptance": false
   }
 }
