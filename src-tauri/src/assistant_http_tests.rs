@@ -68,6 +68,36 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  (dir,core,g.id,observation)
 }
 fn config(dir:&std::path::Path)->MobileHttpConfig{MobileHttpConfig{port:0,allowed_host:"assistant.fixture.invalid".into(),allowed_origin:"https://assistant.fixture.invalid".into(),access_issuer:String::new(),access_audience:String::new(),access_jwks_url:String::new(),static_dir:dir.into()}}
+#[test]
+fn discovery_diagnostics_distinguish_real_protocol_requests_and_preserve_oauth_scope(){
+ let(d,core,legacy,_)=fixture();let host=crate::HostRuntime::default();let runtime=tokio::runtime::Runtime::new().unwrap();
+ let g=core.store.connect_assistant_instance(router_core::store::assistant::AssistantConnectionInput{label:"Discovery QA".into(),expires_at:now_ms()+86400000}).unwrap();
+ let resource="https://assistant.fixture.invalid/mcp";
+ let token=core.store.issue_assistant_access(&g.id,resource,g.expires_at).unwrap();
+ let legacy_grant=core.store.assistant_grant(&legacy).unwrap();let legacy_token=core.store.issue_assistant_access(&legacy,resource,legacy_grant.expires_at).unwrap();
+ runtime.block_on(async{
+  let handle=start_with_web_auth(core.clone(),config(d.path()),host.clone(),Arc::new(crate::web_auth::WebAuth::open(None).unwrap())).await.unwrap();
+  let base=format!("http://{}/mcp",handle.address);let c=client();
+  let request=|method:&str,params:Value|c.post(&base).header("host","assistant.fixture.invalid").header("accept","application/json, text/event-stream").json(&json!({"jsonrpc":"2.0","id":1,"method":method,"params":params}));
+  assert_eq!(request("server/discover",json!({})).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
+  let discovery:Value=request("server/discover",json!({})).bearer_auth(&token).send().await.unwrap().json().await.unwrap();
+  assert!(discovery.pointer("/result/capabilities/events").is_some());assert_eq!(discovery["result"]["serverInfo"]["version"],crate::assistant_mcp::SERVER_VERSION);
+  assert_eq!(request("events/list",json!({"private":"never-log-this-body"})).bearer_auth(&token).send().await.unwrap().status(),StatusCode::BAD_REQUEST);
+  let events:Value=request("events/list",json!({})).header("mcp-protocol-version","2026-07-28").bearer_auth(&token).send().await.unwrap().json().await.unwrap();
+  assert_eq!(events["result"]["events"].as_array().unwrap().len(),2);
+  let old:Value=request("initialize",json!({"protocolVersion":"2025-11-25"})).bearer_auth(&token).send().await.unwrap().json().await.unwrap();assert!(old.pointer("/result/capabilities/events").is_none());
+  let read=|access:&str|request("tools/call",json!({"name":"agbrio_read_app","arguments":{}})).bearer_auth(access);
+  let app:Value=read(&token).send().await.unwrap().json().await.unwrap();let trace=&app["result"]["structuredContent"]["mcpDiscovery"];let rows=trace["recentRequests"].as_array().unwrap();
+  assert_eq!(rows.len(),5);assert_eq!(rows[0]["httpStatus"],401);assert_eq!(rows[0]["authenticated"],false);
+  assert_eq!(rows[1]["advertisedEvents"],true);assert_eq!(rows[2]["httpStatus"],400);assert_eq!(rows[2]["headerVersion"],"MISSING");
+  assert_eq!(rows[3]["eventCount"],2);assert_eq!(rows[3]["headerVersion"],"2026-07-28");assert_eq!(rows[4]["advertisedEvents"],false);
+  assert!(rows.iter().all(|r|r["finishedAt"].is_number()));assert!(!trace.to_string().contains(&token));assert!(!trace.to_string().contains("never-log-this-body"));
+  let content:Value=serde_json::from_str(app["result"]["content"][0]["text"].as_str().unwrap()).unwrap();assert_eq!(content["mcpDiscovery"],*trace);
+  let denied:Value=read(&legacy_token).send().await.unwrap().json().await.unwrap();assert_eq!(denied["result"]["isError"],true);assert!(denied.pointer("/result/structuredContent/mcpDiscovery").is_none());
+  core.store.revoke_assistant_grant(&g.id).unwrap();assert_eq!(read(&token).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
+  handle.shutdown.send(()).unwrap();handle.task.await.unwrap();
+ });
+}
 fn client()->reqwest::Client{reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none()).build().unwrap()}
 #[test]fn two_paired_clients_share_atomic_read_ack_and_watch_removal(){
  let(d,core,_,_)=fixture();let host=crate::HostRuntime::default();let runtime=tokio::runtime::Runtime::new().unwrap();

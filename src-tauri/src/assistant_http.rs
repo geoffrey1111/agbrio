@@ -127,11 +127,18 @@ pub(super) async fn token(State(state):State<MobileHttpState>,headers:HeaderMap,
  response.headers_mut().insert("cache-control",HeaderValue::from_static("no-store"));response.headers_mut().insert("pragma",HeaderValue::from_static("no-cache"));Ok(response)
 }
 pub(super) async fn mcp(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<serde_json::Value>)->Result<Response,ApiError>{
+ let trace=state.assistant_discovery.begin(&headers,&input);
+ let result=mcp_response(&state,headers,input,trace).await;
+ state.assistant_discovery.finish(trace,match &result{Ok(r)=>r.status().as_u16(),Err(e)=>e.0.as_u16()});
+ result
+}
+async fn mcp_response(state:&MobileHttpState,headers:HeaderMap,input:serde_json::Value,trace:Option<u64>)->Result<Response,ApiError>{
  boundary(&headers,&state)?;
  let credential=headers.get("authorization").and_then(|v|v.to_str().ok()).and_then(|v|v.strip_prefix("Bearer ")).unwrap_or("");
  let grant=match state.core.store.authenticate_assistant(credential,&resource(&state)){
     Ok(g)=>g,Err(_)=>{let mut response=(StatusCode::UNAUTHORIZED,Json(serde_json::json!({"error":"invalid_token"}))).into_response();response.headers_mut().insert("www-authenticate",format!("Bearer resource_metadata=\"{}/.well-known/oauth-protected-resource/mcp\", scope=\"{INSTANCE_SCOPE}\"",state.config.allowed_origin).parse().map_err(|_|bad())?);return Ok(response);}
  };
+ state.assistant_discovery.authorized(trace);
  if let Some(v)=headers.get("mcp-protocol-version"){if !matches!(v.to_str().ok(),Some("2026-07-28"|"2025-11-25"|"2025-06-18"|"2025-03-26")){return Err(bad());}}
  let accept=headers.get("accept").and_then(|v|v.to_str().ok()).unwrap_or("");
  let mcp2=headers.get("mcp-protocol-version").and_then(|v|v.to_str().ok())==Some("2026-07-28")||input["method"]=="server/discover"||(input["method"]=="initialize"&&input.pointer("/params/protocolVersion").and_then(serde_json::Value::as_str)==Some("2026-07-28"));
@@ -140,9 +147,17 @@ pub(super) async fn mcp(State(state):State<MobileHttpState>,headers:HeaderMap,Js
     if input["jsonrpc"]=="2.0"&&matches!(input["method"].as_str(),Some("notifications/initialized"|"notifications/cancelled")){return Ok(StatusCode::ACCEPTED.into_response());}
     return Err(bad()); // Never execute tools disguised as a notification.
  }
- if input["method"].as_str().is_some_and(|m|m.starts_with("events/")){if !mcp2{return Err(ApiError(StatusCode::BAD_REQUEST,"MCP Events requires protocol2026-07-28".into()));}let result=crate::assistant_events::rpc(&state.core,&grant.id,input).await;let mut response=Json(result).into_response();response.headers_mut().insert("cache-control",HeaderValue::from_static("no-store"));return Ok(response);}
- let core=state.core;let gid=grant.id;
- let result=run_core_blocking("Assistant MCP",move||Ok(crate::assistant_mcp::rpc(&core,&gid,input))).await?;
+ if input["method"].as_str().is_some_and(|m|m.starts_with("events/")){if !mcp2{return Err(ApiError(StatusCode::BAD_REQUEST,"MCP Events requires protocol2026-07-28".into()));}let result=crate::assistant_events::rpc(&state.core,&grant.id,input).await;state.assistant_discovery.rpc(trace,&result);let mut response=Json(result).into_response();response.headers_mut().insert("cache-control",HeaderValue::from_static("no-store"));return Ok(response);}
+ let read_app=input["method"]=="tools/call"&&input.pointer("/params/name").and_then(serde_json::Value::as_str)==Some("agbrio_read_app");
+ let core=state.core.clone();let gid=grant.id;
+ let mut result=run_core_blocking("Assistant MCP",move||Ok(crate::assistant_mcp::rpc(&core,&gid,input))).await?;
+ if read_app&&result.pointer("/result/isError")==Some(&serde_json::Value::Bool(false)){
+    if let Some(data)=result.pointer_mut("/result/structuredContent"){
+        data["mcpDiscovery"]=state.assistant_discovery.snapshot();let text=data.to_string();
+        if let Some(content)=result.pointer_mut("/result/content/0/text"){*content=serde_json::Value::String(text);}
+    }
+ }
+ state.assistant_discovery.rpc(trace,&result);
  let mut response=Json(result).into_response();response.headers_mut().insert("cache-control",HeaderValue::from_static("no-store"));Ok(response)
 }
 pub(super) async fn grants(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<Vec<router_core::store::assistant::AssistantGrant>>{authenticated(&headers,&state,false).await?;state.core.store.assistant_grants().map(Json).map_err(core_error)}

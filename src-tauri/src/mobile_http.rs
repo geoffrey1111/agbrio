@@ -31,6 +31,8 @@ use tower_http::services::{ServeDir, ServeFile};
 const ACCESS_JWT_HEADER: &str = "cf-access-jwt-assertion";
 #[path="assistant_http.rs"]
 mod assistant_http;
+#[path="assistant_discovery_diagnostics.rs"]
+mod assistant_discovery_diagnostics;
 
 #[cfg(all(test, windows))]
 #[path = "mobile_real_provider_ui_tests.rs"]
@@ -190,6 +192,7 @@ struct MobileHttpState {
     web_auth: Arc<crate::web_auth::WebAuth>,
     jwks_refresh: Arc<tokio::sync::Mutex<Option<std::time::Instant>>>,
     assistant_oauth: Arc<Mutex<assistant_http::AssistantOAuth>>,
+    assistant_discovery: Arc<assistant_discovery_diagnostics::DiscoveryDiagnostics>,
 }
 
 pub(crate) struct MobileHttpHandle {
@@ -235,6 +238,7 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         web_auth,
         jwks_refresh:Arc::new(tokio::sync::Mutex::new(None)),
         assistant_oauth,
+        assistant_discovery: Arc::default(),
     };
     let watch_api = Router::new()
         .route("/v1/mobile/codex-quota",get(codex_quota_read))
@@ -536,7 +540,6 @@ fn pairing_real_http_authenticates_and_revokes_without_access_jwt() {
  assert_eq!(create("https://wrong.invalid").status(),StatusCode::FORBIDDEN);
  assert!(get("/v1/mobile/assistant/settings",cookie).json::<serde_json::Value>().unwrap()["grants"].as_array().unwrap().is_empty());
  let grant=create("https://router.fixture.invalid").json::<serde_json::Value>().unwrap();assert_eq!(grant["scope"],"INSTANCE");assert_eq!(grant["approvalMode"],"CONVERSATION_REVIEW");
-
 
  let session=get("/v1/mobile/auth/session",cookie);assert!(session.headers()["set-cookie"].to_str().unwrap().contains("Max-Age=7776000"));assert_eq!(session.headers()["x-aiwr-host-instance"],host.instance_id());let session=session.json::<serde_json::Value>().unwrap();assert_eq!(session["method"],"DEVICE");assert_eq!(session["cacheScope"],format!("device:{}",auth.devices().unwrap()[0].id));assert!(!session.to_string().contains(cookie.split('=').nth(1).unwrap()));
  assert_eq!(client.get(format!("{base}/v1/mobile/auth/session")).header("host","router.fixture.invalid").header("cookie",cookie).header("origin","https://other.router.fixture.invalid").send().unwrap().status(),StatusCode::FORBIDDEN);
