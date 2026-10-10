@@ -17,3 +17,6 @@ No reply bodies, generated summaries or credentials are added to push payloads.
 MCP Events is not part of this release and remains under separate implementation.
 
 Validation:528 frontend tests,202 native tests (29 explicit real-path tests ignored), TypeScript/production build. Resident tests exercise no-renderer progress, a busy RPC lock, expiry/rebind/retirement, and one new-reply push with no historical/repeated push. Full-component desktop hidden/resume counters and real Service Worker Notification API format pass on isolated localhost fixtures. Installed resume, immutable package identity and exact Windows installer CI are recorded after packaging.
+
+Source frozen at3940a588e1f8b1b9f02fe5f54dc2ef608b861e8a.
+Installer SHA2560e2a014f4c94f63ebb3637765c94a762406bb002038e9f9703e95124d9dfff2a.
