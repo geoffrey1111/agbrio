@@ -1,0 +1,22 @@
+{
+  "version": "0.1.21",
+  "interfaceRevision": "2026.10.10-38",
+  "sourceCommit": "e599f6b1859e9433d6a3ebd2a1f9bd0e98b98c8f",
+  "installer": {
+    "name": "Agbrio_0.1.21_x64-setup.exe",
+    "sha256": "025ec5fd3bfb6008e038f6d970a8be51b30529239960d3bf591a2ffa4982b8f1",
+    "size": 275894770
+  },
+  "engineering": {
+    "corePassed": 216,
+    "hostPassed": 211,
+    "mainPassed": 1,
+    "frontendUnchangedPreviousPassed": 528,
+    "sourceWindowsCI": 38036723913,
+    "sourceWindowsCIStatus": "IN_PROGRESS",
+    "crossProjectNegativeAndPositive": "PASS",
+    "publisherSignatureAndTamper": "PASS"
+  },
+  "realDotAcceptance": "OPEN",
+  "publication": "DRAFT_PREPARATION"
+}
