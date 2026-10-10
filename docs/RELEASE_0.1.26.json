@@ -14,12 +14,13 @@
     "mainPassed": 1,
     "hostIgnored": 31,
     "sourceWindowsCI": 38058011898,
-    "sourceWindowsCIStatus": "PENDING",
-    "exactReleasedInstallerWindowsCIStatus": "NOT_RUN",
+    "sourceWindowsCIStatus": "SUCCESS",
+    "exactReleasedInstallerWindowsCIStatus": "SUCCESS",
     "publisherSignatureAndTamper": "PASS",
     "actualIsolatedProductionCopyMigration": "PASS",
     "originalTablesPreserved": 44,
-    "foreignKeyCheck": "PASS"
+    "foreignKeyCheck": "PASS",
+    "exactReleasedInstallerWindowsCI": 38059509756
   },
   "deletedBridgeBindings": {
     "trashedOwnersReleaseClaims": true,
@@ -27,11 +28,22 @@
     "liveAndArchivedOwnerConflictsRetained": true,
     "restoreCannotStealReusedTargets": true,
     "nativeLookupExcludesTrash": true,
-    "nativeSqliteBackupBeforeMigration": true
+    "nativeSqliteBackupBeforeMigration": true,
+    "installedFeatureMarkerAndThreeTriggersVerified": true,
+    "allPreviousEndpointIdentityColumnsPreserved": true,
+    "installedForeignKeyAndIntegrityChecks": "PASS"
   },
   "runtime": {
     "installedVersionAtBuild": "0.1.25",
-    "deployment": "PENDING"
+    "deployment": "PASS",
+    "installedVersion": "0.1.26",
+    "nativeVersionCheck": "UP_TO_DATE",
+    "installedBinarySha256": "53b959745f3db0fe4b8afac20da9973c5e594428d464ed3ccd78b4f23fb17f91",
+    "onlyOfficialBundleMarkerDifference": true,
+    "staticFilesExact": 15,
+    "oldOAuth": "PASS",
+    "grantsAndPairingsPreserved": true,
+    "sharedFourProcessIdentitiesPreserved": true
   },
   "mcpEvents": {
     "boundedOwnerApprovedRecovery": "ONE_HANDOFF_SENT_AND_EXACT_TARGET_ACK_VERIFIED",
