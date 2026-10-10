@@ -132,13 +132,15 @@ pub(super) async fn mcp(State(state):State<MobileHttpState>,headers:HeaderMap,Js
  let grant=match state.core.store.authenticate_assistant(credential,&resource(&state)){
     Ok(g)=>g,Err(_)=>{let mut response=(StatusCode::UNAUTHORIZED,Json(serde_json::json!({"error":"invalid_token"}))).into_response();response.headers_mut().insert("www-authenticate",format!("Bearer resource_metadata=\"{}/.well-known/oauth-protected-resource/mcp\", scope=\"{INSTANCE_SCOPE}\"",state.config.allowed_origin).parse().map_err(|_|bad())?);return Ok(response);}
  };
- if let Some(v)=headers.get("mcp-protocol-version"){if !matches!(v.to_str().ok(),Some("2025-11-25"|"2025-06-18"|"2025-03-26")){return Err(bad());}}
+ if let Some(v)=headers.get("mcp-protocol-version"){if !matches!(v.to_str().ok(),Some("2026-07-28"|"2025-11-25"|"2025-06-18"|"2025-03-26")){return Err(bad());}}
  let accept=headers.get("accept").and_then(|v|v.to_str().ok()).unwrap_or("");
- if !accept.contains("application/json")||!accept.contains("text/event-stream"){return Err(ApiError(StatusCode::NOT_ACCEPTABLE,"MCP requires JSON and event-stream Accept types".into()));}
+ let mcp2=headers.get("mcp-protocol-version").and_then(|v|v.to_str().ok())==Some("2026-07-28")||input["method"]=="server/discover"||(input["method"]=="initialize"&&input.pointer("/params/protocolVersion").and_then(serde_json::Value::as_str)==Some("2026-07-28"));
+ if !accept.contains("application/json")||(!mcp2&&!accept.contains("text/event-stream")){return Err(ApiError(StatusCode::NOT_ACCEPTABLE,"MCP requires JSON and event-stream Accept types".into()));}
  if input.get("id").is_none(){
     if input["jsonrpc"]=="2.0"&&matches!(input["method"].as_str(),Some("notifications/initialized"|"notifications/cancelled")){return Ok(StatusCode::ACCEPTED.into_response());}
     return Err(bad()); // Never execute tools disguised as a notification.
  }
+ if input["method"].as_str().is_some_and(|m|m.starts_with("events/")){if !mcp2{return Err(ApiError(StatusCode::BAD_REQUEST,"MCP Events requires protocol2026-07-28".into()));}let result=crate::assistant_events::rpc(&state.core,&grant.id,input).await;let mut response=Json(result).into_response();response.headers_mut().insert("cache-control",HeaderValue::from_static("no-store"));return Ok(response);}
  let core=state.core;let gid=grant.id;
  let result=run_core_blocking("Assistant MCP",move||Ok(crate::assistant_mcp::rpc(&core,&gid,input))).await?;
  let mut response=Json(result).into_response();response.headers_mut().insert("cache-control",HeaderValue::from_static("no-store"));Ok(response)

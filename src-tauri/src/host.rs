@@ -19,6 +19,7 @@ pub(crate) struct HostRuntime {
     shared_stop:Arc<std::sync::atomic::AtomicBool>,
     shared_worker:Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
     setup_worker:Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
+    events_worker:Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
     pub(crate) hosted_child:Arc<Mutex<Option<std::process::Child>>>,
     /// Serializes only exact Host browser operations, preventing concurrent
     /// reads/opens from creating competing Router-owned tabs or roots.
@@ -112,7 +113,7 @@ impl Default for HostRuntime {
             ),
             instance:Arc::new(uuid::Uuid::new_v4().to_string()),
             web:Default::default(),
-            shared_stop:Default::default(),shared_worker:Default::default(),setup_worker:Default::default(),
+            shared_stop:Default::default(),shared_worker:Default::default(),setup_worker:Default::default(),events_worker:Default::default(),
             exact_host_operation: Default::default(),
             mobile: Default::default(),mobile_config:Default::default(),mobile_probe:Default::default(),
             #[cfg(test)] test_web_auth:Default::default(),
@@ -136,6 +137,11 @@ impl HostRuntime {
                 if disconnected{crate::host_application::connect_codex_for_resident_host(sink.clone(),&core);delay=(delay*2).min(60);}else{delay=5;}
             }
         }));
+    }
+    pub(crate) fn start_event_delivery(&self,core:RouterCore){
+        let Ok(mut worker)=self.events_worker.lock()else{return;};if worker.is_some(){return;}
+        let stop=self.shared_stop.clone();let runtime=self.runtime.clone();
+        *worker=Some(std::thread::spawn(move||{while !stop.load(std::sync::atomic::Ordering::Acquire){runtime.block_on(async{tokio::join!(crate::assistant_events::dispatch_one(&core),crate::assistant_events::dispatch_one(&core),crate::assistant_events::dispatch_one(&core),crate::assistant_events::dispatch_one(&core));});for _ in 0..10{if stop.load(std::sync::atomic::Ordering::Acquire){return;}std::thread::sleep(std::time::Duration::from_millis(100));}}}));
     }
     fn start_setup_requests(&self,core:RouterCore){
         let Ok(mut worker)=self.setup_worker.lock()else{return;};if worker.is_some(){return;}
@@ -229,7 +235,7 @@ impl HostRuntime {
         };
         #[cfg(not(debug_assertions))]
         let config = mobile_http::MobileHttpConfig::from_env(static_dir);
-        if let Ok(config)=config {self.ensure_mobile(core.clone(),config.clone());self.web.start(self.clone(),core.clone(),config);self.start_setup_requests(core);}else if let Err(error)=config {if let Ok(mut current)=self.mobile_detail.lock(){*current=format!("UNAVAILABLE: {error}");}}
+        if let Ok(config)=config {self.ensure_mobile(core.clone(),config.clone());self.web.start(self.clone(),core.clone(),config);self.start_event_delivery(core.clone());self.start_setup_requests(core);}else if let Err(error)=config {if let Ok(mut current)=self.mobile_detail.lock(){*current=format!("UNAVAILABLE: {error}");}}
     }
     pub(crate) fn instance_id(&self)->&str {self.instance.as_str()}
     pub(crate) fn ensure_mobile(&self,core:RouterCore,config:mobile_http::MobileHttpConfig){
@@ -265,6 +271,7 @@ impl HostRuntime {
         self.shared_stop.store(true,std::sync::atomic::Ordering::Release);
         if let Ok(mut worker)=self.shared_worker.lock(){if let Some(worker)=worker.take(){let _=worker.join();}}
         if let Ok(mut worker)=self.setup_worker.lock(){if let Some(worker)=worker.take(){let _=worker.join();}}
+        if let Ok(mut worker)=self.events_worker.lock(){if let Some(worker)=worker.take(){let _=worker.join();}}
         self.web.stop();
         crate::hosted_relay::stop(self);
         if let Ok(mut mobile) = self.mobile.lock() {

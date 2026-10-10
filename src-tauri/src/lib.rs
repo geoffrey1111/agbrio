@@ -28,6 +28,7 @@ mod push;
 mod runtime_reconciler;
 mod role_bridge;
 mod assistant_mcp;
+mod assistant_events;
 mod assistant_help;
 mod assistant_operations;
 

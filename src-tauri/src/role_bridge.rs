@@ -648,6 +648,7 @@ pub(crate) fn send(core: &RouterCore, handoff: &str) -> Result<BridgeState, Stri
                     return Err(error);
                 }
             };
+            core.store.note_mcp_native_cause(&h.id,&destination.external_id,&ack.turn_id)?;
             if let Some(run)=run{core.store.attach_provider_run_external_identity(&run.id,"CODEX",&ack.turn_id)?;}
             core.store.transition_handoff(&h.id, "SENT", None)?;
             Ok(())

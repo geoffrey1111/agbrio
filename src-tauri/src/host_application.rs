@@ -2852,8 +2852,10 @@ pub(crate) fn record_provider_surface_reply_with(
         None,
     )?
     else {
+        if endpoint.provider=="CHATGPT"{store.note_reply_completion(&endpoint.workstream_id,&endpoint.id,assistant_identity,None)?;}
         return Ok(false);
     };
+    if endpoint.provider=="CHATGPT"{store.note_reply_completion(&endpoint.workstream_id,&endpoint.id,assistant_identity,None)?;}
     attempt_reply_push_with(store, endpoint, &observation, push)?;
     Ok(true)
 }
@@ -3169,6 +3171,14 @@ pub(crate) fn clear_resolved_codex_request(session: &Arc<Mutex<Session>>, messag
             !(request.thread_id == thread_id && request.raw_request_id == *request_id)
         });
     }
+}
+
+pub(crate) fn publish_mcp_request_state(store:&RouterStore,session:&Arc<Mutex<Session>>,message:&Value){
+ let Some(thread)=message.pointer("/params/threadId").and_then(Value::as_str)else{return};
+ if message["method"]=="serverRequest/resolved"{if let Some(id)=message.pointer("/params/requestId"){let _=store.resolve_mcp_native_request(thread,None,Some(&id.to_string()));}return;}
+ let Some(id)=message.get("id")else{return};
+ let request=session.lock().ok().and_then(|s|s.pending_codex_requests.values().find(|r|r.thread_id==thread&&r.raw_request_id==*id&&!r.responded).cloned());
+ if let Some(r)=request{if let Some(public)=mobile_codex_request_projection(&r){if let Ok(value)=serde_json::to_value(public){let _=store.observe_mcp_native_request(&r.thread_id,&r.turn_id,&r.raw_request_id.to_string(),&value);}}}
 }
 
 pub(crate) fn server_request_response_result(
@@ -3699,9 +3709,11 @@ pub(crate) fn connect_codex_in_background(
         if codex_request_state_event(message) {
             let pending_session = Arc::clone(&listener_session);
             let pending_message = message.clone();
+            let pending_store=listener_store.clone();
             std::thread::spawn(move || {
                 capture_pending_codex_request(&pending_session, &pending_message);
                 clear_resolved_codex_request(&pending_session, &pending_message);
+                publish_mcp_request_state(&pending_store,&pending_session,&pending_message);
             });
         }
         if message.get("method").and_then(Value::as_str) != Some("turn/completed") {
@@ -3724,6 +3736,7 @@ pub(crate) fn connect_codex_in_background(
             Some("failed") => "FAILED",
             _ => "UNKNOWN",
         };
+        if status!="UNKNOWN"{if let Some(thread)=thread_id.clone(){let request_store=listener_store.clone();let request_turn=turn_id.to_string();std::thread::spawn(move||{let _=request_store.resolve_mcp_native_request(&thread,Some(&request_turn),None);});}}
         if status != "COMPLETED" {
             let _ = listener_store.complete_provider_run("CODEX", turn_id, status, Some(status));
             return;

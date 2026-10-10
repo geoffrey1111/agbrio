@@ -3,6 +3,9 @@ use crate::host_application::{RouterCore,Session};
 use router_core::store::{RouterStore,assistant::{GrantInput,BriefRule},role_bridge::RoleBindingInput};
 use serde_json::{json,Value};
 use std::time::Instant;
+#[cfg(windows)]
+#[path="assistant_events_http_tests.rs"]
+mod events_contract;
 fn now_ms()->i64{clock() as i64*1000}
 #[test]fn instance_operations_manage_seen_inbox_restore_watches_and_send_original_chat_once(){
  let(_dir,core,old_gid,_)=fixture();let old=core.store.assistant_grant(&old_gid).unwrap();let g=core.store.create_assistant_instance_grant(router_core::store::assistant::InstanceGrantInput{label:"App manager QA".into(),rules:old.rules,expires_at:now_ms()+600000}).unwrap();
@@ -49,9 +52,11 @@ fn fixture()->(tempfile::TempDir,RouterCore,String,String){
  let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};
  let path=dir.path().join("fixture-native.mjs");std::fs::write(&path,r#"
 import readline from 'node:readline';
+import fs from 'node:fs';
 const cwd=process.argv[2];
 readline.createInterface({input:process.stdin}).on('line',line=>{
  const q=JSON.parse(line);if(q.id===undefined)return;
+ if(q.method==='turn/start'||q.method==='turn/steer')fs.appendFileSync(cwd+'/native-writes.jsonl',JSON.stringify({method:q.method,threadId:q.params.threadId})+'\n');
  const thread={id:q.params?.threadId,cwd,status:{type:'idle'},turns:[]};
  const result=q.method==='initialize'?{userAgent:'Agbrio offline fixture'}:q.method==='thread/read'||q.method==='thread/resume'?{thread,model:'fixture',reasoningEffort:'low'}:q.method==='thread/turns/list'?{data:[],nextCursor:null}:q.method==='thread/goal/get'?{goal:null}:q.method==='turn/start'?{turn:{id:'fixture-turn-'+q.params.threadId,status:'inProgress'}}:{};
  process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:q.id,result})+'\n');

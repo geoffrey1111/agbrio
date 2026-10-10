@@ -21,7 +21,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 55
     env:
-      VITE_AGBRIO_APP_VERSION: 0.1.15
+      VITE_AGBRIO_APP_VERSION: 0.1.20
       AGBRIO_HOSTED_CONTROL_ORIGIN: https://agbrio-connect.geoffreygroup.cc
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +45,7 @@ jobs:
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           npm ci --prefix tools/isolated-browser-executor
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
-          npm test
+          npm test -- --maxWorkers=2
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           npm run test:shared-lifecycle
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
@@ -57,7 +57,7 @@ jobs:
       - name: Stage verified runtime
         run: npm run build:browser-executor
       - name: Native tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked -- --test-threads=2
       - name: Build Windows installer
         run: npm run build:windows -- --config docs/RELEASE_BUILD.json
       - name: Checksums

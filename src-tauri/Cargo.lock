@@ -115,6 +115,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "base64ct",
+ "hmac 0.12.1",
  "jsonwebtoken",
  "lettre",
  "minisign-verify",
@@ -131,6 +132,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "tempfile",
+ "time",
  "tokio",
  "tower-http",
  "url",

@@ -160,13 +160,16 @@ impl RouterStore {
             params![format!("{:x}",Sha256::digest(token.as_bytes())),resource,now()],|r|r.get(0)).map_err(|_|"ASSISTANT_UNAUTHORIZED".to_string())?;
         active(c,&gid)
     })}
-    pub fn register_assistant_draft(&self,gid:&str,hid:&str,observation:&str)->Result<(),String>{self.register_assistant_draft_request(gid,hid,observation,None)}
+    pub fn register_assistant_draft(&self,gid:&str,hid:&str,observation:&str)->Result<(),String>{self.register_assistant_draft_request(gid,hid,observation,None,None)}
     /// Ownership and retry identity commit together; a losing concurrent prepare
     /// cannot leave a second draft authorized for assistant approval.
     pub fn register_assistant_prepare(&self,gid:&str,hid:&str,observation:&str,request:&str,hash:&str)->Result<(),String>{
-        bounded(request,100)?;bounded(hash,64)?;self.register_assistant_draft_request(gid,hid,observation,Some((request,hash)))
+        bounded(request,100)?;bounded(hash,64)?;self.register_assistant_draft_request(gid,hid,observation,Some((request,hash)),None)
     }
-    fn register_assistant_draft_request(&self,gid:&str,hid:&str,observation:&str,request:Option<(&str,&str)>)->Result<(),String>{self.with_connection(|c|{
+    pub fn register_assistant_prepare_event(&self,gid:&str,hid:&str,obs:&str,request:&str,hash:&str,event_hash:&str,event:Option<&str>)->Result<(),String>{
+        bounded(request,100)?;bounded(hash,64)?;self.register_assistant_draft_request(gid,hid,obs,Some((request,hash)),Some((event_hash,event)))
+    }
+    fn register_assistant_draft_request(&self,gid:&str,hid:&str,observation:&str,request:Option<(&str,&str)>,event:Option<(&str,Option<&str>)>)->Result<(),String>{self.with_connection(|c|{
         let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
         let g=active(&tx,gid)?;let h=handoff_by_id(&tx,hid)?;
         let role:String=tx.query_row("SELECT source_role FROM role_handoff_details WHERE handoff_id=?1",[hid],|r|r.get(0)).map_err(db_error)?;
@@ -176,6 +179,7 @@ impl RouterStore {
         if h.source_response_identity.as_deref()!=Some(original_identity.as_str()){return Err("ASSISTANT_SOURCE_CHANGED".into());}
         let head:String=if g.approval_mode=="CONVERSATION_REVIEW"{tx.query_row("SELECT id FROM reply_observations WHERE endpoint_id=?1 ORDER BY observed_at DESC,rowid DESC LIMIT 1",[source.id.as_str()],|r|r.get(0)).map_err(db_error)?}else{observation.to_string()};
         tx.execute("INSERT INTO assistant_drafts(handoff_id,grant_id,observation_id,request_id,request_hash,review_head_id) VALUES(?1,?2,?3,?4,?5,?6)",params![hid,gid,observation,request.map(|v|v.0),request.map(|v|v.1),head]).map_err(db_error)?;
+        if let Some((hash,event))=event{mcp_events::register_event_action(&tx,gid,hid,observation,hash,event)?;}
         draft(&tx,gid,hid,&h.payload_hash)?;tx.commit().map_err(db_error)
     })}
     pub fn ask_assistant_decision(&self,gid:&str,hid:&str,hash:&str,question:&str)->Result<PendingDecision,String>{
@@ -186,6 +190,7 @@ impl RouterStore {
             let did=existing.unwrap_or_else(id);
             tx.execute("INSERT OR IGNORE INTO assistant_decisions(id,handoff_id,payload_hash,question,created_at) VALUES(?1,?2,?3,?4,?5)",params![did,hid,hash,question,now()]).map_err(db_error)?;
             tx.execute("UPDATE assistant_decisions SET payload_hash=?2,question=?3,created_at=?4 WHERE id=?1 AND payload_hash!=?2 AND answered_at IS NULL",params![did,hash,question,now()]).map_err(db_error)?;
+            mcp_events::owner_decision(&tx,gid,hid)?;
             tx.commit().map_err(db_error)?;decision(c,&did)
         })
     }
@@ -225,7 +230,7 @@ impl RouterStore {
         })
     }
     pub fn require_assistant_send(&self,gid:&str,hid:&str,hash:&str)->Result<(),String>{self.with_connection(|c|{
-        let(_,h)=draft(c,gid,hid,hash)?;
+        mcp_events::require_event_send(c,gid,hid)?;let(_,h)=draft(c,gid,hid,hash)?;
         let approved:bool=c.query_row("SELECT EXISTS(SELECT 1 FROM assistant_approvals WHERE handoff_id=?1 AND grant_id=?2 AND payload_hash=?3)",params![hid,gid,hash],|r|r.get(0)).map_err(db_error)?;
         if !approved||h.status!="APPROVED"{return Err("ASSISTANT_NOT_APPROVED_OR_ALREADY_ATTEMPTED".into());}Ok(())
     })}

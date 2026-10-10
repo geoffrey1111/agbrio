@@ -1,6 +1,7 @@
 pub mod control;
 pub mod assistant;
 pub mod assistant_actions;
+pub mod mcp_events;
 pub mod dispatch;
 pub mod migration;
 pub mod relay;
@@ -61,6 +62,7 @@ const NORMAL_FEATURE_MIGRATIONS: &[(&str, &str)] = &[
     ("assistant-instance-v1", include_str!("../../migrations/normal/014_assistant_instance.sql")),
     ("notification-seen-v1", include_str!("../../migrations/normal/015_notification_seen.sql")),
     ("assistant-conversation-review-v1", include_str!("../../migrations/normal/016_assistant_conversation_review.sql")),
+    ("mcp-events-v1", include_str!("../../migrations/normal/017_mcp_events.sql")),
 ];
 
 const MIGRATIONS: &[(i64, &str)] = &[
@@ -1922,6 +1924,7 @@ impl RouterStore {
             let Some(prior)=prior else{return Ok(false)};
             if prior.zip(completed).is_some_and(|(a,b)|a!=b){return Err("REPLY_COMPLETION_CHANGED".into());}
             tx.execute("UPDATE reply_observations SET completed_at=COALESCE(completed_at,?4),completion_checked=1 WHERE workstream_id=?1 AND endpoint_id=?2 AND assistant_identity=?3",params![workstream,endpoint,identity,completed]).map_err(db_error)?;
+            mcp_events::completed(&tx,workstream,endpoint,identity)?;
             tx.commit().map_err(db_error)?;Ok(true)
         })
     }
@@ -3870,6 +3873,14 @@ mod tests {
                         "external_project_links",
                         "handoff_attachments",
                         "handoffs",
+                        "mcp_event_actions",
+                        "mcp_event_deliveries",
+                        "mcp_event_initial_observations",
+                        "mcp_event_native_causes",
+                        "mcp_event_request_sources",
+                        "mcp_event_request_tombstones",
+                        "mcp_event_subscriptions",
+                        "mcp_events",
                         "mobile_chatgpt_inbound_reviews",
                         "mobile_codex_outbound_reviews",
                         "projects",

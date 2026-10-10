@@ -861,7 +861,7 @@
   "让助手先问：你希望我接管哪些 Bridge？": "Have the assistant ask: Which Bridges would you like me to take over?",
   "选好后确认当前任务、精确绑定、交接方向、必须询问的情况和暂停条件，不需要再填写 Brief / Insight。": "Agree current tasks, exact bindings, handoff directions, when to ask and when to pause. No additional Brief / Insight form is required.",
   "复制协作指令": "Copy collaboration instructions",
-  "整个应用可访问，不代表所有 Bridge 都已委托。事件订阅和自动唤醒尚未实现。": "Whole-app access does not delegate every Bridge. Event subscriptions and automatic wakeups are not implemented.",
+  "整个应用可访问，不代表所有 Bridge 都已委托。重新扫描插件工具和事件后，由 dot 创建授权范围内的订阅。连接本身不会自动开启事件。": "Whole-app access does not delegate every Bridge. Rescan plugin tools and events, then let your dot subscribe within the delegated scope. Connecting alone does not enable events.",
   "上一步": "Previous step",
   "连接遇到问题": "Connection troubleshooting",
   "服务或发现": "Service or discovery",

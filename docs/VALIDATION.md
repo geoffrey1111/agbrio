@@ -103,3 +103,8 @@ no production processes are launched or changed by these unit checks.
 
 ## 0.1.8 INSTANCE directory
 Regression first reproduces selected-project-only/removed-row enumeration, then checks cross-project activeIDs, lifecycle partitions, selectionindependence, exactproject/bindingRevision, unchangedgrant/snapshot, legacy8tool refusal and revoked/expired guards. NativeMCPRPC read_app/read_bridge/read_source pass with a read-only offlineadapter, zero provider/modelturns. Core199pass/1ignored; OAuthHTTP11pass/2ignored. RealDotpostupdate acceptance remains owner-only; independent read_chat/receipt reports are not claimed fixed.
+
+
+## 0.1.20 MCP Events engineering
+
+Core216 and native208 regressions pass, with independent authenticated MCP HTTP and controlled certificate-verified HTTPS callbacks for discovery, challenge, signature, retry/reopen, rotation, negative controls and unsubscribe. One physical offline native send is counted across duplicate prepare/delivery attempts. A resident worker delivers without UI navigation or consumer polling. Test-only localhost connector is excluded from production; production DNS/private-address denial probes pass. Existing OAuth/read-write/approval gates are retained. Real dot rescan/subscription/wake and one authorized handoff remain OPEN; 2xx alone is not business acceptance. See MCP_EVENTS.md.

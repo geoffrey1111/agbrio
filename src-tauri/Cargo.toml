@@ -18,6 +18,8 @@ router-core = { path = "../crates/router-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+hmac = "0.12"
+time = { version = "0.3", features = ["formatting"] }
 tauri = { version = "2", features = ["tray-icon", "image-ico"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
@@ -38,7 +40,7 @@ tauri-plugin-autostart = "2.5.1"
 tauri-plugin-single-instance = "2.4.4"
 winreg = "0.55"
 windows-core = "0.61.2"
-windows = { version = "0.61.3", features = ["Data_Xml_Dom", "UI_Notifications", "Security_Credentials", "Win32_System_WinRT", "Win32_Foundation", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_UI_Notifications", "Win32_UI_Shell", "Win32_UI_Shell_PropertiesSystem", "Win32_System_Variant", "Win32_System_Ole", "Win32_Storage_FileSystem"] }
+windows = { version = "0.61.3", features = ["Data_Xml_Dom", "UI_Notifications", "Security_Credentials", "Win32_System_WinRT", "Win32_Foundation", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_UI_Notifications", "Win32_UI_Shell", "Win32_UI_Shell_PropertiesSystem", "Win32_System_Variant", "Win32_System_Ole", "Win32_Storage_FileSystem", "Win32_Security_Cryptography"] }
 
 [target.'cfg(windows)'.dev-dependencies]
 windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Accessibility", "Win32_UI_WindowsAndMessaging", "Win32_System_Ole", "Win32_UI_Notifications", "System"] }
