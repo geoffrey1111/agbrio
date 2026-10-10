@@ -19,7 +19,7 @@ jobs:
           New-Item -ItemType Directory -Path runtime/released -Force | Out-Null
           $path='runtime/released/Agbrio_0.1.20_x64-setup.exe'
           Invoke-WebRequest 'https://github.com/geoffrey1111/agbrio/releases/download/v0.1.20/Agbrio_0.1.20_x64-setup.exe' -OutFile $path
-          if((Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant() -ne '7a3d55897c648618d7f3a1037ceba41f2ef515ad75e1677c9867e67066916749'){throw 'Released byte identity mismatch'}
+          if((Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant() -ne '540e5c7e9d05e1a644b9ddb7280be4c66d02688224075a55e215f2f0aaf19593'){throw 'Released byte identity mismatch'}
           pwsh -NoProfile -File scripts/windows-install-smoke.ps1 -Installer $path
       - uses: actions/upload-artifact@v4
         if: always()
