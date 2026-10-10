@@ -1,0 +1,32 @@
+{
+  "version": "0.1.25",
+  "interfaceRevision": "2026.10.10-38",
+  "sourceCommit": "ebd8b05adba5dc0ae41e21754731d6a563b791d5",
+  "installer": {
+    "name": "Agbrio_0.1.25_x64-setup.exe",
+    "sha256": "ec5bdc52a2ba5576994ce09d252b5bc2dc0d24c297434dcf5d8bffbdb680fb7f",
+    "size": 276022045
+  },
+  "engineering": {
+    "hostPassed": 218,
+    "mainPassed": 1,
+    "sourceWindowsCI": 38051575412,
+    "sourceWindowsCIStatus": "PENDING",
+    "exactReleasedInstallerWindowsCIStatus": "NOT_RUN",
+    "sameCodeDnsOnlyCorrection": "PASS_TWO_FIXED_PUBLIC_DOMAINS",
+    "callbackHttpRequestedInDnsProbe": false,
+    "publisherSignatureAndTamper": "PASS"
+  },
+  "runtime": {
+    "installedVersion": "0.1.24",
+    "dnsRefinementDeployment": "PENDING"
+  },
+  "mcpEvents": {
+    "addressCategories": "IMPLEMENTED",
+    "benchmarkOnlySameDomainCorrection": "IMPLEMENTED_UNDEPLOYED",
+    "publicAddressAndTlsGuards": "PRESERVED",
+    "globalDnsAuthChanged": false,
+    "realDotWakeAndOneAuthorizedHandoff": "OPEN_NO_SUBSCRIPTION_RETRY",
+    "historicalExactCallbackHost": "UNAVAILABLE"
+  }
+}
