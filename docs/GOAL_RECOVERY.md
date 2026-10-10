@@ -13,7 +13,15 @@ are deliberately omitted here. Goal recovery through dot is not implemented.
 | Paired-device HTTP | GET /v1/mobile/workstreams/{workstream_id}/codex-goal; POST .../codex-goal/pause, /resume, /clear with confirmed=true and device authorization |
 | CodexAdapter | thread/goal/get; thread/goal/set with exact threadId and status delta; thread/goal/clear; turn/start, turn/steer, turn/interrupt are separate |
 
-Desktop/PWA resume updates the existing goal from paused to active, rechecks its
+The current workstream-only Desktop/PWA goal endpoints resolve a single ACTIVE
+Codex provider endpoint. A Bridge with two ACTIVE Codex roles is ambiguous and
+fails closed (BRIDGE_ROLE_REQUIRED_FOR_AMBIGUOUS_PROVIDER); these APIs must not be claimed usable
+for both sides of such a Bridge. MCP read_chat is exact-thread based and its goal
+read does work for the inspected dual-Codex roles. A recovery addition must accept
+and revalidate an explicit role/endpoint/thread, not pick by title/provider.
+
+For an unambiguous single-Codex binding, Desktop/PWA resume updates the existing
+goal from paused to active, rechecks its
 status/updatedAt and acquires the exact writer. It does not create a new objective
 or increase tokenBudget. The current goal transition guard supports only
 active->paused and paused->active; blocked, limited, complete and unknown statuses

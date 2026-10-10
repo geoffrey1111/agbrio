@@ -1,0 +1,54 @@
+{
+  "version": "0.1.26",
+  "interfaceRevision": "2026.10.10-38",
+  "sourceCommit": "b1ed9a5adc817f481ef795dfd487f55c5456f1d8",
+  "installer": {
+    "size": 276043928,
+    "sha256": "83570e29d0c390e037ce6edb68a28daab7f980aaba6cca3c45e19f2b169527da",
+    "name": "Agbrio_0.1.26_x64-setup.exe"
+  },
+  "engineering": {
+    "corePassed": 220,
+    "coreIgnored": 1,
+    "hostPassed": 218,
+    "mainPassed": 1,
+    "hostIgnored": 31,
+    "sourceWindowsCI": 38058011898,
+    "sourceWindowsCIStatus": "PENDING",
+    "exactReleasedInstallerWindowsCIStatus": "NOT_RUN",
+    "publisherSignatureAndTamper": "PASS",
+    "actualIsolatedProductionCopyMigration": "PASS",
+    "originalTablesPreserved": 44,
+    "foreignKeyCheck": "PASS"
+  },
+  "deletedBridgeBindings": {
+    "trashedOwnersReleaseClaims": true,
+    "newEndpointIdsPreserveOldHistory": true,
+    "liveAndArchivedOwnerConflictsRetained": true,
+    "restoreCannotStealReusedTargets": true,
+    "nativeLookupExcludesTrash": true,
+    "nativeSqliteBackupBeforeMigration": true
+  },
+  "runtime": {
+    "installedVersionAtBuild": "0.1.25",
+    "deployment": "PENDING"
+  },
+  "mcpEvents": {
+    "boundedOwnerApprovedRecovery": "ONE_HANDOFF_SENT_AND_EXACT_TARGET_ACK_VERIFIED",
+    "platformWakeEvidence": "DOT_REPORTED_REAL_EVENT_NO_POLL",
+    "automaticEventResultInjection": "OPEN_MISSING_CONTEXT",
+    "uninterruptedUnattendedEndToEnd": "NOT_PROVEN",
+    "testSubscriptions": "BOTH_UNSUBSCRIBED_VERIFIED",
+    "productionSubscriptionsEstablished": false,
+    "newBridgesAutoDelegated": false
+  },
+  "goalRecovery": {
+    "reviewOnly": true,
+    "mcpResumeGoal": "NOT_IMPLEMENTED",
+    "structuredStopReason": "NOT_PROJECTED",
+    "genericGoalOrTurnFailureEvent": "NOT_IMPLEMENTED",
+    "existingDesktopDeviceResume": "SINGLE_CODEX_BINDING_PAUSED_TO_ACTIVE",
+    "dualCodexWorkstreamOnlyControls": "AMBIGUOUS_FAIL_CLOSED",
+    "realGoalWritesPerformed": false
+  }
+}
