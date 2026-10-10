@@ -16,6 +16,7 @@ fn version(raw: Option<&str>) -> &'static str {
         _ => "OTHER",
     }
 }
+fn shape(value:Option<&Value>)->&'static str {match value{None=>"MISSING",Some(Value::Null)=>"NULL",Some(Value::Object(_))=>"OBJECT",Some(Value::Array(_))=>"ARRAY",Some(Value::String(v)) if v.is_empty()=>"EMPTY_STRING",Some(Value::String(_))=>"STRING",Some(Value::Bool(_))=>"BOOLEAN",Some(Value::Number(_))=>"NUMBER"}}
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
 struct Entry {
@@ -24,6 +25,7 @@ struct Entry {
     accepts_json: bool, accepts_event_stream: bool, authenticated: bool,
     http_status: Option<u16>, rpc_error_code: Option<i64>,
     advertised_events: Option<bool>, event_count: Option<usize>,
+    params_kind: &'static str, request_meta_kind: &'static str, cursor_kind: &'static str, extra_parameter_count: usize,
 }
 struct State { entries: VecDeque<Entry>, counts: BTreeMap<&'static str,u64>, sequence: u64 }
 pub(super) struct DiscoveryDiagnostics { listener_id: String, started_at: i64, state: Mutex<State> }
@@ -49,7 +51,9 @@ impl DiscoveryDiagnostics {
             header_version:version(headers.get("mcp-protocol-version").and_then(|v|v.to_str().ok())),
             requested_version:version(input.pointer("/params/protocolVersion").and_then(Value::as_str)),
             accepts_json:accept.contains("application/json"),accepts_event_stream:accept.contains("text/event-stream"),
-            authenticated:false,http_status:None,rpc_error_code:None,advertised_events:None,event_count:None});
+            authenticated:false,http_status:None,rpc_error_code:None,advertised_events:None,event_count:None,
+            params_kind:shape(input.get("params")),request_meta_kind:shape(input.pointer("/params/_meta")),cursor_kind:shape(input.pointer("/params/cursor")),
+            extra_parameter_count:input.get("params").and_then(Value::as_object).map(|m|m.keys().filter(|k|!matches!(k.as_str(),"_meta"|"cursor")).count()).unwrap_or(0)});
         Some(sequence)
     }
     fn edit(&self,id:Option<u64>,edit:impl FnOnce(&mut Entry)) {

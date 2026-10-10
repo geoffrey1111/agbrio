@@ -454,7 +454,15 @@ pub(crate) async fn rpc(core: &RouterCore, gid: &str, input: Value) -> Value {
         }
     };
     let method = input["method"].as_str().unwrap_or("");
-    let parameters = input.get("params").cloned().unwrap_or(json!({}));
+    let mut parameters = input.get("params").cloned().unwrap_or(json!({}));
+    // MCP request metadata is a transport field, not subscription arguments.
+    // Never interpret it as authorization, filter overrides or instructions.
+    if let Some(fields)=parameters.as_object_mut() {
+        if fields.get("_meta").is_some_and(|v| !v.is_object()&&!v.is_null()) {
+            return json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"MCP_EVENT_REQUEST_META_INVALID"}});
+        }
+        fields.remove("_meta");
+    }
     let result = match method {
         "events/list" => {
             if parameters.as_object().is_none_or(|v| {

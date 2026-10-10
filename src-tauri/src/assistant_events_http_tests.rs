@@ -110,8 +110,9 @@ async fn event_rpc(
     base: &str,
     token: &str,
     method: &str,
-    params: Value,
+    mut params: Value,
 ) -> Value {
+    if let Some(fields)=params.as_object_mut(){fields.insert("_meta".into(),json!({"progressToken":"fixture-progress","protocolVersion":"2026-07-28","capabilities":{}}));}
     let response = c
         .post(format!("{base}/mcp"))
         .header("host", "assistant.fixture.invalid")

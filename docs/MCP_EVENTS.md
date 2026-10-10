@@ -88,6 +88,12 @@ The same grant checks apply; legacy Bridge grants cannot read this whole-app
 diagnostic. These server observations do not prove platform source availability
 or a consumer run.
 
+Standard MCP request `_meta` is transport metadata. Events methods validate an
+optional object/null metadata field and remove it before strict business-argument
+validation. It cannot override the OAuth grant, Bridge/revision/source filters or
+approval. Diagnostic records expose only parameter type labels and counts, never
+metadata keys or values.
+
 The tests enter the native terminal capture service, instead of directly marking
 a source complete in the outbox. A failed mobile push still leaves the event
 ready for the independent resident webhook worker.

@@ -85,13 +85,18 @@ fn discovery_diagnostics_distinguish_real_protocol_requests_and_preserve_oauth_s
   assert_eq!(request("events/list",json!({"private":"never-log-this-body"})).bearer_auth(&token).send().await.unwrap().status(),StatusCode::BAD_REQUEST);
   let events:Value=request("events/list",json!({})).header("mcp-protocol-version","2026-07-28").bearer_auth(&token).send().await.unwrap().json().await.unwrap();
   assert_eq!(events["result"]["events"].as_array().unwrap().len(),2);
+  let with_meta:Value=request("events/list",json!({"cursor":null,"_meta":{"progressToken":"never-log-private-token","protocolVersion":"2026-07-28","capabilities":{},"sourceRole":"UNTRUSTED_OVERRIDE"}})).header("mcp-protocol-version","2026-07-28").bearer_auth(&token).send().await.unwrap().json().await.unwrap();
+  assert_eq!(with_meta["result"]["events"].as_array().unwrap().len(),2);
+  assert_eq!(with_meta["result"]["events"][0]["inputSchema"]["properties"]["sourceRole"]["enum"],json!(["DECISION","EXECUTION"]));
+  for bad in [json!({"_meta":"invalid"}),json!({"_meta":{},"extra":true}),json!({"_meta":{},"cursor":"unsupported-page"})]{let v:Value=request("events/list",bad).header("mcp-protocol-version","2026-07-28").bearer_auth(&token).send().await.unwrap().json().await.unwrap();assert_eq!(v["error"]["code"],-32602);}
   let old:Value=request("initialize",json!({"protocolVersion":"2025-11-25"})).bearer_auth(&token).send().await.unwrap().json().await.unwrap();assert!(old.pointer("/result/capabilities/events").is_none());
   let read=|access:&str|request("tools/call",json!({"name":"agbrio_read_app","arguments":{}})).bearer_auth(access);
   let app:Value=read(&token).send().await.unwrap().json().await.unwrap();let trace=&app["result"]["structuredContent"]["mcpDiscovery"];let rows=trace["recentRequests"].as_array().unwrap();
-  assert_eq!(rows.len(),5);assert_eq!(rows[0]["httpStatus"],401);assert_eq!(rows[0]["authenticated"],false);
+  assert_eq!(rows.len(),9);assert_eq!(rows[0]["httpStatus"],401);assert_eq!(rows[0]["authenticated"],false);
   assert_eq!(rows[1]["advertisedEvents"],true);assert_eq!(rows[2]["httpStatus"],400);assert_eq!(rows[2]["headerVersion"],"MISSING");
-  assert_eq!(rows[3]["eventCount"],2);assert_eq!(rows[3]["headerVersion"],"2026-07-28");assert_eq!(rows[4]["advertisedEvents"],false);
+  assert_eq!(rows[3]["eventCount"],2);assert_eq!(rows[3]["headerVersion"],"2026-07-28");assert_eq!(rows[4]["requestMetaKind"],"OBJECT");assert_eq!(rows[4]["eventCount"],2);assert_eq!(rows[8]["advertisedEvents"],false);
   assert!(rows.iter().all(|r|r["finishedAt"].is_number()));assert!(!trace.to_string().contains(&token));assert!(!trace.to_string().contains("never-log-this-body"));
+  assert!(!trace.to_string().contains("never-log-private-token"));assert!(!trace.to_string().contains("UNTRUSTED_OVERRIDE"));
   let content:Value=serde_json::from_str(app["result"]["content"][0]["text"].as_str().unwrap()).unwrap();assert_eq!(content["mcpDiscovery"],*trace);
   let denied:Value=read(&legacy_token).send().await.unwrap().json().await.unwrap();assert_eq!(denied["result"]["isError"],true);assert!(denied.pointer("/result/structuredContent/mcpDiscovery").is_none());
   core.store.revoke_assistant_grant(&g.id).unwrap();assert_eq!(read(&token).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
