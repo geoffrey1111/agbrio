@@ -1,0 +1,23 @@
+{
+  "version": "0.1.20",
+  "interfaceRevision": "2026.10.10-38",
+  "sourceCommit": "7d2a10b55187c292fc02709e5a5ec5df25598bb5",
+  "installer": {
+    "name": "Agbrio_0.1.20_x64-setup.exe",
+    "sha256": "7a3d55897c648618d7f3a1037ceba41f2ef515ad75e1677c9867e67066916749",
+    "size": 275888816
+  },
+  "engineering": {
+    "corePassed": 216,
+    "hostPassed": 209,
+    "mainPassed": 1,
+    "frontendPassed": 528,
+    "sourceWindowsCI": 38029962474,
+    "sourceWindowsCIStatus": "IN_PROGRESS",
+    "controlledHTTP_TLS": "PASS",
+    "nativeProducerAndFailedMobilePush": "PASS",
+    "publisherSignatureAndTamper": "PASS"
+  },
+  "realDotAcceptance": "OPEN",
+  "publication": "DRAFT_PREPARATION"
+}
