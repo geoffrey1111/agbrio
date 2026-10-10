@@ -91,3 +91,8 @@ The resident native observer pauses while a send temporarily borrows its adapter
 then resumes the same connection when returned. True disconnects or epoch changes
 still stop the observer. Background freshness must be tested across a send, not
 only across navigation or minimization.
+
+Resident metadata and initialized passive observation enumerate all active projects
+through the owner-wide workstream index. The UI-selected project snapshot does
+not define background scope. Archived/trash records remain excluded; passive
+transcript checks still require an established exact baseline.

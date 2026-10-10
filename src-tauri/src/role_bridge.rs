@@ -726,7 +726,7 @@ fn activity_cache(store:&Arc<RouterStore>)->ActivityCache{
 /// Only an existing UI SYNC request authorizes cold transcript hydration. All
 /// metadata polling is independent of the renderer and never starts a turn.
 pub(crate) fn refresh_resident_activity(store:&Arc<RouterStore>,session:&Arc<Mutex<Session>>,epoch:u64,cursor:&mut usize){
- let cache=activity_cache(store);let Ok(snapshot)=store.snapshot()else{return};let mut ids=snapshot.workstreams.into_iter().filter(|w|w.trashed_at.is_none()&&w.archived_at.is_none()&&w.status!="ARCHIVED").filter_map(|w|store.role_bridge(&w.id).ok().filter(|b|b.explicit_roles).map(|_|w.id)).collect::<Vec<_>>();ids.sort();
+ let cache=activity_cache(store);let Ok(workstreams)=store.active_workstreams()else{return};let mut ids=workstreams.into_iter().filter_map(|w|store.role_bridge(&w.id).ok().filter(|b|b.explicit_roles).map(|_|w.id)).collect::<Vec<_>>();ids.sort();
  if !session.try_lock().is_ok_and(|s|s.codex_observer_epoch==epoch&&s.adapter.as_ref().is_some_and(|a|!a.is_closed())){return;}
  let allowed=ids.iter().cloned().collect::<HashSet<_>>();if let Ok(mut c)=cache.lock(){if c.epoch!=epoch{c.rows.clear();c.epoch=epoch;}c.rows.retain(|id,_|allowed.contains(id));c.wanted.retain(|id,(_,at)|allowed.contains(id)&&activity_now().saturating_sub(*at)<20*60*1000);}
  if ids.is_empty(){return;}let offset=*cursor%ids.len();ids.rotate_left(offset);let batch=ids.into_iter().take(20).collect::<Vec<_>>();

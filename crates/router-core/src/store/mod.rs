@@ -915,6 +915,16 @@ impl RouterStore {
         })
     }
 
+    /// Owner-resident work must cover every active project, independently of UI selection.
+    pub fn active_workstreams(&self) -> Result<Vec<Workstream>, String> {
+        self.with_connection(|connection| {
+            let mut statement = connection.prepare("SELECT id,project_id,name,status,created_at,updated_at,binding_revision,archived_at,trashed_at,pinned_at FROM workstreams WHERE trashed_at IS NULL AND archived_at IS NULL AND status!='ARCHIVED' ORDER BY id").map_err(db_error)?;
+            let rows = statement.query_map([], workstream_row).map_err(db_error)?
+                .collect::<Result<Vec<_>, _>>().map_err(db_error)?;
+            Ok(rows)
+        })
+    }
+
     pub fn snapshot(&self) -> Result<WorkspaceSnapshot, String> {
         self.with_connection(|connection| {
             let projects = list_projects(connection)?;

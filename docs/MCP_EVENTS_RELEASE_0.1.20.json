@@ -13,12 +13,16 @@
     "mainPassed": 1,
     "frontendPassed": 528,
     "sourceWindowsCI": 38032220547,
-    "sourceWindowsCIStatus": "IN_PROGRESS",
+    "sourceWindowsCIStatus": "SUCCESS",
     "controlledHTTP_TLS": "PASS",
     "nativeProducerAndFailedMobilePush": "PASS",
     "publisherSignatureAndTamper": "PASS",
-    "residentBorrowReturnRegression": "PASS"
+    "residentBorrowReturnRegression": "PASS",
+    "releasedInstallerWindowsCI": 38033612911,
+    "releasedInstallerWindowsCIStatus": "SUCCESS",
+    "installedSendReturnLifetime": "PASS"
   },
   "realDotAcceptance": "OPEN",
-  "publication": "DRAFT_PREPARATION"
+  "publication": "PUBLISHED",
+  "knownResidual": "Resident metadata used current-project snapshot; cross-project scope correction is prepared for0.1.21. Real dot wake acceptance remains OPEN."
 }

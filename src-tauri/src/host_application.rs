@@ -4372,10 +4372,9 @@ pub(crate) fn active_initialized_codex_observer_workstreams(
     store: &RouterStore,
 ) -> Result<Vec<String>, String> {
     let mut workstream_ids = HashSet::new();
-    for endpoint in store
-        .snapshot()?
-        .endpoint_lineage
-        .into_iter()
+    for endpoint in store.active_workstreams()?.into_iter()
+        .map(|w|store.snapshot_for_workstream(&w.id).map(|s|s.endpoint_lineage))
+        .collect::<Result<Vec<_>,_>>()?.into_iter().flatten()
         .filter(|endpoint| endpoint.provider == "CODEX" && endpoint.status == "ACTIVE")
     {
         if store.endpoint_notification_enabled(&endpoint.id)? && store.codex_reply_observer_is_initialized(&endpoint.id)? {
@@ -4418,10 +4417,9 @@ pub(crate) fn active_initialized_chatgpt_observer_workstreams(
     store: &RouterStore,
 ) -> Result<Vec<String>, String> {
     let mut workstream_ids = HashSet::new();
-    for endpoint in store
-        .snapshot()?
-        .endpoint_lineage
-        .into_iter()
+    for endpoint in store.active_workstreams()?.into_iter()
+        .map(|w|store.snapshot_for_workstream(&w.id).map(|s|s.endpoint_lineage))
+        .collect::<Result<Vec<_>,_>>()?.into_iter().flatten()
         .filter(|endpoint| endpoint.provider == "CHATGPT" && endpoint.status == "ACTIVE")
     {
         if store.endpoint_notification_enabled(&endpoint.id)? && store.chatgpt_reply_observer_is_initialized(&endpoint.id)? {

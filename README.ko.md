@@ -8,7 +8,7 @@
 
 계획용 대화와 실행용 대화를 따로 사용하시나요? Agbrio는 이 작업 방식에 맞춘 인계 도구입니다. 결과를 읽고, 다음 작업에 필요한 부분을 선택하고, 받을 대화를 확인한 뒤 전달합니다. 두 대화의 문맥을 유지하면서 여러 프로젝트에서도 정확한 대상으로 보낼 수 있습니다.
 
-[Windows v0.1.20 다운로드](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.20) · [설치와 연결](docs/SETUP.md) · [MIT](LICENSE)
+[Windows v0.1.21 다운로드](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.21) · [설치와 연결](docs/SETUP.md) · [MIT](LICENSE)
 
 ## 검토에서 다음 작업까지
 

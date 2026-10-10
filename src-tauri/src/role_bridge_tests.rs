@@ -948,6 +948,26 @@ fn historical_role_handoff_remains_visible_after_rebinding_without_becoming_send
  let d=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap());let p=store.create_project("history".into(),None).unwrap();let w=store.create_workstream(&p.id,"bridge".into()).unwrap();let input=|id:&str|RoleBindingInput{provider:"CODEX".into(),external_id:id.into(),label:id.into(),cwd:Some(d.path().to_string_lossy().into())};let b=store.bind_role_bridge(&w.id,store.role_bridge(&w.id).unwrap().binding_revision,input("old-source"),input("old-target")).unwrap();let obs=store.record_reply_observation(&w.id,&b.decision.unwrap().endpoint.id,Some("old-native"),"original",None).unwrap().unwrap();let h=store.prepare_role_handoff(&w.id,"DECISION",&obs.id,"selected original").unwrap();store.bind_role_bridge(&w.id,b.binding_revision,input("new-source"),input("new-target")).unwrap();assert!(store.approve_role_handoff_checked(&h.id,&h.payload_hash).is_err());let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};let view=state(&core,&w.id).unwrap();assert_eq!(view.handoffs.len(),1);assert_eq!(view.handoff_sources[0].role,"DECISION");assert_eq!(view.handoff_sources[0].binding_revision,b.binding_revision);
 }
 
+#[test]fn resident_metadata_covers_all_projects_without_changing_selection(){
+ let(dir,core,first,_)=active_guidance_fixture("ACTIVE",None);
+ let p=core.store.create_project("other fixture project".into(),None).unwrap();
+ let second=core.store.create_workstream(&p.id,"other bridge".into()).unwrap();
+ let side=|id:&str|RoleBindingInput{provider:"CODEX".into(),external_id:id.into(),label:"fixture".into(),cwd:Some(dir.path().to_string_lossy().into())};
+ core.store.bind_role_bridge(&second.id,0,side("other-source-fixture"),side("other-target-fixture")).unwrap();
+ let archived=core.store.create_workstream(&p.id,"archived bridge".into()).unwrap();
+ core.store.bind_role_bridge(&archived.id,0,side("archived-source-fixture"),side("archived-target-fixture")).unwrap();core.store.archive_workstream(&archived.id).unwrap();
+ let trashed=core.store.create_workstream(&p.id,"trashed bridge".into()).unwrap();
+ core.store.bind_role_bridge(&trashed.id,0,side("trashed-source-fixture"),side("trashed-target-fixture")).unwrap();core.store.trash_workstream(&trashed.id).unwrap();
+ for wid in [&first,&second.id]{let bridge=core.store.role_bridge(wid).unwrap();let endpoint=bridge.decision.unwrap().endpoint;core.store.save_codex_reply_observer_empty_baseline(wid,&endpoint.id,&endpoint.external_id).unwrap();}
+ let before=core.store.snapshot().unwrap();assert_eq!(before.selected_project_id.as_deref(),Some(p.id.as_str()));
+ let mut cursor=0;refresh_resident_activity(&core.store,&core.session,0,&mut cursor);
+ let rows=directory_activity(&core,&[first.clone(),second.id.clone()]).unwrap();assert_eq!(rows.len(),2);
+ assert!(rows.iter().all(|r|r.sides.len()==2&&r.sides.iter().all(|s|s.checked_at>0)),"resident metadata omitted a different project");
+ let initialized=crate::host_application::active_initialized_codex_observer_workstreams(&core.store).unwrap();assert_eq!(initialized.len(),2);assert!(initialized.contains(&first)&&initialized.contains(&second.id));
+ let after=core.store.snapshot().unwrap();assert_eq!(before.selected_project_id,after.selected_project_id);assert_eq!(before.selected_workstream_id,after.selected_workstream_id);
+ let methods=guidance_methods(&dir);assert!(!methods.iter().any(|r|r["params"]["threadId"].as_str().is_some_and(|id|id.starts_with("archived-")||id.starts_with("trashed-"))));
+ assert!(!methods.iter().any(|r|matches!(r["method"].as_str(),Some("thread/resume"|"turn/start"|"turn/steer"))));
+}
 #[test]fn resident_metadata_updates_without_a_renderer_and_projection_never_waits_for_native_rpc(){
  let(dir,core,wid,_)=active_guidance_fixture("ACTIVE",None);let mut cursor=0;
  refresh_resident_activity(&core.store,&core.session,0,&mut cursor);
