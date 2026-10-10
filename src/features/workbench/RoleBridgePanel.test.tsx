@@ -204,7 +204,10 @@ describe("role-compatible Bridge", () => {
     expect(api.prepare.mock.calls[1][3]).toBe("original");expect(screen.getByRole("textbox",{name:"跨端交接发送内容"})).toHaveValue("original");
     fireEvent.change(screen.getByRole("textbox",{name:"跨端交接发送内容"}),{target:{value:"owner edit"}});fireEvent.click(screen.getByRole("button",{name:"确认并发送给执行端"}));
     await waitFor(()=>expect(api.send).toHaveBeenCalledTimes(1));const text=api.edit.mock.calls[0][2];expect(text).toContain("owner edit");expect(text).toContain("prepared-2");expect(text).not.toContain("prepared-1");expect(text.match(/Selected attachments/g)).toHaveLength(1);
+    await waitFor(()=>expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(screen.getByRole("button",{name:"继续审阅交接"}));
     expect(screen.getByRole("dialog").textContent?.match(/Selected attachments/g)).toHaveLength(1);
+    expect(api.send).toHaveBeenCalledTimes(1);
   });
   it("lost send response disables local resend and retains the original uncertain record", async () => {
     const { state, prepared, api } = fixture();

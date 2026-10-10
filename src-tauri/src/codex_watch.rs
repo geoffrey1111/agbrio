@@ -64,6 +64,7 @@ pub(crate) fn inspect_live(
             },Vec::new(),None,
         ));
     };
+    adapter.note_turn_diagnostic(thread_id,turn);
     let turn_id = id(&turn["id"])?;
     let external_active=thread.pointer("/status/type").and_then(Value::as_str)==Some("active");
     let state = if external_active {"RUNNING"} else {match turn["status"].as_str() {

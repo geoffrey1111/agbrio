@@ -12,6 +12,26 @@ fn fixture()->(tempfile::TempDir,RouterStore,String,AssistantGrant,HandoffHistor
 }
 fn approval(h:&HandoffHistoryItem)->ApprovalInput{ApprovalInput{handoff_id:h.id.clone(),expected_hash:h.payload_hash.clone(),rule_id:Some("continue".into()),decision_id:None,assessment:"The result matches the owner's continuation rule".into()}}
 #[test]
+fn assistant_processed_requires_exact_acknowledged_send_and_expires_without_reviving_attention(){
+ let(_dir,s,w,_g,h)=fixture();
+ assert!(s.assistant_processed(&w,now()).unwrap().is_none());
+ s.approve_assistant_handoff(&_g.id,approval(&h)).unwrap();
+ assert!(s.assistant_processed(&w,now()).unwrap().is_none());
+ s.claim_role_handoff(&h.id).unwrap();
+ assert!(s.assistant_processed(&w,now()).unwrap().is_none());
+ s.transition_handoff(&h.id,"SENT",None).unwrap();
+ assert!(s.assistant_processed(&w,now()).unwrap().is_none()); // User/manual acknowledgement alone is not an AI actor.
+ s.note_assistant_sent(&_g.id,&h.id).unwrap();
+ let sent=s.role_handoff(&h.id).unwrap().sent_at.unwrap();
+ let marker=s.assistant_processed(&w,sent).unwrap().unwrap();
+ assert_eq!(marker.handoff_id,h.id);assert_eq!(marker.source_role,"DECISION");
+ assert_eq!(marker.destination_endpoint_id,h.destination_endpoint.id);
+ assert!(s.assistant_processed(&w,sent+assistant_processed::ASSISTANT_PROCESSED_TTL_MS).unwrap().is_none());
+ assert!(s.reply_observations_for_workstream(&w).unwrap()[0].handled_at.is_some());
+ s.with_connection(|c|{c.execute("UPDATE workstreams SET binding_revision=binding_revision+1 WHERE id=?1",[&w]).map_err(db_error)?;Ok(())}).unwrap();
+ assert!(s.assistant_processed(&w,sent).unwrap().is_none());
+}
+#[test]
 fn historical_receipt_read_does_not_adopt_or_make_a_draft_sendable(){
     let(_d,s,w,g,_)=fixture();let obs=s.reply_observations_for_workstream(&w).unwrap().remove(0);
     let manual=s.prepare_role_handoff(&w,"DECISION",&obs.id,"historical manual bytes").unwrap();

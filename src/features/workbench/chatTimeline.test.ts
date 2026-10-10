@@ -4,6 +4,17 @@ import type {ChatMessage,WatchReply} from './watchChatApi';
 const m=(turnId:string,id:string,role:'user'|'assistant',text=id):ChatMessage=>({turnId,id,role,text});
 const source={...m('t2','a2','assistant'),seenAt:200};
 const receipt=(id:string,turnId:string|null,text:string,createdAt:number,status:WatchReply['status']='SENT'):WatchReply=>({id,turnId,text,createdAt,status,threadId:'exact',sourceSequence:2,expectedTurnId:null,mode:'SEND',errorCode:null,options:{attachments:[]}});
+it('re-rendering a sent receipt never mutates cached history or duplicates the native user message',()=>{
+ const prompt=Object.freeze(m('t2','u2','user','sent once'));
+ const history=Object.freeze([prompt,Object.freeze({...source})]);
+ const replies=[receipt('r','t2','sent once',100)];
+ for(let render=0;render<4;render++){
+  const result=chatTimeline([...history],[],replies,source,true);
+  expect(result.filter(x=>x.role==='user').map(x=>x.id)).toEqual(['u2']);
+  expect(result[0].receipt?.id).toBe('r');
+ }
+ expect(prompt).not.toHaveProperty('receipt');expect(source).not.toHaveProperty('source');
+});
 it('reverses native turn groups while keeping consecutive public items in native order',()=>{
  const page=chronologicalHistoryPage([m('t2','u2','user'),m('t2','p2','assistant'),m('t2','a2','assistant'),m('t1','u1','user'),m('t1','a1','assistant')]);
  expect(page.map(x=>x.id)).toEqual(['u1','a1','u2','p2','a2']);

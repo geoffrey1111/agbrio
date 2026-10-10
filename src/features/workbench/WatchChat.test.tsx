@@ -7,6 +7,22 @@ const original={sequence:17,threadId:"exact-original",label:"原对话",cwd:"D:\
 const state:WatchChatState={watch:{...original,enabled:true,generation:2,checkedAt:1,errorCode:null},host:"电脑A",ownedTurnId:null,externalBusy:false,replies:[],requests:[],goal:null};
 const response=(id:string,status:WatchReply["status"]="SENT"):WatchReply=>({id,threadId:original.threadId,sourceSequence:17,expectedTurnId:"turn-a",mode:"SEND",text:"第一条回复",status,turnId:"turn-b",errorCode:null,createdAt:1,options:{attachments:[]}});
 beforeEach(()=>sessionStorage.clear());afterEach(cleanup);
+it('a normal send needs no acknowledgement and native history stays single across composer edits',async()=>{
+ let sent:WatchReply|undefined;
+ const command=vi.fn(async(input)=>{
+  if(input.action==='HISTORY')return {messages:[...(sent?[{id:'native-prompt',turnId:'turn-b',role:'user',text:sent.text}]:[]),{id:'item-a',turnId:'turn-a',role:'assistant',text:'完整原文'}],nextCursor:null};
+  if(input.action==='SEND'){sent=response(input.id);return sent;}
+  throw Error('unexpected command');
+ });
+ const api:WatchChatApi={state:vi.fn(async()=>({...state,replies:sent?[sent]:[],watch:{...state.watch,snapshot:sent?{state:'RUNNING',turnId:'turn-b',itemId:null,text:''}:state.watch.snapshot}})),command:command as WatchChatApi['command']};
+ render(<WatchChat original={original} api={api} onBack={()=>{}}/>);
+ const input=screen.getByLabelText('回复这个 Codex 对话');fireEvent.change(input,{target:{value:'第一条回复'}});
+ await waitFor(()=>expect(screen.getByRole('button',{name:'发送回复'})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:'发送回复'}));
+ await waitFor(()=>expect(input).toHaveValue(''));await waitFor(()=>expect(screen.getAllByText('第一条回复')).toHaveLength(1));
+ expect(screen.queryByRole('button',{name:'知道了'})).toBeNull();expect(screen.queryByText('回复已发送到这个原对话。')).toBeNull();
+ fireEvent.change(input,{target:{value:'准备下一条'}});expect(screen.getAllByText('第一条回复')).toHaveLength(1);
+ expect(command.mock.calls.filter(([v])=>v.action==='SEND')).toHaveLength(1);
+});
 it('opens one chronological native transcript and prepends older pages without duplicating receipts',async()=>{
  const message=(turnId:string,id:string,role:'user'|'assistant',text:string)=>({turnId,id,role,text});
  const command=vi.fn(async(input)=>input.cursor?{messages:[message('turn-old','u-old','user','更早的问题'),message('turn-old','a-old','assistant','更早的回答')],nextCursor:null}:{messages:[message('turn-a','u-a','user','当前的问题'),message('turn-a','item-a','assistant','完整原文'),message('turn-before','u-before','user','之前的问题'),message('turn-before','a-before','assistant','之前的回答')],nextCursor:'older'});

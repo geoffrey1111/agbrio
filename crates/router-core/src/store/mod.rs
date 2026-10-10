@@ -1,6 +1,8 @@
 pub mod control;
 pub mod assistant;
 pub mod assistant_actions;
+pub mod assistant_processed;
+pub mod goal_control;
 pub mod mcp_events;
 pub mod dispatch;
 pub mod migration;
@@ -764,6 +766,8 @@ impl RouterStore {
         role_bridge::migrate(&mut connection, &path)?;
         endpoint_claims::migrate(&mut connection, &path)?;
         bridge_notifications::migrate(&mut connection)?;
+        goal_control::migrate(&connection)?;
+        assistant_processed::migrate(&connection)?;
         let store=Self {
             connection: Mutex::new(connection),
             _preview_profile: None,
@@ -3873,6 +3877,7 @@ mod tests {
                         "assistant_decisions",
                         "assistant_drafts",
                         "assistant_grants",
+                        "assistant_sent_handoffs",
                         "codex_feedback_drafts",
                         "codex_watch_events",
                         "codex_watches",
@@ -3880,6 +3885,7 @@ mod tests {
                         "endpoint_role_details",
                         "endpoints",
                         "external_project_links",
+                        "goal_control_actions",
                         "handoff_attachments",
                         "handoffs",
                         "mcp_event_actions",

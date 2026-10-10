@@ -1,13 +1,14 @@
 import {useEffect,useRef} from "react";
-import {LoaderCircle,Check,MessageCircle,Pause,TriangleAlert,Clock3} from "lucide-react";
+import {LoaderCircle,Check,Bot,MessageCircle,Pause,TriangleAlert,Clock3} from "lucide-react";
 import {t} from "../../i18n";
 import {goalStatusText} from "./CodexGoalStatus";
-import {focusedBridgeActivity,type ActivityPhase,type BridgeActivity} from "./bridgeActivity";
+import {assistantProcessedVisible,focusedBridgeActivity,type ActivityPhase,type BridgeActivity} from "./bridgeActivity";
 const copy:Record<ActivityPhase,string>={GOAL_ACTIVE:"进行中的目标",THINKING:"正在思考",RUNNING:"正在执行",ACTION_REQUIRED:"等待确认",COMPLETE:"最新回复",RESULT_PENDING:"正在读取结果",EMPTY:"",PAUSED:"已暂停",LIMITED:"目标受限",FAILED:"执行失败",INTERRUPTED:"已停止",UNCONFIRMED:"状态待确认"};
 export function BridgeActivityStrip({activity,age}:{activity:BridgeActivity;age:number}){
  const root=useRef<HTMLSpanElement>(null),previous=useRef<Record<string,string>>({});
  const focus=focusedBridgeActivity(activity,age);
- const phases=focus?`${focus.side.role}:${focus.side.phase}:${focus.concurrent}`:"idle";
+ const processed=assistantProcessedVisible(activity,Date.now(),age);
+ const phases=processed?"assistant-processed":focus?`${focus.side.role}:${focus.side.phase}:${focus.concurrent}`:"idle";
  useEffect(()=>{
   const node=root.current;if(!node)return;let stopped=false,dispose=()=>{};const before=previous.current;
   previous.current=Object.fromEntries([...node.querySelectorAll<HTMLElement>(".r2-agent-state")].map(n=>[n.dataset.role!,n.dataset.phase!]));
@@ -26,6 +27,7 @@ export function BridgeActivityStrip({activity,age}:{activity:BridgeActivity;age:
   }).catch(()=>{});
   return()=>{stopped=true;dispose();};
  },[phases]);
+ if(processed)return <span className="r2-assistant-processed" role="status"><Bot size={14} aria-hidden/>{t("AI 助手已处理")}</span>;
  if(!focus)return null;
  const {side,concurrent}=focus,phase=side.phase;
  const Icon=phase==="COMPLETE"?Check:phase==="ACTION_REQUIRED"?MessageCircle:phase==="PAUSED"?Pause:phase==="FAILED"?TriangleAlert:phase==="RESULT_PENDING"?Clock3:LoaderCircle;

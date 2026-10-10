@@ -14,6 +14,7 @@ pub(crate) struct BridgeState {
     pub(crate) replies: Vec<ReplyObservation>,
     pub(crate) handoffs: Vec<HandoffHistoryItem>,
     pub(crate) handoff_sources:Vec<HandoffSource>,
+    pub(crate) assistant_processed:Option<router_core::store::assistant_processed::AssistantProcessed>,
     #[serde(skip_serializing_if="Option::is_none")]
     pub(crate) read_outcome:Option<BridgeReadOutcome>,
     #[serde(skip_serializing_if="Option::is_none")]
@@ -22,7 +23,7 @@ pub(crate) struct BridgeState {
     pub(crate) snapshot_at:Option<u64>,
 }
 #[derive(Clone,Serialize)]#[serde(rename_all="camelCase")]
-pub(crate) struct RoleActivity{pub role:String,pub endpoint_id:String,pub state:String,pub checked_at:u64,pub turn_id:Option<String>,pub result_observation_id:Option<String>,pub goal_status:Option<String>,pub turn_active:bool}
+pub(crate) struct RoleActivity{pub role:String,pub endpoint_id:String,pub state:String,pub checked_at:u64,pub turn_id:Option<String>,pub result_observation_id:Option<String>,pub goal_status:Option<String>,pub turn_active:bool,pub latest_turn:Option<router_core::codex::adapter::NativeTurnDiagnostic>,pub goal:Option<MobileCodexGoal>,pub goal_controls:Option<crate::goal_control::GoalControls>}
 #[derive(Serialize)]#[serde(rename_all="camelCase")]
 pub(crate) struct BridgeReadOutcome{role:String,endpoint_id:String,state:String,retained_reply:bool}
 #[derive(Serialize)]#[serde(rename_all="camelCase")]
@@ -60,6 +61,7 @@ pub(crate) fn state(core: &RouterCore, workstream: &str) -> Result<BridgeState, 
         replies: core.store.reply_observations_for_workstream(workstream)?,
         handoffs,
         handoff_sources,
+        assistant_processed:core.store.assistant_processed(workstream,activity_now() as i64)?,
         read_outcome:None,
         activities:None,snapshot_at:None,
     })
@@ -81,7 +83,7 @@ pub(crate) fn sync(core:&RouterCore,workstream:&str)->Result<BridgeState,String>
     {
         let mut session=core.session.try_lock().ok();
         for side in [&initial.bindings.decision,&initial.bindings.execution].into_iter().flatten(){
-            let mut activity=RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:activity_now(),turn_id:None,result_observation_id:None,goal_status:None,turn_active:false};
+            let mut activity=RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:activity_now(),turn_id:None,result_observation_id:None,goal_status:None,turn_active:false,latest_turn:None,goal:None,goal_controls:None};
             if side.endpoint.provider=="CODEX"{
                 if let Some(adapter)=session.as_mut().and_then(|s|s.adapter.as_mut()).filter(|a|!a.is_closed()){
                     if let Ok(native)=adapter.read_thread_activity(&side.endpoint.external_id){
@@ -668,7 +670,7 @@ pub(crate) fn send(core: &RouterCore, handoff: &str) -> Result<BridgeState, Stri
 mod tests;
 
 #[derive(Clone,Serialize)]#[serde(rename_all="camelCase")]
-pub(crate) struct DirectoryActivity { pub workstream_id:String,pub binding_revision:i64,pub unread_count:usize,pub latest_role:Option<String>,pub sides:Vec<RoleActivity> }
+pub(crate) struct DirectoryActivity { pub workstream_id:String,pub binding_revision:i64,pub unread_count:usize,pub latest_role:Option<String>,pub sides:Vec<RoleActivity>,pub assistant_processed:Option<router_core::store::assistant_processed::AssistantProcessed> }
 /// Bounded read-only status projection. Does not read transcript bodies, start a
 /// watch, load cold conversations, or navigate an authenticated browser.
 pub(crate) fn poll_directory_activity(store:&RouterStore,session_handle:&Mutex<Session>,ids:&[String])->Result<Vec<DirectoryActivity>,String>{
@@ -680,13 +682,20 @@ pub(crate) fn poll_directory_activity(store:&RouterStore,session_handle:&Mutex<S
   let b=store.role_bridge(id)?;let mut sides=Vec::new();
   for side in [&b.decision,&b.execution].into_iter().flatten(){
    let pending=session.as_ref().is_some_and(|s|s.pending_codex_requests.values().any(|r|r.thread_id==side.endpoint.external_id&&!r.responded));
-   let mut a=RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:0,turn_id:None,result_observation_id:None,goal_status:None,turn_active:false};
+   let mut a=RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:0,turn_id:None,result_observation_id:None,goal_status:None,turn_active:false,latest_turn:None,goal:None,goal_controls:None};
    if side.endpoint.provider=="CODEX"&&started.elapsed()<std::time::Duration::from_secs(4){
     if let Some(adapter)=session.as_mut().and_then(|s|s.adapter.as_mut()).filter(|a|!a.is_closed()){
      if let Ok(native)=adapter.read_thread_activity(&side.endpoint.external_id){
       let exact=side.cwd.as_ref().is_some_and(|cwd|std::fs::canonicalize(cwd).ok().zip(std::fs::canonicalize(&native.cwd).ok()).is_some_and(|(a,b)|a==b));
       if exact&&native.thread_id==side.endpoint.external_id&&native.authoritative{
        a.state=native.state.into();a.turn_id=native.turn_id;a.goal_status=native.goal_status;a.turn_active=native.turn_active;a.checked_at=activity_now();
+       a.latest_turn=adapter.latest_turn_diagnostic(&side.endpoint.external_id).filter(|d|a.turn_id.as_deref()==Some(&d.turn_id));
+       if let Ok(raw)=adapter.request_with_timeout("thread/goal/get",json!({"threadId":side.endpoint.external_id}),std::time::Duration::from_millis(750)){
+        if let Ok(Some(mut goal))=codex_goal_from_response(&side.endpoint.external_id,&raw){
+         goal.active_turn_id=adapter.active_turn_id(&side.endpoint.external_id);a.goal_status=Some(goal.status.clone());
+         a.goal_controls=crate::goal_control::controls_for_store(store,&goal,a.turn_active,pending).ok();a.goal=Some(goal);
+        }
+       }
        if a.state=="RUNNING"&&pending{a.state="ACTION_REQUIRED".into();}
        else if a.state=="RUNNING"{if let Some(turn)=a.turn_id.as_ref(){
         if let Ok(items)=adapter.request_with_timeout("thread/items/list",json!({"threadId":side.endpoint.external_id,"turnId":turn,"cursor":null,"limit":1,"sortDirection":"desc"}),std::time::Duration::from_millis(500)){
@@ -708,7 +717,7 @@ pub(crate) fn poll_directory_activity(store:&RouterStore,session_handle:&Mutex<S
   // an old role's activity under a new recipient.
   let replies=store.reply_observations_for_workstream(id)?;
   let latest_role=replies.iter().filter(|r|[&b.decision,&b.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).max_by_key(|r|r.completed_at.unwrap_or(r.observed_at)).and_then(|r|[&b.decision,&b.execution].into_iter().flatten().find(|side|side.endpoint.id==r.endpoint_id).map(|side|side.role.clone()));
-  if store.role_bridge(id)?.binding_revision==b.binding_revision{result.push(DirectoryActivity{workstream_id:id.clone(),binding_revision:b.binding_revision,latest_role,unread_count:replies.iter().filter(|r|r.read_at.is_none()&&r.handled_at.is_none()&&[&b.decision,&b.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).count(),sides});}
+  if store.role_bridge(id)?.binding_revision==b.binding_revision{result.push(DirectoryActivity{workstream_id:id.clone(),binding_revision:b.binding_revision,latest_role,assistant_processed:store.assistant_processed(id,activity_now() as i64)?,unread_count:replies.iter().filter(|r|r.read_at.is_none()&&r.handled_at.is_none()&&[&b.decision,&b.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).count(),sides});}
  }
  Ok(result)
 }
@@ -761,9 +770,9 @@ pub(crate) fn directory_activity(core:&RouterCore,ids:&[String])->Result<Vec<Dir
  if ids.len()>20||ids.iter().any(|id|id.is_empty()||id.len()>128){return Err("BRIDGE_ACTIVITY_REQUEST_INVALID".into());}
  let mut rows=Vec::new();for id in ids{let initial=state(core,id)?;let w=core.store.snapshot_for_workstream(id)?.workstreams.into_iter().find(|w|w.id==*id).ok_or("BRIDGE_UNAVAILABLE")?;if w.trashed_at.is_some()||w.archived_at.is_some(){continue;}
   let bindings=&initial.bindings;let epoch=core.session.try_lock().ok().map(|s|s.codex_observer_epoch);let cache=activity_cache(&core.store);let cached=cache.lock().ok().and_then(|c|c.rows.get(id).filter(|row|epoch.is_none_or(|e|e==c.epoch)&&row.binding_revision==bindings.binding_revision).cloned());
-  let sides=[&bindings.decision,&bindings.execution].into_iter().flatten().map(|side|cached.as_ref().and_then(|r|r.sides.iter().find(|a|a.endpoint_id==side.endpoint.id&&a.role==side.role&&a.checked_at>0&&activity_now().saturating_sub(a.checked_at)<15000)).cloned().unwrap_or(RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:0,turn_id:None,result_observation_id:None,goal_status:None,turn_active:false})).collect();
+  let sides=[&bindings.decision,&bindings.execution].into_iter().flatten().map(|side|cached.as_ref().and_then(|r|r.sides.iter().find(|a|a.endpoint_id==side.endpoint.id&&a.role==side.role&&a.checked_at>0&&activity_now().saturating_sub(a.checked_at)<15000)).cloned().unwrap_or(RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:0,turn_id:None,result_observation_id:None,goal_status:None,turn_active:false,latest_turn:None,goal:None,goal_controls:None})).collect();
   let latest_role=initial.replies.iter().filter(|r|[&bindings.decision,&bindings.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).max_by_key(|r|r.completed_at.unwrap_or(r.observed_at)).and_then(|r|[&bindings.decision,&bindings.execution].into_iter().flatten().find(|side|side.endpoint.id==r.endpoint_id).map(|side|side.role.clone()));
-  let unread_count=initial.replies.iter().filter(|r|r.read_at.is_none()&&r.handled_at.is_none()&&[&bindings.decision,&bindings.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).count();rows.push(DirectoryActivity{workstream_id:id.clone(),binding_revision:bindings.binding_revision,unread_count,latest_role,sides});
+  let unread_count=initial.replies.iter().filter(|r|r.read_at.is_none()&&r.handled_at.is_none()&&[&bindings.decision,&bindings.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).count();rows.push(DirectoryActivity{workstream_id:id.clone(),binding_revision:bindings.binding_revision,unread_count,latest_role,sides,assistant_processed:initial.assistant_processed});
  }Ok(rows)
 }
 pub(crate) fn sync_cached(core:&RouterCore,id:&str)->Result<BridgeState,String>{

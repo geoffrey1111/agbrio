@@ -30,7 +30,10 @@ export function chatTimeline(history:ChatMessage[],observed:ObservedMessage[],re
  const nativeTurns=new Set(history.map(m=>m.turnId));
  const groups=new Map<string,TimelineMessage[]>();
  const times=new Map<string,number>();
- const add=(message:TimelineMessage)=>{const group=groups.get(message.turnId)??[];const index=group.findIndex(m=>m.id===message.id);if(index<0)group.push(message);else group[index]={...group[index],...message};groups.set(message.turnId,group);};
+ // Receipt decoration belongs to this render, never to cached native history.
+ // Mutating an input item would make the next render consider it already claimed
+ // and append the same receipt as a second user message.
+ const add=(message:TimelineMessage)=>{const group=groups.get(message.turnId)??[];const index=group.findIndex(m=>m.id===message.id);if(index<0)group.push({...message});else group[index]={...group[index],...message};groups.set(message.turnId,group);};
  for(const message of history)add(message);
  for(const message of [...observed,source]){
   times.set(message.turnId,Math.min(times.get(message.turnId)??Infinity,message.seenAt));

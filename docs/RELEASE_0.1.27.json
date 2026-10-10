@@ -1,0 +1,49 @@
+{
+  "version": "0.1.27",
+  "interfaceRevision": "2026.10.11-39",
+  "sendExperience": {
+    "successAcknowledgementRemoved": true,
+    "immutableNativeTranscriptProjection": true,
+    "provenSentReviewReturnsToChat": true,
+    "uncertainDeliveryGuardsRetained": true
+  },
+  "nativeGoals": {
+    "exactRoleAndGoalContractFingerprint": true,
+    "pauseResumeOperations": [
+      "PAUSE_GOAL",
+      "RESUME_GOAL"
+    ],
+    "newGoalEngine": false,
+    "objectiveBudgetAccountingPreserved": true,
+    "usageLimitAssistantRequiresActualOwnerAnswer": true,
+    "fixtureChecks": 7,
+    "realNativeResumeSameGoal": "PASS",
+    "realNativePause": "NOT_INDEPENDENTLY_VERIFIED",
+    "existingUserGoalsMutated": false,
+    "generalFailureEventAdded": false
+  },
+  "assistantAttribution": {
+    "actualAuthenticatedAssistantDispatchRecorded": true,
+    "displayRequires": "SENT_WITH_EXACT_CURRENT_SOURCE_BINDING",
+    "maximumDisplayMinutes": 5,
+    "replacedByExactRecipientProgress": true,
+    "doesNotInferFromManualApprovalOrUnknown": true
+  },
+  "mcpEvents": {
+    "formalSubscriptionsPreserved": 8,
+    "automaticEventResultInjection": "OPEN_MISSING_CONTEXT",
+    "eventContractUnchanged": true
+  },
+  "checks": {
+    "rootFrontend": 543,
+    "publicHostPassed": 225,
+    "publicHostIgnored": 32,
+    "nativeRealIsolatedGoalResume": "PASS",
+    "sourceWindows": "PENDING",
+    "exactReleasedInstallerWindows": "PENDING"
+  },
+  "runtime": {
+    "installedVersion": "0.1.26",
+    "deployment": "PENDING"
+  }
+}

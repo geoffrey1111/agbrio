@@ -152,3 +152,5 @@
 .v4-chat-live button{min-height:24px!important;padding:0 8px!important;font-size:12px!important}
 @keyframes agbrio-working{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.v4-chat-live[data-active="true"]>svg{animation:none}}
+
+.v4-chat-feedback{margin:0 0 8px;padding:0 4px;color:var(--r2-muted,var(--awr-ink));font-size:13px;line-height:1.5;overflow-wrap:anywhere;}

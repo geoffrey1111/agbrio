@@ -6,7 +6,11 @@ import type { MobileCodexGoal, MobileCodexRequest } from "../../mobile/api";
 
 export type ReplyOptions = { model?: string | null; effort?: string | null; attachments: string[] };
 export type WatchReply = { id: string; threadId: string; sourceSequence: number | null; expectedTurnId: string | null; mode: "SEND" | "QUEUE" | "STEER"; text: string; status: "QUEUED" | "SENDING" | "SENT" | "UNKNOWN" | "ACKNOWLEDGED" | "CANCELLED" | "FAILED"; turnId: string | null; errorCode: string | null; createdAt: number; options: ReplyOptions };
-export type WatchChatState = { publicMessages?:ChatMessage[]; activity?:"THINKING"|"EXECUTING"|null; checkedAt?:number; watch: CodexWatch; host: string; ownedTurnId: string | null; controllableTurnId?:string|null; externalBusy: boolean; replies: WatchReply[]; requests: MobileCodexRequest[]; goal: MobileCodexGoal | null };
+export type GoalTarget={threadId:string;generation:number;workstreamId:string|null;bindingRevision:number|null;role:"DECISION"|"EXECUTION"|null;endpointId:string|null};
+export type GoalControls={target:GoalTarget;canPause:boolean;canResume:boolean;resumeRequiresOwnerAnswer:boolean;blockedReason:string|null};
+export type GoalControlReceipt={id:string;threadId:string;payloadHash:string;status:"READY"|"SENDING"|"APPLIED"|"REJECTED"|"UNKNOWN";result:MobileCodexGoal|null;errorCode:string|null};
+export type NativeTurnDiagnostic={threadId:string;turnId:string;status:string;errorCode:string|null;willRetry:boolean|null;confirmedTerminal:boolean};
+export type WatchChatState = {latestTurn?:NativeTurnDiagnostic|null;goalControls?:GoalControls|null; publicMessages?:ChatMessage[]; activity?:"THINKING"|"EXECUTING"|null; checkedAt?:number; watch: CodexWatch; host: string; ownedTurnId: string | null; controllableTurnId?:string|null; externalBusy: boolean; replies: WatchReply[]; requests: MobileCodexRequest[]; goal: MobileCodexGoal | null };
 export type ChatCommand = { action: string; threadId: string; [key: string]: unknown };
 export type ChatMessage = { id: string; turnId: string; role: "user" | "assistant"; text: string };
 export type ChatHistory = { messages: ChatMessage[]; nextCursor: string | null };
@@ -20,7 +24,8 @@ export function cachedWatchChatApi(raw:WatchChatApi):WatchChatApi {
  command:async<T>(input:ChatCommand)=>{
   if(input.action==="HISTORY"&&!input.cursor)return readModels.read<T>(historyCacheKey(input.threadId),()=>raw.command<T>(input),15000);
   const result=await raw.command<T>(input);
-  if(!["HISTORY","OPTIONS","RECEIPT"].includes(input.action)){readModels.invalidate(chatCacheKey(input.threadId));readModels.invalidate(historyCacheKey(input.threadId));readModels.invalidate("notifications:");}
+  if(input.action==="GOAL_CONTROL"){readModels.invalidate("bridge:");readModels.invalidate("bridge-activity:");}
+  if(!["HISTORY","OPTIONS","RECEIPT","GOAL_RECEIPT"].includes(input.action)){readModels.invalidate(chatCacheKey(input.threadId));readModels.invalidate(historyCacheKey(input.threadId));readModels.invalidate("notifications:");}
   return result;
  }};
 }

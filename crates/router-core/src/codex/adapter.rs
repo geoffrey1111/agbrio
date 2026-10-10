@@ -171,8 +171,18 @@ fn exact_not_loaded_metadata_error(error: &str, expected_thread: &str) -> bool {
     error.contains(&format!("\"message\":\"{message}\""))
 }
 
+#[derive(Clone,Debug,serde::Serialize)]
+#[serde(rename_all="camelCase")]
+pub struct NativeTurnDiagnostic{pub thread_id:String,pub turn_id:String,pub status:String,pub error_code:Option<String>,pub will_retry:Option<bool>,pub confirmed_terminal:bool}
+fn native_error_code(error:&Value)->Option<String>{
+ let info=&error["codexErrorInfo"];
+ const LABELS:&[&str]=&["contextWindowExceeded","sessionBudgetExceeded","usageLimitExceeded","rateLimitExceeded","flexUnavailable","serverOverloaded","cyberPolicy","misalignmentPolicyViolation","tooManyDenials","internalServerError","unauthorized","badRequest","threadRollbackFailed","sandboxError","other","httpConnectionFailed","responseStreamConnectionFailed","responseStreamDisconnected","responseTooManyFailedAttempts"];
+ let value=info.as_str().or_else(||info.as_object().and_then(|o|o.keys().find(|k|LABELS.contains(&k.as_str())).map(String::as_str)));
+ value.filter(|v|LABELS.contains(v)).map(str::to_owned)
+}
 #[derive(Default)]
 struct TurnRegistry {
+    diagnostics:HashMap<String,NativeTurnDiagnostic>,
     observed:HashMap<String,String>,owned:HashMap<String,String>,
     terminal:HashMap<(String,String),String>,completed:std::collections::VecDeque<(String,String)>,
 }
@@ -481,6 +491,19 @@ impl CodexAdapter {
         self.shared_subscriptions.insert(thread.into());Ok(())
     }
     pub fn mark_turn_started(&self,thread:&str,turn:&str){if let Ok(mut r)=self.turns.lock(){r.acknowledge(thread,turn);}}
+    pub fn latest_turn_diagnostic(&self,thread:&str)->Option<NativeTurnDiagnostic>{self.turns.lock().ok().and_then(|r|r.diagnostics.get(thread).cloned())}
+    pub fn note_turn_diagnostic(&self,thread:&str,turn:&Value){
+        let Some(id)=turn["id"].as_str().filter(|id|!id.is_empty()&&id.len()<=256)else{return};
+        let Some(status)=turn["status"].as_str().filter(|s|matches!(*s,"inProgress"|"active"|"pending"|"completed"|"failed"|"interrupted"))else{return};
+        if let Ok(mut r)=self.turns.lock(){
+            if r.diagnostics.len()>=1024&&!r.diagnostics.contains_key(thread){if let Some(key)=r.diagnostics.keys().next().cloned(){r.diagnostics.remove(&key);}}
+            let confirmed=r.terminal.contains_key(&(thread.into(),id.into()));
+            let old=r.diagnostics.get(thread).filter(|d|d.turn_id==id);
+            let code=native_error_code(&turn["error"]).or_else(||old.and_then(|d|d.error_code.clone()));
+            let retry=old.and_then(|d|d.will_retry);
+            r.diagnostics.insert(thread.into(),NativeTurnDiagnostic{thread_id:thread.into(),turn_id:id.into(),status:status.into(),error_code:code,will_retry:if matches!(status,"failed"|"interrupted"|"completed"){Some(false)}else{retry},confirmed_terminal:confirmed});
+        }
+    }
     pub fn terminal_turn_status(&self,thread:&str,turn:&str)->Option<String>{self.turns.lock().ok().and_then(|r|r.terminal.get(&(thread.into(),turn.into())).cloned())}
 
     /// Reconcile an acknowledged turn after observer reconnect. At most four
@@ -520,6 +543,7 @@ impl CodexAdapter {
         self.begin_latest_turn_observation(thread_id)?;
         let turns=match self.request_with_timeout("thread/turns/list",json!({"threadId":thread_id,"cursor":null,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"}),budget){Ok(v)=>v,Err(e) if e.strip_prefix("Codex JSON-RPC error: ").and_then(|v|serde_json::from_str::<Value>(v).ok()).is_some_and(|v|v["code"]==-32600&&v["message"].as_str()==Some(format!("thread {thread_id} is not materialized yet; thread/turns/list is unavailable before first user message").as_str()))=>json!({"data":[]}),Err(e)=>return Err(e)};
         let rows=turns["data"].as_array().filter(|v|v.len()<=1).ok_or("ACTIVITY_PROTOCOL_INVALID")?;
+        if let Some(turn)=rows.first(){self.note_turn_diagnostic(thread_id,turn);}
         let turn_id=rows.first().map(|t|t["id"].as_str().filter(|id|!id.is_empty()&&id.len()<=256).map(str::to_owned).ok_or("ACTIVITY_PROTOCOL_INVALID")).transpose()?;
         let live=kind==Some("idle")&&(self.is_shared()||turn_id.as_deref().is_some_and(|t|self.terminal_turn_status(thread_id,t).is_some()));
         let mut goal_status=None;
@@ -541,6 +565,11 @@ impl CodexAdapter {
     /// preserves the authoritative Goal objective and accounting.
     pub fn set_goal_status(&mut self, thread_id: &str, status: &str) -> Result<Value, String> {
         self.request("thread/goal/set", goal_set_status_params(thread_id, status))
+    }
+
+    /// Explicit owner control or an independently reviewed delegated action.
+    pub fn set_goal_status_reviewed(&mut self,thread_id:&str,status:&str)->Result<Value,String>{
+        self.request("thread/goal/set",json!({"threadId":thread_id,"status":status,"origin":"user"}))
     }
 
     pub fn clear_goal(&mut self, thread_id: &str) -> Result<Value, String> {
@@ -1255,7 +1284,8 @@ fn spawn_stdout_reader(
                     if !permitted{continue;}
                     match message.get("method").and_then(Value::as_str) {
                         Some("turn/started")=>{if let(Some(thread),Some(turn))=(message.pointer("/params/threadId").and_then(Value::as_str),notification_turn_id(&message)){if let Ok(mut r)=turns.lock(){r.observed.insert(thread.into(),turn.into());if shared_scope.is_none(){r.owned.insert(thread.into(),turn.into());}}}}
-                        Some("turn/completed")=>{if let(Some(thread),Some(turn),Some(status))=(message.pointer("/params/threadId").and_then(Value::as_str),notification_turn_id(&message),message.pointer("/params/turn/status").and_then(Value::as_str).filter(|s|matches!(*s,"completed"|"interrupted"|"failed"))){if let Ok(mut r)=turns.lock(){r.finish(thread,turn,status);}}}
+                        Some("turn/completed")=>{if let(Some(thread),Some(turn),Some(status))=(message.pointer("/params/threadId").and_then(Value::as_str),notification_turn_id(&message),message.pointer("/params/turn/status").and_then(Value::as_str).filter(|s|matches!(*s,"completed"|"interrupted"|"failed"))){if let Ok(mut r)=turns.lock(){r.finish(thread,turn,status);let error_code=native_error_code(&message["params"]["turn"]["error"]).or_else(||(status=="failed").then(||r.diagnostics.get(thread).filter(|d|d.turn_id==turn).and_then(|d|d.error_code.clone())).flatten());r.diagnostics.insert(thread.into(),NativeTurnDiagnostic{thread_id:thread.into(),turn_id:turn.into(),status:status.into(),error_code,will_retry:Some(false),confirmed_terminal:true});}}}
+                        Some("error")=>{if let(Some(thread),Some(turn))=(message.pointer("/params/threadId").and_then(Value::as_str),message.pointer("/params/turnId").and_then(Value::as_str)){if let Ok(mut r)=turns.lock(){if r.observed.get(thread).is_some_and(|id|id==turn){r.diagnostics.insert(thread.into(),NativeTurnDiagnostic{thread_id:thread.into(),turn_id:turn.into(),status:"inProgress".into(),error_code:native_error_code(&message["params"]["error"]),will_retry:message.pointer("/params/willRetry").and_then(Value::as_bool),confirmed_terminal:false});}}}}
                         _ => {}
                     }
                     event_listener(&message);

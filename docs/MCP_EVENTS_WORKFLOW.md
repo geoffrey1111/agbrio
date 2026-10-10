@@ -108,3 +108,5 @@ audit and cleanup must not unsubscribe them without an authorized reason.
 > Ask about pending decisions, changed bindings, missing required lineage or UNKNOWN
 > delivery. No periodic polling, new Bridges, repeated sends, goal recreation or
 > budget increases. Report missing injected event context rather than claiming it fixed.
+
+Goal controls in0.1.27: read the exact goalControls.target/fingerprint, then use reviewed PAUSE_GOAL/RESUME_GOAL and original action receipt; see [Goal controls](GOAL_RECOVERY.md). An assistant-processed UI label requires an actual assistant SENT handoff, lasts at most five minutes and yields to recipient progress. It does not approve pending decisions or prove task completion.

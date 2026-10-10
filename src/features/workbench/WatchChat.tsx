@@ -1,4 +1,4 @@
-import {CodexGoalStatus} from "./CodexGoalStatus";
+import {CodexGoalController} from "./CodexGoalController";
 import {t as uiText,useLanguage,getLanguage} from "../../i18n";
 import {chatTimeline,chronologicalHistoryPage,mergeHistory} from "./chatTimeline";
 import {useBackLayer} from "./navigationHistory";
@@ -58,6 +58,8 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
  const [publicMessages,setPublicMessages]=useState(()=>loadPublicMessages(original.threadId));
  useEffect(()=>{const text=JSON.stringify(publicMessages);if(text.length<2_000_000)try{sessionStorage.setItem(`aiwr-watch-public:${original.threadId}`,text);}catch{/* full messages still retained in memory and native public history */}},[publicMessages,original.threadId]);
  const [state, setState] = useState<WatchChatState | null>(()=>{const cached=api.cachedState?.(original.threadId);return cached?.watch.cwd===original.cwd?cached:null;}), [error, setError] = useState<string | null>(null), [notice, setNotice] = useState<string | null>(null), [busy, setBusy] = useState(false);
+ // Normal sends report their state on the message; transient feedback never requires acknowledgement.
+ useEffect(()=>{if(!notice)return;const timer=setTimeout(()=>setNotice(null),5000);return()=>clearTimeout(timer);},[notice]);
  const media=useMemo(()=>messageMedia({kind:"WATCH",threadId:original.threadId,sequence:"sequence" in original?original.sequence:null,turnId:original.snapshot.turnId,itemId:original.snapshot.itemId}),[original.threadId,"sequence" in original?original.sequence:null,original.snapshot.turnId,original.snapshot.itemId]);
  const [optionsOpen, setOptionsOpen] = useState(false), [models, setModels] = useState<ChatModel[] | null>(null), [history, setHistory] = useState<ChatMessage[]>(()=>api.cachedHistory?.(original.threadId)?.messages??[]), [historyCursor, setHistoryCursor] = useState<string | null>(()=>api.cachedHistory?.(original.threadId)?.nextCursor??null), [historyLoaded, setHistoryLoaded] = useState(()=>Boolean(api.cachedHistory?.(original.threadId)));
  const [attachmentOpen,setAttachmentOpen]=useState(false),[permissionsOpen,setPermissionsOpen]=useState(false),[infoOpen,setInfoOpen]=useState(false),[followupMode,setFollowupMode]=useState<"QUEUE"|"STEER">("QUEUE");
@@ -85,7 +87,7 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
  async function act(work: () => Promise<void>) { if (actionRunning.current) return; actionRunning.current = true; setBusy(true); setError(null); try { await work(); } catch (e) { if (mounted.current) setError(chatError(e)); } finally { actionRunning.current = false; if (mounted.current) setBusy(false); } }
  function command<T>(action: string, extra: object = {}) { return api.command<T>({ action, threadId: original.threadId, ...extra }); }
  function clearReceipt(){setUnconfirmed(null);try{sessionStorage.removeItem(`${key(original.threadId)}:pending`);}catch{/* no credentials stored */}}
- async function checkReceipt(){if(!unconfirmed)return;const r=await command<WatchReply|null>("RECEIPT",{id:unconfirmed.id});if(!mounted.current)return;if(r&&(r.id!==unconfirmed.id||r.threadId!==original.threadId))throw Error("REPLY_TARGET_CHANGED_REFRESH");if(r&&["SENT","QUEUED"].includes(r.status)){const sent=unconfirmed;if(!sent.composerCleared)setDraft(d=>d.text===sent.text&&JSON.stringify(d.files.map(f=>f.id))===JSON.stringify(sent.options.attachments)?{...d,text:"",files:[]}:d);clearReceipt();setNotice(r.status==="SENT"?uiText("已确认回复发到原对话。"):uiText("已确认回复排队。"));}else if(r&&r.status==="ACKNOWLEDGED"){clearReceipt();setNotice(uiText("这条回复已结束送达检查，送达状态仍未确定，可以输入新的要求。"));}else if(r&&["FAILED","CANCELLED"].includes(r.status)){restoreAttempt(unconfirmed);clearReceipt();setNotice(uiText("已确认这次没有发送。草稿保留，可检查后重新发送。"));}else setNotice(uiText("送达尚未确认。不会自动重发；请查看原对话或取消尚未发送的尝试。"));await refresh();}
+ async function checkReceipt(){if(!unconfirmed)return;const r=await command<WatchReply|null>("RECEIPT",{id:unconfirmed.id});if(!mounted.current)return;if(r&&(r.id!==unconfirmed.id||r.threadId!==original.threadId))throw Error("REPLY_TARGET_CHANGED_REFRESH");if(r&&["SENT","QUEUED"].includes(r.status)){const sent=unconfirmed;if(!sent.composerCleared)setDraft(d=>d.text===sent.text&&JSON.stringify(d.files.map(f=>f.id))===JSON.stringify(sent.options.attachments)?{...d,text:"",files:[]}:d);clearReceipt();setNotice(null);}else if(r&&r.status==="ACKNOWLEDGED"){clearReceipt();setNotice(uiText("这条回复已结束送达检查，送达状态仍未确定，可以输入新的要求。"));}else if(r&&["FAILED","CANCELLED"].includes(r.status)){restoreAttempt(unconfirmed);clearReceipt();setNotice(uiText("已确认这次没有发送。草稿保留，可检查后重新发送。"));}else setNotice(uiText("送达尚未确认。不会自动重发；请查看原对话或取消尚未发送的尝试。"));await refresh();}
  async function acknowledgeUnknown(r:WatchReply){await command("ACKNOWLEDGE_UNKNOWN",{id:r.id,confirmed:true});currentAttemptIds.current.add(r.id);if(unconfirmed?.id===r.id)clearReceipt();if(!unconfirmed?.composerCleared)setDraft(d=>d.text===r.text?{...d,text:"",files:[]}:d);setNotice(uiText("已结束这条回复的送达检查，原文仍保留。可以输入新的要求。"));await refresh();input.current?.focus();}
  async function send(mode: "SEND" | "QUEUE" | "STEER") {
   const submitted=draftRef.current;
@@ -98,13 +100,15 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
   const attempt={...request,createdAt:Date.now(),files:submitted.files,composerCleared:true};
   try { sessionStorage.setItem(receiptKey, JSON.stringify(attempt)); } catch { /* current request remains in memory */ }
   setUnconfirmed(attempt);
+  followLatest.current=true;
   setDraft({...submitted,text:"",files:[]});
+  input.current?.focus({preventScroll:true});
   let reply: WatchReply;
   try { reply = await command<WatchReply>("SEND", request); } catch (e) { if (mounted.current) { setError(chatError(e)); setNotice(uiText("回复是否送达尚未确认。请检查发送记录；草稿已保留，不会自动重发。")); await refresh(); } return; }
   if (!mounted.current) return;
   if(reply.id!==request.id||reply.threadId!==original.threadId)throw Error("REPLY_TARGET_CHANGED_REFRESH");
   setState(current=>current?{...current,replies:[reply,...current.replies.filter(r=>r.id!==reply.id)]}:current);
-  if (reply.status === "SENT" || reply.status === "QUEUED") { clearReceipt(); setNotice(reply.status === "QUEUED" ? uiText("已排队，当前任务完成后发送。") : uiText("回复已发送到这个原对话。")); }
+  if (reply.status === "SENT" || reply.status === "QUEUED") { clearReceipt(); setNotice(null); }
   else if(["FAILED","CANCELLED"].includes(reply.status)){restoreAttempt(attempt);clearReceipt();setNotice(uiText("已确认这次没有发送。草稿保留，可检查后重新发送。"));}
   else setNotice(uiText("回复送达尚未确认。请检查原对话，避免重复发送。"));
   await refresh();
@@ -136,7 +140,7 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
   if(previous[0]===snap.turnId&&['RUNNING','RESULT_PENDING'].includes(snap.state))return;
   historyRevision.current=revision;void readHistory();
  },[state?.watch.snapshot.turnId,state?.watch.snapshot.itemId,state?.watch.snapshot.state]);
- useEffect(()=>{if(!initialScroll.current&&!followLatest.current)return;const scroll=reader.current;if(scroll){scroll.scrollTop=scroll.scrollHeight;initialScroll.current=false;}},[historyLoaded,history,publicMessages,state?.replies]);
+ useEffect(()=>{if(!initialScroll.current&&!followLatest.current)return;const scroll=reader.current;if(scroll){scroll.scrollTop=scroll.scrollHeight;initialScroll.current=false;}},[historyLoaded,history,publicMessages,state?.replies,unconfirmed]);
  return <section ref={shell} className="v4-watch-chat" aria-label={uiText("通知原对话与回复")} onFocus={()=>syncViewport.current()} onBlur={()=>queueMicrotask(()=>syncViewport.current())}>
   <header className="v4-chat-header"><button type="button" className="v4-chat-back" aria-label={`‹ ${backLabel}`} onClick={onBack}><ChevronLeft size={24} aria-hidden="true"/><span className="v4-chat-desktop-label">{backLabel}</span></button><div className="v4-chat-identity"><h2 ref={heading} tabIndex={-1}>{original.label}</h2><p className="v4-meta">{original.cwd.split(/[\\/]/).filter(Boolean).at(-1)} · {state?.host ?? uiText("这台电脑")}</p></div><button type="button" className="v4-chat-more" aria-label={uiText("对话信息")} onClick={()=>setInfoOpen(true)}><Ellipsis size={24} aria-hidden="true"/></button></header>
   <div className="v4-chat-live" role="status" aria-live="polite" data-active={active}>{active&&<LoaderCircle size={14} aria-hidden="true"/>}<span>{pendingRequests.length?uiText("等待确认"):error?uiText("连接中断"):active?(state?.activity==="THINKING"?uiText("正在思考"):uiText("正在执行")):(states[latest?.state??original.snapshot.state]??uiText("状态待确认"))}</span>{pendingRequests.some(r=>r.kind!=="USER_INPUT")&&<button type="button" onClick={()=>setPermissionsOpen(true)}>{uiText("查看")}</button>}</div>
@@ -153,11 +157,11 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
     {m.source&&<div className="v4-chat-message-tools"><button type="button" aria-label={uiText("复制原文")} onClick={()=>void act(async()=>{await navigator.clipboard.writeText(m.text);setNotice(uiText("原文已复制。"));})}><Copy size={24} aria-hidden="true"/></button>{'sequence' in original&&<time className="v4-meta">{new Date(sourceMessage.seenAt).toLocaleString(getLanguage())}</time>}</div>}
    </article>;})}
    {state?.requests.filter(r=>r.kind!=="USER_INPUT").map(r => <RequestCard key={`${r.requestId}:${r.revision}`} request={r} disabled={busy} respond={extra => act(async () => { await command("RESPOND", { requestId: r.requestId, input: extra }); await refresh(); })} />)}
-   {notice && <p role="status" className="v4-chat-alert">{uiText(notice)}<button type="button" onClick={() => setNotice(null)}>{uiText("知道了")}</button></p>}
    {unconfirmed&&!busy&&<div className="v4-chat-alert" role="status"><p>{uiText("上一次回复仍需确认，草稿已保留。")}</p><div className="v4-chat-actions"><button type="button" disabled={busy} onClick={()=>void act(checkReceipt)}>{uiText("检查发送记录")}</button><button type="button" disabled={busy} onClick={()=>void act(async()=>{const v=await command<{cancelled:boolean}>("ABANDON",{id:unconfirmed.id});if(v.cancelled){restoreAttempt(unconfirmed);clearReceipt();setNotice(uiText("已取消尚未发送的尝试。草稿保留。"));}else setNotice(uiText("这条回复已进入发送，请查看原对话，不会重复发送。"));await refresh();})}>{uiText("取消尚未发送的尝试")}</button></div></div>}
   </div>
   <div className="v4-chat-dock">
-   {state?.goal&&<CodexGoalStatus goal={state.goal}/>}
+   {notice && <p role="status" className="v4-chat-feedback">{uiText(notice)}</p>}
+   {state?.goal&&<CodexGoalController goal={state.goal} controls={state.goalControls} diagnostic={state.latestTurn} api={api} checkedAt={state.checkedAt} disabled={busy||blocked} refresh={refresh}/>}
    {state?.requests.filter(r=>r.kind==="USER_INPUT").map(r=><RequestCard key={`${r.requestId}:${r.revision}`} request={r} disabled={busy} respond={extra=>act(async()=>{await command("RESPOND",{requestId:r.requestId,input:extra});await refresh();})}/>)}
    {controlTurn&&<div className="v4-followup-toggle" role="group" aria-label={uiText("运行中跟进方式")}><button type="button" aria-pressed={followupMode==="QUEUE"} disabled={busy} onClick={()=>setFollowupMode("QUEUE")}>{uiText("完成后发送")}</button><button type="button" aria-pressed={followupMode==="STEER"} disabled={busy} onClick={()=>setFollowupMode("STEER")}>{uiText("调整当前任务")}</button></div>}<form className="v4-chat-composer" aria-busy={busy} onSubmit={e => { e.preventDefault(); void act(() => send(nextMode)); }}>
    <label htmlFor="watch-chat-reply">{uiText("回复这个 Codex 对话")}</label><textarea id="watch-chat-reply" ref={input} placeholder={uiText("在 {0} 上工作", state?.host??uiText("这台电脑"))} value={draft.text} maxLength={100000} rows={2} onChange={e => setDraft(d => ({ ...d, text: e.target.value }))} onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); if (!busy) void act(() => send(nextMode)); } }} />

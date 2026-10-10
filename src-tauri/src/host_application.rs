@@ -605,6 +605,7 @@ pub(crate) struct MobileCodexRequest {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MobileCodexGoal {
+    pub(crate) fingerprint:String,
     pub(crate) thread_id: String,
     pub(crate) objective: String,
     pub(crate) status: String,
@@ -4957,7 +4958,8 @@ pub(crate) fn codex_goal_from_response(
         .and_then(Value::as_str)
         .ok_or("Codex Goal response did not include a status")?
         .to_string();
-    Ok(Some(MobileCodexGoal {
+    let mut projected=MobileCodexGoal {
+        fingerprint:String::new(),
         thread_id: actual_thread_id.to_string(),
         objective,
         status,
@@ -4967,7 +4969,9 @@ pub(crate) fn codex_goal_from_response(
         created_at: goal.get("createdAt").cloned(),
         updated_at: goal.get("updatedAt").cloned(),
         active_turn_id: None,
-    }))
+    };
+    projected.fingerprint=crate::goal_control::fingerprint(&projected);
+    Ok(Some(projected))
 }
 
 pub(crate) fn optional_goal_integer(goal: &Value, field: &str) -> Result<Option<i64>, String> {

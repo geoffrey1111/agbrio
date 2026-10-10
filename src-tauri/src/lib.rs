@@ -53,6 +53,7 @@ fn assistant_revoke_grant(grant_id:String,state:tauri::State<'_,RouterState>)->R
 mod codex_watch;
 mod watch_notifications;
 mod watch_chat;
+mod goal_control;
 #[cfg(windows)]
 mod notification_activation;
 

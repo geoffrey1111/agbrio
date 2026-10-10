@@ -112,7 +112,7 @@ export type ChatHistory = {
   messages: { id: string; role: string; text: string }[];
 };
 export type CodexHistory = { history: { id: string; kind: string; text?: string }[] };
-export type MobileCodexGoal = { threadId: string; objective: string; status: string; tokensUsed?: number | null; timeUsedSeconds?:number|null; tokenBudget?:number|null; createdAt?:number|null; updatedAt?: number | null; activeTurnId?: string | null };
+export type MobileCodexGoal = { fingerprint?:string; threadId: string; objective: string; status: string; tokensUsed?: number | null; timeUsedSeconds?:number|null; tokenBudget?:number|null; createdAt?:number|null; updatedAt?: number | null; activeTurnId?: string | null };
 export type MobileWorkstreamDraft = { workstreamId: string; text: string; revision: number; updatedAt: number };
 export type MobileCodexFeedbackDraft = { workstreamId: string; sourceRunId: string; text: string; revision: number; updatedAt: number };
 export type MobileReview = {

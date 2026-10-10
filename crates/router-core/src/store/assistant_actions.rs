@@ -23,6 +23,7 @@ fn action(c:&Connection,gid:&str,aid:&str,hash:Option<&str>)->Result<AssistantAc
  if hash.is_some_and(|h|h!=a.payload_hash){return Err("ASSISTANT_ACTION_CHANGED".into());}Ok(a)
 }
 impl RouterStore{
+ pub fn assistant_action_has_owner_answer(&self,aid:&str)->Result<bool,String>{self.with_connection(|c|c.query_row("SELECT EXISTS(SELECT 1 FROM assistant_actions WHERE id=?1 AND status='EXECUTING' AND basis='ASSISTANT_ATTESTED_OWNER_ANSWER' AND question IS NOT NULL AND answer IS NOT NULL AND answer_reference IS NOT NULL)",[aid],|r|r.get(0)).map_err(db_error))}
  pub fn prepare_assistant_action(&self,gid:&str,input:ActionInput)->Result<AssistantAction,String>{
   bounded(&input.request_id,100)?;bounded(&input.operation,80)?;if !input.input.is_object(){return Err("ASSISTANT_ARGUMENTS_INVALID".into());}
   let raw=serde_json::to_string(&input.input).map_err(|_|"ASSISTANT_ARGUMENTS_INVALID")?;if raw.len()>150000{return Err("ASSISTANT_ACTION_TOO_LARGE".into());}

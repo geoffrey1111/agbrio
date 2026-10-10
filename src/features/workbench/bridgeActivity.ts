@@ -1,8 +1,8 @@
 import {invoke} from "@tauri-apps/api/core";
 import {request} from "../../mobile/api";
-import type {BridgeRole,RoleActivity} from "./RoleBridgePanel";
+import type {BridgeRole,RoleActivity,AssistantProcessed} from "./RoleBridgePanel";
 import {readModels, type ReadModelCache} from "./readModelCache";
-export type BridgeActivity={workstreamId:string;bindingRevision:number;unreadCount?:number;latestRole?:BridgeRole|null;sides:RoleActivity[]};
+export type BridgeActivity={assistantProcessed?:AssistantProcessed|null;workstreamId:string;bindingRevision:number;unreadCount?:number;latestRole?:BridgeRole|null;sides:RoleActivity[]};
 export type BridgeActivityApi=((workstreamIds:string[])=>Promise<BridgeActivity[]>) & {
  cached?:(ids:string[])=>BridgeActivity[]|undefined;
  observedAt?:(ids:string[])=>number;
@@ -40,4 +40,13 @@ export function bridgeReviewAttention(row:BridgeActivity|undefined,age:number){
  if(["RUNNING","THINKING","GOAL_ACTIVE","RESULT_PENDING"].includes(focus.side.phase))return 0;
  if(["ACTION_REQUIRED","FAILED","LIMITED"].includes(focus.side.phase))return Math.max(1,row.unreadCount??0);
  return ["COMPLETE","PAUSED","INTERRUPTED"].includes(focus.side.phase)?row.unreadCount??0:0;
+}
+
+/** A durable SENT attribution bridges the gap until that exact recipient turn is
+ * observed. It never suppresses a different source or a real pending decision. */
+export function assistantProcessedVisible(row:BridgeActivity,now:number,age:number){
+ const mark=row.assistantProcessed;if(!mark||now<mark.sentAt||now>=mark.expiresAt)return false;
+ if(row.sides.some(side=>['ACTION_REQUIRED','FAILED','LIMITED'].includes(side.state)))return false;
+ const target=row.sides.find(side=>side.endpointId===mark.destinationEndpointId);
+ return !(target&&age<15000&&target.checkedAt>=mark.sentAt&&mark.destinationTurnId&&target.turnId===mark.destinationTurnId&&['RUNNING','THINKING','RESULT_PENDING','COMPLETE','PAUSED','FAILED','INTERRUPTED'].includes(target.state));
 }

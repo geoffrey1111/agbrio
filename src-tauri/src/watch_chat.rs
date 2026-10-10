@@ -13,6 +13,8 @@ pub(crate) struct ReplyOptions { pub model:Option<String>,pub effort:Option<Stri
 #[derive(Deserialize)]
 #[serde(tag="action",rename_all="SCREAMING_SNAKE_CASE",deny_unknown_fields)]
 pub(crate) enum ChatCommand {
+ GoalControl { #[serde(rename="threadId")]thread_id:String,id:String,operation:String,input:crate::goal_control::GoalInput,confirmed:bool },
+ GoalReceipt { #[serde(rename="threadId")]thread_id:String,id:String },
  Send { #[serde(rename="threadId")]thread_id:String,id:String,generation:i64,#[serde(rename="sourceSequence")]source_sequence:Option<i64>,#[serde(rename="expectedTurnId")]expected_turn_id:Option<String>,mode:String,text:String,#[serde(default)]options:ReplyOptions },
  Cancel { #[serde(rename="threadId")]thread_id:String,id:String },
  Abandon { #[serde(rename="threadId")]thread_id:String,id:String },
@@ -25,7 +27,7 @@ pub(crate) enum ChatCommand {
  Upload { #[serde(rename="threadId")]thread_id:String,name:String,data:String },
 }
 #[derive(Serialize)]#[serde(rename_all="camelCase")]
-pub(crate) struct ChatState { pub(crate) watch:CodexWatch,host:String,owned_turn_id:Option<String>,controllable_turn_id:Option<String>,external_busy:bool,replies:Vec<WatchReply>,requests:Vec<MobileCodexRequest>,goal:Option<MobileCodexGoal>,public_messages:Vec<Value>,activity:Option<String>,checked_at:i64 }
+pub(crate) struct ChatState {latest_turn:Option<router_core::codex::adapter::NativeTurnDiagnostic>, pub(crate) watch:CodexWatch,host:String,owned_turn_id:Option<String>,controllable_turn_id:Option<String>,external_busy:bool,replies:Vec<WatchReply>,requests:Vec<MobileCodexRequest>,goal:Option<MobileCodexGoal>,goal_controls:Option<crate::goal_control::GoalControls>,public_messages:Vec<Value>,activity:Option<String>,checked_at:i64 }
 fn watch(core:&RouterCore,id:&str)->Result<CodexWatch,String>{core.store.codex_chat_context(id)}
 pub(crate) fn metadata(a:&mut crate::codex::adapter::CodexAdapter,w:&CodexWatch)->Result<Value,String>{
  let v=a.request_with_timeout("thread/read",json!({"threadId":w.thread_id,"includeTurns":false}),CODEX_OBSERVER_REQUEST_TIMEOUT)?;
@@ -39,8 +41,10 @@ pub(crate) fn state(core:&RouterCore,id:&str)->Result<ChatState,String>{
  if owned.is_some()&&activity.is_none(){activity=Some("EXECUTING".into());}
  let controllable=owned.clone().or_else(||(a.is_shared_subscribed(id)&&busy).then(||a.observed_turn_id(id)).flatten());
  let shared=a.is_shared_subscribed(id);
- let goal=read_codex_goal_from_session(&mut s,id)?;let requests=s.pending_codex_requests.values().filter(|r|r.thread_id==id&&(shared||owned.as_deref()==Some(&r.turn_id))).filter_map(mobile_codex_request_projection).collect();
- Ok(ChatState{watch:w,host:std::env::var("COMPUTERNAME").unwrap_or_else(|_|"这台电脑".into()),owned_turn_id:owned,controllable_turn_id:controllable,external_busy:busy,replies:core.store.watch_replies(id)?,requests,goal,public_messages,activity,checked_at:std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64})
+ let latest_turn=a.latest_turn_diagnostic(id).filter(|d|w.snapshot.turn_id.as_deref()==Some(&d.turn_id));
+ let goal=read_codex_goal_from_session(&mut s,id)?;let requests:Vec<MobileCodexRequest>=s.pending_codex_requests.values().filter(|r|r.thread_id==id&&(shared||owned.as_deref()==Some(&r.turn_id))).filter_map(mobile_codex_request_projection).collect();
+ let goal_controls=goal.as_ref().map(|g|crate::goal_control::controls(core,g,busy,!requests.is_empty())).transpose()?;
+ Ok(ChatState{latest_turn,watch:w,host:std::env::var("COMPUTERNAME").unwrap_or_else(|_|"这台电脑".into()),owned_turn_id:owned,controllable_turn_id:controllable,external_busy:busy,replies:core.store.watch_replies(id)?,requests,goal,goal_controls,public_messages,activity,checked_at:std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64})
 }
 fn safe_dir(root:&str,parts:&[&str])->Result<PathBuf,String>{
  let root=std::fs::canonicalize(root).map_err(|_|"REPLY_PROJECT_UNAVAILABLE")?;let mut p=root.clone();
@@ -86,13 +90,17 @@ fn validate_options(a:&mut crate::codex::adapter::CodexAdapter,o:&ReplyOptions)-
  if let Some(e)=&o.effort{if !m["supportedReasoningEfforts"].as_array().is_some_and(|es|es.iter().any(|v|v["reasoningEffort"].as_str()==Some(e))){return Err("REPLY_EFFORT_UNAVAILABLE".into());}}Ok(())
 }
 fn dispatch(core:&RouterCore,s:&mut Session,w:&CodexWatch,r:&WatchReply)->Result<WatchReply,String>{
- let (owned,busy,latest)={let a=s.adapter.as_mut().filter(|a|!a.is_closed()).ok_or("Codex backend disconnected")?;let m=metadata(a,w)?;let (_,_,snap)=crate::codex_watch::inspect(a,&w.thread_id)?;(a.active_turn_id(&w.thread_id),m.pointer("/thread/status/type").and_then(Value::as_str)==Some("active"),snap)};
+ let (owned,busy,latest,loaded_shared)={let a=s.adapter.as_mut().filter(|a|!a.is_closed()).ok_or("Codex backend disconnected")?;let m=metadata(a,w)?;let (_,_,snap)=crate::codex_watch::inspect(a,&w.thread_id)?;(a.active_turn_id(&w.thread_id),m.pointer("/thread/status/type").and_then(Value::as_str)==Some("active"),snap,a.is_shared()&&m.pointer("/thread/status/type").and_then(Value::as_str)==Some("idle"))};
  if r.mode=="STEER" {if !(owned.is_some()&&owned.as_deref()==r.expected_turn_id.as_deref()||s.adapter.as_ref().is_some_and(|a|a.is_shared_subscribed(&w.thread_id))&&busy&&s.adapter.as_ref().and_then(|a|a.observed_turn_id(&w.thread_id))==r.expected_turn_id&&r.expected_turn_id.is_some()){return Err("REPLY_TURN_CHANGED_REFRESH".into());}}
  else {if owned.is_some()||busy||latest.state=="RUNNING"{return Err("REPLY_TARGET_ALREADY_RUNNING".into());}
   if matches!(latest.state.as_str(),"UNKNOWN"|"RESULT_PENDING"|"INCOMPLETE")&&!latest.turn_id.as_deref().is_some_and(|t|s.adapter.as_ref().unwrap().terminal_turn_status(&w.thread_id,t).is_some()){return Err("REPLY_EXTERNAL_STATE_UNCONFIRMED".into());}
   if r.expected_turn_id!=latest.turn_id{return Err("REPLY_TURN_CHANGED_REFRESH".into());}
-  crate::role_bridge::require_idle_goal(&w.thread_id,&s.adapter.as_mut().unwrap().get_goal(&w.thread_id)?)?;
-  ensure_thread_ready_for_write(s,&w.thread_id)?;
+  // Match the existing Bridge sender: a verified loaded shared idle chat accepts
+  // genuine supplemental input without pausing/recreating its native Goal.
+  if !loaded_shared {
+   crate::role_bridge::require_idle_goal(&w.thread_id,&s.adapter.as_mut().unwrap().get_goal(&w.thread_id)?)?;
+   ensure_thread_ready_for_write(s,&w.thread_id)?;
+  }
   let m=metadata(s.adapter.as_mut().unwrap(),w)?;if m.pointer("/thread/status/type").and_then(Value::as_str)==Some("active"){return Err("REPLY_TARGET_ALREADY_RUNNING".into());}
  }
  let o:ReplyOptions=serde_json::from_value(r.options.clone()).map_err(|_|"REPLY_OPTIONS_INVALID")?;validate_options(s.adapter.as_mut().unwrap(),&o)?;let (mut input,extra)=files(w,&o)?;
@@ -119,6 +127,8 @@ mod ack_tests{
  }
 }
 pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{match c{
+ ChatCommand::GoalControl{thread_id,id,operation,input,confirmed}=>{require_goal_confirmation(confirmed)?;if input.target.thread_id!=thread_id{return Err("GOAL_TARGET_CHANGED".into());}serde_json::to_value(crate::goal_control::apply(core,&id,input,&operation,true)?).map_err(|_|"GOAL_RESPONSE_INVALID".into())},
+ ChatCommand::GoalReceipt{thread_id,id}=>{watch(core,&thread_id)?;serde_json::to_value(core.store.goal_control_receipt(&thread_id,&id)?).map_err(|_|"GOAL_RESPONSE_INVALID".into())},
  ChatCommand::Upload{thread_id,name,data}=>upload(core,&thread_id,&name,&data),
  ChatCommand::Abandon{thread_id,id}=>{watch(core,&thread_id)?;Ok(json!({"cancelled":core.store.abandon_watch_reply(&thread_id,&id)?}))},
  ChatCommand::Receipt{thread_id,id}=>{watch(core,&thread_id)?;let r=core.store.watch_reply(&id)?;if r.as_ref().is_some_and(|r|r.thread_id!=thread_id){return Err("REPLY_TARGET_CHANGED_REFRESH".into());}serde_json::to_value(r).map_err(|_|"REPLY_RESPONSE_INVALID".into())},

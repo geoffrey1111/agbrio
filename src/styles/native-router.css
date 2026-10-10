@@ -278,3 +278,15 @@ html[data-agbrio-input=keyboard] :where(.r2-router,.r2-relay,.r2-sheet,.v5-role-
 .r2-bridge-active-status .r2-agent-state strong{font-size:14px;font-weight:600}
 .r2-bridge-active-status .r2-agent-symbol{width:20px;height:20px}
 @media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1100px){.r2-bridge-active-status{margin-inline:22px}}
+
+.r2-assistant-processed{display:flex;align-items:center;gap:6px;margin:4px 0;color:var(--r2-muted);font-size:12px;line-height:1.5;}
+
+.r2-goal-controls-wrapper{display:flex;align-items:flex-start;gap:6px;margin:0 0 10px;min-width:0;}
+.r2-goal-controls-wrapper .r2-codex-goal{flex:1;min-width:0;margin:0;}
+.r2-goal-control{display:flex;justify-content:center;align-items:center;flex:none;width:44px;height:44px;padding:0;border-radius:50%;background:var(--r2-surface);color:var(--r2-muted);}
+.r2-goal-control:active{transform:scale(.97);}.r2-goal-control:focus-visible{outline:2px solid var(--r2-accent);outline-offset:2px;}
+.r2-goal-feedback{margin:0 0 8px;color:var(--r2-muted);font-size:12px;line-height:1.5;overflow-wrap:anywhere;}
+.r2-goal-feedback button{min-height:40px;margin-left:6px;}
+
+:where(.r2-router,.v5-role-chat) .v3-role-bridge-sides>article>.r2-goal-manager{margin:0 24px 10px;min-width:0;}
+@media(max-width:760px){:where(.r2-router,.v5-role-chat) .v3-role-bridge-sides>article>.r2-goal-manager{margin-inline:20px;}}

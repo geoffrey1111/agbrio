@@ -1,73 +1,85 @@
-# Goal and interrupted-turn recovery: current capability
+# Native Goal status and controls
 
-Audited against released Agbrio 0.1.25. No real goal was stopped, resumed or faulted
-for this audit. Read-only production reads confirm that read_chat returns goal
-records for active execution chats. Project/session identities and objectives
-are deliberately omitted here. Goal recovery through dot is not implemented.
+Agbrio0.1.27 synchronizes the existing Codex Goal. It displays native objective,
+status, elapsed accounting, usage and current turn diagnostics, and controls the
+same Goal through the native protocol. It does not implement another Goal engine.
 
-| Surface | Actual support |
+## Desktop and PWA
+
+Each Bridge role reader and original Codex chat shows its exact Goal above the
+reply/composer. Expand the objective to read it in full. Pause or resume using the
+adjacent control; ordinary success updates the Goal without a dismiss dialog.
+The elapsed display follows native timeUsedSeconds/updatedAt interpolation while
+fresh and active; pause or stale Host data freezes it. Derived display seconds
+are never written into native accounting. Pending questions and uncertain sends
+must be checked first. An uncertain Goal control keeps its original request and
+receipt across reopening; it is not automatically repeated.
+
+| Native status | Control boundary |
 | --- | --- |
-| MCP agbrio_read_chat | goal: threadId, objective, status, tokenBudget, tokensUsed, timeUsedSeconds, createdAt, updatedAt, activeTurnId; chat state and pending requests/receipts |
-| MCP prepare_action | SEND_CHAT (SEND/QUEUE/STEER), STOP_CHAT, RESPOND_CHAT; no RESUME_GOAL |
-| Desktop IPC | read_codex_goal, pause_codex_goal, resume_codex_goal, clear_codex_goal with confirmed human controls |
-| Paired-device HTTP | GET /v1/mobile/workstreams/{workstream_id}/codex-goal; POST .../codex-goal/pause, /resume, /clear with confirmed=true and device authorization |
-| CodexAdapter | thread/goal/get; thread/goal/set with exact threadId and status delta; thread/goal/clear; turn/start, turn/steer, turn/interrupt are separate |
+| active | Pause. An active turn and an active Goal are separate states. |
+| paused / blocked | Resume the same Goal when the actual pending decisions and delivery records are clear and the thread is idle. A paused Goal is not permission to disregard an owner's stop. |
+| usageLimited | Native resume is available to an explicit user; assistant execution additionally requires a saved actual owner answer. No budget increase. |
+| budgetLimited / complete | No resume control. Do not recreate the Goal or raise its budget. |
+| unknown / missing identity | Retain the status as unconfirmed; no guessed transition. |
 
-The current workstream-only Desktop/PWA goal endpoints resolve a single ACTIVE
-Codex provider endpoint. A Bridge with two ACTIVE Codex roles is ambiguous and
-fails closed (BRIDGE_ROLE_REQUIRED_FOR_AMBIGUOUS_PROVIDER); these APIs must not be claimed usable
-for both sides of such a Bridge. MCP read_chat is exact-thread based and its goal
-read does work for the inspected dual-Codex roles. A recovery addition must accept
-and revalidate an explicit role/endpoint/thread, not pick by title/provider.
+Direct supplemental text remains genuine chat input. A verified loaded shared
+idle chat can receive new instructions while its Goal remains active; active-turn
+adjustments use native steer. Neither path is a replacement for RESUME_GOAL or
+permission to replay an old handoff.
 
-For an unambiguous single-Codex binding, Desktop/PWA resume updates the existing
-goal from paused to active, rechecks its
-status/updatedAt and acquires the exact writer. It does not create a new objective
-or increase tokenBudget. The current goal transition guard supports only
-active->paused and paused->active; blocked, limited, complete and unknown statuses
-are not generic resume candidates. Existing UI goal controls do not supply all
-the additional MCP delegation/pending/UNKNOWN guards proposed below.
+## Assistant workflow
 
-| State | Interpretation/action boundary |
-| --- | --- |
-| goal active + current turn active | Running; no resume/restart. Authorized supplemental input may STEER the exact active turn. |
-| goal paused | Existing UI can explicitly resume that goal; MCP cannot currently perform the action. |
-| goal blocked / pending native or owner decision | Resolve the actual decision first. Not a routine failure retry. |
-| goal usageLimited / budgetLimited | Limits require owner decision; never raise budget or recreate goal. |
-| goal complete/completed | Goal is finished; a new task is a separate owner decision. |
-| latest turn completed | That turn ended; it does not prove an ongoing goal has finished. |
-| latest turn failed | Execution turn failed; this is separate from a goal status. No universal congestion reason or recovery action is exposed. |
-| persisted turn interrupted / INCOMPLETE | An idle history projection alone may be ambiguous. Confirm exact current/native terminal identity; never infer safe retry from it. |
-| confirmed native turn interrupted / INTERRUPTED | Turn interruption is proven, but goal state must still be read independently. |
-| UNKNOWN/SENDING send | Inspect the original receipt and pause; never resend the old handoff as recovery. |
+1. Read `agbrio_read_chat` for the exact delegated chat. `state.goal` includes
+   the native fields plus fingerprint; `state.goalControls.target` carries exact
+   threadId/generation and the current Bridge/revision/role/endpoint when bound.
+   Check native pending questions, owner decisions, original UNKNOWN/SENDING
+   receipts, latest turn diagnostics and the owner's current instructions.
+2. Prepare `PAUSE_GOAL` or `RESUME_GOAL` through `agbrio_prepare_action`, using
+   input `{target: state.goalControls.target, expectedGoalFingerprint: state.goal.fingerprint}`.
+   Keep one requestId and review its exact payloadHash. Do not write an objective,
+   tokenBudget, accounting, new chat input or a replayed handoff in this operation.
+3. When covered by delegation, use the existing reviewed execute/action_receipt
+   flow. Missing business decisions still require the actual owner. For a native
+   usage limit, first ask_action_decision and record the actual answer/reference;
+   a routine assessment alone cannot authorize that resume.
+4. Verify the action receipt and its nested Goal receipt/result. APPLIED confirms
+   the native Goal transition; active does not mean the user's task completed.
+   EXECUTING/UNKNOWN is not permission to mint another action or blindly retry.
 
-read_chat does not currently project a structured goal stopReason/failureReason or
-native turn error/retryability field. replies[].errorCode describes reply transport,
-not a provider congestion diagnosis. MobileCodexGoal has no failure-reason field;
-an unrecognized goal status must not be guessed to mean failed or resumable.
+The fingerprint pins thread, native creation identity, exact objective, status
+and budget. Accounting counters and their advancing updatedAt are kept outside
+that identity so normal progress does not make pause/resume unusable. Controls
+recheck the current instance/binding, serialize local writers, and verify the
+native returned state/objective/budget/accounting. Native status-set has no atomic
+version-CAS parameter; it is not a promise against every concurrent external edit.
+Missing required native identity disables controls.
 
-MCP Events currently emits complete reply_ready sources and decision_required for
-owner/native questions, unresolved receipt or causal/loop boundaries. Native failed
-or interrupted turn completions are recorded as FAILED/CANCELLED and return before
-reply event production. No general goal-status-change or turn-failure/interruption
-MCP event exists. An unrelated later event-woken scan may notice a stopped goal;
-it cannot guarantee a wake on that failure itself.
+`state.latestTurn` and each role activity project only exact turn/status,
+whitelisted native errorCode, willRetry and confirmedTerminal. Raw native error
+messages/URLs are excluded. A failed turn is distinct from a Goal status; native
+retry-in-progress blocks an additional resume. The current Goal schema has no
+universal stopReason/retryability field. Unsupported active-Goal/failed-turn
+recovery is not synthesized by sending old text or creating another Goal.
 
-## Minimal proposed additions (not implemented)
+## Scope and verification
 
-1. Project exact terminal turn status and sanitized stop/error/retryability when
-   provided by the native protocol, plus a goal fingerprint (threadId, objective
-   hash, updatedAt/status). Keep missing reasons explicitly unknown.
-2. Add a reviewed RESUME_GOAL operation for a confirmed paused existing goal,
-   guarded by Bridge/revision/role/thread/goal fingerprint, active authorization,
-   explicit delegation, no active writer/turn, no pending approvals/questions and
-   no uncertain sends. Use one persistent request identity and verify the updated
-   same goal/receipt. Preserve objective, budget and usage; do not replay input.
-3. Emit one durable decision_required notification for a newly confirmed exact
-   interrupted/failed turn or goal stop, with typed status-source/read support,
-   dedupe and subscription lifecycle checks. Never fabricate a complete reply.
+The new desktop/PWA Goal command uses exact chat/role identity, including dual
+Codex Bridges. Older workstream-only Goal HTTP/IPC endpoints remain legacy and
+still fail closed on ambiguous dual-Codex bindings.
 
-An active goal with a failed idle turn needs native protocol investigation and an
-isolated fixture before claiming a supported continuation primitive. Do not use
-SEND_CHAT or goal recreation as a substitute, and do not manufacture a production
-failure to test it. Blocked/limited recovery stays at an actual owner decision.
+Seven isolated Host/store/adapter fixtures cover pause, paused/blocked resume,
+unchanged objective/budget/accounting, fingerprint/binding/decision/active-turn
+checks, persistent uncertainty, actual-owner usage-limit approval and active-Goal
+supplemental input. A separate real shared-native disposable Goal validates one
+resume/APPLIED/original-request replay with the same objective and budget, then
+clears that test Goal. Existing user Goals and shared services were not changed.
+Real native pause and all production failure scenarios are not independently
+claimed by that one resume gate. Engineering validation is not owner UAT.
+
+Events still publishes reply_ready and decision_required under the existing
+contract. This change adds readable Goal/turn information and reviewed controls;
+it does not add a general Goal-stop/turn-failure event or repair missing platform
+`automations.mcp_event` injection. Keep existing delegated subscription scope.
+
+Native lifecycle reference: [official Codex Goals guide](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex).

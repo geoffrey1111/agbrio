@@ -86,3 +86,5 @@ APPROVED 不等于 SENT；SENT 不等于任务完成，再核精确目标结果�
 > 不重建 goal 或扩大预算。事件结果未注入时如实报告，不当作已修。
 
 目标恢复现状见 [Goal 能力与缺口](GOAL_RECOVERY.md)。
+
+0.1.27 目标管理：读取精确 goalControls.target/fingerprint，再走 PAUSE_GOAL/RESUME_GOAL 的准备、审阅、执行和原回执；见 [目标能力](GOAL_RECOVERY.md)。界面的“AI 助手已处理”只基于实际助手 SENT 交接，最多5分钟，并由接收端进度替代；不代替待决策，也不代表任务完成。
