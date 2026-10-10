@@ -39,11 +39,34 @@
     "publicHostPassed": 225,
     "publicHostIgnored": 32,
     "nativeRealIsolatedGoalResume": "PASS",
-    "sourceWindows": "PENDING",
-    "exactReleasedInstallerWindows": "PENDING"
+    "sourceWindows": "SUCCESS",
+    "exactReleasedInstallerWindows": "SUCCESS",
+    "publicCorePassed": 222,
+    "publicCoreIgnored": 1,
+    "sourceWindowsRun": 38072472775,
+    "exactReleasedInstallerWindowsRun": 38074906560,
+    "publisherSignatureAndTamper": "PASS",
+    "mountedFictionalDesktopPhone": "AUTOMATED_VALIDATION_PASS",
+    "physicalPhoneUat": "NOT_PERFORMED"
   },
   "runtime": {
-    "installedVersion": "0.1.26",
-    "deployment": "PENDING"
+    "installedVersion": "0.1.27",
+    "deployment": "PASS",
+    "nativeVersionCheck": "UP_TO_DATE",
+    "installedBinarySha256": "6867485f0f6456fb8e6cf104d9c719ce09f39b6054c2254f636e33dcf6cc4ff4",
+    "onlyOfficialBundleMarkerDifference": true,
+    "staticFilesExact": 15,
+    "grantsAndPairingsPreserved": true,
+    "sameEightSubscriptionsPreserved": true,
+    "sharedFourProcessIdentitiesPreserved": true,
+    "dotLiveGoalActions": "NOT_VERIFIED",
+    "existingOperatorPublicEntry": "HTTP_530_CLOUDFLARE_1033",
+    "pluginGoalOperationCatalogRefresh": "REQUIRED"
+  },
+  "sourceCommit": "df3ec3d95ecf4bfc6540f52d6227d83776c8c77e",
+  "installer": {
+    "name": "Agbrio_0.1.27_x64-setup.exe",
+    "size": 276100660,
+    "sha256": "94a999f310d6a1c8e1b80f164ab83455cdf61602cd2bed3328b6279623a1feb4"
   }
 }
