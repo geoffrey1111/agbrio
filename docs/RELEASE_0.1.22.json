@@ -13,15 +13,24 @@
     "sourceWindowsCI": 38040907016,
     "sourceWindowsCIStatus": "SUCCESS",
     "publisherSignatureAndTamper": "PASS",
-    "diagnosticPrivacyAndScope": "PASS"
+    "diagnosticPrivacyAndScope": "PASS",
+    "exactReleasedInstallerWindowsCI": 38042771014,
+    "exactReleasedInstallerWindowsCIStatus": "SUCCESS"
   },
   "runtime": {
-    "installedVersion": "0.1.21",
-    "updateTo22": "PENDING"
+    "installedVersion": "0.1.22",
+    "hostPid": 70204,
+    "trustedNativeUpdate": "PASS",
+    "nativeByteParity": "OFFICIAL_UNK_TO_NSS_MARKER_ONLY",
+    "staticFilesExact": 15,
+    "grantAndPairingIdentitiesPreserved": true,
+    "sharedProcessCreationIdentitiesPreserved": true,
+    "sqliteQuickCheck": "ok",
+    "upToDate": "PASS"
   },
   "mcpEvents": {
     "serverProtocol": "IMPLEMENTED",
-    "platformEventDiscovery": "OPEN",
+    "platformEventDiscovery": "BLOCKED_EVENTS_LIST_RPC_-32602",
     "realDotWakeAndOneAuthorizedHandoff": "OPEN",
     "webhook2xxIsBusinessAcceptance": false
   }
