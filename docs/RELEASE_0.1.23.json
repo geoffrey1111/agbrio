@@ -13,17 +13,26 @@
     "publisherSignatureAndTamper": "PASS",
     "metadataBeforeNegativeAndAfterPositive": "PASS",
     "sourceWindowsCI": 38044349801,
-    "sourceWindowsCIStatus": "IN_PROGRESS"
+    "sourceWindowsCIStatus": "SUCCESS",
+    "exactReleasedInstallerWindowsCI": 38045751646,
+    "exactReleasedInstallerWindowsCIStatus": "SUCCESS"
   },
   "runtime": {
-    "installedVersion": "0.1.22",
-    "updateTo23": "PENDING"
+    "installedVersion": "0.1.23",
+    "hostPid": 155752,
+    "trustedNativeUpdate": "PASS",
+    "nativeByteParity": "OFFICIAL_UNK_TO_NSS_MARKER_ONLY",
+    "staticFilesExact": 15,
+    "grantAndPairingIdentitiesPreserved": true,
+    "sharedProcessCreationIdentitiesPreserved": true,
+    "sqliteQuickCheck": "ok",
+    "upToDate": "PASS"
   },
   "mcpEvents": {
     "actual22Scanner": "server/discover200/events advertised; events/list RPC-32602",
     "requestMetadataCorrection": "IMPLEMENTED",
-    "actualCorrectedEventCatalog": "OPEN",
-    "realDotWakeAndOneAuthorizedHandoff": "OPEN",
+    "actualCorrectedEventCatalog": "PASS_SERVER_AND_REAL_PLUGIN_UI",
+    "realDotWakeAndOneAuthorizedHandoff": "OPEN_SUBSCRIPTION_PENDING",
     "webhook2xxIsBusinessAcceptance": false
   }
 }
