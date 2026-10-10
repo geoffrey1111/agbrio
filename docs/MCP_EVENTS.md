@@ -76,6 +76,10 @@ Bridge-only grant does not gain whole-app question-response authority.
 
 ## Acceptance boundary
 
+The tests enter the native terminal capture service, instead of directly marking
+a source complete in the outbox. A failed mobile push still leaves the event
+ready for the independent resident webhook worker.
+
 Controlled HTTPS/native fixtures prove the engineering protocol and at-most-once
 handoff behavior. They do not prove a real dot wake. Full acceptance additionally
 requires a rescanned real plugin, a subscription created by the existing dot,

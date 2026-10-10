@@ -140,18 +140,8 @@ fn emit(core: &RouterCore, gid: &str, identity: &str) -> String {
         .decision
         .unwrap()
         .endpoint;
-    core.store
-        .record_reply_observation(
-            &g.workstream_id,
-            &ep.id,
-            Some(identity),
-            "Exact complete disposable source for the authorized handoff.",
-            None,
-        )
-        .unwrap();
-    core.store
-        .note_reply_completion(&g.workstream_id, &ep.id, identity, Some(now_ms()))
-        .unwrap();
+    let parts=identity.strip_prefix("codex:").unwrap().split_once(':').unwrap();
+    crate::host_application::capture_completed_codex_result_with_push(&core.store,&ep.external_id,parts.0,parts.1.into(),"Exact complete disposable source for the authorized handoff.".into(),&mut |_|Ok(crate::push::PushDeliveryOutcome::NoSubscription)).unwrap();
     core.store
         .reply_observations_for_workstream(&g.workstream_id)
         .unwrap()
@@ -264,4 +254,21 @@ fn resident_worker_delivers_without_ui_navigation_or_consumer_polling() {
         handle.task.await.unwrap();
     });
     host.shutdown(&core);
+}
+
+#[test]
+fn native_terminal_outbox_precedes_a_failed_mobile_push(){
+ let(d,core,gid,_)=fixture();let host=crate::HostRuntime::default();tokio::runtime::Runtime::new().unwrap().block_on(async{
+  let peer=Callback::start(&d.path().join("independent-tls-peer")).await;let _pin=peer.attach(&gid,"/independent");
+  let handle=start(core.clone(),config(d.path()),host.clone()).await.unwrap();let base=format!("http://{}",handle.address);let c=client();let token=core.store.issue_assistant_access(&gid,"https://assistant.fixture.invalid/mcp",now_ms()+600000).unwrap();
+  assert!(event_rpc(&c,&base,&token,"events/subscribe",input(&core,&gid,&peer.url("/independent"),REPLY_READY,1)).await["result"]["id"].is_string());
+  let g=core.store.assistant_grant(&gid).unwrap();let ep=core.store.role_bridge(&g.workstream_id).unwrap().decision.unwrap().endpoint;let mut calls=0;
+  crate::host_application::capture_completed_codex_result_with_push(&core.store,&ep.external_id,"independent-native-turn","independent-item".into(),"Complete result despite an offline phone".into(),&mut |_|{
+   calls+=1;let ready=core.store.claim_event_delivery().unwrap().expect("Events must already exist before phone transport");assert_eq!(ready.event.name,REPLY_READY);
+   core.store.finish_event_delivery(&ready.subscription.id,&ready.event.event_id,ready.attempts,None).unwrap();Err("Synthetic offline mobile transport".into())
+  }).unwrap();assert_eq!(calls,1);
+  sql(d.path(),"UPDATE mcp_event_deliveries SET next_attempt_at=0 WHERE status='QUEUED'");dispatch_one(&core).await;assert_eq!(peer.records().len(),2);assert_eq!(peer.records()[1]["body"]["name"],REPLY_READY);
+  assert_eq!(core.store.reply_observations_for_workstream(&g.workstream_id).unwrap()[0].push_state,"FAILED");
+  handle.shutdown.send(()).unwrap();handle.task.await.unwrap();
+ });
 }

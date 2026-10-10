@@ -2844,6 +2844,18 @@ pub(crate) fn record_provider_surface_reply_with(
     text: &str,
     push: &mut dyn FnMut(&[u8]) -> Result<crate::push::PushDeliveryOutcome, String>,
 ) -> Result<bool, String> {
+    record_provider_surface_reply_with_completion(store,endpoint,assistant_identity,text,
+        (endpoint.provider=="CHATGPT").then_some(None),push)
+}
+
+/// Persist a proven terminal source and its outbox before any mobile transport.
+/// None means an unmarked projection; Some(None) is an exact native terminal
+/// notification whose completion timestamp is not supplied by the provider.
+fn record_provider_surface_reply_with_completion(
+    store:&RouterStore,endpoint:&Endpoint,assistant_identity:&str,text:&str,
+    completion:Option<Option<i64>>,
+    push:&mut dyn FnMut(&[u8])->Result<crate::push::PushDeliveryOutcome,String>,
+)->Result<bool,String>{
     let Some(observation) = store.record_reply_observation(
         &endpoint.workstream_id,
         &endpoint.id,
@@ -2852,10 +2864,10 @@ pub(crate) fn record_provider_surface_reply_with(
         None,
     )?
     else {
-        if endpoint.provider=="CHATGPT"{store.note_reply_completion(&endpoint.workstream_id,&endpoint.id,assistant_identity,None)?;}
+        if let Some(at)=completion{store.note_reply_completion(&endpoint.workstream_id,&endpoint.id,assistant_identity,at)?;}
         return Ok(false);
     };
-    if endpoint.provider=="CHATGPT"{store.note_reply_completion(&endpoint.workstream_id,&endpoint.id,assistant_identity,None)?;}
+    if let Some(at)=completion{store.note_reply_completion(&endpoint.workstream_id,&endpoint.id,assistant_identity,at)?;}
     attempt_reply_push_with(store, endpoint, &observation, push)?;
     Ok(true)
 }
@@ -5330,7 +5342,7 @@ pub(crate) fn capture_completed_codex_result_with_push(
         store.accept_completed_provider_result(&run.id, turn_id, &item_id, text.clone())?;
     }
     let identity = format!("codex:{turn_id}:{item_id}");
-    let _ = record_provider_surface_reply_with(store, &endpoint, &identity, &text, push)?;
+    let _ = record_provider_surface_reply_with_completion(store, &endpoint, &identity, &text, Some(None),push)?;
     store.save_codex_reply_observer_watermark(
         &endpoint.workstream_id,
         &endpoint.id,
