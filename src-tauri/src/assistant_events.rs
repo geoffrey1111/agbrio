@@ -1,4 +1,6 @@
 //! Official MCP webhook Events transport. OAuth/tool services remain independent.
+#[path="assistant_callback_dns.rs"]
+mod callback_dns;
 use crate::host_application::RouterCore;
 use base64ct::{Base64, Encoding};
 use hmac::{Hmac, Mac};
@@ -8,7 +10,7 @@ use router_core::store::mcp_events::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::{net::IpAddr, time::Duration};
+use std::{net::{IpAddr, SocketAddr}, time::Duration};
 fn now() -> i64 {
     time::OffsetDateTime::now_utc().unix_timestamp() * 1000
 }
@@ -136,33 +138,62 @@ fn callback_url(value: &str) -> Result<url::Url, String> {
     }
     if let Some(url::Host::Ipv4(v)) = u.host() {
         if !public_ip(IpAddr::V4(v)) {
-            return Err("MCP_EVENT_CALLBACK_ADDRESS_BLOCKED".into());
+            return Err("MCP_EVENT_CALLBACK_LITERAL_NONPUBLIC_IP".into());
         }
     }
     if let Some(url::Host::Ipv6(v)) = u.host() {
         if !public_ip(IpAddr::V6(v)) {
-            return Err("MCP_EVENT_CALLBACK_ADDRESS_BLOCKED".into());
+            return Err("MCP_EVENT_CALLBACK_LITERAL_NONPUBLIC_IP".into());
         }
     }
     Ok(u)
 }
-async fn safe_client(value: &str) -> Result<(reqwest::Client, url::Url), String> {
-    let u = callback_url(value)?;
-    let host = u.host_str().ok_or("MCP_EVENT_CALLBACK_INVALID")?;
+fn benchmark_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v) => { let o=v.octets(); o[0]==198 && matches!(o[1],18|19) },
+        IpAddr::V6(v) => v.to_ipv4_mapped().is_some_and(|v| benchmark_ip(IpAddr::V4(v))),
+    }
+}
+fn validated_dns_peers(peers: Vec<SocketAddr>) -> Result<Vec<SocketAddr>, String> {
+    if peers.is_empty() { return Err("MCP_EVENT_CALLBACK_DNS_EMPTY".into()); }
+    let blocked:Vec<_>=peers.iter().filter(|p| !public_ip(p.ip())).collect();
+    if !blocked.is_empty() {
+        // Never discard a private peer to make a mixed DNS result acceptable.
+        let benchmark=blocked.iter().filter(|p| benchmark_ip(p.ip())).count();
+        return Err(if benchmark==blocked.len() { "MCP_EVENT_CALLBACK_DNS_NONPUBLIC_BENCHMARK" }
+            else if benchmark>0 { "MCP_EVENT_CALLBACK_DNS_NONPUBLIC_MIXED" }
+            else { "MCP_EVENT_CALLBACK_DNS_NONPUBLIC_ADDRESS" }.into());
+    }
+    Ok(peers)
+}
+async fn callback_peers(u: &url::Url) -> Result<Vec<SocketAddr>, String> {
     let port = u
         .port_or_known_default()
         .ok_or("MCP_EVENT_CALLBACK_INVALID")?;
-    let peers = tokio::time::timeout(
-        Duration::from_secs(3),
-        tokio::net::lookup_host((host, port)),
-    )
-    .await
-    .map_err(|_| "MCP_EVENT_CALLBACK_TIMEOUT")?
-    .map_err(|_| "MCP_EVENT_CALLBACK_DNS")?
-    .collect::<Vec<_>>();
-    if peers.is_empty() || peers.iter().any(|p| !public_ip(p.ip())) {
-        return Err("MCP_EVENT_CALLBACK_ADDRESS_BLOCKED".into());
+    // Literal URLs have already passed callback_url's public-address check;
+    // preserve typed IPv6 rather than handing bracketed text to the resolver.
+    match u.host().ok_or("MCP_EVENT_CALLBACK_INVALID")? {
+        url::Host::Ipv4(v) => return Ok(vec![SocketAddr::new(IpAddr::V4(v), port)]),
+        url::Host::Ipv6(v) => return Ok(vec![SocketAddr::new(IpAddr::V6(v), port)]),
+        url::Host::Domain(_) => {},
     }
+    let host = u.host_str().ok_or("MCP_EVENT_CALLBACK_INVALID")?;
+    resolve_dns_peers(async {
+        tokio::net::lookup_host((host,port)).await.map(|peers| peers.collect())
+    },Duration::from_secs(3)).await
+}
+async fn resolve_dns_peers<F>(lookup:F,deadline:Duration)->Result<Vec<SocketAddr>,String>
+where F:std::future::Future<Output=std::io::Result<Vec<SocketAddr>>> {
+    let peers = tokio::time::timeout(deadline,lookup)
+    .await
+    .map_err(|_| "MCP_EVENT_CALLBACK_DNS_TIMEOUT")?
+    .map_err(|_| "MCP_EVENT_CALLBACK_DNS_FAILED")?;
+    validated_dns_peers(peers)
+}
+async fn safe_client(value: &str) -> Result<(reqwest::Client, url::Url), String> {
+    let u = callback_url(value)?;
+    let host = u.host_str().ok_or("MCP_EVENT_CALLBACK_INVALID")?;
+    let peers = callback_peers_for_connect(&u).await?;
     // The client connects only to these validated peers. Preserve the hostname
     // for TLS; disable proxy environment and every redirect, including challenges.
     let client = reqwest::Client::builder()
@@ -174,6 +205,12 @@ async fn safe_client(value: &str) -> Result<(reqwest::Client, url::Url), String>
         .build()
         .map_err(|_| "MCP_EVENT_CALLBACK_CLIENT")?;
     Ok((client, u))
+}
+async fn callback_peers_for_connect(u:&url::Url)->Result<Vec<SocketAddr>,String> {
+    match callback_peers(u).await {
+        Err(e) if e=="MCP_EVENT_CALLBACK_DNS_NONPUBLIC_BENCHMARK" => callback_dns::resolve_benchmark_domain(u).await,
+        other => other,
+    }
 }
 async fn connect_callback(_gid: &str, value: &str) -> Result<(reqwest::Client, url::Url), String> {
     let u = callback_url(value)?;
@@ -561,6 +598,41 @@ fn envelope(e: &EventRecord) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn callback_address_categories_preserve_mixed_peer_denial_and_literal_guards() {
+        let peers=|ips:&[&str]| ips.iter().map(|ip| SocketAddr::new(ip.parse().unwrap(),443)).collect::<Vec<_>>();
+        for input in ["https://10.0.0.1/private?token=do-not-log", "https://[::ffff:198.18.1.1]/secret"] {
+            assert_eq!(callback_url(input).unwrap_err(),"MCP_EVENT_CALLBACK_LITERAL_NONPUBLIC_IP");
+        }
+        assert_eq!(validated_dns_peers(vec![]).unwrap_err(),"MCP_EVENT_CALLBACK_DNS_EMPTY");
+        assert_eq!(validated_dns_peers(peers(&["1.1.1.1","10.0.0.1"])).unwrap_err(),"MCP_EVENT_CALLBACK_DNS_NONPUBLIC_ADDRESS");
+        assert_eq!(validated_dns_peers(peers(&["198.18.1.1","1.1.1.1"])).unwrap_err(),"MCP_EVENT_CALLBACK_DNS_NONPUBLIC_BENCHMARK");
+        assert_eq!(validated_dns_peers(peers(&["::ffff:198.19.1.1"])).unwrap_err(),"MCP_EVENT_CALLBACK_DNS_NONPUBLIC_BENCHMARK");
+        assert_eq!(validated_dns_peers(peers(&["198.18.1.1","10.0.0.1","1.1.1.1"])).unwrap_err(),"MCP_EVENT_CALLBACK_DNS_NONPUBLIC_MIXED");
+        assert_eq!(validated_dns_peers(peers(&["1.1.1.1","2606:4700:4700::1111"])).unwrap().len(),2);
+        let runtime=tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let u=callback_url("https://[2606:4700:4700::1111]:8443/check").unwrap();
+            assert_eq!(callback_peers(&u).await.unwrap(),peers(&["2606:4700:4700::1111"]).into_iter().map(|mut p| {p.set_port(8443);p}).collect::<Vec<_>>());
+            assert_eq!(resolve_dns_peers(async {Ok(vec![])},Duration::from_secs(1)).await.unwrap_err(),"MCP_EVENT_CALLBACK_DNS_EMPTY");
+            assert_eq!(resolve_dns_peers(async {Err(std::io::Error::other("private-url?key=private-secret"))},Duration::from_secs(1)).await.unwrap_err(),"MCP_EVENT_CALLBACK_DNS_FAILED");
+            assert_eq!(resolve_dns_peers(std::future::pending(),Duration::from_millis(1)).await.unwrap_err(),"MCP_EVENT_CALLBACK_DNS_TIMEOUT");
+        });
+    }
+    #[test]
+    #[ignore="Explicit read-only system DNS of two fixed public hosts; no HTTP, subscriptions or inference"]
+    fn actual_windows_system_callback_dns_classification_without_http() {
+        let runtime=tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            for (index,host) in ["chatgpt.com","api.openai.com"].into_iter().enumerate() {
+                let u=callback_url(&format!("https://{host}/")).unwrap();
+                let result=callback_peers(&u).await;
+                let code=match result {Ok(_)=>"PUBLIC_PEERS_VALIDATED".to_string(),Err(e)=>e};
+                // Fixed labels only, no hostname, raw IP, URL or native errors.
+                println!("{}",json!({"probe":index+1,"resolverPath":"TOKIO_OS_SYSTEM_GETADDRINFO","result":code,"httpRequested":false}));
+            }
+        });
+    }
     #[test]
     fn blocks_non_public_callbacks_and_mapped_addresses() {
         for u in [

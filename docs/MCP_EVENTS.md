@@ -103,6 +103,28 @@ unspecified. Arbitrary error text, callback URLs, signing keys and response
 bodies remain excluded. This change does not relax HTTPS/public-address checks,
 change OAuth or create subscriptions. It cannot recover missing past error detail.
 
+From0.1.25, callback DNS diagnostics distinguish a non-public IP literal from
+non-public DNS peers, empty DNS, lookup failure and timeout. Fixed
+`callbackResolverPath` / `callbackAddressClass` labels record which path failed;
+addresses, hostnames, URLs, raw errors and keys are never logged. Benchmark-only
+198.18/15 answers (including mappedIPv6) and mixed rejected ranges differ.
+
+For a domain whose OS result has benchmark-only rejected peers, the Host queries
+only that domain through standard DNS wire-format DoH at the pinned public
+Cloudflare resolver. It does not change system DNS or use a callback HTTP proxy.
+The resolver transport retains TLS identity, blocks redirects, has a4s deadline
+and16KiB response cap; ID/question/type and bounded CNAME ownership must match.
+Every returned A/AAAA address is checked again before pinning callback connections
+with the original callback TLS hostname. Literal private addresses and other
+private/mixed/empty/failed OS results remain denied without this correction.
+No callback path, query, credential, key or message body is sent to the resolver.
+
+Same-production-code DNS-only validation can prove the local benchmark-address
+problem and the conditional resolution correction without creating subscriptions
+or contacting the callback. It cannot retroactively identify an old request's
+missing target or prove a real dot wake. The next actual subscription remains an
+explicit coordinated gate after diagnosis and repair.
+
 The tests enter the native terminal capture service, instead of directly marking
 a source complete in the outbox. A failed mobile push still leaves the event
 ready for the independent resident webhook worker.

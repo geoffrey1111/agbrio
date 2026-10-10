@@ -22,6 +22,18 @@ fn callback_failure(message: Option<&str>) -> (Option<&'static str>, Option<&'st
     let (code, phase) = match message {
         Some("MCP_EVENT_CALLBACK_INVALID") => ("MCP_EVENT_CALLBACK_INVALID", "URL_VALIDATION"),
         Some("MCP_EVENT_CALLBACK_ADDRESS_BLOCKED") => ("MCP_EVENT_CALLBACK_ADDRESS_BLOCKED", "ADDRESS_VALIDATION"),
+        Some("MCP_EVENT_CALLBACK_LITERAL_NONPUBLIC_IP") => ("MCP_EVENT_CALLBACK_LITERAL_NONPUBLIC_IP", "LITERAL_ADDRESS_VALIDATION"),
+        Some("MCP_EVENT_CALLBACK_DNS_NONPUBLIC_ADDRESS") => ("MCP_EVENT_CALLBACK_DNS_NONPUBLIC_ADDRESS", "DNS_ADDRESS_VALIDATION"),
+        Some("MCP_EVENT_CALLBACK_DNS_NONPUBLIC_BENCHMARK") => ("MCP_EVENT_CALLBACK_DNS_NONPUBLIC_BENCHMARK", "DNS_ADDRESS_VALIDATION"),
+        Some("MCP_EVENT_CALLBACK_DNS_NONPUBLIC_MIXED") => ("MCP_EVENT_CALLBACK_DNS_NONPUBLIC_MIXED", "DNS_ADDRESS_VALIDATION"),
+        Some("MCP_EVENT_CALLBACK_DNS_EMPTY") => ("MCP_EVENT_CALLBACK_DNS_EMPTY", "DNS_RESOLUTION"),
+        Some("MCP_EVENT_CALLBACK_DNS_FAILED") => ("MCP_EVENT_CALLBACK_DNS_FAILED", "DNS_RESOLUTION"),
+        Some("MCP_EVENT_CALLBACK_DNS_TIMEOUT") => ("MCP_EVENT_CALLBACK_DNS_TIMEOUT", "DNS_RESOLUTION"),
+        Some("MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_FAILED") => ("MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_FAILED", "PUBLIC_DNS_RESOLUTION"),
+        Some("MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_INVALID") => ("MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_INVALID", "PUBLIC_DNS_RESPONSE_VALIDATION"),
+        Some("MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_TIMEOUT") => ("MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_TIMEOUT", "PUBLIC_DNS_RESOLUTION"),
+        Some("MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_EMPTY") => ("MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_EMPTY", "PUBLIC_DNS_RESOLUTION"),
+        Some("MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_NONPUBLIC") => ("MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_NONPUBLIC", "PUBLIC_DNS_ADDRESS_VALIDATION"),
         Some("MCP_EVENT_CALLBACK_DNS") => ("MCP_EVENT_CALLBACK_DNS", "DNS_RESOLUTION"),
         Some("MCP_EVENT_CALLBACK_CLIENT") => ("MCP_EVENT_CALLBACK_CLIENT", "CLIENT_SETUP"),
         Some("MCP_EVENT_CALLBACK_NETWORK") => ("MCP_EVENT_CALLBACK_NETWORK", "HTTPS_REQUEST"),
@@ -32,6 +44,20 @@ fn callback_failure(message: Option<&str>) -> (Option<&'static str>, Option<&'st
     };
     (Some(code), Some(phase))
 }
+fn callback_resolution(message: Option<&str>) -> (Option<&'static str>, Option<&'static str>) {
+    match message {
+        Some("MCP_EVENT_CALLBACK_LITERAL_NONPUBLIC_IP") => (Some("URL_IP_LITERAL"),Some("NONPUBLIC")),
+        Some("MCP_EVENT_CALLBACK_DNS_NONPUBLIC_ADDRESS") => (Some("TOKIO_OS_SYSTEM_GETADDRINFO"),Some("NONPUBLIC_OTHER")),
+        Some("MCP_EVENT_CALLBACK_DNS_NONPUBLIC_BENCHMARK") => (Some("TOKIO_OS_SYSTEM_GETADDRINFO"),Some("BENCHMARK_RANGE")),
+        Some("MCP_EVENT_CALLBACK_DNS_NONPUBLIC_MIXED") => (Some("TOKIO_OS_SYSTEM_GETADDRINFO"),Some("MIXED_NONPUBLIC")),
+        Some("MCP_EVENT_CALLBACK_DNS_EMPTY") => (Some("TOKIO_OS_SYSTEM_GETADDRINFO"),Some("EMPTY")),
+        Some("MCP_EVENT_CALLBACK_DNS_FAILED"|"MCP_EVENT_CALLBACK_DNS_TIMEOUT") => (Some("TOKIO_OS_SYSTEM_GETADDRINFO"),None),
+        Some("MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_FAILED"|"MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_INVALID"|"MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_TIMEOUT") => (Some("OS_SYSTEM_THEN_PINNED_PUBLIC_DOH"),Some("BENCHMARK_INITIAL")),
+        Some("MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_EMPTY") => (Some("OS_SYSTEM_THEN_PINNED_PUBLIC_DOH"),Some("EMPTY_AFTER_BENCHMARK")),
+        Some("MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_NONPUBLIC") => (Some("OS_SYSTEM_THEN_PINNED_PUBLIC_DOH"),Some("NONPUBLIC_AFTER_BENCHMARK")),
+        _ => (None,None),
+    }
+}
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
 struct Entry {
@@ -40,6 +66,7 @@ struct Entry {
     accepts_json: bool, accepts_event_stream: bool, authenticated: bool,
     http_status: Option<u16>, rpc_error_code: Option<i64>,
     callback_error: Option<&'static str>, callback_failure_phase: Option<&'static str>,
+    callback_resolver_path: Option<&'static str>, callback_address_class: Option<&'static str>,
     advertised_events: Option<bool>, event_count: Option<usize>,
     params_kind: &'static str, request_meta_kind: &'static str, cursor_kind: &'static str, extra_parameter_count: usize,
 }
@@ -67,7 +94,7 @@ impl DiscoveryDiagnostics {
             header_version:version(headers.get("mcp-protocol-version").and_then(|v|v.to_str().ok())),
             requested_version:version(input.pointer("/params/protocolVersion").and_then(Value::as_str)),
             accepts_json:accept.contains("application/json"),accepts_event_stream:accept.contains("text/event-stream"),
-            authenticated:false,http_status:None,rpc_error_code:None,callback_error:None,callback_failure_phase:None,advertised_events:None,event_count:None,
+            authenticated:false,http_status:None,rpc_error_code:None,callback_error:None,callback_failure_phase:None,callback_resolver_path:None,callback_address_class:None,advertised_events:None,event_count:None,
             params_kind:shape(input.get("params")),request_meta_kind:shape(input.pointer("/params/_meta")),cursor_kind:shape(input.pointer("/params/cursor")),
             extra_parameter_count:input.get("params").and_then(Value::as_object).map(|m|m.keys().filter(|k|!matches!(k.as_str(),"_meta"|"cursor")).count()).unwrap_or(0)});
         Some(sequence)
@@ -82,6 +109,9 @@ impl DiscoveryDiagnostics {
         (e.callback_error, e.callback_failure_phase) = if e.rpc_error_code == Some(-32015) {
             callback_failure(result.pointer("/error/message").and_then(Value::as_str))
         } else { (None, None) };
+        (e.callback_resolver_path,e.callback_address_class) = if e.callback_error.is_some() {
+            callback_resolution(result.pointer("/error/message").and_then(Value::as_str))
+        } else { (None,None) };
         e.advertised_events=result.pointer("/result/capabilities").map(|c|c.get("events").is_some());
         e.event_count=result.pointer("/result/events").and_then(Value::as_array).map(Vec::len);
     });}
@@ -104,6 +134,18 @@ mod tests {
         for (message, phase) in [
             ("MCP_EVENT_CALLBACK_INVALID", "URL_VALIDATION"),
             ("MCP_EVENT_CALLBACK_ADDRESS_BLOCKED", "ADDRESS_VALIDATION"),
+            ("MCP_EVENT_CALLBACK_LITERAL_NONPUBLIC_IP", "LITERAL_ADDRESS_VALIDATION"),
+            ("MCP_EVENT_CALLBACK_DNS_NONPUBLIC_ADDRESS", "DNS_ADDRESS_VALIDATION"),
+            ("MCP_EVENT_CALLBACK_DNS_NONPUBLIC_BENCHMARK", "DNS_ADDRESS_VALIDATION"),
+            ("MCP_EVENT_CALLBACK_DNS_NONPUBLIC_MIXED", "DNS_ADDRESS_VALIDATION"),
+            ("MCP_EVENT_CALLBACK_DNS_EMPTY", "DNS_RESOLUTION"),
+            ("MCP_EVENT_CALLBACK_DNS_FAILED", "DNS_RESOLUTION"),
+            ("MCP_EVENT_CALLBACK_DNS_TIMEOUT", "DNS_RESOLUTION"),
+            ("MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_FAILED", "PUBLIC_DNS_RESOLUTION"),
+            ("MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_INVALID", "PUBLIC_DNS_RESPONSE_VALIDATION"),
+            ("MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_TIMEOUT", "PUBLIC_DNS_RESOLUTION"),
+            ("MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_EMPTY", "PUBLIC_DNS_RESOLUTION"),
+            ("MCP_EVENT_CALLBACK_BENCHMARK_PUBLIC_DNS_NONPUBLIC", "PUBLIC_DNS_ADDRESS_VALIDATION"),
             ("MCP_EVENT_CALLBACK_DNS", "DNS_RESOLUTION"),
             ("MCP_EVENT_CALLBACK_CLIENT", "CLIENT_SETUP"),
             ("MCP_EVENT_CALLBACK_NETWORK", "HTTPS_REQUEST"),
@@ -116,6 +158,9 @@ mod tests {
             let last = v["recentRequests"].as_array().unwrap().last().unwrap();
             assert_eq!(last["callbackError"], message);
             assert_eq!(last["callbackFailurePhase"], phase);
+            let (path,class)=callback_resolution(Some(message));
+            assert_eq!(last["callbackResolverPath"],serde_json::to_value(path).unwrap());
+            assert_eq!(last["callbackAddressClass"],serde_json::to_value(class).unwrap());
         }
         for code in [-32015, -32602] {
             let id = d.begin(&headers, &json!({"method":"events/subscribe"}));
@@ -124,6 +169,8 @@ mod tests {
             let last = v["recentRequests"].as_array().unwrap().last().unwrap();
             assert!(last["callbackError"].is_null());
             assert!(last["callbackFailurePhase"].is_null());
+            assert!(last["callbackResolverPath"].is_null());
+            assert!(last["callbackAddressClass"].is_null());
             assert!(!v.to_string().contains("private"));
         }
         let id = d.begin(&headers, &json!({"method":"events/subscribe"}));

@@ -651,6 +651,17 @@
   },
   {
     "ecosystem": "cargo",
+    "name": "critical-section",
+    "version": "1.2.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/api/v1/crates/critical-section/1.2.0/download",
+    "notices": [
+      "third-party/cargo/critical-section-1.2.0/LICENSE-APACHE",
+      "third-party/cargo/critical-section-1.2.0/LICENSE-MIT"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
     "name": "crossbeam-channel",
     "version": "0.5.16",
     "license": "MIT OR Apache-2.0",
@@ -839,6 +850,16 @@
     "source": "https://crates.io/api/v1/crates/darling_macro/0.23.0/download",
     "notices": [
       "third-party/cargo/darling_macro-0.23.0/LICENSE"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "data-encoding",
+    "version": "2.11.1",
+    "license": "MIT",
+    "source": "https://crates.io/api/v1/crates/data-encoding/2.11.1/download",
+    "notices": [
+      "third-party/cargo/data-encoding-2.11.1/LICENSE"
     ]
   },
   {
@@ -1524,6 +1545,17 @@
     "notices": [
       "third-party/cargo/hex-0.4.3/LICENSE-APACHE",
       "third-party/cargo/hex-0.4.3/LICENSE-MIT"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "hickory-proto",
+    "version": "0.26.3",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/api/v1/crates/hickory-proto/0.26.3/download",
+    "notices": [
+      "third-party/cargo/hickory-proto-0.26.3/LICENSE-APACHE",
+      "third-party/cargo/hickory-proto-0.26.3/LICENSE-MIT"
     ]
   },
   {
@@ -2593,6 +2625,17 @@
     "notices": [
       "third-party/cargo/polyval-0.7.3/LICENSE-APACHE",
       "third-party/cargo/polyval-0.7.3/LICENSE-MIT"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "portable-atomic",
+    "version": "1.13.1",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/api/v1/crates/portable-atomic/1.13.1/download",
+    "notices": [
+      "third-party/cargo/portable-atomic-1.13.1/LICENSE-APACHE",
+      "third-party/cargo/portable-atomic-1.13.1/LICENSE-MIT"
     ]
   },
   {
@@ -4540,17 +4583,6 @@
     "notices": [
       "third-party/cargo/windows-strings-0.5.1/license-apache-2.0",
       "third-party/cargo/windows-strings-0.5.1/license-mit"
-    ]
-  },
-  {
-    "ecosystem": "cargo",
-    "name": "windows-sys",
-    "version": "0.52.0",
-    "license": "MIT OR Apache-2.0",
-    "source": "https://crates.io/api/v1/crates/windows-sys/0.52.0/download",
-    "notices": [
-      "third-party/cargo/windows-sys-0.52.0/license-apache-2.0",
-      "third-party/cargo/windows-sys-0.52.0/license-mit"
     ]
   },
   {

@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Agbrio · Agent Bridge",
+        "title": "Agbrio 路 Agent Bridge",
         "width": 980,
         "height": 780,
         "minWidth": 680,
@@ -39,7 +39,8 @@
       "resources/browser-executor": "browser-executor",
       "resources/web-availability": "web-availability",
       "resources/codex-shared": "codex-shared",
-      "resources/hosted-relay": "hosted-relay"
+      "resources/hosted-relay": "hosted-relay",
+      "resources/mcp-dns": "mcp-dns"
     },
     "externalBin": [
       "binaries/browser-executor-node"
