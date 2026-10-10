@@ -34,3 +34,6 @@ Dot 应用说明：https://learn.chatgpt.com/docs/dots/computers-and-apps
 ```
 
 Events: [scope-scan workflow](MCP_EVENTS_WORKFLOW.md) · [中文教程](MCP_EVENTS_WORKFLOW.zh-CN.md).
+
+0.1.27 目标操作：[原生目标管理教程](GOAL_RECOVERY.md)。先读取确切对话的 state.goal 和 goalControls；PAUSE_GOAL/RESUME_GOAL 沿用 prepare_action → 审阅 → execute_action → action_receipt。保留同一目标、正文和预算，不重发旧指令。使用量限制的恢复需要真实用户回答。交接 SENT 后显示临时“AI 助手已处理”，该标记不是新授权或下游完成证明。
+更新后重新扫描插件工具，以取得新增操作的 schema。

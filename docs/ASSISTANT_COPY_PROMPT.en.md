@@ -23,3 +23,5 @@ First call agbrio_read_app and check scope, approvalMode, expiry and revocation.
 ```
 
 Events: [scope-scan workflow](MCP_EVENTS_WORKFLOW.md) · [中文教程](MCP_EVENTS_WORKFLOW.zh-CN.md).
+
+0.1.27 native Goals: [Goal controls guide](GOAL_RECOVERY.md). Read exact state.goal/goalControls, then PAUSE_GOAL/RESUME_GOAL through existing prepare_action, review, execute_action and action_receipt. Preserve the original Goal, objective and budget; never replay old input. Usage-limit resume needs an actual owner answer. Temporary assistant-processed attribution follows exact SENT and is not new authority or downstream completion. Refresh the plugin tool catalog after updating to obtain the new operation schema.
