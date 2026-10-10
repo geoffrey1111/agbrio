@@ -17,6 +17,21 @@ fn version(raw: Option<&str>) -> &'static str {
     }
 }
 fn shape(value:Option<&Value>)->&'static str {match value{None=>"MISSING",Some(Value::Null)=>"NULL",Some(Value::Object(_))=>"OBJECT",Some(Value::Array(_))=>"ARRAY",Some(Value::String(v)) if v.is_empty()=>"EMPTY_STRING",Some(Value::String(_))=>"STRING",Some(Value::Bool(_))=>"BOOLEAN",Some(Value::Number(_))=>"NUMBER"}}
+// Retain only known internal labels, never an arbitrary error message or URL.
+fn callback_failure(message: Option<&str>) -> (Option<&'static str>, Option<&'static str>) {
+    let (code, phase) = match message {
+        Some("MCP_EVENT_CALLBACK_INVALID") => ("MCP_EVENT_CALLBACK_INVALID", "URL_VALIDATION"),
+        Some("MCP_EVENT_CALLBACK_ADDRESS_BLOCKED") => ("MCP_EVENT_CALLBACK_ADDRESS_BLOCKED", "ADDRESS_VALIDATION"),
+        Some("MCP_EVENT_CALLBACK_DNS") => ("MCP_EVENT_CALLBACK_DNS", "DNS_RESOLUTION"),
+        Some("MCP_EVENT_CALLBACK_CLIENT") => ("MCP_EVENT_CALLBACK_CLIENT", "CLIENT_SETUP"),
+        Some("MCP_EVENT_CALLBACK_NETWORK") => ("MCP_EVENT_CALLBACK_NETWORK", "HTTPS_REQUEST"),
+        Some("MCP_EVENT_CALLBACK_CHALLENGE_FAILED") => ("MCP_EVENT_CALLBACK_CHALLENGE_FAILED", "CHALLENGE_VALIDATION"),
+        // The existing timeout error spans DNS, request and body-read deadlines.
+        Some("MCP_EVENT_CALLBACK_TIMEOUT") => ("MCP_EVENT_CALLBACK_TIMEOUT", "TIMEOUT_STAGE_UNSPECIFIED"),
+        _ => return (None, None),
+    };
+    (Some(code), Some(phase))
+}
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
 struct Entry {
@@ -24,6 +39,7 @@ struct Entry {
     header_version: &'static str, requested_version: &'static str,
     accepts_json: bool, accepts_event_stream: bool, authenticated: bool,
     http_status: Option<u16>, rpc_error_code: Option<i64>,
+    callback_error: Option<&'static str>, callback_failure_phase: Option<&'static str>,
     advertised_events: Option<bool>, event_count: Option<usize>,
     params_kind: &'static str, request_meta_kind: &'static str, cursor_kind: &'static str, extra_parameter_count: usize,
 }
@@ -51,7 +67,7 @@ impl DiscoveryDiagnostics {
             header_version:version(headers.get("mcp-protocol-version").and_then(|v|v.to_str().ok())),
             requested_version:version(input.pointer("/params/protocolVersion").and_then(Value::as_str)),
             accepts_json:accept.contains("application/json"),accepts_event_stream:accept.contains("text/event-stream"),
-            authenticated:false,http_status:None,rpc_error_code:None,advertised_events:None,event_count:None,
+            authenticated:false,http_status:None,rpc_error_code:None,callback_error:None,callback_failure_phase:None,advertised_events:None,event_count:None,
             params_kind:shape(input.get("params")),request_meta_kind:shape(input.pointer("/params/_meta")),cursor_kind:shape(input.pointer("/params/cursor")),
             extra_parameter_count:input.get("params").and_then(Value::as_object).map(|m|m.keys().filter(|k|!matches!(k.as_str(),"_meta"|"cursor")).count()).unwrap_or(0)});
         Some(sequence)
@@ -63,6 +79,9 @@ impl DiscoveryDiagnostics {
     pub(super) fn authorized(&self,id:Option<u64>){self.edit(id,|e|e.authenticated=true);}
     pub(super) fn rpc(&self,id:Option<u64>,result:&Value){self.edit(id,|e|{
         e.rpc_error_code=result.pointer("/error/code").and_then(Value::as_i64);
+        (e.callback_error, e.callback_failure_phase) = if e.rpc_error_code == Some(-32015) {
+            callback_failure(result.pointer("/error/message").and_then(Value::as_str))
+        } else { (None, None) };
         e.advertised_events=result.pointer("/result/capabilities").map(|c|c.get("events").is_some());
         e.event_count=result.pointer("/result/events").and_then(Value::as_array).map(Vec::len);
     });}
@@ -78,6 +97,40 @@ impl DiscoveryDiagnostics {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn callback_failure_records_known_categories_without_private_error_text() {
+        let d = DiscoveryDiagnostics::default();
+        let headers = HeaderMap::new();
+        for (message, phase) in [
+            ("MCP_EVENT_CALLBACK_INVALID", "URL_VALIDATION"),
+            ("MCP_EVENT_CALLBACK_ADDRESS_BLOCKED", "ADDRESS_VALIDATION"),
+            ("MCP_EVENT_CALLBACK_DNS", "DNS_RESOLUTION"),
+            ("MCP_EVENT_CALLBACK_CLIENT", "CLIENT_SETUP"),
+            ("MCP_EVENT_CALLBACK_NETWORK", "HTTPS_REQUEST"),
+            ("MCP_EVENT_CALLBACK_CHALLENGE_FAILED", "CHALLENGE_VALIDATION"),
+            ("MCP_EVENT_CALLBACK_TIMEOUT", "TIMEOUT_STAGE_UNSPECIFIED"),
+        ] {
+            let id = d.begin(&headers, &json!({"method":"events/subscribe"}));
+            d.rpc(id, &json!({"error":{"code":-32015,"message":message}}));
+            let v = d.snapshot();
+            let last = v["recentRequests"].as_array().unwrap().last().unwrap();
+            assert_eq!(last["callbackError"], message);
+            assert_eq!(last["callbackFailurePhase"], phase);
+        }
+        for code in [-32015, -32602] {
+            let id = d.begin(&headers, &json!({"method":"events/subscribe"}));
+            d.rpc(id, &json!({"error":{"code":code,"message":"MCP_EVENT_CALLBACK_NETWORK https://private.invalid/secret whsec_private","data":{"reason":"private-body"}}}));
+            let v = d.snapshot();
+            let last = v["recentRequests"].as_array().unwrap().last().unwrap();
+            assert!(last["callbackError"].is_null());
+            assert!(last["callbackFailurePhase"].is_null());
+            assert!(!v.to_string().contains("private"));
+        }
+        let id = d.begin(&headers, &json!({"method":"events/subscribe"}));
+        d.rpc(id, &json!({"error":{"code":-32602,"message":"MCP_EVENT_CALLBACK_NETWORK"}}));
+        let v = d.snapshot();
+        assert!(v["recentRequests"].as_array().unwrap().last().unwrap()["callbackError"].is_null());
+    }
     #[test]
     fn metadata_is_bounded_sanitized_and_listener_local() {
         let d=DiscoveryDiagnostics::default();let other=DiscoveryDiagnostics::default();

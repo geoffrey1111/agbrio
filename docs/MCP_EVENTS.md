@@ -94,6 +94,15 @@ validation. It cannot override the OAuth grant, Bridge/revision/source filters o
 approval. Diagnostic records expose only parameter type labels and counts, never
 metadata keys or values.
 
+From0.1.24, callback failures additionally retain `callbackError` and
+`callbackFailurePhase` in the same authenticated, bounded diagnostic window.
+Only seven fixed internal error labels are allowed: URL/address validation,
+DNS resolution, client setup, HTTPS request, challenge validation and timeout.
+The existing timeout code spans several deadlines, so its phase is explicitly
+unspecified. Arbitrary error text, callback URLs, signing keys and response
+bodies remain excluded. This change does not relax HTTPS/public-address checks,
+change OAuth or create subscriptions. It cannot recover missing past error detail.
+
 The tests enter the native terminal capture service, instead of directly marking
 a source complete in the outbox. A failed mobile push still leaves the event
 ready for the independent resident webhook worker.
