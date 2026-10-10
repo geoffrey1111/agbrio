@@ -19,7 +19,7 @@ After connecting, ask which Bridges are delegated and agree exact tasks,
 directions, ask/pause conditions. Whole-instance access does not delegate all
 work. Preserve the existing prepare/confirm/receipt and decision-answer flow.
 Owner reports dot16tools and3reads; live dot writes are not yet accepted.
-Events discovery/subscription/wakeup remains unimplemented.
+Version 0.1.20 implements official MCP Events discovery, subscription, unsubscribe, signed challenge/webhooks, durable deduplication and recovery. Rescan both plugin tools and events, then have the dot subscribe to explicitly delegated Bridge identities, revisions and source directions. Event delivery is not dot wake acceptance; the real dot must reread content and complete its authorized reviewed handoff. See [MCP Events](MCP_EVENTS.md).
 
 ## All-project directory (0.1.8)
 

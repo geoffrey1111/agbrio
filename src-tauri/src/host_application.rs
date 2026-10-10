@@ -4325,14 +4325,18 @@ pub(crate) fn run_codex_existing_thread_observer(
     observer_epoch: u64,
 ) {
     let mut activity_cursor=0;
-    loop {
+    'observer: loop {
+        match resident_observer_connection(&session,observer_epoch){
+            ObserverConnection::Stopped=>return,
+            ObserverConnection::Borrowed=>{std::thread::sleep(Duration::from_millis(200));continue;}
+            ObserverConnection::Ready=>{}
+        }
         crate::role_bridge::refresh_resident_activity(&store,&session,observer_epoch,&mut activity_cursor);
         let active_workstream_ids = match active_initialized_codex_observer_workstreams(&store) {
             Ok(workstream_ids) => workstream_ids,
             Err(_) => return,
         };
-        let connected = session.lock().map(|s| s.codex_observer_epoch == observer_epoch && s.adapter.as_ref().is_some_and(|a|!a.is_closed())).unwrap_or(false);
-        if !connected {return;}
+        match resident_observer_connection(&session,observer_epoch){ObserverConnection::Stopped=>return,ObserverConnection::Borrowed=>continue,ObserverConnection::Ready=>{}}
         if let Ok(watches) = store.codex_watches() {
             for watch in watches.into_iter().filter(|w|w.enabled && w.retry_after<=rollover_now().unwrap_or(0)*1000) {
                 // Pause/Resume generation is checked again when the native read commits.
@@ -4340,19 +4344,7 @@ pub(crate) fn run_codex_existing_thread_observer(
             }
         }
         for workstream_id in active_workstream_ids {
-            let connected = session
-                .lock()
-                .map(|current| {
-                    current.codex_observer_epoch == observer_epoch
-                        && current
-                            .adapter
-                            .as_ref()
-                            .is_some_and(|adapter| !adapter.is_closed())
-                })
-                .unwrap_or(false);
-            if !connected {
-                return;
-            }
+            match resident_observer_connection(&session,observer_epoch){ObserverConnection::Stopped=>return,ObserverConnection::Borrowed=>continue 'observer,ObserverConnection::Ready=>{}}
             let _ =
                 check_new_codex_replies_with(&store, &session, &workstream_id, &mut |payload| {
                     crate::push::send_payload(payload)
@@ -4360,6 +4352,15 @@ pub(crate) fn run_codex_existing_thread_observer(
         }
         std::thread::sleep(std::time::Duration::from_secs(2));
     }
+}
+
+enum ObserverConnection{Ready,Borrowed,Stopped}
+fn resident_observer_connection(session:&Mutex<Session>,epoch:u64)->ObserverConnection{
+    let Ok(s)=session.lock()else{return ObserverConnection::Stopped};
+    if s.codex_observer_epoch!=epoch{return ObserverConnection::Stopped;}
+    if s.adapter.as_ref().is_some_and(|a|!a.is_closed()){return ObserverConnection::Ready;}
+    if s.adapter.is_none()&&s.codex_adapter_borrowed{return ObserverConnection::Borrowed;}
+    ObserverConnection::Stopped
 }
 
 /// Existing historical ACTIVE endpoints may remain in SQLite forever for audit
@@ -4778,6 +4779,7 @@ pub(crate) fn restore_codex_adapter(
         session.ready_threads.insert(thread_id.to_string());
     }
     session.adapter = Some(adapter);
+    session.codex_adapter_borrowed=false;
     Ok(())
 }
 

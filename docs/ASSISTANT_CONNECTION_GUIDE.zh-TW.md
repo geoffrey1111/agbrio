@@ -59,7 +59,7 @@ GET /mcp 的 405、未授權 POST 的 401 / invalid_token 可能是正常保護�
 
 使用者回報 dot 已取得 16 工具，INSTANCE + CONVERSATION_REVIEW，read_app / read_bridge / read_source 通過。實際 dot 寫入未測。虛構瀏覽器資料與離線測試不冒充目標 dot 驗收。
 
-官方 Events 可用於 dots，但 Agbrio 尚未實作探索、訂閱、簽章回呼、去重、撤權停發及遺漏恢復。連接不是自動喚醒或無人循環；持續接管需先選 Bridge 並明確委託，事件能力另行驗收。
+0.1.20 已實作官方 MCP Events 的探索、訂閱、退訂、簽章驗證回呼、持久去重、重啟恢復及撤權停發。更新後重新掃描插件的工具與事件，再由 dot 為明確授權的 Bridge、綁定版本和來源方向建立訂閱。收到事件後重新讀取完整內容，沿用 prepare → 審閱 → send → receipt；webhook 2xx 不代表 dot 已被喚醒。真實 dot 無輪詢喚醒及一次授權交接仍須獨立驗收。
 
 [完整複製指令](ASSISTANT_COPY_PROMPT.zh-TW.md) · [協定與工具](ASSISTANT_MCP.md) · [官方認證](https://developers.openai.com/plugins/build/auth) · [dot 應用](https://learn.chatgpt.com/docs/dots/computers-and-apps)
 

@@ -86,3 +86,8 @@ requires a rescanned real plugin, a subscription created by the existing dot,
 one event-triggered dot run without polling or another user prompt, rereading the
 full source and completing one authorized handoff with its exact send receipt.
 Webhook 2xx and phone notifications are transport receipts only.
+
+The resident native observer pauses while a send temporarily borrows its adapter,
+then resumes the same connection when returned. True disconnects or epoch changes
+still stop the observer. Background freshness must be tested across a send, not
+only across navigation or minimization.

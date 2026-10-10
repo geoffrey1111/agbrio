@@ -166,6 +166,7 @@ pub(crate) fn poll(
         if s.codex_observer_epoch != epoch {
             return Ok(false);
         }
+        if s.codex_adapter_borrowed && s.adapter.is_none() { return Ok(false); }
         let a = s
             .adapter
             .as_mut()

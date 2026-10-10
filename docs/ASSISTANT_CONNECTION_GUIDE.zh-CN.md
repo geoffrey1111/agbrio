@@ -59,7 +59,7 @@ GET /mcp 返回 405、未授权 POST 返回 401 / invalid_token 可能是正常�
 
 用户提供的云端实测：**dot 发现 16 工具，INSTANCE + CONVERSATION_REVIEW，read_app / read_bridge / read_source 成功**。真实 dot 写入尚未实测。离线保护、决策绑定与浏览器虚构交接验证不能冒充 dot 写入验收。
 
-官方 MCP Events 可用于 dots，但 Agbrio 仍未实现事件发现、订阅、签名回调、去重、撤权停发与遗漏恢复。连接不等于自动唤醒或无人值守循环；持续接管必须先选择 Bridge 并明确委托，未来事件实现单独验收。
+0.1.20 已实现官方 MCP Events 的发现、订阅、退订、签名验证回调、持久去重、重启恢复及撤权停发。更新后重新扫描插件的工具和事件，再由 dot 为明确授权的 Bridge、绑定版本和来源方向创建订阅。收到事件后重新读取完整内容，沿用 prepare → 审阅 → send → receipt；不能仅凭 webhook 2xx 声称 dot 已被唤醒。真实 dot 无轮询唤醒及一次授权交接仍需独立验收。
 
 [完整复制指令](ASSISTANT_COPY_PROMPT.zh-CN.md) · [协议与工具](ASSISTANT_MCP.md) · [官方认证说明](https://developers.openai.com/plugins/build/auth) · [dot 应用说明](https://learn.chatgpt.com/docs/dots/computers-and-apps)
 

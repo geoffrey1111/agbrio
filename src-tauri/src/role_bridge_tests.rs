@@ -962,6 +962,18 @@ fn historical_role_handoff_remains_visible_after_rebinding_without_becoming_send
  std::thread::sleep(std::time::Duration::from_millis(2300));let after=guidance_methods(&dir);assert!(after.len()>before);assert!(after.iter().all(|m|matches!(m["method"].as_str(),Some("initialize"|"thread/read"|"thread/goal/get"|"thread/turns/list"|"thread/items/list"))));
  let second=directory_activity(&core,&[wid.clone()]).unwrap();assert!(second[0].sides[0].checked_at>first[0].sides[0].checked_at);core.session.lock().unwrap().codex_observer_epoch+=1;worker.join().unwrap();
 }
+#[test]fn resident_observer_survives_a_send_borrow_and_resumes_the_same_adapter(){
+ let(_dir,core,wid,_)=active_guidance_fixture("ACTIVE",None);let store=core.store.clone();let session=core.session.clone();
+ let worker=std::thread::spawn(move||crate::host_application::run_codex_existing_thread_observer(store,session,0));
+ let deadline=std::time::Instant::now()+std::time::Duration::from_secs(5);let first=loop{let row=directory_activity(&core,&[wid.clone()]).unwrap().remove(0);if row.sides.iter().all(|s|s.checked_at>0){break row;}assert!(std::time::Instant::now()<deadline);std::thread::sleep(std::time::Duration::from_millis(25));};
+ let adapter={let mut s=core.session.lock().unwrap();s.codex_adapter_borrowed=true;s.adapter.take().unwrap()};
+ std::thread::sleep(std::time::Duration::from_millis(2500));let prematurely_finished=worker.is_finished();
+ crate::host_application::restore_codex_adapter(&core,adapter,None).unwrap();
+ if prematurely_finished{core.session.lock().unwrap().codex_observer_epoch+=1;worker.join().unwrap();panic!("temporary send borrow killed the resident observer");}
+ assert!(!core.session.lock().unwrap().codex_adapter_borrowed,"returning the adapter must clear the borrowed flag");
+ let deadline=std::time::Instant::now()+std::time::Duration::from_secs(5);loop{let row=directory_activity(&core,&[wid.clone()]).unwrap().remove(0);if row.sides.iter().all(|s|s.checked_at>first.sides[0].checked_at){break;}assert!(std::time::Instant::now()<deadline,"returned adapter never refreshed cache");std::thread::sleep(std::time::Duration::from_millis(25));}
+ core.session.lock().unwrap().codex_observer_epoch+=1;worker.join().unwrap();
+}
 #[test]fn resident_projection_rechecks_binding_and_expiry_and_does_not_resume_trashed_bridges(){
  let(dir,core,wid,_)=active_guidance_fixture("ACTIVE",None);let mut cursor=0;refresh_resident_activity(&core.store,&core.session,0,&mut cursor);
  let cache=activity_cache(&core.store);{let mut c=cache.lock().unwrap();for s in &mut c.rows.get_mut(&wid).unwrap().sides{s.checked_at=1;}}

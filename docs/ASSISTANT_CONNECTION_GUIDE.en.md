@@ -59,7 +59,7 @@ On timeout, UNKNOWN or EXECUTING, inspect the receipt first and reuse the same r
 
 Owner-reported cloud dot acceptance: **16 tools, INSTANCE + CONVERSATION_REVIEW, read_app/read_bridge/read_source passed**. Real dot writes remain untested. Local automated tests exercise protection, decision binding and handoff behavior; fictional browser previews are not live-dot write acceptance.
 
-MCP Events can support dots, but Agbrio has not implemented event discovery, subscriptions, signed callbacks, deduplication, revocation stop or missed-event recovery. A connection is not automatic wakeup or an unattended loop. These require separate implementation and acceptance after explicit Bridge delegation.
+Version 0.1.20 implements official MCP Events discovery, subscriptions, unsubscribe, signed verification/webhooks, durable deduplication, restart recovery and revocation stop. Rescan plugin tools and events, then have the dot subscribe to explicitly delegated Bridge identities, revisions and source directions. On an event, reread full content and use prepare → review → send → receipt. Real dot wakeup without polling and one authorized handoff still require independent acceptance; webhook 2xx is only a transport receipt.
 
 [Copy full instructions to an assistant](ASSISTANT_COPY_PROMPT.en.md) · [Protocol and tools](ASSISTANT_MCP.md) · [Official plugin authentication](https://developers.openai.com/plugins/build/auth) · [Official dot apps guide](https://learn.chatgpt.com/docs/dots/computers-and-apps)
 
