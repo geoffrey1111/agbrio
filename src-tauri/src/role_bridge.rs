@@ -724,7 +724,7 @@ fn activity_cache(store:&Arc<RouterStore>)->ActivityCache{
 }
 /// Only an existing UI SYNC request authorizes cold transcript hydration. All
 /// metadata polling is independent of the renderer and never starts a turn.
-pub(crate) fn refresh_resident_activity(store:&Arc<RouterStore>,session:&Mutex<Session>,epoch:u64,cursor:&mut usize){
+pub(crate) fn refresh_resident_activity(store:&Arc<RouterStore>,session:&Arc<Mutex<Session>>,epoch:u64,cursor:&mut usize){
  let cache=activity_cache(store);let Ok(snapshot)=store.snapshot()else{return};let mut ids=snapshot.workstreams.into_iter().filter(|w|w.trashed_at.is_none()&&w.archived_at.is_none()&&w.status!="ARCHIVED").filter_map(|w|store.role_bridge(&w.id).ok().filter(|b|b.explicit_roles).map(|_|w.id)).collect::<Vec<_>>();ids.sort();
  if !session.try_lock().is_ok_and(|s|s.codex_observer_epoch==epoch&&s.adapter.as_ref().is_some_and(|a|!a.is_closed())){return;}
  let allowed=ids.iter().cloned().collect::<HashSet<_>>();if let Ok(mut c)=cache.lock(){if c.epoch!=epoch{c.rows.clear();c.epoch=epoch;}c.rows.retain(|id,_|allowed.contains(id));c.wanted.retain(|id,(_,at)|allowed.contains(id)&&activity_now().saturating_sub(*at)<20*60*1000);}
@@ -739,12 +739,20 @@ pub(crate) fn refresh_resident_activity(store:&Arc<RouterStore>,session:&Mutex<S
   if row.sides.iter().any(|a|a.checked_at>0){if let Ok(mut c)=cache.lock(){if c.epoch==epoch{c.rows.insert(row.workstream_id.clone(),row);}}}
  }
 }
-fn materialize_requested_reply(store:&RouterStore,session:&Mutex<Session>,id:&str,revision:i64,endpoint:&str)->Result<(),String>{
+fn materialize_requested_reply(store:&RouterStore,session:&Arc<Mutex<Session>>,id:&str,revision:i64,endpoint:&str)->Result<(),String>{
+ materialize_requested_reply_with(store,session,id,revision,endpoint,&mut |p|crate::push::send_payload(p))
+}
+fn materialize_requested_reply_with(store:&RouterStore,session:&Arc<Mutex<Session>>,id:&str,revision:i64,endpoint:&str,push:&mut dyn FnMut(&[u8])->Result<crate::push::PushDeliveryOutcome,String>)->Result<(),String>{
  let w=store.snapshot_for_workstream(id)?.workstreams.into_iter().find(|w|w.id==id).ok_or("BRIDGE_UNAVAILABLE")?;if w.trashed_at.is_some()||w.archived_at.is_some(){return Err("BRIDGE_UNAVAILABLE".into());}
  let b=store.role_bridge(id)?;if b.binding_revision!=revision{return Err("BRIDGE_BINDING_CHANGED".into());}let side=[&b.decision,&b.execution].into_iter().flatten().find(|s|s.endpoint.id==endpoint&&s.endpoint.provider=="CODEX").ok_or("BRIDGE_SIDE_NOT_BOUND")?;
  let reply={let mut s=session.lock().map_err(|_|"Router session unavailable")?;let a=s.adapter.as_mut().filter(|a|!a.is_closed()).ok_or("Codex disconnected")?;let checked=metadata(a,&side.endpoint.external_id)?;verify_root(&checked,side)?;read_latest_codex_reply(a,&side.endpoint.external_id)?.reply};
  let Some(r)=reply else{return Ok(())};if store.role_bridge(id)?.binding_revision!=revision{return Err("BRIDGE_BINDING_CHANGED".into());}
- store.save_codex_reply_observer_watermark(id,endpoint,&side.endpoint.external_id,&r.completed_turn_id,&r.agent_item_id)?;
+ // Validate root/read before notification; an initialized observer owns its
+ // watermark and one push. UI hydration must neither consume nor rewind it.
+ if store.codex_reply_observer_is_initialized(endpoint)?{
+  check_new_codex_endpoint_replies_with(store,session,id,side.endpoint.clone(),push)?;
+ }else{store.save_codex_reply_observer_watermark(id,endpoint,&side.endpoint.external_id,&r.completed_turn_id,&r.agent_item_id)?;}
+
  let identity=format!("codex:{}:{}",r.completed_turn_id,r.agent_item_id);store.record_reply_observation(id,endpoint,Some(&identity),&r.text,None)?;store.note_reply_completion(id,endpoint,&identity,r.completed_at)?;Ok(())
 }
 /// Fast local-store projection; opening a page never queues native metadata reads.

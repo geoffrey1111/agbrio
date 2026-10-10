@@ -16,4 +16,4 @@ separate. Existing notification IDs, click targets and receipts are preserved.
 No reply bodies, generated summaries or credentials are added to push payloads.
 MCP Events is not part of this release and remains under separate implementation.
 
-Validation results and immutable installer identity are recorded after packaging.
+Validation:528 frontend tests,202 native tests (29 explicit real-path tests ignored), TypeScript/production build. Resident tests exercise no-renderer progress, a busy RPC lock, expiry/rebind/retirement, and one new-reply push with no historical/repeated push. Full-component desktop hidden/resume counters and real Service Worker Notification API format pass on isolated localhost fixtures. Installed resume, immutable package identity and exact Windows installer CI are recorded after packaging.
