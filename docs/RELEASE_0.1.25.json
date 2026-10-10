@@ -11,22 +11,42 @@
     "hostPassed": 218,
     "mainPassed": 1,
     "sourceWindowsCI": 38051575412,
-    "sourceWindowsCIStatus": "PENDING",
-    "exactReleasedInstallerWindowsCIStatus": "NOT_RUN",
+    "sourceWindowsCIStatus": "SUCCESS",
+    "exactReleasedInstallerWindowsCIStatus": "SUCCESS",
     "sameCodeDnsOnlyCorrection": "PASS_TWO_FIXED_PUBLIC_DOMAINS",
     "callbackHttpRequestedInDnsProbe": false,
-    "publisherSignatureAndTamper": "PASS"
+    "publisherSignatureAndTamper": "PASS",
+    "exactReleasedInstallerWindowsCI": 38053397209
   },
   "runtime": {
-    "installedVersion": "0.1.24",
-    "dnsRefinementDeployment": "PENDING"
+    "installedVersion": "0.1.25",
+    "dnsRefinementDeployment": "PASS",
+    "hostPid": 73472,
+    "installedBinarySha256": "c532713f263a00eefa3160233f5f54be560e2417340c906054366694031d85c6",
+    "nativeUpToDate": "PASS",
+    "staticFilesExact": 15,
+    "grantsPreserved": true,
+    "pairingsPreserved": true,
+    "sharedFourProcessIdentitiesPreserved": true,
+    "originalOAuthReadApp": "PASS",
+    "packagedDnsNoticesExact": true
   },
   "mcpEvents": {
     "addressCategories": "IMPLEMENTED",
-    "benchmarkOnlySameDomainCorrection": "IMPLEMENTED_UNDEPLOYED",
+    "benchmarkOnlySameDomainCorrection": "DEPLOYED_DNS_ONLY_PROBE_PASS",
     "publicAddressAndTlsGuards": "PRESERVED",
     "globalDnsAuthChanged": false,
     "realDotWakeAndOneAuthorizedHandoff": "OPEN_NO_SUBSCRIPTION_RETRY",
-    "historicalExactCallbackHost": "UNAVAILABLE"
+    "historicalExactCallbackHost": "UNAVAILABLE",
+    "diagnosticFields": [
+      "callbackError",
+      "callbackFailurePhase",
+      "callbackResolverPath",
+      "callbackAddressClass"
+    ],
+    "deployedDiagnosticFields": "PASS",
+    "activeSubscriptionsAtDeploymentCheck": 0,
+    "webhookReceiptsAtDeploymentCheck": 0,
+    "controlledSubscriptionReadiness": "READY_ONE_PLATFORM_OWNED_ATTEMPT_NO_TRIGGER_BEFORE_CONFIRMATION"
   }
 }
