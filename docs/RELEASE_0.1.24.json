@@ -31,8 +31,13 @@
   },
   "mcpEvents": {
     "actualEventCatalog": "PREVIOUS23_PASS_UNCHANGED_DEFINITIONS",
-    "safeCallbackDiagnosticLabels": "DEPLOYED_AND_FIELDS_PROVEN",
-    "realDotWakeAndOneAuthorizedHandoff": "OPEN_OWNER_SINGLE_SUBSCRIPTION_RETRY_PENDING",
-    "webhook2xxIsBusinessAcceptance": false
+    "safeCallbackDiagnosticLabels": "DEPLOYED_REAL_FAILURE_CATEGORY_CAPTURED",
+    "realDotWakeAndOneAuthorizedHandoff": "OPEN_CALLBACK_RESOLUTION_UNFIXED",
+    "webhook2xxIsBusinessAcceptance": false,
+    "actualSubscriptionRetry": "CALLBACK_ADDRESS_VALIDATION_BLOCKED",
+    "callbackError": "MCP_EVENT_CALLBACK_ADDRESS_BLOCKED",
+    "callbackFailurePhase": "ADDRESS_VALIDATION",
+    "subscriptionStored": false,
+    "exactRejectedAddressType": "NOT_RECORDED"
   }
 }
