@@ -10,6 +10,7 @@ pub mod codex_watch;
 pub mod watch_delivery;
 pub mod watch_reply;
 mod bridge_notifications;
+mod endpoint_claims;
 #[cfg(test)]mod watch_usage_tests;
 use crate::identity::{length_prefixed_hash, ScopeIdentity};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
@@ -761,6 +762,7 @@ impl RouterStore {
         run_migrations(&mut connection)?;
         run_normal_feature_migrations(&mut connection)?;
         role_bridge::migrate(&mut connection, &path)?;
+        endpoint_claims::migrate(&mut connection, &path)?;
         bridge_notifications::migrate(&mut connection)?;
         let store=Self {
             connection: Mutex::new(connection),
@@ -1285,9 +1287,12 @@ impl RouterStore {
     /// resumes a provider, reacquires a writer, or changes bindings.
     pub fn restore_workstream(&self, workstream_id: &str) -> Result<Workstream, String> {
         self.with_connection(|connection| {
+            let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
+            let connection = &transaction;
             let workstream = workstream_by_id(connection, workstream_id)?;
             let timestamp = now();
             if workstream.trashed_at.is_some() {
+                endpoint_claims::require_restore(connection, workstream_id)?;
                 connection.execute(
                     "UPDATE workstreams SET status=COALESCE(lifecycle_previous_status,'ACTIVE'),lifecycle_previous_status=NULL,trashed_at=NULL,updated_at=?2 WHERE id=?1",
                     params![workstream_id, timestamp],
@@ -1298,7 +1303,9 @@ impl RouterStore {
                     params![workstream_id, timestamp],
                 ).map_err(db_error)?;
             }
-            workstream_by_id(connection, workstream_id)
+            let updated = workstream_by_id(connection, workstream_id)?;
+            transaction.commit().map_err(db_error)?;
+            Ok(updated)
         })
     }
 
@@ -1627,13 +1634,13 @@ impl RouterStore {
         provider: &str,
         external_id: &str,
     ) -> Result<Option<Endpoint>, String> {
-        self.with_connection(|connection| connection.query_row("SELECT id,workstream_id,provider,external_id,label,status,replaces_endpoint_id,created_at,superseded_at FROM endpoints WHERE provider=?1 AND external_id=?2 AND status='ACTIVE'",params![provider,external_id],endpoint_row).optional().map_err(db_error))
+        self.with_connection(|connection| connection.query_row("SELECT id,workstream_id,provider,external_id,label,status,replaces_endpoint_id,created_at,superseded_at FROM endpoints WHERE provider=?1 AND external_id=?2 AND status='ACTIVE' AND workstream_id IN (SELECT id FROM workstreams WHERE trashed_at IS NULL)",params![provider,external_id],endpoint_row).optional().map_err(db_error))
     }
 
     pub fn active_chatgpt_endpoints(&self) -> Result<Vec<Endpoint>, String> {
         self.with_connection(|connection| {
             let mut statement = connection.prepare(
-                "SELECT id,workstream_id,provider,external_id,label,status,replaces_endpoint_id,created_at,superseded_at FROM endpoints WHERE provider='CHATGPT' AND status='ACTIVE' ORDER BY created_at,rowid",
+                "SELECT id,workstream_id,provider,external_id,label,status,replaces_endpoint_id,created_at,superseded_at FROM endpoints WHERE provider='CHATGPT' AND status='ACTIVE' AND workstream_id IN (SELECT id FROM workstreams WHERE trashed_at IS NULL) ORDER BY created_at,rowid",
             ).map_err(db_error)?;
             let endpoints = statement
                 .query_map([], endpoint_row)
@@ -3560,18 +3567,10 @@ fn pair_endpoint_side(
     };
     let external_id = nonempty(&side.external_id, "External endpoint identity")?;
     let label = nonempty(&side.label, "Endpoint label")?;
-    // The durable uniqueness constraint spans endpoint history. Check the
-    // other-Workstream case before an INSERT so Review receives an actionable
-    // conflict rather than a redacted SQLite constraint failure. A matching
-    // historical identity on this Workstream remains eligible for explicit
-    // reactivation below.
-    let claimed_elsewhere: bool = connection
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM endpoints WHERE provider=?1 AND external_id=?2 AND workstream_id!=?3)",
-            params![provider, external_id, workstream_id],
-            |row| row.get(0),
-        )
-        .map_err(db_error)?;
+    // Non-trashed Workstreams retain their native claim across history.
+    // Deleted owners release it; a new owner gets a distinct Endpoint row so
+    // old handoffs and receipts keep their original immutable lineage.
+    let claimed_elsewhere = endpoint_claims::claimed_elsewhere(connection, workstream_id, provider, &external_id)?;
     if claimed_elsewhere {
         return Err(match provider {
             "CHATGPT" => "CHATGPT_CONVERSATION_ALREADY_BOUND",
@@ -3589,7 +3588,7 @@ fn pair_endpoint_side(
             if current.external_id == external_id {
                 return Ok((Some(current), false));
             }
-            // External provider identity is globally unique. A user may
+            // External identity is unique within each Workstream. A user may
             // deliberately return a Workstream to one of its own previously
             // paired exact conversations, so do not try to insert a duplicate
             // Endpoint row (which would fail the uniqueness guard and hide a

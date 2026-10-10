@@ -272,12 +272,11 @@ impl RouterStore {
             if busy { return Err("BRIDGE_WRITER_UNRESOLVED".into()); }
             // Rebinding a role never moves or steals a native identity from another Workstream.
             for input in [&decision,&execution] {
-                let other:Option<String>=tx.query_row("SELECT workstream_id FROM endpoints WHERE provider=?1 AND external_id=?2",params![input.provider,input.external_id],|r|r.get(0)).optional().map_err(db_error)?;
-                if other.as_deref().is_some_and(|v|v!=workstream) { return Err("BRIDGE_NATIVE_TARGET_ALREADY_BOUND".into()); }
+                if endpoint_claims::claimed_elsewhere(&tx, workstream, &input.provider, &input.external_id)? { return Err("BRIDGE_NATIVE_TARGET_ALREADY_BOUND".into()); }
             }
             tx.execute("UPDATE endpoints SET status='SUPERSEDED',superseded_at=?2 WHERE workstream_id=?1 AND status='ACTIVE'",params![workstream,now()]).map_err(db_error)?;
             for (role,input) in [("DECISION",decision),("EXECUTION",execution)] {
-                let existing:Option<String>=tx.query_row("SELECT id FROM endpoints WHERE provider=?1 AND external_id=?2",params![input.provider,input.external_id],|r|r.get(0)).optional().map_err(db_error)?;
+                let existing:Option<String>=tx.query_row("SELECT id FROM endpoints WHERE provider=?1 AND external_id=?2 AND workstream_id=?3",params![input.provider,input.external_id,workstream],|r|r.get(0)).optional().map_err(db_error)?;
                 let endpoint=if let Some(existing)=existing {
                     tx.execute("UPDATE endpoints SET status='ACTIVE',superseded_at=NULL,bridge_role=?2,label=?3 WHERE id=?1",params![existing,role,input.label]).map_err(db_error)?; existing
                 } else {
@@ -439,6 +438,46 @@ mod tests {
         let p = s.create_project("roles".into(), None).unwrap();
         let w = s.create_workstream(&p.id, "roles".into()).unwrap();
         (dir, s, w.id)
+    }
+    #[test]
+    fn trashed_bridge_targets_can_be_reused_without_moving_history() {
+        let (_dir, s, old) = fixture();
+        let original = s.bind_role_bridge(&old, 0, input("CODEX", "reuse-decision"), input("CODEX", "reuse-execution")).unwrap();
+        let old_source = original.decision.unwrap().endpoint;
+        let old_target = original.execution.unwrap().endpoint;
+        s.record_reply_observation(&old, &old_source.id, Some("old-native-result"), "Retained source", None).unwrap();
+        let obs = s.reply_observations_for_workstream(&old).unwrap().remove(0);
+        let handoff = s.prepare_role_handoff(&old, "DECISION", &obs.id, "Retained instruction").unwrap();
+        s.trash_workstream(&old).unwrap();
+        let project = s.create_project("reuse".into(), None).unwrap();
+        let new = s.create_workstream(&project.id, "new".into()).unwrap();
+        let reused = s.bind_role_bridge(&new.id, 0, input("CODEX", "reuse-decision"), input("CODEX", "reuse-execution")).unwrap();
+        assert_ne!(reused.decision.unwrap().endpoint.id, old_source.id);
+        assert_ne!(reused.execution.unwrap().endpoint.id, old_target.id);
+        let retained = s.role_handoff(&handoff.id).unwrap();
+        assert_eq!(retained.endpoint_source().unwrap().id, old_source.id);
+        assert_eq!(retained.destination_endpoint.id, old_target.id);
+        assert_eq!(retained.workstream_id, old);
+        assert_eq!(s.active_endpoint_for_external_id("CODEX", "reuse-decision").unwrap().unwrap().workstream_id, new.id);
+        assert_eq!(s.restore_workstream(&old).unwrap_err(), "BRIDGE_NATIVE_TARGET_ALREADY_BOUND");
+        assert!(s.with_connection(|c| workstream_by_id(c, &old)).unwrap().trashed_at.is_some());
+        s.trash_workstream(&new.id).unwrap();
+        s.restore_workstream(&old).unwrap();
+        assert_eq!(s.active_endpoint_for_external_id("CODEX", "reuse-decision").unwrap().unwrap().workstream_id, old);
+    }
+    #[test]
+    fn live_or_archived_bridge_targets_still_block_other_owners_atomically() {
+        let (_dir, s, old) = fixture();
+        s.bind_role_bridge(&old, 0, input("CHATGPT", "claimed-chat"), input("CODEX", "claimed-thread")).unwrap();
+        let project = s.create_project("other".into(), None).unwrap();
+        let new = s.create_workstream(&project.id, "other".into()).unwrap();
+        for archived in [false, true] {
+            if archived { s.archive_workstream(&old).unwrap(); }
+            let error = s.bind_role_bridge(&new.id, 0, input("CHATGPT", "unused-chat"), input("CODEX", "claimed-thread")).unwrap_err();
+            assert_eq!(error, "BRIDGE_NATIVE_TARGET_ALREADY_BOUND");
+            assert_eq!(s.role_bridge(&new.id).unwrap().binding_revision, 0);
+            assert!(s.role_bridge(&new.id).unwrap().decision.is_none());
+        }
     }
     #[test]
     fn two_codex_roles_use_exact_distinct_ids_and_provider_lookup_fails_closed() {
