@@ -88,6 +88,10 @@ The same grant checks apply; legacy Bridge grants cannot read this whole-app
 diagnostic. These server observations do not prove platform source availability
 or a consumer run.
 
+The tests enter the native terminal capture service, instead of directly marking
+a source complete in the outbox. A failed mobile push still leaves the event
+ready for the independent resident webhook worker.
+
 Controlled HTTPS/native fixtures prove the engineering protocol and at-most-once
 handoff behavior. They do not prove a real dot wake. Full acceptance additionally
 requires a rescanned real plugin, a subscription created by the existing dot,
@@ -96,7 +100,12 @@ full source and completing one authorized handoff with its exact send receipt.
 Webhook 2xx and phone notifications are transport receipts only.
 
 
-The existing native observer pauses during a send's temporary adapter borrow
-and continues when the same adapter is returned. This lifetime transition is
-verified independently of navigation/background visibility; disconnect and
-epoch fences remain authoritative.
+The resident native observer pauses while a send temporarily borrows its adapter,
+then resumes the same connection when returned. True disconnects or epoch changes
+still stop the observer. Background freshness must be tested across a send, not
+only across navigation or minimization.
+
+Resident metadata and initialized passive observation enumerate all active projects
+through the owner-wide workstream index. The UI-selected project snapshot does
+not define background scope. Archived/trash records remain excluded; passive
+transcript checks still require an established exact baseline.

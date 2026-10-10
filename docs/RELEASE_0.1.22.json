@@ -1,0 +1,28 @@
+{
+  "version": "0.1.22",
+  "interfaceRevision": "2026.10.10-38",
+  "sourceCommit": "e3955fd6837698f3f5cf46f88de975d2dd7f83b3",
+  "installer": {
+    "name": "Agbrio_0.1.22_x64-setup.exe",
+    "sha256": "f1ab37ab9e109b630c02094c33efee9e1a2ac779ccbb6fe853f51d33b193d86f",
+    "size": 275913748
+  },
+  "engineering": {
+    "hostPassed": 213,
+    "mainPassed": 1,
+    "sourceWindowsCI": 38040907016,
+    "sourceWindowsCIStatus": "SUCCESS",
+    "publisherSignatureAndTamper": "PASS",
+    "diagnosticPrivacyAndScope": "PASS"
+  },
+  "runtime": {
+    "installedVersion": "0.1.21",
+    "updateTo22": "PENDING"
+  },
+  "mcpEvents": {
+    "serverProtocol": "IMPLEMENTED",
+    "platformEventDiscovery": "OPEN",
+    "realDotWakeAndOneAuthorizedHandoff": "OPEN",
+    "webhook2xxIsBusinessAcceptance": false
+  }
+}
