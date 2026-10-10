@@ -13,10 +13,18 @@
     "mainPassed": 1,
     "frontendUnchangedPreviousPassed": 528,
     "sourceWindowsCI": 38036723913,
-    "sourceWindowsCIStatus": "IN_PROGRESS",
+    "sourceWindowsCIStatus": "SUCCESS",
     "crossProjectNegativeAndPositive": "PASS",
-    "publisherSignatureAndTamper": "PASS"
+    "publisherSignatureAndTamper": "PASS",
+    "releasedInstallerWindowsCI": 38037649431,
+    "releasedInstallerWindowsCIStatus": "SUCCESS",
+    "actualInstalledAllProjects": "AUTOMATED_VALIDATION_PASS",
+    "actualNativeHiddenRestoreFrames": 64,
+    "actualNativeLoadingSamples": 0,
+    "preservedGrantIdentities": 2,
+    "preservedPairedDeviceIdentities": 8,
+    "preservedSharedProcessIdentities": 4
   },
   "realDotAcceptance": "OPEN",
-  "publication": "DRAFT_PREPARATION"
+  "publication": "PUBLISHED"
 }

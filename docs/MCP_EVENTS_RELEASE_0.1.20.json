@@ -24,5 +24,5 @@
   },
   "realDotAcceptance": "OPEN",
   "publication": "PUBLISHED",
-  "knownResidual": "Resident metadata used current-project snapshot; cross-project scope correction is prepared for0.1.21. Real dot wake acceptance remains OPEN."
+  "knownResidual": "Current-project-only resident scope was corrected and runtime-validated in0.1.21. Real dot wake acceptance remains OPEN."
 }
