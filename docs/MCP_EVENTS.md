@@ -1,20 +1,46 @@
 # Agbrio MCP Events
 
-## Acceptance checkpoint — 2026-10-10, version 0.1.25
+## Formal delegated-scope acceptance — 2026-10-10, Host 0.1.26
 
-A real platform event-triggered dot wake was reported without periodic source
-polling. One isolated source reply was subsequently reread in full and handed to
-the exact recipient once; an independent SENT receipt and the expected recipient
-reply were checked. Both test subscriptions are now UNSUBSCRIBED.
+**The previously authorized event-wake fallback completed one real production
+handoff without a new user prompt, manual reminder or periodic source scan.**
+The platform/dot reported enabling eight subscriptions at 14:50:40 UTC for two
+existing owner-delegated Bridges: revisions 2 and 1, both DECISION and EXECUTION,
+with reply_ready and decision_required for each role. Independent read-only server
+inspection and `agbrio_read_app` confirm all eight ACTIVE with matching bindings,
+unrevoked authorization and finite leases. They remain enabled; no new Bridge was
+delegated and neither test events nor extra handoffs were triggered for this audit.
 
-The platform's referenced `automations.mcp_event` result was missing from that
-wake's context. Automatic metadata injection is still unresolved. The owner
-explicitly approved a replacement workflow: an event wakes the dot, which scans
-only its already delegated scope, then rereads exact pending sources. That owner
-approval occurred after the wake and before this one handoff. This is bounded
-recovery evidence, not an uninterrupted no-intervention end-to-end PASS, general
-reliability proof, or a fix for the missing platform result. Production Bridge
-subscriptions have not been established by this acceptance exercise.
+| Evidence | Result and limit |
+| --- | --- |
+| Server source/outbox | One complete DECISION reply at 15:10:02.061 UTC; matching subscription DELIVERED once, HTTP 200 at 15:10:04.222 UTC. |
+| Platform wake | Dot reports a real `mcp_server/event` wake at 15:10:13 UTC without polling or a new user message. Platform run logs were not independently available. |
+| Authorized fallback | Dot reports one bounded read-only enumeration intersected with the existing allowlist, full exact-source and recipient-history reads, and deduplication. Only the selected instruction CODE block was handed off. |
+| Reviewed handoff | Independent MCP receipt and stored event/action/source/binding identities correlate one handoff, exact payload hash and SENT at 15:11:26.398 UTC. |
+| Recipient | Dot reports that the exact existing execution chat acknowledged receipt and was EXECUTING. This is receipt/started-work evidence, not downstream task completion. |
+
+This validates the real **event wake → delegated-scope scan → exact complete source
+read → dedupe → selected-instruction prepare/review/send/receipt → recipient
+received** fallback in this scope. Permission for that fallback was already in
+place before this wake; no new owner intervention was needed during this run.
+
+The referenced `automations.mcp_event` result is **still absent** from dot context.
+This audit's exact event association comes from server records and does not prove
+platform metadata injection or an independently retrieved platform wake payload.
+A generic scan does not expose an authentic eventId through the current MCP tools;
+never fabricate one. Prepare can internally associate a matching stored event by
+exact authorized source identity when eventId is omitted, and enforce persistent
+source/event dedupe. This handoff's stored association is independently verified;
+it does not prove the platform injected that event into the model context. This single production run does not prove every role/event,
+restart/expiry/repeat-delivery behavior in production, indefinite reliability,
+automatic goal recovery or arbitrary unattended workflows. Keep required owner
+decisions, pending/UNKNOWN guards and the existing allowlist.
+
+The earlier isolated test remains a separate, more limited result: its scan
+fallback was approved after its wake, one full-source handoff and recipient reply
+were verified, and both test subscriptions were verified UNSUBSCRIBED. It did
+not establish uninterrupted no-intervention acceptance. The later formal run
+supersedes the earlier snapshot that production subscriptions were not established.
 
 [Event-woken scan tutorial](MCP_EVENTS_WORKFLOW.md) ·
 [中文教程](MCP_EVENTS_WORKFLOW.zh-CN.md) · [Goal/recovery capability](GOAL_RECOVERY.md).

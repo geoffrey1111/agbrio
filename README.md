@@ -49,7 +49,7 @@ For whole-app access, Agbrio offers a revocable 30-day **INSTANCE + CONVERSATION
 
 Within your explicit delegation, ordinary reviewed handoffs can proceed without a phone approval every round. Conflicts, scope changes and unresolved decisions come back to you. Agbrio reuses prepare → confirm → receipt, exact versions, decision records and duplicate-send protection.
 
-Official MCP Events is implemented in 0.1.25. One isolated event-woken handoff and recipient receipt were verified after explicit owner approval of a scope-scan recovery workflow. Automatic event-result injection remains unresolved; this is not uninterrupted unattended end-to-end acceptance. [Events tutorial](docs/MCP_EVENTS_WORKFLOW.md) · [Goal recovery limits](docs/GOAL_RECOVERY.md).
+Official MCP Events is implemented from 0.1.25. A formal 0.1.26 run verified one real event-woken handoff using the previously authorized delegated-scope scan fallback, without a new user prompt or periodic polling; eight subscriptions across two delegated Bridges remain active. Automatic event-result injection remains unresolved, and recipient execution is not task completion. [Events tutorial](docs/MCP_EVENTS_WORKFLOW.md) · [Goal recovery limits](docs/GOAL_RECOVERY.md).
 
 ## Reach your own Host
 

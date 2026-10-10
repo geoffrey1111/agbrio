@@ -46,13 +46,48 @@
     "sharedFourProcessIdentitiesPreserved": true
   },
   "mcpEvents": {
-    "boundedOwnerApprovedRecovery": "ONE_HANDOFF_SENT_AND_EXACT_TARGET_ACK_VERIFIED",
-    "platformWakeEvidence": "DOT_REPORTED_REAL_EVENT_NO_POLL",
     "automaticEventResultInjection": "OPEN_MISSING_CONTEXT",
-    "uninterruptedUnattendedEndToEnd": "NOT_PROVEN",
-    "testSubscriptions": "BOTH_UNSUBSCRIBED_VERIFIED",
-    "productionSubscriptionsEstablished": false,
-    "newBridgesAutoDelegated": false
+    "productionSubscriptionsEstablished": true,
+    "activeSubscriptions": 8,
+    "newBridgesAutoDelegated": false,
+    "historicalIsolatedAcceptance": {
+      "boundedOwnerApprovedRecovery": "ONE_HANDOFF_SENT_AND_EXACT_TARGET_ACK_VERIFIED",
+      "platformWakeEvidence": "DOT_REPORTED_REAL_EVENT_NO_POLL",
+      "automaticEventResultInjection": "OPEN_MISSING_CONTEXT",
+      "uninterruptedUnattendedEndToEnd": "NOT_PROVEN",
+      "testSubscriptions": "BOTH_UNSUBSCRIBED_VERIFIED",
+      "productionSubscriptionsEstablished": false,
+      "newBridgesAutoDelegated": false
+    },
+    "formalScopeAcceptance": {
+      "checkpointUtc": "2026-10-10T15:16:12Z",
+      "hostVersion": "0.1.26",
+      "productionSubscriptionsEstablished": true,
+      "activeSubscriptions": 8,
+      "delegatedBridges": 2,
+      "sourceRoles": [
+        "DECISION",
+        "EXECUTION"
+      ],
+      "eventNames": [
+        "agbrio.bridge.reply_ready",
+        "agbrio.bridge.decision_required"
+      ],
+      "previouslyAuthorizedFallback": "REAL_SCOPE_EVENT_WAKE_SCAN_EXACT_SOURCE_DEDUPE_ONE_INSTRUCTION_HANDOFF_VERIFIED",
+      "newUserInterventionAfterWake": false,
+      "periodicSourcePolling": false,
+      "serverAssociation": "EXACT_EVENT_SUBSCRIPTION_OBSERVATION_BINDING_HANDOFF_CORRELATED",
+      "independentMcpReceipt": "SENT_HASH_VERIFIED",
+      "platformWakeEvidence": "DOT_REPORTED_REAL_EVENT_WAKE",
+      "platformWakeRunLogIndependentlyRetrieved": false,
+      "recipientEvidence": "DOT_REPORTED_EXACT_RECIPIENT_RECEIVED_AND_EXECUTING",
+      "downstreamTaskCompletion": "NOT_CLAIMED",
+      "automaticEventResultInjection": "OPEN_MISSING_CONTEXT",
+      "generalProductionReliability": "NOT_PROVEN",
+      "newBridgesAutoDelegated": false,
+      "formalSubscriptionsPreserved": true,
+      "testRetriggerOrExtraHandoffPerformed": false
+    }
   },
   "goalRecovery": {
     "reviewOnly": true,

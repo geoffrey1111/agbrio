@@ -64,4 +64,4 @@ GET /mcp 的 405、未授權 POST 的 401 / invalid_token 可能是正常保護�
 
 預設先顯示緊湊的類型切換和複製按鈕。展開**查看我需要做的步驟**，再完成授權、本人登入與接管選擇；技術細節保持可選。
 
-0.1.25 已實作官方 MCP Events。一次隔離事件喚醒後的交接與目標回執已核驗；缺注入後經使用者明確批准改為掃描已委託範圍。自動事件結果注入尚未修復，不代表無人干預端到端全通過。[Events 教程](MCP_EVENTS_WORKFLOW.zh-CN.md) · [Goal 恢復限制](GOAL_RECOVERY.md)。
+官方 MCP Events 從0.1.25起實作。0.1.26正式範圍已驗證真實事件喚醒後，沿用預先授權的範圍掃描 fallback 完成一次交接，原目標收到並開始執行；沒有新的使用者訊息或週期輪詢，兩個已委託 Bridge 的8項訂閱保留。自動事件詳情注入尚未修復，開始執行不等於任務完成。[Events 教程](MCP_EVENTS_WORKFLOW.zh-CN.md) · [Goal 恢復限制](GOAL_RECOVERY.md)。

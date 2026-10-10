@@ -30,7 +30,7 @@ Settings → AI assistant의 6단계 안내에서 ChatGPT / dot 클라우드와 
 
 INSTANCE + CONVERSATION_REVIEW 권한은 30일이며 취소할 수 있습니다. 비서는 먼저 어떤 Bridge를 맡을지 묻습니다. 작업, 전달 방향, 반드시 물어볼 상황, 중단 조건을 합의한 후 일상적인 인계를 검토하고 진행합니다. 해결되지 않은 결정은 사용자에게 질문하고 실제 답변을 기록합니다. 전체 앱 접근 권한만으로 모든 Bridge가 위임되지는 않습니다.
 
-0.1.25는 공식 MCP Events를 구현합니다. 이벤트로 깨어난 뒤 사용자 승인 범위 스캔을 통해 격리 테스트의 단일 전달과 수신 결과를 확인했습니다. 이벤트 결과 자동 주입은 아직 해결되지 않았으며 무인 전체 E2E 검증은 아닙니다.[Events guide](docs/MCP_EVENTS_WORKFLOW.md) · [Goal recovery limits](docs/GOAL_RECOVERY.md).
+공식 MCP Events는0.1.25부터 구현되었습니다. 0.1.26의 정식 위임 범위에서 사전 승인된 범위 스캔 fallback으로 실제 이벤트 기상 후 한 번의 인계와 수신을 확인했습니다. 새 사용자 메시지나 주기적 폴링은 없었으며, 위임된 두 Bridge의8개 구독을 유지합니다. 이벤트 결과 자동 주입은 아직 해결되지 않았고 수신 측 실행 시작은 작업 완료가 아닙니다. [Events guide](docs/MCP_EVENTS_WORKFLOW.md) · [Goal recovery limits](docs/GOAL_RECOVERY.md).
 
 ## 연결과 실행 조건
 
