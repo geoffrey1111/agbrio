@@ -59,8 +59,9 @@ GET /mcp 返回 405、未授权 POST 返回 401 / invalid_token 可能是正常�
 
 用户提供的云端实测：**dot 发现 16 工具，INSTANCE + CONVERSATION_REVIEW，read_app / read_bridge / read_source 成功**。真实 dot 写入尚未实测。离线保护、决策绑定与浏览器虚构交接验证不能冒充 dot 写入验收。
 
-0.1.20 已实现官方 MCP Events 的发现、订阅、退订、签名验证回调、持久去重、重启恢复及撤权停发。更新后重新扫描插件的工具和事件，再由 dot 为明确授权的 Bridge、绑定版本和来源方向创建订阅。收到事件后重新读取完整内容，沿用 prepare → 审阅 → send → receipt；不能仅凭 webhook 2xx 声称 dot 已被唤醒。真实 dot 无轮询唤醒及一次授权交接仍需独立验收。
 
 [完整复制指令](ASSISTANT_COPY_PROMPT.zh-CN.md) · [协议与工具](ASSISTANT_MCP.md) · [官方认证说明](https://developers.openai.com/plugins/build/auth) · [dot 应用说明](https://learn.chatgpt.com/docs/dots/computers-and-apps)
 
 默认先显示紧凑的类型切换和复制按钮。展开**查看我需要做的步骤**，再完成授权、本人登录与接管选择；技术细节保持可选。
+
+0.1.25 已实现官方 MCP Events。一次隔离事件唤醒后的交接及目标回执已核验，但流程在缺注入后取得用户明确批准，改为扫描已委托范围；自动事件结果注入仍未修，不能写成无人干预端到端全通过。[Events 使用教程](MCP_EVENTS_WORKFLOW.zh-CN.md) · [目标恢复能力与缺口](GOAL_RECOVERY.md)。

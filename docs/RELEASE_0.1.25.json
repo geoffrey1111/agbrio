@@ -36,7 +36,7 @@
     "benchmarkOnlySameDomainCorrection": "DEPLOYED_DNS_ONLY_PROBE_PASS",
     "publicAddressAndTlsGuards": "PRESERVED",
     "globalDnsAuthChanged": false,
-    "realDotWakeAndOneAuthorizedHandoff": "OPEN_NO_SUBSCRIPTION_RETRY",
+    "realDotWakeAndOneAuthorizedHandoff": "BOUNDED_OWNER_APPROVED_RECOVERY_HANDOFF_VERIFIED",
     "historicalExactCallbackHost": "UNAVAILABLE",
     "diagnosticFields": [
       "callbackError",
@@ -47,6 +47,18 @@
     "deployedDiagnosticFields": "PASS",
     "activeSubscriptionsAtDeploymentCheck": 0,
     "webhookReceiptsAtDeploymentCheck": 0,
-    "controlledSubscriptionReadiness": "READY_ONE_PLATFORM_OWNED_ATTEMPT_NO_TRIGGER_BEFORE_CONFIRMATION"
+    "controlledSubscriptionReadiness": "ONE_TEST_COMPLETED_BOTH_SUBSCRIPTIONS_UNSUBSCRIBED",
+    "acceptance": {
+      "platformWake": "DOT_REPORTED_REAL_EVENT_NO_POLL",
+      "sourceTriggerCount": 1,
+      "independentSentReceipt": "VERIFIED",
+      "exactRecipientAcknowledgement": "VERIFIED",
+      "testSubscriptions": "BOTH_UNSUBSCRIBED_VERIFIED",
+      "automaticEventResultInjection": "OPEN_MISSING_CONTEXT",
+      "ownerApprovedAfterWakeRecovery": "GLOBAL_READONLY_SCAN_INTERSECT_EXISTING_DELEGATION",
+      "uninterruptedUnattendedEndToEnd": "NOT_PROVEN",
+      "productionSubscriptionsEstablished": false,
+      "newBridgesAutoDelegated": false
+    }
   }
 }

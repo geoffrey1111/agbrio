@@ -8,7 +8,7 @@
 
 계획용 대화와 실행용 대화를 따로 사용하시나요? Agbrio는 이 작업 방식에 맞춘 인계 도구입니다. 결과를 읽고, 다음 작업에 필요한 부분을 선택하고, 받을 대화를 확인한 뒤 전달합니다. 두 대화의 문맥을 유지하면서 여러 프로젝트에서도 정확한 대상으로 보낼 수 있습니다.
 
-[Windows v0.1.21 다운로드](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.21) · [설치와 연결](docs/SETUP.md) · [MIT](LICENSE)
+[Windows v0.1.25 다운로드](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.25) · [설치와 연결](docs/SETUP.md) · [MIT](LICENSE)
 
 ## 검토에서 다음 작업까지
 
@@ -30,7 +30,7 @@ Settings → AI assistant의 6단계 안내에서 ChatGPT / dot 클라우드와 
 
 INSTANCE + CONVERSATION_REVIEW 권한은 30일이며 취소할 수 있습니다. 비서는 먼저 어떤 Bridge를 맡을지 묻습니다. 작업, 전달 방향, 반드시 물어볼 상황, 중단 조건을 합의한 후 일상적인 인계를 검토하고 진행합니다. 해결되지 않은 결정은 사용자에게 질문하고 실제 답변을 기록합니다. 전체 앱 접근 권한만으로 모든 Bridge가 위임되지는 않습니다.
 
-사용자는 dot에서 16개 도구와 3개 읽기 호출의 성공을 보고했습니다. 실제 dot 쓰기는 아직 검증하지 않았습니다. 이벤트 구독과 자동 깨우기는 구현되지 않았으며 MCP 연결만으로 무인 반복 작업이 시작되지는 않습니다.[연결과 문제 해결 안내(영어)](docs/ASSISTANT_CONNECTION_GUIDE.en.md).
+0.1.25는 공식 MCP Events를 구현합니다. 이벤트로 깨어난 뒤 사용자 승인 범위 스캔을 통해 격리 테스트의 단일 전달과 수신 결과를 확인했습니다. 이벤트 결과 자동 주입은 아직 해결되지 않았으며 무인 전체 E2E 검증은 아닙니다.[Events guide](docs/MCP_EVENTS_WORKFLOW.md) · [Goal recovery limits](docs/GOAL_RECOVERY.md).
 
 ## 연결과 실행 조건
 

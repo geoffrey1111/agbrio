@@ -10,7 +10,7 @@
 
 **思考留在思考端，執行留在執行端，Bridge 負責準確交接。**
 
-[下載 Windows v0.1.21](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.21) · [安裝與配對](docs/SETUP.md) · [連接 AI 助手](docs/ASSISTANT_CONNECTION_GUIDE.zh-TW.md) · [MIT 授權](LICENSE)
+[下載 Windows v0.1.25](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.25) · [安裝與配對](docs/SETUP.md) · [連接 AI 助手](docs/ASSISTANT_CONNECTION_GUIDE.zh-TW.md) · [MIT 授權](LICENSE)
 
 ## 從審閱到下一項任務
 
@@ -49,7 +49,7 @@
 
 明確委託內的常規交接，助手審閱後可以推進，不需要每輪回手機審批；要求衝突、超出範圍或需要你決定時，再向你提問。沿用準備交接 → 核對與確認 → 查回執，保留版本、決策紀錄與防重複傳送。
 
-使用者已回報 dot 發現 16 個工具，`read_app`、`read_bridge`、`read_source` 通過；實際 dot 寫入尚未驗收。事件訂閱與自動喚醒尚未實作，連接 MCP 不代表已開啟無人值守循環。[操作與排錯](docs/ASSISTANT_CONNECTION_GUIDE.zh-TW.md) · [可複製指令](docs/ASSISTANT_COPY_PROMPT.zh-TW.md)。
+0.1.25 已實作官方 MCP Events。一次隔離事件喚醒後的交接與目標回執已核驗；缺注入後經使用者明確批准改為掃描已委託範圍。自動事件結果注入尚未修復，不代表無人干預端到端全通過。[Events 教程](docs/MCP_EVENTS_WORKFLOW.zh-CN.md) · [Goal 恢復限制](docs/GOAL_RECOVERY.md)。
 
 ## 連接自己的電腦
 
@@ -61,7 +61,7 @@
 
 目前為 Windows x64 + Codex + 配對 PWA 的 Alpha。應用支援**繁體中文、簡體中文、英語**，在設定 → 語言切換。日語與韓語目前僅翻譯產品介紹；macOS 和其他執行 Agent 尚未列入已驗證發行範圍。來源正文不能擴大授權，交接回執不等於下游任務已完成。
 
-[從原始碼建置](docs/BUILD.md) · [助手協定](docs/ASSISTANT_MCP.md) · [v0.1.21 更新](docs/RELEASE_0.1.11.md) · [第三方聲明](THIRD_PARTY_NOTICES.md)
+[從原始碼建置](docs/BUILD.md) · [助手協定](docs/ASSISTANT_MCP.md) · [v0.1.25 更新](docs/RELEASE_0.1.25.json) · [第三方聲明](THIRD_PARTY_NOTICES.md)
 
 [聯絡作者](mailto:geoffreyzjx@qq.com) · [回報問題](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [提出建議](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
 

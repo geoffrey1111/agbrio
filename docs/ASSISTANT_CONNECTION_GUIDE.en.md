@@ -59,8 +59,9 @@ On timeout, UNKNOWN or EXECUTING, inspect the receipt first and reuse the same r
 
 Owner-reported cloud dot acceptance: **16 tools, INSTANCE + CONVERSATION_REVIEW, read_app/read_bridge/read_source passed**. Real dot writes remain untested. Local automated tests exercise protection, decision binding and handoff behavior; fictional browser previews are not live-dot write acceptance.
 
-Version 0.1.20 implements official MCP Events discovery, subscriptions, unsubscribe, signed verification/webhooks, durable deduplication, restart recovery and revocation stop. Rescan plugin tools and events, then have the dot subscribe to explicitly delegated Bridge identities, revisions and source directions. On an event, reread full content and use prepare → review → send → receipt. Real dot wakeup without polling and one authorized handoff still require independent acceptance; webhook 2xx is only a transport receipt.
 
 [Copy full instructions to an assistant](ASSISTANT_COPY_PROMPT.en.md) · [Protocol and tools](ASSISTANT_MCP.md) · [Official plugin authentication](https://developers.openai.com/plugins/build/auth) · [Official dot apps guide](https://learn.chatgpt.com/docs/dots/computers-and-apps)
 
 The compact route tabs and copy control are shown first. Open **View my steps** for your authorization, sign-in and delegation actions; technical details remain optional.
+
+Official MCP Events is implemented in 0.1.25. One isolated event-woken handoff and recipient receipt were verified after explicit owner approval of a scope-scan recovery workflow. Automatic event-result injection remains unresolved; this is not uninterrupted unattended end-to-end acceptance. [Events tutorial](MCP_EVENTS_WORKFLOW.md) · [Goal recovery limits](GOAL_RECOVERY.md).

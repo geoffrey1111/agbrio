@@ -10,7 +10,7 @@ Do you already keep one agent conversation for decisions and another for impleme
 
 **Keep the reasoning in one conversation. Keep the execution in another. Carry the right work between them.**
 
-[Download Windows v0.1.21](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.21) · [Install and pair](docs/SETUP.md) · [Connect an assistant](docs/ASSISTANT_CONNECTION_GUIDE.en.md) · [MIT license](LICENSE)
+[Download Windows v0.1.25](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.25) · [Install and pair](docs/SETUP.md) · [Connect an assistant](docs/ASSISTANT_CONNECTION_GUIDE.en.md) · [MIT license](LICENSE)
 
 ## From review to the next task
 
@@ -49,7 +49,7 @@ For whole-app access, Agbrio offers a revocable 30-day **INSTANCE + CONVERSATION
 
 Within your explicit delegation, ordinary reviewed handoffs can proceed without a phone approval every round. Conflicts, scope changes and unresolved decisions come back to you. Agbrio reuses prepare → confirm → receipt, exact versions, decision records and duplicate-send protection.
 
-The owner reports dot discovered 16 tools and passed `read_app`, `read_bridge` and `read_source`. Live dot writes have not yet been accepted in this release. MCP event subscription and automatic wakeup are not implemented; connecting does not start an unattended loop. [Manual steps and troubleshooting](docs/ASSISTANT_CONNECTION_GUIDE.en.md) · [Copy-to-AI instructions](docs/ASSISTANT_COPY_PROMPT.en.md).
+Official MCP Events is implemented in 0.1.25. One isolated event-woken handoff and recipient receipt were verified after explicit owner approval of a scope-scan recovery workflow. Automatic event-result injection remains unresolved; this is not uninterrupted unattended end-to-end acceptance. [Events tutorial](docs/MCP_EVENTS_WORKFLOW.md) · [Goal recovery limits](docs/GOAL_RECOVERY.md).
 
 ## Reach your own Host
 
@@ -61,7 +61,7 @@ The computer must stay powered on, awake and connected for live work. A new brow
 
 Windows x64 + Codex + paired PWA is the alpha scope. App languages: **English, Simplified Chinese, Traditional Chinese** (Settings → Language). Japanese and Korean are introduction translations; macOS and other execution agents are not verified release targets. Source data is review material, never a way to enlarge authorization. An accepted handoff does not prove its downstream task completed.
 
-[Build from source](docs/BUILD.md) · [Assistant protocol](docs/ASSISTANT_MCP.md) · [v0.1.21 changes](docs/RELEASE_0.1.11.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+[Build from source](docs/BUILD.md) · [Assistant protocol](docs/ASSISTANT_MCP.md) · [v0.1.25 changes](docs/RELEASE_0.1.25.json) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 [Contact the author](mailto:geoffreyzjx@qq.com) · [Report a problem](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [Suggest an improvement](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
 

@@ -1,5 +1,24 @@
 # Agbrio MCP Events
 
+## Acceptance checkpoint — 2026-10-10, version 0.1.25
+
+A real platform event-triggered dot wake was reported without periodic source
+polling. One isolated source reply was subsequently reread in full and handed to
+the exact recipient once; an independent SENT receipt and the expected recipient
+reply were checked. Both test subscriptions are now UNSUBSCRIBED.
+
+The platform's referenced `automations.mcp_event` result was missing from that
+wake's context. Automatic metadata injection is still unresolved. The owner
+explicitly approved a replacement workflow: an event wakes the dot, which scans
+only its already delegated scope, then rereads exact pending sources. That owner
+approval occurred after the wake and before this one handoff. This is bounded
+recovery evidence, not an uninterrupted no-intervention end-to-end PASS, general
+reliability proof, or a fix for the missing platform result. Production Bridge
+subscriptions have not been established by this acceptance exercise.
+
+[Event-woken scan tutorial](MCP_EVENTS_WORKFLOW.md) ·
+[中文教程](MCP_EVENTS_WORKFLOW.zh-CN.md) · [Goal/recovery capability](GOAL_RECOVERY.md).
+
 The existing authenticated `/mcp` endpoint also implements MCP2 version
 `2026-07-28`: `server/discover`, `events/list`, `events/subscribe` and
 `events/unsubscribe`. OAuth consent, resource-bound tokens, existing tools and

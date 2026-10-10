@@ -8,7 +8,7 @@
 
 計画用の会話と実行用の会話を分けていませんか？Agbrio は、その使い方のための引き継ぎツールです。結果を読み、次の作業に必要な部分を選び、受信側を確認して送信します。計画の文脈と実装の文脈を保ちながら、複数のプロジェクトでも正確な相手へ渡せます。
 
-[Windows v0.1.21 をダウンロード](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.21) · [セットアップ](docs/SETUP.md) · [MIT](LICENSE)
+[Windows v0.1.25 をダウンロード](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.25) · [セットアップ](docs/SETUP.md) · [MIT](LICENSE)
 
 ## レビューから次の作業へ
 
@@ -30,7 +30,7 @@ Settings → AI assistant の6段階ガイドで ChatGPT / dot クラウドと C
 
 INSTANCE + CONVERSATION_REVIEW は30日間・取り消し可能です。アシスタントは最初に、担当する Bridge をユーザーに確認します。作業・方向・判断が必要な場合・停止条件を合意してから、通常の引き継ぎをレビューして進めます。未解決の判断は本人に質問し、実際の回答を記録します。権限を得ただけで全 Bridge が委任されたことにはなりません。
 
-所有者の報告では dot は16ツールと3つの読み取りを確認済みです。実際の dot 書き込みは未検証です。イベント購読や自動起動は未実装で、MCP 接続だけでは無人のループは始まりません。[接続とトラブルシューティング（英語）](docs/ASSISTANT_CONNECTION_GUIDE.en.md)。
+0.1.25 は公式 MCP Events に対応しています。イベント起動後、所有者が許可した範囲スキャンによる隔離テストの一度の引き渡しと受信結果を確認しました。イベント結果の自動注入は未解決で、無人の完全な E2E 検証ではありません。[Events guide](docs/MCP_EVENTS_WORKFLOW.md) · [Goal recovery limits](docs/GOAL_RECOVERY.md).
 
 ## 接続と動作条件
 
