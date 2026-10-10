@@ -123,11 +123,13 @@ self.addEventListener("push", event => {
   const provider = data.type === "codex_reply" ? "Codex" : "ChatGPT";
   const watch = data.type === "codex_watch";
   const sequence = Number.isSafeInteger(data.sequence) && data.sequence > 0 ? data.sequence : null;
-  const label = typeof data.label === "string" ? data.label.slice(0, 120) : "Codex 对话";
+  const label = typeof data.label === "string" && data.label.trim() ? data.label.trim().slice(0, 120) : "Codex 对话";
+  const conversationName = typeof data.conversationName === "string" && data.conversationName.trim() ? data.conversationName.trim().slice(0,120) : workstreamName;
+  const title = watch ? label : data.type === "test" ? "通知通道测试" : conversationName;
   const target = watch ? `/mobile/notifications${sequence ? `?event=${sequence}` : ""}` : workstreamId ? `/mobile?workstream=${encodeURIComponent(workstreamId)}${observationId ? `&reply=${encodeURIComponent(observationId)}` : ""}` : "/mobile";
   event.waitUntil((async () => {
-    await self.registration.showNotification("Agbrio", {
-      body: watch ? `${label} · ${data.state === "ACTION_REQUIRED" ? "需要你确认或回答" : data.state === "FAILED" ? "执行失败" : data.state === "TEST" ? "通知通道测试" : "新结果已到达"}` : data.type === "test" ? "AI_WORK_ROUTER_WEB_PUSH_V1_OK" : `${workstreamName} · ${provider} 有新回复`,
+    await self.registration.showNotification(title, {
+      body: watch ? `${data.state === "ACTION_REQUIRED" ? "需要你确认或回答" : data.state === "FAILED" ? "执行失败" : data.state === "TEST" ? "通知通道测试" : "新结果已到达"}` : data.type === "test" ? "AI_WORK_ROUTER_WEB_PUSH_V1_OK" : `${provider} 有新回复`,
       data: { target },
       tag: watch ? `codex-watch-${data.eventId || sequence || "test"}` : observationId ? `${provider.toLowerCase()}-reply-${observationId}` : `${provider.toLowerCase()}-reply`
     });

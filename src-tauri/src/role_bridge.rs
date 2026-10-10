@@ -1,5 +1,7 @@
 //! Shared role-compatible services. No UI handle or provider-title routing.
 use crate::host_application::*;
+use crate::RouterStore;
+use std::{collections::{HashMap,HashSet},sync::{Arc,Mutex}};
 use crate::persistence::{HandoffHistoryItem, ReplyObservation};
 use router_core::store::role_bridge::{RoleBindingInput, RoleBridge, RoleEndpoint};
 use serde::Serialize;
@@ -664,17 +666,17 @@ pub(crate) fn send(core: &RouterCore, handoff: &str) -> Result<BridgeState, Stri
 #[path = "role_bridge_tests.rs"]
 mod tests;
 
-#[derive(Serialize)]#[serde(rename_all="camelCase")]
+#[derive(Clone,Serialize)]#[serde(rename_all="camelCase")]
 pub(crate) struct DirectoryActivity { pub workstream_id:String,pub binding_revision:i64,pub unread_count:usize,pub latest_role:Option<String>,pub sides:Vec<RoleActivity> }
 /// Bounded read-only status projection. Does not read transcript bodies, start a
 /// watch, load cold conversations, or navigate an authenticated browser.
-pub(crate) fn directory_activity(core:&RouterCore,ids:&[String])->Result<Vec<DirectoryActivity>,String>{
+pub(crate) fn poll_directory_activity(store:&RouterStore,session_handle:&Mutex<Session>,ids:&[String])->Result<Vec<DirectoryActivity>,String>{
  if ids.len()>20||ids.iter().any(|id|id.is_empty()||id.len()>128){return Err("BRIDGE_ACTIVITY_REQUEST_INVALID".into());}
- let mut result=Vec::new();let started=std::time::Instant::now();let mut session=core.session.try_lock().ok();
+ let mut result=Vec::new();let started=std::time::Instant::now();let mut session=session_handle.try_lock().ok();
  for id in ids{
-  let w=core.store.snapshot_for_workstream(id)?.workstreams.into_iter().find(|w|w.id==*id).ok_or("BRIDGE_UNAVAILABLE")?;
+  let w=store.snapshot_for_workstream(id)?.workstreams.into_iter().find(|w|w.id==*id).ok_or("BRIDGE_UNAVAILABLE")?;
   if w.trashed_at.is_some()||w.archived_at.is_some(){continue;}
-  let b=core.store.role_bridge(id)?;let mut sides=Vec::new();
+  let b=store.role_bridge(id)?;let mut sides=Vec::new();
   for side in [&b.decision,&b.execution].into_iter().flatten(){
    let pending=session.as_ref().is_some_and(|s|s.pending_codex_requests.values().any(|r|r.thread_id==side.endpoint.external_id&&!r.responded));
    let mut a=RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:0,turn_id:None,result_observation_id:None,goal_status:None,turn_active:false};
@@ -692,7 +694,7 @@ pub(crate) fn directory_activity(core:&RouterCore,ids:&[String])->Result<Vec<Dir
        }}
        if a.state=="COMPLETE"{
         let prefix=a.turn_id.as_ref().map(|t|format!("codex:{t}:"));
-        a.result_observation_id=core.store.reply_observations_for_workstream(id)?.into_iter().find(|r|r.endpoint_id==side.endpoint.id&&prefix.as_ref().is_some_and(|p|r.assistant_identity.as_ref().is_some_and(|i|i.starts_with(p)))).map(|r|r.id);
+        a.result_observation_id=store.reply_observations_for_workstream(id)?.into_iter().find(|r|r.endpoint_id==side.endpoint.id&&prefix.as_ref().is_some_and(|p|r.assistant_identity.as_ref().is_some_and(|i|i.starts_with(p)))).map(|r|r.id);
         if a.result_observation_id.is_none(){a.state="RESULT_PENDING".into();}
        }
       }
@@ -703,9 +705,58 @@ pub(crate) fn directory_activity(core:&RouterCore,ids:&[String])->Result<Vec<Dir
   }
   // A rebind racing this read invalidates the entire row instead of displaying
   // an old role's activity under a new recipient.
-  let replies=core.store.reply_observations_for_workstream(id)?;
+  let replies=store.reply_observations_for_workstream(id)?;
   let latest_role=replies.iter().filter(|r|[&b.decision,&b.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).max_by_key(|r|r.completed_at.unwrap_or(r.observed_at)).and_then(|r|[&b.decision,&b.execution].into_iter().flatten().find(|side|side.endpoint.id==r.endpoint_id).map(|side|side.role.clone()));
-  if core.store.role_bridge(id)?.binding_revision==b.binding_revision{result.push(DirectoryActivity{workstream_id:id.clone(),binding_revision:b.binding_revision,latest_role,unread_count:replies.iter().filter(|r|r.read_at.is_none()&&r.handled_at.is_none()&&[&b.decision,&b.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).count(),sides});}
+  if store.role_bridge(id)?.binding_revision==b.binding_revision{result.push(DirectoryActivity{workstream_id:id.clone(),binding_revision:b.binding_revision,latest_role,unread_count:replies.iter().filter(|r|r.read_at.is_none()&&r.handled_at.is_none()&&[&b.decision,&b.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).count(),sides});}
  }
  Ok(result)
+}
+
+// Weak store ownership keeps copied/test databases isolated and does not keep a
+// closed Host store alive. This lock is independent of native RPC's session lock.
+#[derive(Default)]struct ResidentActivity{epoch:u64,rows:HashMap<String,DirectoryActivity>,wanted:HashMap<String,(i64,u64)>}
+type ActivityCache=Arc<Mutex<ResidentActivity>>;
+static RESIDENT_ACTIVITY:std::sync::LazyLock<Mutex<Vec<(std::sync::Weak<RouterStore>,ActivityCache)>>>=std::sync::LazyLock::new(||Mutex::new(Vec::new()));
+fn activity_cache(store:&Arc<RouterStore>)->ActivityCache{
+ let mut entries=RESIDENT_ACTIVITY.lock().unwrap_or_else(|e|e.into_inner());entries.retain(|(w,_)|w.strong_count()>0);
+ if let Some((_,cache))=entries.iter().find(|(w,_)|w.upgrade().is_some_and(|s|Arc::ptr_eq(&s,store))){return cache.clone();}
+ let cache=Arc::new(Mutex::new(ResidentActivity::default()));entries.push((Arc::downgrade(store),cache.clone()));cache
+}
+/// Only an existing UI SYNC request authorizes cold transcript hydration. All
+/// metadata polling is independent of the renderer and never starts a turn.
+pub(crate) fn refresh_resident_activity(store:&Arc<RouterStore>,session:&Mutex<Session>,epoch:u64,cursor:&mut usize){
+ let cache=activity_cache(store);let Ok(snapshot)=store.snapshot()else{return};let mut ids=snapshot.workstreams.into_iter().filter(|w|w.trashed_at.is_none()&&w.archived_at.is_none()&&w.status!="ARCHIVED").filter_map(|w|store.role_bridge(&w.id).ok().filter(|b|b.explicit_roles).map(|_|w.id)).collect::<Vec<_>>();ids.sort();
+ if !session.try_lock().is_ok_and(|s|s.codex_observer_epoch==epoch&&s.adapter.as_ref().is_some_and(|a|!a.is_closed())){return;}
+ let allowed=ids.iter().cloned().collect::<HashSet<_>>();if let Ok(mut c)=cache.lock(){if c.epoch!=epoch{c.rows.clear();c.epoch=epoch;}c.rows.retain(|id,_|allowed.contains(id));c.wanted.retain(|id,(_,at)|allowed.contains(id)&&activity_now().saturating_sub(*at)<20*60*1000);}
+ if ids.is_empty(){return;}let offset=*cursor%ids.len();ids.rotate_left(offset);let batch=ids.into_iter().take(20).collect::<Vec<_>>();
+ let Ok(rows)=poll_directory_activity(store,session,&batch)else{return};*cursor=offset+rows.iter().take_while(|r|r.sides.iter().any(|a|a.checked_at>0)).count().max(1);
+ if !session.try_lock().is_ok_and(|s|s.codex_observer_epoch==epoch){return;}
+ let wanted=cache.lock().map(|c|c.wanted.clone()).unwrap_or_default();
+ for row in rows{
+  for side in row.sides.iter().filter(|s|s.state=="RESULT_PENDING"){
+   if wanted.get(&row.workstream_id).is_some_and(|(rev,_)|*rev==row.binding_revision){let _=materialize_requested_reply(store,session,&row.workstream_id,row.binding_revision,&side.endpoint_id);}
+  }
+  if row.sides.iter().any(|a|a.checked_at>0){if let Ok(mut c)=cache.lock(){if c.epoch==epoch{c.rows.insert(row.workstream_id.clone(),row);}}}
+ }
+}
+fn materialize_requested_reply(store:&RouterStore,session:&Mutex<Session>,id:&str,revision:i64,endpoint:&str)->Result<(),String>{
+ let w=store.snapshot_for_workstream(id)?.workstreams.into_iter().find(|w|w.id==id).ok_or("BRIDGE_UNAVAILABLE")?;if w.trashed_at.is_some()||w.archived_at.is_some(){return Err("BRIDGE_UNAVAILABLE".into());}
+ let b=store.role_bridge(id)?;if b.binding_revision!=revision{return Err("BRIDGE_BINDING_CHANGED".into());}let side=[&b.decision,&b.execution].into_iter().flatten().find(|s|s.endpoint.id==endpoint&&s.endpoint.provider=="CODEX").ok_or("BRIDGE_SIDE_NOT_BOUND")?;
+ let reply={let mut s=session.lock().map_err(|_|"Router session unavailable")?;let a=s.adapter.as_mut().filter(|a|!a.is_closed()).ok_or("Codex disconnected")?;let checked=metadata(a,&side.endpoint.external_id)?;verify_root(&checked,side)?;read_latest_codex_reply(a,&side.endpoint.external_id)?.reply};
+ let Some(r)=reply else{return Ok(())};if store.role_bridge(id)?.binding_revision!=revision{return Err("BRIDGE_BINDING_CHANGED".into());}
+ store.save_codex_reply_observer_watermark(id,endpoint,&side.endpoint.external_id,&r.completed_turn_id,&r.agent_item_id)?;
+ let identity=format!("codex:{}:{}",r.completed_turn_id,r.agent_item_id);store.record_reply_observation(id,endpoint,Some(&identity),&r.text,None)?;store.note_reply_completion(id,endpoint,&identity,r.completed_at)?;Ok(())
+}
+/// Fast local-store projection; opening a page never queues native metadata reads.
+pub(crate) fn directory_activity(core:&RouterCore,ids:&[String])->Result<Vec<DirectoryActivity>,String>{
+ if ids.len()>20||ids.iter().any(|id|id.is_empty()||id.len()>128){return Err("BRIDGE_ACTIVITY_REQUEST_INVALID".into());}
+ let mut rows=Vec::new();for id in ids{let initial=state(core,id)?;let w=core.store.snapshot_for_workstream(id)?.workstreams.into_iter().find(|w|w.id==*id).ok_or("BRIDGE_UNAVAILABLE")?;if w.trashed_at.is_some()||w.archived_at.is_some(){continue;}
+  let bindings=&initial.bindings;let epoch=core.session.try_lock().ok().map(|s|s.codex_observer_epoch);let cache=activity_cache(&core.store);let cached=cache.lock().ok().and_then(|c|c.rows.get(id).filter(|row|epoch.is_none_or(|e|e==c.epoch)&&row.binding_revision==bindings.binding_revision).cloned());
+  let sides=[&bindings.decision,&bindings.execution].into_iter().flatten().map(|side|cached.as_ref().and_then(|r|r.sides.iter().find(|a|a.endpoint_id==side.endpoint.id&&a.role==side.role&&a.checked_at>0&&activity_now().saturating_sub(a.checked_at)<15000)).cloned().unwrap_or(RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:0,turn_id:None,result_observation_id:None,goal_status:None,turn_active:false})).collect();
+  let latest_role=initial.replies.iter().filter(|r|[&bindings.decision,&bindings.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).max_by_key(|r|r.completed_at.unwrap_or(r.observed_at)).and_then(|r|[&bindings.decision,&bindings.execution].into_iter().flatten().find(|side|side.endpoint.id==r.endpoint_id).map(|side|side.role.clone()));
+  let unread_count=initial.replies.iter().filter(|r|r.read_at.is_none()&&r.handled_at.is_none()&&[&bindings.decision,&bindings.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).count();rows.push(DirectoryActivity{workstream_id:id.clone(),binding_revision:bindings.binding_revision,unread_count,latest_role,sides});
+ }Ok(rows)
+}
+pub(crate) fn sync_cached(core:&RouterCore,id:&str)->Result<BridgeState,String>{
+ let mut state=state(core,id)?;if state.bindings.explicit_roles{if let Ok(mut c)=activity_cache(&core.store).lock(){c.wanted.insert(id.into(),(state.bindings.binding_revision,activity_now()));}}if let Some(activity)=directory_activity(core,&[id.into()])?.into_iter().next(){state.snapshot_at=Some(activity.sides.iter().map(|s|s.checked_at).max().unwrap_or(0));state.activities=Some(activity.sides);}Ok(state)
 }

@@ -2866,7 +2866,7 @@ pub(crate) fn attempt_reply_push_with(
 ) -> Result<(), String> {
     if !store.endpoint_notification_enabled(&endpoint.id)? {return Ok(());}
     let workstream_name = store.workstream_name(&endpoint.workstream_id)?;
-    let payload = serde_json::json!({"type":if endpoint.provider == "CODEX" { "codex_reply" } else { "chatgpt_reply" },"workstreamId":endpoint.workstream_id,"observationId":observation.id,"workstreamName":workstream_name});
+    let payload = serde_json::json!({"type":if endpoint.provider == "CODEX" { "codex_reply" } else { "chatgpt_reply" },"workstreamId":endpoint.workstream_id,"observationId":observation.id,"workstreamName":workstream_name,"conversationName":endpoint.label});
     let (push_state, invalid_fingerprints) = match push(payload.to_string().as_bytes()) {
         Ok(crate::push::PushDeliveryOutcome::Sent {
             invalid_subscription_fingerprints,
@@ -4299,7 +4299,9 @@ pub(crate) fn run_codex_existing_thread_observer(
     session: Arc<Mutex<Session>>,
     observer_epoch: u64,
 ) {
+    let mut activity_cursor=0;
     loop {
+        crate::role_bridge::refresh_resident_activity(&store,&session,observer_epoch,&mut activity_cursor);
         let active_workstream_ids = match active_initialized_codex_observer_workstreams(&store) {
             Ok(workstream_ids) => workstream_ids,
             Err(_) => return,

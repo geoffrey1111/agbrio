@@ -1250,7 +1250,7 @@ async fn role_bridge_command(Path(workstream_id):Path<String>,State(state):State
   match input {
    RoleBridgeCommand::Bind{revision,decision,execution}=>encode(crate::role_bridge::bind(&core,&workstream_id,revision,decision,execution)?),
    RoleBridgeCommand::Read{role}=>serde_json::to_value(crate::role_bridge::read(&core,&workstream_id,&role)?).map_err(|_|"BRIDGE_RESPONSE_UNAVAILABLE".to_string()),
-   RoleBridgeCommand::Sync=>serde_json::to_value(crate::role_bridge::sync(&core,&workstream_id)?).map_err(|_|"BRIDGE_RESPONSE_UNAVAILABLE".to_string()),
+   RoleBridgeCommand::Sync=>serde_json::to_value(crate::role_bridge::sync_cached(&core,&workstream_id)?).map_err(|_|"BRIDGE_RESPONSE_UNAVAILABLE".to_string()),
    RoleBridgeCommand::Prepare{role,observation_id,text,attachment_ids}=>serde_json::to_value(crate::role_bridge::prepare(&core,&workstream_id,&role,&observation_id,&text,&attachment_ids)?).map_err(|_|"BRIDGE_RESPONSE_UNAVAILABLE".to_string()),
    RoleBridgeCommand::Approve{handoff_id,expected_hash}=>{if core.store.role_handoff(&handoff_id)?.workstream_id!=workstream_id{return Err("BRIDGE_WORKSTREAM_MISMATCH".into());}serde_json::to_value(crate::role_bridge::approve(&core,&handoff_id,&expected_hash)?).map_err(|_|"BRIDGE_RESPONSE_UNAVAILABLE".to_string())},
    RoleBridgeCommand::Send{handoff_id}=>{if core.store.role_handoff(&handoff_id)?.workstream_id!=workstream_id{return Err("BRIDGE_WORKSTREAM_MISMATCH".into());}serde_json::to_value(crate::role_bridge::send(&core,&handoff_id)?).map_err(|_|"BRIDGE_RESPONSE_UNAVAILABLE".to_string())},

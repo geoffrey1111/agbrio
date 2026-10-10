@@ -1,5 +1,7 @@
+import {isTauri} from '@tauri-apps/api/core';
 /** Private presentation snapshots. Never cache commands, approval or auth.
- * One foreground scheduler keeps recently used resources warm across navigation.
+ * One scheduler keeps recently used resources warm across navigation; desktop
+ * continues in the background, mobile resumes when visible.
  * A mobile scope is enabled only by a live authenticated session response. */
 type Entry = { value?: unknown; at: number; touched: number; due: number; period: number; failed?:boolean; loader?: () => Promise<unknown>; pending?: Promise<unknown>; version: number; listeners: Set<() => void> };
 const STORAGE = "agbrio.private-read-cache.v1";
@@ -12,8 +14,8 @@ export class ReadModelCache {
   private timer?: ReturnType<typeof setInterval>;
   private saveTimer?: ReturnType<typeof setTimeout>;
   private running = 0;
-  private wake = () => { if (document.visibilityState !== "hidden") {for(const e of this.entries.values())if(e.failed||Date.now()-e.at>=e.period){e.due=0;e.failed=false;}void this.tick();} };
-  constructor(private storage: () => Storage | undefined = () => localStorage) {}
+  private wake = () => { if (this.background || document.visibilityState !== "hidden") {for(const e of this.entries.values())if(e.failed||(!this.background&&Date.now()-e.at>=e.period)){e.due=0;e.failed=false;}void this.tick();} };
+  constructor(private storage: () => Storage | undefined = () => localStorage, private background=false) {}
   setScope(scope: string | null) {
     if (this.scope === scope) return;
     this.epoch++; this.entries.clear(); this.scope = scope;
@@ -88,7 +90,7 @@ export class ReadModelCache {
     e.pending = promise; return promise;
   }
   private async tick() {
-    if (document.visibilityState === "hidden") return;
+    if (!this.background && document.visibilityState === "hidden") return;
     const now = Date.now();
     const due = [...this.entries.entries()].filter(([, e]) => e.loader && !e.pending && e.due <= now && (e.listeners.size || now - e.touched < 20 * 60 * 1000)).sort((a,b) => a[1].due - b[1].due);
     for (const [key, e] of due) { if (this.running >= 2) break; void this.load(key, e).catch(() => undefined); }
@@ -112,7 +114,7 @@ export class ReadModelCache {
   }
   dispose() { clearInterval(this.timer); clearTimeout(this.saveTimer); this.timer = undefined; document.removeEventListener("visibilitychange", this.wake); window.removeEventListener("focus", this.wake); window.removeEventListener("online", this.wake); }
 }
-export const readModels = new ReadModelCache();
+export const readModels = new ReadModelCache(()=>localStorage,isTauri());
 if (typeof location !== "undefined" && !location.pathname.startsWith("/mobile")) readModels.setScope(`desktop:${location.origin}`);
 export const roleCacheKey = (id:string) => `bridge:${id}`;
 export const chatCacheKey = (id:string) => `chat:${id}`;

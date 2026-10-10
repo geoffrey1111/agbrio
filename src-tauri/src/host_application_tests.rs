@@ -718,6 +718,7 @@ fn codex_business_reply_push_uses_the_exact_observation_deep_link_without_reply_
     assert_eq!(payload["type"], "codex_reply");
     assert_eq!(payload["workstreamId"], workstream.id);
     assert_eq!(payload["workstreamName"], workstream.name);
+    assert_eq!(payload["conversationName"], codex_endpoint.label);
     assert!(payload["observationId"]
         .as_str()
         .is_some_and(|id| !id.is_empty()));

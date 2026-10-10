@@ -44,3 +44,7 @@ it("navigation reads never refresh an expired warm snapshot, even after invalida
 it("a resource keeps the same synchronization period after its last page listener leaves",async()=>{
  vi.useFakeTimers();const c=cache(),load=vi.fn().mockResolvedValue("body"),stop=c.subscribe("bridge:a",()=>{});await c.read("bridge:a",load,5000);stop();await vi.advanceTimersByTimeAsync(10000);expect(load).toHaveBeenCalledTimes(3);
 });
+
+it("desktop keeps its read clock hidden and does not queue every entry again on focus",async()=>{
+ vi.useFakeTimers();const c=new ReadModelCache(()=>undefined,true);caches.push(c);const load=vi.fn().mockResolvedValue("body");await c.read("bridge:a",load,5000);Object.defineProperty(document,"visibilityState",{configurable:true,value:"hidden"});await vi.advanceTimersByTimeAsync(15000);expect(load).toHaveBeenCalledTimes(4);Object.defineProperty(document,"visibilityState",{configurable:true,value:"visible"});window.dispatchEvent(new Event("focus"));await vi.advanceTimersByTimeAsync(0);expect(load).toHaveBeenCalledTimes(4);expect(c.age("bridge:a")).toBe(0);
+});

@@ -176,7 +176,7 @@ fn create_bridge_workstream(name:String,state:State<'_,RouterState>)->Result<Str
 #[tauri::command]
 fn rename_bridge_workstream(workstream_id:String,name:String,state:State<'_,RouterState>)->Result<(),String>{state.store.rename_workstream(&workstream_id,&name).map(|_|())}
 #[tauri::command]
-async fn sync_role_bridge(workstream_id:String,state:State<'_,RouterState>)->Result<role_bridge::BridgeState,String>{let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||role_bridge::sync(&core,&workstream_id)).await.map_err(|_|"BRIDGE_SYNC_UNAVAILABLE".to_string())?}
+async fn sync_role_bridge(workstream_id:String,state:State<'_,RouterState>)->Result<role_bridge::BridgeState,String>{let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||role_bridge::sync_cached(&core,&workstream_id)).await.map_err(|_|"BRIDGE_SYNC_UNAVAILABLE".to_string())?}
 #[tauri::command]
 fn role_bridge_threads(state:State<'_,RouterState>)->Result<ExistingCodexThreadCatalog,String>{role_bridge::catalog(state.inner())}
 #[tauri::command]

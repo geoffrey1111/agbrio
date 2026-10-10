@@ -18,12 +18,24 @@ describe("MOBILE_WEB_PUSH_V1 PWA contract", () => {
     vi.stubGlobal("clients",{matchAll:vi.fn().mockResolvedValue([]),openWindow});vi.stubGlobal("fetch",fetch);new Function(workerSource)();
     let pending:Promise<unknown>|undefined;
     handlers.get("push")!({data:{json:()=>({type:"codex_watch",eventId:"aiwr-host-42",sequence:42,label:"执行对话",state:"FAILED"})},waitUntil:(p:Promise<unknown>)=>{pending=p;}});await pending;
-    expect(showNotification).toHaveBeenCalledWith("Agbrio",expect.objectContaining({body:"执行对话 · 执行失败",data:{target:"/mobile/notifications?event=42"},tag:"codex-watch-aiwr-host-42"}));expect(fetch).not.toHaveBeenCalled();
+    expect(showNotification).toHaveBeenCalledWith("执行对话",expect.objectContaining({body:"执行失败",data:{target:"/mobile/notifications?event=42"},tag:"codex-watch-aiwr-host-42"}));expect(fetch).not.toHaveBeenCalled();
     handlers.get("notificationclick")!({notification:{close:vi.fn(),data:{target:"/mobile/notifications?event=42"}},waitUntil:(p:Promise<unknown>)=>{pending=p;}});await pending;
     expect(openWindow).toHaveBeenLastCalledWith("https://router.example/mobile/notifications?event=42");
     handlers.get("notificationclick")!({notification:{close:vi.fn(),data:{target:"https://evil.example/mobile/notifications?event=42"}},waitUntil:(p:Promise<unknown>)=>{pending=p;}});await pending;
     expect(openWindow).toHaveBeenLastCalledWith("https://router.example/mobile");
   });
+
+  it.each([
+    [{type:"codex_watch",eventId:"qa-1",sequence:1,label:"  玩法开发  ",state:"ACTION_REQUIRED"},"玩法开发","需要你确认或回答"],
+    [{type:"codex_watch",eventId:"qa-2",sequence:2,label:"   ",state:"RESULT_READY"},"Codex 对话","新结果已到达"],
+    [{type:"test"},"通知通道测试","AI_WORK_ROUTER_WEB_PUSH_V1_OK"],
+    [{type:"codex_reply",workstreamId:"qa-w",observationId:"qa-o",conversationName:" ",workstreamName:"测试 Bridge"},"测试 Bridge","Codex 有新回复"],
+  ])("separates conversation title from the progress summary",async(payload,title,body)=>{
+    const handlers=new Map<string,(e:any)=>void>();const showNotification=vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("self",{addEventListener:(name:string,h:any)=>handlers.set(name,h),registration:{showNotification},location:{origin:"https://router.example"}});vi.stubGlobal("fetch",vi.fn().mockResolvedValue({ok:true}));new Function(workerSource)();let pending!:Promise<unknown>;
+    handlers.get("push")!({data:{json:()=>payload},waitUntil:(p:Promise<unknown>)=>pending=p});await pending;expect(showNotification).toHaveBeenCalledWith(title,expect.objectContaining({body}));
+  });
+
   afterEach(() => vi.unstubAllGlobals());
 
   it("has the installable mobile manifest contract", () => {
@@ -80,8 +92,8 @@ describe("MOBILE_WEB_PUSH_V1 PWA contract", () => {
       waitUntil: (promise: Promise<unknown>) => { pushCompletion = promise; },
     });
     await pushCompletion;
-    expect(showNotification).toHaveBeenCalledWith("Agbrio", expect.objectContaining({
-      body: "Release review · ChatGPT 有新回复",
+    expect(showNotification).toHaveBeenCalledWith("Release review", expect.objectContaining({
+      body: "ChatGPT 有新回复",
       data: { target: "/mobile?workstream=ws-1&reply=reply-1" },
       tag: "chatgpt-reply-reply-1",
     }));
@@ -116,13 +128,13 @@ describe("MOBILE_WEB_PUSH_V1 PWA contract", () => {
 
     let pushCompletion: Promise<unknown> | undefined;
     handlers.get("push")!({
-      data: { json: () => ({ type: "codex_reply", workstreamId: "ws-game", observationId: "codex-reply-9", workstreamName: "当前游戏开发" }) },
+      data: { json: () => ({ type: "codex_reply", workstreamId: "ws-game", observationId: "codex-reply-9", workstreamName: "当前游戏开发", conversationName:"执行对话" }) },
       waitUntil: (promise: Promise<unknown>) => { pushCompletion = promise; },
     });
     await pushCompletion;
 
-    expect(showNotification).toHaveBeenCalledWith("Agbrio", expect.objectContaining({
-      body: "当前游戏开发 · Codex 有新回复",
+    expect(showNotification).toHaveBeenCalledWith("执行对话", expect.objectContaining({
+      body: "Codex 有新回复",
       data: { target: "/mobile?workstream=ws-game&reply=codex-reply-9" },
       tag: "codex-reply-codex-reply-9",
     }));

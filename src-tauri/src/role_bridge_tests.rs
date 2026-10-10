@@ -947,3 +947,28 @@ fn create_bridge_reuses_existing_group_and_never_binds_or_sends(){
 fn historical_role_handoff_remains_visible_after_rebinding_without_becoming_sendable(){
  let d=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap());let p=store.create_project("history".into(),None).unwrap();let w=store.create_workstream(&p.id,"bridge".into()).unwrap();let input=|id:&str|RoleBindingInput{provider:"CODEX".into(),external_id:id.into(),label:id.into(),cwd:Some(d.path().to_string_lossy().into())};let b=store.bind_role_bridge(&w.id,store.role_bridge(&w.id).unwrap().binding_revision,input("old-source"),input("old-target")).unwrap();let obs=store.record_reply_observation(&w.id,&b.decision.unwrap().endpoint.id,Some("old-native"),"original",None).unwrap().unwrap();let h=store.prepare_role_handoff(&w.id,"DECISION",&obs.id,"selected original").unwrap();store.bind_role_bridge(&w.id,b.binding_revision,input("new-source"),input("new-target")).unwrap();assert!(store.approve_role_handoff_checked(&h.id,&h.payload_hash).is_err());let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};let view=state(&core,&w.id).unwrap();assert_eq!(view.handoffs.len(),1);assert_eq!(view.handoff_sources[0].role,"DECISION");assert_eq!(view.handoff_sources[0].binding_revision,b.binding_revision);
 }
+
+#[test]fn resident_metadata_updates_without_a_renderer_and_projection_never_waits_for_native_rpc(){
+ let(dir,core,wid,_)=active_guidance_fixture("ACTIVE",None);let mut cursor=0;
+ refresh_resident_activity(&core.store,&core.session,0,&mut cursor);
+ let first=directory_activity(&core,&[wid.clone()]).unwrap();assert!(first[0].sides.iter().all(|s|s.checked_at>0));
+ let methods_before=guidance_methods(&dir).len();let held=core.session.lock().unwrap();let projected=sync_cached(&core,&wid).unwrap();assert!(projected.activities.unwrap().iter().all(|s|s.checked_at>0));drop(held);assert_eq!(methods_before,guidance_methods(&dir).len());
+ core.session.lock().unwrap().codex_observer_epoch+=1;let changed=directory_activity(&core,&[wid.clone()]).unwrap();assert!(changed[0].sides.iter().all(|s|s.state=="UNCONFIRMED"));
+}
+#[test]fn resident_observer_refreshes_status_while_no_frontend_requests_are_made(){
+ let(dir,core,wid,_)=active_guidance_fixture("ACTIVE",None);let store=core.store.clone();let session=core.session.clone();
+ let worker=std::thread::spawn(move||crate::host_application::run_codex_existing_thread_observer(store,session,0));
+ std::thread::sleep(std::time::Duration::from_millis(500));let first=directory_activity(&core,&[wid.clone()]).unwrap();assert!(first[0].sides.iter().any(|s|s.checked_at>0));let before=guidance_methods(&dir).len();
+ std::thread::sleep(std::time::Duration::from_millis(2300));let after=guidance_methods(&dir);assert!(after.len()>before);assert!(after.iter().all(|m|matches!(m["method"].as_str(),Some("initialize"|"thread/read"|"thread/goal/get"|"thread/turns/list"|"thread/items/list"))));
+ let second=directory_activity(&core,&[wid.clone()]).unwrap();assert!(second[0].sides[0].checked_at>first[0].sides[0].checked_at);core.session.lock().unwrap().codex_observer_epoch+=1;worker.join().unwrap();
+}
+#[test]fn resident_projection_rechecks_binding_and_expiry_and_does_not_resume_trashed_bridges(){
+ let(dir,core,wid,_)=active_guidance_fixture("ACTIVE",None);let mut cursor=0;refresh_resident_activity(&core.store,&core.session,0,&mut cursor);
+ let cache=activity_cache(&core.store);{let mut c=cache.lock().unwrap();for s in &mut c.rows.get_mut(&wid).unwrap().sides{s.checked_at=1;}}
+ assert!(directory_activity(&core,&[wid.clone()]).unwrap()[0].sides.iter().all(|s|s.checked_at==0));
+ refresh_resident_activity(&core.store,&core.session,0,&mut cursor);
+ let b=core.store.role_bridge(&wid).unwrap();let input=|id:&str|RoleBindingInput{provider:"CODEX".into(),external_id:id.into(),label:"fictional".into(),cwd:Some(dir.path().to_string_lossy().into())};
+ core.store.bind_role_bridge(&wid,b.binding_revision,input("new-source-fixture"),input("new-target-fixture")).unwrap();
+ assert!(directory_activity(&core,&[wid.clone()]).unwrap()[0].sides.iter().all(|s|s.checked_at==0));
+ core.store.trash_workstream(&wid).unwrap();let before=guidance_methods(&dir).len();refresh_resident_activity(&core.store,&core.session,0,&mut cursor);assert_eq!(before,guidance_methods(&dir).len());assert!(directory_activity(&core,&[wid.clone()]).unwrap().is_empty());assert!(!cache.lock().unwrap().rows.contains_key(&wid));
+}
