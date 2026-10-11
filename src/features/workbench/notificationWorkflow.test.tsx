@@ -7,6 +7,21 @@ afterEach(()=>{cleanup();vi.useRealTimers();localStorage.clear();});
 const watch=(id:string,count:number):CodexWatch=>({threadId:id,label:id,cwd:'D:\\fictional',enabled:true,generation:1,snapshot:{state:'IDLE',turnId:null,itemId:null,text:'fictional current message'},checkedAt:Date.now(),errorCode:null,sendCount:count});
 function api(rows:CodexWatch[]):NotificationApi{return{watches:vi.fn().mockResolvedValue(rows),connect:vi.fn(),threads:vi.fn(),enable:vi.fn(),pause:vi.fn(),feed:vi.fn().mockResolvedValue({events:[],nextCursor:0,hasMore:false}),event:vi.fn(),webUrl:vi.fn().mockResolvedValue(null)};}
 const order=()=>[...document.querySelectorAll<HTMLElement>('[data-watch-id]')].map(n=>n.dataset.watchId);
+it('puts paused watches below enabled watches regardless of usage and sorts each group by cumulative sends',async()=>{
+ const a=api([{...watch('paused-high',100),enabled:false},watch('active-low',0),{...watch('paused-low',3),enabled:false},watch('active-high',8)]);
+ render(<CodexNotifications api={a} standalone/>);await act(async()=>{});fireEvent.click(screen.getByRole('tab',{name:'监听对话'}));
+ expect(order()).toEqual(['active-high','active-low','paused-high','paused-low']);
+ expect(a.enable).not.toHaveBeenCalled();expect(a.pause).not.toHaveBeenCalled();
+});
+it('freezes pause and resume sorting changes during a visit and applies both groups after reentry',async()=>{
+ vi.useFakeTimers();const a=api([watch('first',8),{...watch('second',100),enabled:false},watch('third',2)]);
+ render(<CodexNotifications api={a} standalone/>);await act(async()=>{});fireEvent.click(screen.getByRole('tab',{name:'监听对话'}));
+ expect(order()).toEqual(['first','third','second']);
+ vi.mocked(a.watches).mockResolvedValue([{...watch('first',8),enabled:false},watch('second',100),watch('third',2)]);
+ await act(async()=>{await vi.advanceTimersByTimeAsync(5100);});expect(order()).toEqual(['first','third','second']);
+ fireEvent.click(screen.getByRole('tab',{name:'最近通知'}));fireEvent.click(screen.getByRole('tab',{name:'监听对话'}));
+ expect(order()).toEqual(['second','third','first']);
+});
 it('freezes usage order across polls and an opened chat; leaving WATCHES recalculates cumulative counts',async()=>{
  vi.useFakeTimers();const a=api([watch('less-used',2),watch('most-used',8)]);
  render(<CodexNotifications api={a} standalone/>);await act(async()=>{});fireEvent.click(screen.getByRole('tab',{name:'监听对话'}));expect(order()).toEqual(['most-used','less-used']);

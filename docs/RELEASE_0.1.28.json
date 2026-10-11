@@ -1,0 +1,20 @@
+{
+  "version": "0.1.28",
+  "interfaceRevision": "2026.10.11-40",
+  "watchOrder": {
+    "enabledBeforePaused": true,
+    "eachGroupByCumulativeSendCount": true,
+    "existingVisitOrderFrozen": true,
+    "reentryRecalculates": true
+  },
+  "scope": "frontend watch ordering only; no backend or Goal/Event contract change",
+  "checks": {
+    "targetedUiTests": 22,
+    "sourceWindows": "PENDING",
+    "exactReleasedInstallerWindows": "PENDING"
+  },
+  "runtime": {
+    "deployment": "PENDING",
+    "installedVersionAtStart": "0.1.27"
+  }
+}

@@ -1,6 +1,6 @@
 import{useLayoutEffect,useMemo,useState}from'react';
 import type{CodexWatch}from'./CodexNotifications';
-const byUsage=(a:CodexWatch,b:CodexWatch)=>(b.sendCount??0)-(a.sendCount??0)||(a.threadId<b.threadId?-1:a.threadId>b.threadId?1:0);
+const byUsage=(a:CodexWatch,b:CodexWatch)=>Number(b.enabled)-Number(a.enabled)||(b.sendCount??0)-(a.sendCount??0)||(a.threadId<b.threadId?-1:a.threadId>b.threadId?1:0);
 /** One notification WATCHES visit includes its opened chat and return to list. */
 export function useWatchVisitOrder(rows:CodexWatch[],active:boolean){
  const[order,setOrder]=useState<string[]>([]);
