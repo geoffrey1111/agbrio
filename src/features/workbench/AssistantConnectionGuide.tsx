@@ -4,10 +4,11 @@ import {t,getLanguage,useLanguage} from "../../i18n";
 import {CopyAction} from "./NativeReaderActions";
 import {assistantSetupInstructions,assistantReadOnlyInstructions,assistantTakeoverInstructions,type AssistantRoute} from "./assistantSetupInstructions";
 import "../../styles/assistant-guide.css";
+import {AssistantDailyReport,type ReportBridge} from "./AssistantDailyReport";
 
 type ExistingGrant={id:string;scope?:string;approvalMode?:string;label:string;expiresAt:number;revokedAt:number|null};
 export type AssistantHelpPage="CHATGPT_PLUGINS"|"AUTH_DOCUMENTATION";
-export function AssistantConnectionGuide({mcpUrl,grants,onAddGrant,onRouteChange,openHelp}:{mcpUrl:string|null;grants:ExistingGrant[];onAddGrant:()=>void;onRouteChange:(route:AssistantRoute)=>void;openHelp:(page:AssistantHelpPage)=>Promise<void>}){
+export function AssistantConnectionGuide({mcpUrl,grants,bridges=[],onAddGrant,onRouteChange,openHelp}:{mcpUrl:string|null;grants:ExistingGrant[];bridges?:ReportBridge[];onAddGrant:()=>void;onRouteChange:(route:AssistantRoute)=>void;openHelp:(page:AssistantHelpPage)=>Promise<void>}){
  useLanguage();const id=useId(),heading=useRef<HTMLHeadingElement>(null);
  const[route,setRoute]=useState<AssistantRoute|null>(null),[step,setStep]=useState(0),[openError,setOpenError]=useState("");
  const active=grants.filter(g=>g.scope==="INSTANCE"&&g.approvalMode==="CONVERSATION_REVIEW"&&!g.revokedAt&&g.expiresAt>Date.now());
@@ -25,7 +26,7 @@ export function AssistantConnectionGuide({mcpUrl,grants,onAddGrant,onRouteChange
     <button type="button" aria-pressed={route==="local"} onClick={()=>choose("local")}><span>Codex {t("本地")}</span></button>
    </div>
    {!route?<p className="assistant-route-hint">{t("两条路线分别连接。桌面端认证成功，不代表 dot 云端已经可用。")}</p>:<>
-    <div className="assistant-agent-start"><CopyAction showLabel text={assistantSetupInstructions(mcpUrl,getLanguage(),route)} label={t("复制给 agent 的指令")}/><p>{t("检查现有部署、完成连接、排错和只读验收。")}</p></div>
+    <div className="assistant-agent-start"><CopyAction showLabel text={assistantSetupInstructions(mcpUrl,getLanguage(),route)} label={t("复制给 AI 助手")}/><p>{t("检查现有部署、完成连接、排错和只读验收。")}</p></div>
     <div className="assistant-current-connection"><p>{t("当前 MCP 地址")}</p>{mcpUrl?<div className="assistant-guide-value"><code>{mcpUrl}</code><CopyAction text={mcpUrl} label={t("复制 MCP 地址")}/></div>:<p>{t("尚未配置 MCP 入口。先到设备设置选择已有 HTTPS 服务或部署方式。")}</p>}{active.length>0&&<p className="assistant-grant-summary"><Check size={18}/>{t("有效授权将直接复用 · 可随时撤销")}</p>}</div>
     <details className="assistant-human-details"><summary>{t("查看我需要做的步骤")}</summary><section className="assistant-human-steps" aria-label={t("只需要你完成")}><h3>{t("只需要你完成")}</h3>
      <ol><li><strong>{t("选择助手授权")}</strong>{active.length?<p>{t("已有有效的整个应用授权，可直接复用。")}</p>:<button type="button" onClick={onAddGrant}>{t("创建 30 天授权")}</button>}<p>{t("旧版单 Bridge 授权不会自动升级。")}</p></li>
@@ -34,6 +35,7 @@ export function AssistantConnectionGuide({mcpUrl,grants,onAddGrant,onRouteChange
     </section></details>
     {openError&&<p role="alert">{openError}</p>}
     <details className="assistant-prompt-preview"><summary>{t("预览要复制的指令")}</summary><pre>{assistantSetupInstructions(mcpUrl,getLanguage(),route)}</pre></details>
+    <AssistantDailyReport bridges={bridges}/>
     <details className="assistant-manual"><summary>{t("自己操作：查看详细教程")}</summary>
     <nav className="assistant-guide-steps" aria-label={t("连接教程步骤")}>{labels.map((label,index)=><button key={index} type="button" aria-current={index===step?"step":undefined} aria-controls={`${id}-step`} onClick={()=>navigate(index)}><span className="assistant-step-number">{index+1}</span><span>{t(label)}</span></button>)}</nav>
     <div className="assistant-guide-content" id={`${id}-step`}>

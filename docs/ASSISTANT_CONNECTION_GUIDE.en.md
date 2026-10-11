@@ -1,5 +1,9 @@
 # Connect an assistant yourself
 
+## Optional daily report
+
+After actual read-only acceptance, choose **Daily report (optional)**, timezone/time (suggested22:00 local), delivery destination and exact delegated Bridges, then copy and explicitly submit the request. Your assistant must verify real scheduler tools, existing task and saved configuration. Unsupported is NOT ENABLED; reconnecting never creates a duplicate. Change or disable the same report, without modifying Events. [Accounting and client limitations](DAILY_REPORTS.md). INSTANCE now17 tools; legacy BRIDGE remains8.
+
 ## Quick setup with your agent
 
 In **Settings → AI assistant**, choose **ChatGPT / dot cloud** or **Codex local**, then **Copy instructions for your agent**. The prompt uses your configured instance URL. Your agent checks existing deployment and access; you choose authorization, sign in and consent, and tell the assistant which Bridges to handle. Valid grants are reused. Detailed self-service steps remain under **Do it yourself: detailed guide**. Desktop authentication alone does not prove cloud readiness.

@@ -1,5 +1,7 @@
 # Install and pair
 
+Optional daily reports: after actual read-only acceptance, configure local time/timezone/destination/delegated scope, explicitly submit to your assistant, verify real tools and saved task, or report unsupported. Reuse existing task; no duplicate or Events changes. [Daily report contract](DAILY_REPORTS.md).
+
 Agbrio connects the existing conversation that manages a project with the
 conversation that executes it. Windows x64 + Codex + a phone PWA is the first
 alpha target. You supply your existing agent login. Phone access can use an optional

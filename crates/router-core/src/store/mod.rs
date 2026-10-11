@@ -2,6 +2,7 @@ pub mod control;
 pub mod assistant;
 pub mod assistant_actions;
 pub mod assistant_processed;
+pub mod assistant_report;
 pub mod goal_control;
 pub mod mcp_events;
 pub mod dispatch;

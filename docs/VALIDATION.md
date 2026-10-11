@@ -1,5 +1,9 @@
 # Windows alpha validation
 
+## Optional daily report — candidate0.1.29
+
+15 frontend/2receipt/17MCP HTTP checks PASS; mounted fictional desktop1920x1080/phone430x932 without overflow. No client task created, no new timed-run acceptance, existing owner schedule/8Events subscriptions untouched. Grant identity is not a unique dot; report partial when evidence/history/pages are incomplete. Release/install checks remain pending until the exact29 receipt.
+
 These scopes are distinct; none implies all-platform or physical-device UAT.
 
 - Frontend: 415 Vitest checks across 38 files; TypeScript/Vite production build.

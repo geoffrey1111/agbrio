@@ -23,7 +23,7 @@ fn now_ms()->i64{clock() as i64*1000}
  let g=core.store.create_assistant_instance_grant(router_core::store::assistant::InstanceGrantInput{label:"QA global".into(),rules:old.rules.clone(),expires_at:now_ms()+600000}).unwrap();
  assert!(crate::assistant_mcp::call(&core,&old_gid,"agbrio_read_app",json!({})).is_err());
  let list=|gid:&str|crate::assistant_mcp::rpc(&core,gid,json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}));
- assert_eq!(list(&old_gid)["result"]["tools"].as_array().unwrap().len(),8);assert_eq!(list(&g.id)["result"]["tools"].as_array().unwrap().len(),16);
+ assert_eq!(list(&old_gid)["result"]["tools"].as_array().unwrap().len(),8);assert_eq!(list(&g.id)["result"]["tools"].as_array().unwrap().len(),17);
  let call=|name:&str,args:Value|crate::assistant_mcp::call(&core,&g.id,name,args).unwrap();
  let created=call("agbrio_prepare_action",json!({"requestId":"create-demo-b","operation":"CREATE_BRIDGE","input":{"name":"Demo B"}}));
  let execute=json!({"actionId":created["id"],"expectedHash":created["payloadHash"],"ruleId":"continue","useOwnerAnswer":false,"assessment":"Routine setup under owner brief"});
@@ -66,6 +66,14 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  #[cfg(windows)]{use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}
  let mut adapter=crate::codex::adapter::CodexAdapter::start_shared_validation(command,Arc::new(|_|{})).unwrap();adapter.initialize().unwrap();core.session.lock().unwrap().adapter=Some(adapter);
  (dir,core,g.id,observation)
+}
+
+#[test]fn report_tool_is_readonly_scoped_and_does_not_observe_or_schedule(){
+ let(_d,core,legacy,_)=fixture();let w=core.store.assistant_grant(&legacy).unwrap().workstream_id;let g=core.store.create_assistant_instance_grant(router_core::store::assistant::InstanceGrantInput{label:"Report fixture".into(),rules:vec![BriefRule{id:"read".into(),text:"Read fixture only".into()}],expires_at:now_ms()+86400000}).unwrap();
+ let listed=crate::assistant_mcp::tools();let tool=listed["tools"].as_array().unwrap().iter().find(|t|t["name"]=="agbrio_read_report").unwrap();assert_eq!(tool["annotations"]["readOnlyHint"],true);
+ let before=serde_json::to_value(core.store.snapshot().unwrap()).unwrap();let events=core.store.event_status_for_grant(&g.id).unwrap();
+ let args=json!({"workstreamIds":[w],"windowStart":1,"windowEnd":2,"limit":1});let result=crate::assistant_mcp::call(&core,&g.id,"agbrio_read_report",args.clone()).unwrap();assert_eq!(result["coverage"],"AGBRIO_STORED_RECEIPTS_ONLY");assert_eq!(result["totalRecords"],0);assert_eq!(serde_json::to_value(core.store.snapshot().unwrap()).unwrap(),before);assert_eq!(serde_json::to_value(core.store.event_status_for_grant(&g.id).unwrap()).unwrap(),serde_json::to_value(events).unwrap());
+ assert!(crate::assistant_mcp::call(&core,&legacy,"agbrio_read_report",args).is_err());assert!(crate::assistant_mcp::call(&core,&g.id,"agbrio_read_report",json!({"workstreamIds":[],"windowStart":1,"windowEnd":2})).is_err());
 }
 fn config(dir:&std::path::Path)->MobileHttpConfig{MobileHttpConfig{port:0,allowed_host:"assistant.fixture.invalid".into(),allowed_origin:"https://assistant.fixture.invalid".into(),access_issuer:String::new(),access_audience:String::new(),access_jwks_url:String::new(),static_dir:dir.into()}}
 #[test]
@@ -225,7 +233,7 @@ fn decision_gap_answer_and_send_error_retain_exact_receipt_no_false_delivery(){
   let registered:Value=registration.json().await.unwrap();let cid=registered["client_id"].as_str().unwrap();let verifier="a".repeat(64);let challenge=Base64UrlUnpadded::encode_string(&Sha256::digest(verifier.as_bytes()));let res="https://assistant.fixture.invalid/mcp";
   let auth_url=|scope:&str|{let mut u=url::Url::parse(&format!("{base}/oauth/authorize")).unwrap();u.query_pairs_mut().extend_pairs([("client_id",cid),("redirect_uri","http://127.0.0.1:4567/callback/fixture"),("response_type","code"),("code_challenge",&challenge),("code_challenge_method","S256"),("state","scope-fixture-state"),("resource",res),("scope",scope)]);u};
   for scope in ["agbrio:handoff agbrio:instance","agbrio:instance agbrio:handoff"]{
-   for (gid,expected_scope,expected_tools) in [(&bridge_gid,SCOPE,8),(&instance_gid,INSTANCE_SCOPE,16)]{
+   for (gid,expected_scope,expected_tools) in [(&bridge_gid,SCOPE,8),(&instance_gid,INSTANCE_SCOPE,17)]{
     let authorization=c.get(auth_url(scope)).header("host","assistant.fixture.invalid").send().await.unwrap();assert_eq!(authorization.status(),StatusCode::SEE_OTHER,"Combined advertised scopes must reach owner consent");
     let next=authorization.headers()["location"].to_str().unwrap();let intent=url::Url::parse(&format!("{base}{next}")).unwrap().query_pairs().find(|(k,_)|k=="request").unwrap().1.to_string();
     let info=c.get(format!("{base}/v1/mobile/assistant/consent")).header("host","assistant.fixture.invalid").header("cookie",&cookie).query(&[("request",&intent)]).send().await.unwrap();assert_eq!(info.status(),StatusCode::OK);let info:Value=info.json().await.unwrap();assert_eq!(info["grants"].as_array().unwrap().len(),2);
@@ -288,7 +296,7 @@ fn instance_oauth_cannot_downgrade_or_elevate_an_old_bridge_token(){
  let credentials:Value=exchange(&verifier,res).send().await.unwrap().json().await.unwrap();assert_eq!(credentials["scope"],INSTANCE_SCOPE);let token=credentials["access_token"].as_str().unwrap();
  assert_eq!(exchange(&verifier,res).send().await.unwrap().status(),StatusCode::BAD_REQUEST);
  let initialized:Value=request("/mcp").bearer_auth(token).header("accept","application/json, text/event-stream").json(&init).send().await.unwrap().json().await.unwrap();assert_eq!(initialized["result"]["serverInfo"]["name"],"Agbrio Agent Bridge");
- let listed:Value=request("/mcp").bearer_auth(token).header("accept","application/json, text/event-stream").json(&json!({"jsonrpc":"2.0","id":2,"method":"tools/list"})).send().await.unwrap().json().await.unwrap();assert_eq!(listed["result"]["tools"].as_array().unwrap().len(),16);
+ let listed:Value=request("/mcp").bearer_auth(token).header("accept","application/json, text/event-stream").json(&json!({"jsonrpc":"2.0","id":2,"method":"tools/list"})).send().await.unwrap().json().await.unwrap();assert_eq!(listed["result"]["tools"].as_array().unwrap().len(),17);
  assert_eq!(request("/v1/mobile/assistant/grants").bearer_auth(token).send().await.unwrap().status(),StatusCode::METHOD_NOT_ALLOWED);
  assert_eq!(c.get(format!("{base}/v1/mobile/assistant/grants")).header("host","assistant.fixture.invalid").bearer_auth(token).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
  assert_eq!(request("/mcp").bearer_auth(token).header("origin","https://evil.invalid").json(&init).send().await.unwrap().status(),StatusCode::FORBIDDEN);
