@@ -35,7 +35,7 @@ export function AssistantConnectionGuide({mcpUrl,grants,bridges=[],onAddGrant,on
     </section></details>
     {openError&&<p role="alert">{openError}</p>}
     <details className="assistant-prompt-preview"><summary>{t("预览要复制的指令")}</summary><pre>{assistantSetupInstructions(mcpUrl,getLanguage(),route)}</pre></details>
-    <AssistantDailyReport bridges={bridges}/>
+    <AssistantDailyReport bridges={bridges} mcpUrl={mcpUrl}/>
     <details className="assistant-manual"><summary>{t("自己操作：查看详细教程")}</summary>
     <nav className="assistant-guide-steps" aria-label={t("连接教程步骤")}>{labels.map((label,index)=><button key={index} type="button" aria-current={index===step?"step":undefined} aria-controls={`${id}-step`} onClick={()=>navigate(index)}><span className="assistant-step-number">{index+1}</span><span>{t(label)}</span></button>)}</nav>
     <div className="assistant-guide-content" id={`${id}-step`}>

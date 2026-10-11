@@ -16,12 +16,16 @@ navigation and copying text do not create a scheduled task or consent to one.
    real scheduling, list, update and saved-task readback tools, as well as whether
    a scheduled run can access this MCP connection and deliver to your destination.
    Exact-time/delivery/tool limitations mean **NOT ENABLED**, not a prompt promise.
-4. Inspect existing reports for the same instance, assistant and destination;
+4. Inspect existing reports by original task ID or instance + assistant + report
+   purpose. Destination, time, timezone and scope are editable configuration, not
+   a new task identity, even when changed;
    update the original ID. Unavailable listing or ambiguous matches must stop
    creation. Recopying/reconnecting does not authorize a duplicate.
 5. Verify actual saved task ID, enabled state, local time, timezone, next run,
    destination and allowlist. Change with the same entry; **Disable existing
-   report** pauses that report only. Existing Events remain untouched.
+   report** pauses that report only. Existing Events remain untouched. Disabling only needs the existing client
+   task identity/list/update/readback; removed Bridges, revoked MCP access and an
+   offline Host must not block it. No business reads or new task during disable.
 
 The client is account/version dependent. [Official task documentation](https://help.openai.com/en/articles/10291617-scheduled-tasks-in-chatgpt)
 and [dot tasks and memory](https://learn.chatgpt.com/docs/dots/tasks-and-memory)
@@ -59,7 +63,10 @@ duplicate events do not count. **SENT is delivery, not completed business work.*
 
 The authenticated physical-send attribution added in 0.1.27 proves a **grant**,
 not a unique dot. Match this assistant's retained exact handoff/request evidence
-before calling a record its own. `THIS_GRANT`, `OTHER_ASSISTANT_GRANT` and
+before calling a record its own. A prepared ID, approval or receipt read alone
+does not prove who sent: retain your actual authenticated send/execution response
+and match the independent SENT receipt. If this cannot establish the caller,
+keep attribution partially verified. `THIS_GRANT`, `OTHER_ASSISTANT_GRANT` and
 `UNATTRIBUTED` remain distinct; approval alone cannot prove sender identity.
 Separate confirmed manual and other-agent evidence. Never label all unattributed
 history "manual", fabricate old attribution, or treat grant totals as dot totals.
