@@ -1,6 +1,6 @@
 # Agbrio assistant setup and delegation — zh-CN
 
-Current 0.1.29 instructions. Copying is not scheduling consent; submit a separate explicit daily-report request after read-only acceptance. [Daily reports](DAILY_REPORTS.md). No live general-client scheduling acceptance is claimed.
+Current 0.1.30 instructions. Copying is not schedule consent. Actual client tool/saved-task verification required; no universal timed-run acceptance claimed. [Daily report accounting and management](DAILY_REPORTS.md). Disable an existing report even when Bridges are removed or MCP is offline; retain the original task ID when destination/time/scope changes.
 
 ```text
 仓库：https://github.com/geoffrey1111/agbrio。复用部署、配对和授权。没有本机能力时，给我一段可转交本机 agent 的指令，不声称已操作电脑。

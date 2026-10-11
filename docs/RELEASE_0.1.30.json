@@ -1,0 +1,49 @@
+{
+  "version": "0.1.30",
+  "interface": "2026.10.11-42",
+  "sourceCommit": "847a9b5485a6be55f125fd7102f2fe5306e625b9",
+  "scope": "Optional client-owned daily reports; read-only stored receipt accounting; no existing schedules/Events altered",
+  "mcp": {
+    "instanceTools": 17,
+    "legacyBridgeTools": 8,
+    "newReadOnlyTool": "agbrio_read_report",
+    "actorIdentity": "GRANT_ONLY_NOT_UNIQUE_DOT",
+    "historicalAttribution": "PARTIAL_UNLESS_AUTHENTICATED_SEND_AND_RECEIPT_PROOF"
+  },
+  "checks": {
+    "frontendCiPassed": 541,
+    "targetedFrontendPassed": 16,
+    "corePassed": 224,
+    "coreIgnored": 1,
+    "hostPassed": 226,
+    "hostIgnored": 32,
+    "hostMainPassed": 1,
+    "sourceWindowsRun": 38112631151,
+    "sourceWindows": "SUCCESS",
+    "exactReleasedInstallerRun": 38114215965,
+    "exactReleasedInstaller": "SUCCESS",
+    "signatureAndTamper": "PASS",
+    "mountedDesktopPhone": "AUTOMATED_VALIDATION_PASS",
+    "nativeConfigEntry": "PRESENT_COPY_DISABLED_UNTIL_EXPLICIT_CONFIG",
+    "generalClientScheduleCreationAndTimedDelivery": "NOT_EXECUTED"
+  },
+  "runtime": {
+    "installedVersionAtStart": "0.1.28",
+    "installedVersion": "0.1.30",
+    "intermediate29Installed": false,
+    "normalNativeUpdateCheck": "UP_TO_DATE",
+    "staticFilesExact": 15,
+    "installedExeSha256": "2a05acb9f70c61936142e738862a9a68704fac71e547b041029b8348bfca6b42",
+    "onlyOfficialBundleMarkerDifference": true,
+    "originalGrantsAndPairingsPreserved": true,
+    "sameEightSubscriptionsPreserved": true,
+    "sameFourSharedProcessIdentitiesPreserved": true,
+    "existingOwner2200DailyTask": "UNTOUCHED",
+    "businessTestOrGoalMutation": "NONE"
+  },
+  "installer": {
+    "name": "Agbrio_0.1.30_x64-setup.exe",
+    "size": 276155253,
+    "sha256": "f89b6496fbb6bf6b4a744947db77aec871e8889ef7d53d93086a91927addc4a5"
+  }
+}

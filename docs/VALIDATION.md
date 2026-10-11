@@ -1,5 +1,11 @@
 # Windows alpha validation
 
+## Daily report release0.1.30 — delivered, not universal client acceptance
+
+Source847a9b5 Windows38112631151 and exact signed installer38114215965 SUCCESS.541frontend,224Core/1ignored,226Host/32ignored+main1 PASS;16targeted configuration/guide tests. Actual publisher signature/tamper PASS. Normal installed app updated28→30 once, UP_TO_DATE;15static files exact, only official bundle marker differs in native EXE. Grant/pair/history IDs, same8subscriptions and4shared process creation identities preserved. Installed report entry present, copy disabled until explicit configuration; no real Bridge chosen or schedule submitted. Pure fixture proves offline/no-Bridge disabling and desktop/phone layout.
+
+Existing owner22:00 task untouched. Generic client scheduling/timed delivery remains NOT_EXECUTED; actor/history gaps require partial verification. Event payload injection and actual Goal client acceptance remain separate OPEN gates. [Exact receipt](RELEASE_0.1.30.json), [daily contract](DAILY_REPORTS.md).
+
 ## Optional daily report — candidate0.1.29
 
 15 frontend/2receipt/17MCP HTTP checks PASS; mounted fictional desktop1920x1080/phone430x932 without overflow. No client task created, no new timed-run acceptance, existing owner schedule/8Events subscriptions untouched. Grant identity is not a unique dot; report partial when evidence/history/pages are incomplete. Release/install checks remain pending until the exact29 receipt.
