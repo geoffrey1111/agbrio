@@ -6,7 +6,7 @@ After actual read-only acceptance, choose **Daily report (optional)**, timezone/
 
 ## Quick setup with your agent
 
-In **Settings → AI assistant**, choose **ChatGPT / dot cloud** or **Codex local**, then **Copy instructions for your agent**. The prompt uses your configured instance URL. Your agent checks existing deployment and access; you choose authorization, sign in and consent, and tell the assistant which Bridges to handle. Valid grants are reused. Detailed self-service steps remain under **Do it yourself: detailed guide**. Desktop authentication alone does not prove cloud readiness.
+In **Settings → AI assistant**, choose **ChatGPT / dot cloud** or **Codex local**, then **Copy for AI assistant**. The prompt uses your configured instance URL. Your agent checks existing deployment and access; you choose authorization, sign in and consent, and tell the assistant which Bridges to handle. Valid grants are reused. Detailed self-service steps remain under **Do it yourself: detailed guide**. Desktop authentication alone does not prove cloud readiness.
 
 Bridge now has a quiet **Codex usage** row. Open it to see native quota windows, remaining percentage, reset time, last reading and **Refresh usage**. Sparse or unsupported accounts show unavailable, and offline readings are labelled. No inferred five-hour bucket or quota purchases. Phone **Settings** and **About** include **Check interface updates**; prepared changes apply on your click, with pending writes protected. Do not reinstall or pair again.
 
