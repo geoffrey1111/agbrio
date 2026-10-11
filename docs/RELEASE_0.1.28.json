@@ -10,11 +10,33 @@
   "scope": "frontend watch ordering only; no backend or Goal/Event contract change",
   "checks": {
     "targetedUiTests": 22,
-    "sourceWindows": "PENDING",
-    "exactReleasedInstallerWindows": "PENDING"
+    "sourceWindows": "SUCCESS",
+    "exactReleasedInstallerWindows": "SUCCESS",
+    "typeBuild": "PASS",
+    "mountedDesktopPhone": "AUTOMATED_VALIDATION_PASS",
+    "sourceWindowsRun": 38106328830,
+    "exactReleasedInstallerWindowsRun": 38107677587,
+    "signatureAndTamper": "PASS",
+    "nativeUiLoadedEnabledRows": 3,
+    "realNativePausedRows": "NOT_AVAILABLE",
+    "realSubscriptionChangesForValidation": 0
   },
   "runtime": {
-    "deployment": "PENDING",
-    "installedVersionAtStart": "0.1.27"
+    "deployment": "PASS",
+    "installedVersionAtStart": "0.1.27",
+    "installedVersion": "0.1.28",
+    "nativeCheck": "UP_TO_DATE",
+    "staticFilesExact": 15,
+    "installedExeSha256": "f3f270c1bacb2b31fc0317dbee8c21f786c1781a5a9b8086e92ccfe7d508041c",
+    "onlyOfficialBundleMarkerDifference": true,
+    "grantsAndPairingsPreserved": true,
+    "sameEightSubscriptionsPreserved": true,
+    "sharedFourProcessIdentitiesPreserved": true
+  },
+  "sourceCommit": "4796bb42ab894c350b361af96a9e6fb200d7cbcc",
+  "installer": {
+    "name": "Agbrio_0.1.28_x64-setup.exe",
+    "size": 276098127,
+    "sha256": "82828f4ceb6f915b3b40e5fd04d7bee556d08c6bf098a599fed192382073c9ee"
   }
 }
