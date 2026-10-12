@@ -51,6 +51,7 @@ async function enterAdvancedConnection() {
 }
 
 beforeEach(() => {
+    composition.last=null;
   composition.last=null;
   api.nativeWriterAcceptanceAvailable.mockResolvedValue(false);
   eventHandlers.clear();
