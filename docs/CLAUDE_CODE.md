@@ -135,3 +135,36 @@ Run `node tools/claude-code-adapter/native-compat.mjs <Claude executable> <exist
 ## Setup correction32
 
 Native31 installation preserved all existing data/processes, but unmanaged local observation setup failed before creating any credential: it passed an empty static directory into the deployment parser. Fixed32 setup reads the actual existing loopback listener address and packaged plugin path; it never reparses or writes deployment settings. A real fixture listener with ephemeral port and no index.html proves setup plus authenticated callback, missing resource/listener creates no credential, and no provider starts. Live Claude activation/full reply acceptance remains OPEN.
+
+## Delivered32 / safe existing-session activation
+
+Corrected32 passed source Windows38205960554 and exact public installer38207804623.
+Normal native updating and genuine unmanaged-deployment observation setup are
+verified: the existing listener's address is used, a limited credential is generated,
+and the native plugin installs/enables with both secure options read back. Existing
+history, OAuth, pairing and subscription rows remain exact before any explicit
+endpoint change. This is not natural-reply acceptance; current-session activation
+and a real reply at the bound Bridge remain OPEN until observed.
+
+1. In desktop Bridge binding choose Claude Code, open connection settings and
+   generate one observation configuration. Keep it local and private.
+2. Add the shown packaged plugin directory as a local marketplace:
+   `claude plugin marketplace add "<plugin-directory>"`.
+3. Install `claude plugin install agbrio-bridge@agbrio-observation --scope user`.
+   This administrative command does not start a model session.
+4. Fill `hostUrl` and the sensitive `token` in the native plugin configuration
+   dialog. A trusted local tool may use `plugin configure ... --values-stdin`;
+   do not put the secret in command arguments, files, AI prompts or public logs.
+5. In the already-existing Desktop Code conversation, run `/reload-plugins` when
+   safe. Do not use `--force` or spend an uncached request just for validation.
+   If warned about cost/cache or restricted policy, leave activation pending.
+   Never start/resume a duplicate CLI task to work around it.
+6. Select the published native session UUID + canonical root in Agbrio, explicitly
+   save the chosen role, then verify the next naturally occurring complete answer.
+   No test message is needed. Binding changes revision; old scoped event filters
+   require an explicit client update and cannot be silently treated as current.
+
+Revoke the limited connection or disable the native plugin to stop observation.
+The observation plugin does not automatically bind sessions, submit prompts or
+forward replies. Existing assistant delegations and subscriptions retain their
+separate authorization rules; this setup does not broaden them.

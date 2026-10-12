@@ -15,14 +15,16 @@
     "publisherSignatureAndTamperRejection": "PASS",
     "sourceWindowsRun": 38205960554,
     "sourceWindows": "SUCCESS",
-    "exactReleasedWindows": "PENDING",
+    "exactReleasedWindows": "SUCCESS",
     "corePassed": 229,
     "coreIgnored": 1,
     "hostPassed": 229,
     "hostIgnored": 32,
-    "hostMainPassed": 1
+    "hostMainPassed": 1,
+    "exactReleasedWindowsRun": 38207804623,
+    "nativeSetup": "PASS_EXISTING_UNMANAGED_LISTENER"
   },
-  "installedNative": "0.1.31",
+  "installedNative": "0.1.32",
   "nativeSessionObservation": "NOT_EXECUTED",
   "realClaudeMessages": 0,
   "realClaudeModelRequests": 0,
@@ -32,5 +34,12 @@
     "Natural native session activation/full Bridge reply readback remain OPEN",
     "Claude production send/stop/goal/approval controls disabled",
     "Fixtures and signing are not live provider acceptance"
-  ]
+  ],
+  "installedExeSha256": "f1225828f1f73b04106c8f971e829e7b2b6583815f9380be29ba41a8a53169e2",
+  "nativePlugin": {
+    "installedVersion": "0.1.1",
+    "enabled": true,
+    "secureOptionsReadback": "hostUrl/token configured; no secrets recorded",
+    "currentSessionActivation": "PENDING_OWNER_SAFE_RELOAD"
+  }
 }
