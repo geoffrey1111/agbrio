@@ -184,3 +184,12 @@ Node10 and nativeVM2 checks pass, including fail-open identity errors, secret/ra
 exception omission and stable-ID retry. These are fixtures, not the current Code
 session. Do not restart/force reload or send a prompt to test activation. Keep
 original binding while genuine publisher registration/full reply are unproven.
+
+## Cross-project completion correction (source only)
+
+Completion ingestion now uses the resident owner-wide active-workstream index,
+not the selected-project UI snapshot. A regression switches to another project
+and requires the exact reply observation before any explicit chat read; it fails
+on the former code and passes after correction. Native setup plus callback tests2
+PASS; no provider runs. Installed0.1.32 is unchanged and does not contain this
+separate Host correction yet. Source publication is not desktop installation.

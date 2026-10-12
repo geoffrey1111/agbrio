@@ -16,9 +16,14 @@ fn event(root:&std::path::Path,session:&str,kind:&str,sequence:i64)->Event {
  let project=store.create_project("fictional Claude test".into(),None).unwrap();let w=store.create_workstream(&project.id,"fictional bridge".into()).unwrap();
  let side=|session:&str|RoleBindingInput{provider:"CLAUDE_CODE".into(),external_id:session.into(),label:"fictional".into(),cwd:None};
  let bindings=crate::role_bridge::bind(&core,&w.id,w.binding_revision,side(a),side(b)).unwrap();
+ // Resident callback must not depend on the currently selected UI project.
+ let other=store.create_project("other selected project".into(),None).unwrap();store.select_workspace(&other.id,None).unwrap();
+ assert!(store.snapshot().unwrap().workstreams.iter().all(|row|row.id!=w.id));
  let mut complete=event(temp.path(),a,"COMPLETE",3);complete.turn_id=Some(uuid::Uuid::new_v4().to_string());complete.text=Some("仅模拟验收\n\n```text\n完整指令\n```".into());complete.completed_at=Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64);
  let mut start=event(temp.path(),a,"RUNNING",2);start.turn_id=complete.turn_id.clone();ingest(&core,&pair.token,&start).unwrap();
  assert!(ingest(&core,&pair.token,&complete).unwrap());assert!(!ingest(&core,&pair.token,&complete).unwrap());
+ assert_eq!(store.reply_observations_for_workstream(&w.id).unwrap().len(),1); // before any explicit read/materialize
+ assert_eq!(store.snapshot().unwrap().selected_project_id.as_deref(),Some(other.id.as_str()));
  let state=crate::role_bridge::read(&core,&w.id,"DECISION").unwrap();assert_eq!(state.replies.len(),1);assert_eq!(state.replies[0].text,complete.text.clone().unwrap());
  let activity=crate::role_bridge::directory_activity(&core,&[w.id.clone()]).unwrap();assert_eq!(activity[0].sides[0].state,"COMPLETE");assert!(activity[0].sides[0].result_observation_id.is_some());
  let h=crate::role_bridge::prepare(&core,&w.id,"DECISION",&state.replies[0].id,"完整指令",&[]).unwrap();

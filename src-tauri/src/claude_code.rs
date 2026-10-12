@@ -35,7 +35,7 @@ pub(crate) fn ingest(core:&RouterCore,token:&str,event:&Event)->Result<bool,Stri
         if current.state!="COMPLETE" || current.turn_id!=event.turn_id {return Ok(inserted);}
         // Lifecycle/exact role identity is rechecked before creating observations.
         // No binding means no business notification or takeover of a new Bridge.
-        for workstream in core.store.snapshot()?.workstreams.into_iter().filter(|w|w.status=="ACTIVE"&&w.trashed_at.is_none()) {
+        for workstream in core.store.active_workstreams()?.into_iter().filter(|w|w.status=="ACTIVE"&&w.trashed_at.is_none()) {
             let bindings=core.store.role_bridge(&workstream.id)?;
             for side in [&bindings.decision,&bindings.execution].into_iter().flatten() {
                 if side.endpoint.provider==router_core::claude_code::PROVIDER && side.endpoint.external_id==event.session_id {
