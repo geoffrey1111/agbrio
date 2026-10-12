@@ -1,5 +1,9 @@
 # Windows alpha validation
 
+## 0.1.33 delivered and installed
+
+Source Windows38228339459 and exact public signed installer38233876498 SUCCESS. Installer276300456bytes, SHA256581aab2dad478c55799030b9385df3e585aa561221abea8c020ff9d7596e62c9; real trusted signature/tamper verification PASS. Normal native updater installed33, reports UP_TO_DATE; native named conversation radio and existing-connection check PASS with zero new credentials. Original data/grants/observation credentials/subscriptions and current shared processes preserved. No Claude message or original task restart. First-time app-owned native configuration and complete reply rendering at a bound Bridge remain separate OPEN gates; published code and reuse acceptance do not claim those passed.
+
 ## 0.1.33 named Claude conversations and explicit native setup
 
 Local engineering:560frontend/61files,229Core/2ignored,236Host/33ignored+main1;10latest picker cases and9scoped Host cases. Real read-only existing Desktop title-prefix projection PASS. Fictional desktop1280x900/phone430x932 has no overflow, visible footer, exact same-name/keyboard selection, manual setup0 and provider sends0. A shared-lock collision in parallel independent fixtures was corrected at the production Connect entry; full Host suite then passed. Public Windows build and exact signed installer checks pending; source is not installed acceptance. Real first-time application setup and a complete naturally arriving Bridge reply remain OPEN.

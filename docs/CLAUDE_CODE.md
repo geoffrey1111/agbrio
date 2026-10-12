@@ -1,5 +1,9 @@
 # Claude Code Desktop — quota-free engineering phase
 
+## 0.1.33 delivered and installed
+
+Source Windows38228339459 and exact public signed installer38233876498 SUCCESS. Installer276300456bytes, SHA256581aab2dad478c55799030b9385df3e585aa561221abea8c020ff9d7596e62c9; real trusted signature/tamper verification PASS. Normal native updater installed33, reports UP_TO_DATE; native named conversation radio and existing-connection check PASS with zero new credentials. Original data/grants/observation credentials/subscriptions and current shared processes preserved. No Claude message or original task restart. First-time app-owned native configuration and complete reply rendering at a bound Bridge remain separate OPEN gates; published code and reuse acceptance do not claim those passed.
+
 ## Named conversations and explicit desktop Connect (0.1.33)
 
 Conversation title is primary, folder/status secondary, native UUID/version in identity details. Duplicate names remain distinct; exact native identity and canonical root still route. Missing titles are explicitly unnamed. Picker positions stay fixed during the visit; arrow/Home/End navigation selects the same native identities.

@@ -9,5 +9,10 @@
   "signingGate": "actual public-key signature and tamper rejection PASS",
   "realFirstTimeAppConfiguration": "NOT_EXECUTED",
   "naturalBridgeReply": "OPEN",
-  "exactPublicInstallerWindows": "PENDING"
+  "exactPublicInstallerWindows": "SUCCESS",
+  "exactPublicInstallerWindowsRun": 38233876498,
+  "nativeInstalledVersion": "0.1.33",
+  "nativeNameAndReuseCheck": "PASS",
+  "nativeCheckNewCredentials": 0,
+  "currentOldDataAndSharedProcesses": "PRESERVED"
 }
