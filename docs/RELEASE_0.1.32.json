@@ -1,0 +1,31 @@
+{
+  "version": "0.1.32",
+  "interface": "2026.10.12-43",
+  "sourceCommit": "726d39bc47eb33824c2555d5d64ccda9159ba00f",
+  "scope": "Read actual current Host listener for observation setup; no deployment config parsing/mutation",
+  "pluginVersion": "0.1.1",
+  "installerBytes": 276232479,
+  "installerSha256": "16a07da73ddc3024d6bf1012c4cec405ffef836934df3ae19d4841a371a9b428",
+  "checks": {
+    "publicFrontend": 544,
+    "nodeAdapterTests": 8,
+    "nativeVmNoSessionTests": 1,
+    "liveListenerSetupCallbackRegression": "PASS",
+    "strictNativeValidator": "PASS",
+    "publisherSignatureAndTamperRejection": "PASS",
+    "sourceWindowsRun": 38205960554,
+    "sourceWindows": "PENDING",
+    "exactReleasedWindows": "PENDING"
+  },
+  "installedNative": "0.1.31",
+  "nativeSessionObservation": "NOT_EXECUTED",
+  "realClaudeMessages": 0,
+  "realClaudeModelRequests": 0,
+  "bindingChanged": false,
+  "existingSubscriptionsChanged": false,
+  "limitations": [
+    "Natural native session activation/full Bridge reply readback remain OPEN",
+    "Claude production send/stop/goal/approval controls disabled",
+    "Fixtures and signing are not live provider acceptance"
+  ]
+}
