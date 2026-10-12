@@ -36,7 +36,10 @@ From the packaged plugin directory, add its local marketplace with `claude plugi
 
 ## Connection diagnostics (plugin0.1.2)
 
-`/agbrio-status` is a native immediate command, not a skill or model request.
+Only when successfully registered by the running module, `/agbrio-status` is a
+native immediate command. Its actual Desktop registration has NOT been verified;
+do not use it as a diagnostic in the current Desktop integration. An unregistered
+slash command can enter the ordinary prompt flow and reach a plan limit.
 Its output contains only phase, allowlisted error, HTTP status, queue counters and
 whether native identity is ready. It does not disclose tokens, URLs, session IDs,
 project paths or reply text. Observation failures produce one sanitized native log

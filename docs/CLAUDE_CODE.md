@@ -193,3 +193,33 @@ and requires the exact reply observation before any explicit chat read; it fails
 on the former code and passes after correction. Native setup plus callback tests2
 PASS; no provider runs. Installed0.1.32 is unchanged and does not contain this
 separate Host correction yet. Source publication is not desktop installation.
+
+## Desktop directory-loaded configuration identity: observed gap
+
+A live Desktop engine2.1.295 loads local plugin directories through Agent SDK
+initialization. The same cache directory has two administrative configuration
+identities: installed `agbrio-bridge@agbrio-observation` reports hostUrl/token
+configured, but `claude --plugin-dir "<exact-plugin-directory>" plugin configure
+agbrio-bridge@inline --json` reports both unset. This is a verified configuration
+namespace difference; fixing it still requires genuine publisher acceptance and
+must not be called the proven complete root cause before that result.
+
+An actual Desktop `/reload-plugins` local-command result was recorded, but no
+publisher registration followed. `/agbrio-status` subsequently appeared as plain
+user text with no native local-command receipt and encountered the plan limit.
+Do not recommend this slash diagnostic in the current Desktop integration until
+the running command registry is independently proven. Do not use a prompt or
+wait for quota reset to test a command; preserve the owner's original unfinished
+task. A usage-limit card does not prove which task automatic resume will retry.
+
+The owner explicitly authorized reuse of only the existing observation credential
+for the same plugin's directory identity. Automated private configuration was
+refused by the tool approval system before execution, including the normal
+re-attempt after that explicit grant. No credential read/mutation ran. No alternate
+script, plaintext config write, credential export or approval bypass is permitted.
+This is an automation-environment limitation, not a claim that the official local
+client configuration operation is unsupported. The real connection remains OPEN.
+
+Source Windows38214509328 for af12e235 PASS (frontend, Core, native and installer
+build). Installed desktop remains the earlier exact signed0.1.32. The cross-project
+Host correction is published source only; no replacement installer was released.
