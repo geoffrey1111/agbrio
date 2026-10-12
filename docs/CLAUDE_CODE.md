@@ -1,6 +1,6 @@
 # Claude Code Desktop — quota-free engineering phase
 
-## 2026-10-12 — Owner-authored Claude replies (candidate 0.1.34)
+## 2026-10-12 — Owner-authored Claude replies (released 0.1.34)
 
 The owner now explicitly requested direct Claude Code replies and standalone conversation monitoring, with one genuinely needed owner message for real acceptance. This supersedes observation-only wording only for authenticated desktop/PWA manual text input. Do not generate additional Claude test prompts, restart/resume/abort the original task, alter native permissions/model, or enable autonomous/MCP/cross-provider Claude writes. Dot and its eight formal subscriptions are unchanged.
 
@@ -10,7 +10,7 @@ The official plugin 0.1.3 advertises manual-input protocol 1 on its existing aut
 
 Desktop/PWA use the existing quiet composer: pending/sent status on the message, no acknowledgement modal and no duplicate receipt row. Claude text replies inherit original model/permissions; attachments, native goal management, abort/steer and automatic Bridge relays remain unavailable. Only content received by this adapter is shown, not a complete historic native transcript. Input stays disabled until the new protocol is actually registered; installing a package alone is not readiness.
 
-Validation and publication receipts follow below. Genuine owner-message delivery is still OPEN; isolated tests are not real-provider acceptance.
+Agbrio0.1.34 is published and installed; official enabled user plugin0.1.3 is updated with existing credentials retained. Source Windows38252017715 and exact signed-installer Windows38255593360 both succeeded. The owner has an original task running and explicitly deferred /reload-plugins until completion. Current-session protocol readiness and genuine owner-message delivery remain OPEN; isolated tests and installation are not real-provider acceptance. Once the original task finishes, reload the plugin without --force, wait for protocol1, then open the Bridge original-chat action or the standalone watched conversation and send the actual needed text. Check the independently observed SENT receipt; an uncertain result must not be resent automatically.
 
 
 ## 2026-10-12 - Named conversations and explicit desktop connection (source candidate33)

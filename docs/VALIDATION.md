@@ -1,8 +1,12 @@
 # Windows alpha validation
 
-## Claude manual reply candidate0.1.34
+## 2026-10-12 — Claude manual replies released and installed 0.1.34
 
-564 frontend/61files, full Core231PASS/2ignored before one additional bootstrap regression (three scoped manual tests PASS), Host237PASS/33ignored,15Node fixtures, native engine2.1.295 strict validation and3isolated VM cases PASS. Mock desktop1280x900 and phone430x932 submit once, no acknowledgement modal, one displayed row, visible composer, no horizontal overflow. Full-history/receipt delay regression fixed. No real owner Claude prompt or provider cost. Public Windows, signed installer, local update and genuine owner-message receipt remain OPEN.
+Authenticated owner text replies and standalone Claude watches are implemented; the Bridge original-chat action uses the existing desktop/PWA composer. Manual input retains exact native session/root/binding identity, original model/permissions, durable at-most-once dispatch and independently observed stored-row SENT receipts. No acknowledgement modal; delayed history merges the sent row once. Autonomous/MCP/cross-provider Claude writes, attachments, goal/abort/steer remain closed.
+
+Release v0.1.34 is published and installed through the normal trusted updater; installed app reports UP_TO_DATE. Official plugin administration updated the enabled user plugin to0.1.3 without changing credentials. Source Windows38252017715 and exact public signed-installer Windows38255593360 SUCCESS; actual signature fixture1PASS, frontend564/61files+build, full Core and Host suites,16Node and3native isolated VM fixtures PASS. Signed shipping inputs cad90ab027b3387f078c963ba830d4d9f2fe75c4 and final release source be63965a232d8773a0b8f760d23e00d03305b571 differ only in a nonshipping test-fixture reset. Installer276371719bytes SHA25691b7a71131635def036369e1e9d46f67fff3183480d44d1b152b517a2a79707d.
+
+Native original-chat identity is visible. Nine protected DB tables and3private configuration files match; SQLite integrity/FKs PASS,8ACTIVE Events subscriptions and7shared process creation identities retained. No Claude/provider message sent, no original-task restart or binding change by the agent. Original task is now RUNNING; owner explicitly deferred native /reload-plugins until it completes. Actual current-session manual-input readiness and one genuinely needed owner-message delivery remain OPEN. After safe reload without --force, verify protocol1, then use Reply to original chat or standalone watch and inspect the independent receipt; no extra test prompt. [Delivery identity](RELEASE_0.1.34.json), [Claude contract](CLAUDE_CODE.md).
 
 ## 0.1.33 delivered and installed
 
