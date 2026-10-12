@@ -32,3 +32,6 @@ test('durable store failure makes zero submissions; unknown old attempts never r
 test('lost receipt transport retries only the same receipt, never the prompt',async()=>{
  const f=await fixture();await acceptManual(f.$,f.state,f.command);const fetch=f.$.http.fetch;f.$.http.fetch=async()=>{throw Error('offline');};await f.append();assert.equal(f.state.manualReceipt.status,'SENT');assert.equal(f.submits(),1);f.$.http.fetch=fetch;await flushReceipt(f.$,f.state);assert.equal(f.state.manualReceipt,null);assert.equal(f.posts.at(-1).messageId,row);assert.equal(f.submits(),1);
 });
+test('a native queued delivery may be meta while still storing the exact approved user-role text',async()=>{
+ const f=await fixture();await acceptManual(f.$,f.state,f.command);await f.append({door:'delivery',message:{type:'user',role:'user',isMeta:true,content:[{type:'text',text:f.command.text}]}});assert.equal(f.posts.at(-1).status,'SENT');assert.equal(f.posts.at(-1).messageId,row);assert.equal(f.submits(),1);
+});

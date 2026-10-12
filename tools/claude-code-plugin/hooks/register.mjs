@@ -129,7 +129,7 @@ export function registerManual(on,state){
   on('session.append',async($,e,next)=>{
     const result=await next(e);
     const active=state.manualActive;
-    if(!active||e.agentId||!['prompt','delivery'].includes(e.door)||e.origin?.kind!=='plugin'||e.origin.name!=='agbrio-bridge'||result?.message?.type!=='user'||result.message.isMeta||!nativeId(result.uuid))return result;
+    if(!active||e.agentId||!['prompt','delivery'].includes(e.door)||e.origin?.kind!=='plugin'||e.origin.name!=='agbrio-bridge'||result?.message?.type!=='user'||!nativeId(result.uuid))return result;
     const blocks=result.message.content;
     if(!Array.isArray(blocks)||blocks.some(b=>b.type!=='text'||typeof b.text!=='string'))return result;
     const text=blocks.map(b=>b.text).join('');
