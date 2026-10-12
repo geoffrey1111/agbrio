@@ -28,12 +28,12 @@ test('offline reviewed dispatch fences and durable replay suppress duplicate sub
 });
 test('observation registration sends metadata only; no control handler or model calls',async()=>{
  const callbacks=new Map(),posted=[];let heartbeat;
- register((name,fn)=>{callbacks.set(name,fn);return {catch:()=>{}};},{hostUrl:'http://127.0.0.1:12345',token:'a'.repeat(64)});
- const $={session:{id:async()=>sid,cwd:async()=>cwd,version:async()=>({version:'2.1.286'})},clock:{every:(_,fn)=>{heartbeat=fn;}},http:{fetch:async(url,init)=>{posted.push({url,event:JSON.parse(init.body)});return{ok:true,status:200};}}};
+ register((name,...args)=>{callbacks.set(name,args.at(-1));return {catch:()=>{}};},{hostUrl:'http://127.0.0.1:12345',token:'a'.repeat(64)});
+ const $={command:{register:async()=>{}},ui:{log:async()=>{}},session:{id:async()=>sid,cwd:async()=>cwd,version:async()=>({version:'2.1.286'})},clock:{every:(_,fn)=>{heartbeat=fn;}},http:{fetch:async(url,init)=>{posted.push({url,event:JSON.parse(init.body)});return{ok:true,status:200};}}};
  let passed=0;const next=async e=>{passed++;return e;};
  await callbacks.get('session.start')($,{},next);await heartbeat();
  assert.equal(posted[0].event.kind,'SESSION_START');assert.equal(posted[1].event.kind,'HEARTBEAT');assert.equal(posted[0].event.instanceId,posted[1].event.instanceId);assert.equal(passed,1);
- assert(!callbacks.has('prompt.submit'));assert(!callbacks.has('command.run'));assert(!('model' in $));
+ assert(!callbacks.has('prompt.submit'));assert(callbacks.has('command.run'));assert(!('model' in $));
 });
 test('concurrent duplicates submit once; reused request identity cannot change payload',async()=>{
  const $=api();const replies=await Promise.all([executeReviewedCommand($,command,context,{writesEnabled:true}),executeReviewedCommand($,command,context,{writesEnabled:true})]);
@@ -48,8 +48,8 @@ test('native interruption pins expected turn and pending approval never becomes 
  assert.equal((await executeReviewedCommand($,stop,context,{writesEnabled:true})).status,'ACCEPTED');assert.equal($.counts().aborts,1);
 });
 test('SDK turn.complete uses exact native turn and full final answer; interruption is not a reply',async()=>{
- const callbacks=new Map(),posted=[];register((name,fn)=>{callbacks.set(name,fn);return {catch:()=>{}};},{hostUrl:'http://127.0.0.1:12345',token:'a'.repeat(64)});
- const $={session:{id:async()=>sid,cwd:async()=>cwd,version:async()=>({version:'2.1.286'})},clock:{every:()=>{},now:async()=>1791763200000},http:{fetch:async(_,init)=>{posted.push(JSON.parse(init.body));return{ok:true};}}};
+ const callbacks=new Map(),posted=[];register((name,...args)=>{callbacks.set(name,args.at(-1));return {catch:()=>{}};},{hostUrl:'http://127.0.0.1:12345',token:'a'.repeat(64)});
+ const $={command:{register:async()=>{}},ui:{log:async()=>{}},session:{id:async()=>sid,cwd:async()=>cwd,version:async()=>({version:'2.1.286'})},clock:{every:()=>{},now:async()=>1791763200000},http:{fetch:async(_,init)=>{posted.push(JSON.parse(init.body));return{ok:true};}}};
  const next=async e=>e;
  await callbacks.get('session.start')($,{},next);
  await callbacks.get('turn.start')($,{turnId:mid},next);
@@ -68,4 +68,24 @@ test('permission observation error never retries an already-called native reques
  let calls=0;const next=async()=>{calls++;return{native:true};};next.called=true;
  await assert.rejects(()=>permissionError({}, {}, next),/AGBRIO_NATIVE_PERMISSION_UNCONFIRMED/);assert.equal(calls,0);
  next.called=false;assert.deepEqual(await permissionError({}, {}, next),{native:true});assert.equal(calls,1);
+});
+
+test('connection failures expose stages without secret or raw exceptions; retries retain event identity',async()=>{
+ const callbacks=new Map(),logs=[],posted=[];let heartbeat;let ok=false;
+ register((name,...args)=>{callbacks.set(name,args.at(-1));return{catch:()=>{}};},{hostUrl:'http://127.0.0.1:12345',token:'a'.repeat(64)});
+ const $={command:{register:async()=>{}},ui:{log:async t=>logs.push(t)},session:{id:async()=>sid,cwd:async()=>cwd,version:async()=>({version:'2.1.295'})},clock:{every:(_,f)=>heartbeat=f},http:{fetch:async(_,init)=>{posted.push(JSON.parse(init.body));return{ok,status:ok?200:403};}}};
+ let passed=0;await callbacks.get('session.start')($,{},async()=>passed++);await heartbeat();
+ const failed=JSON.parse((await callbacks.get('command.run')()).text);
+ assert.equal(failed.phase,'HTTP');assert.equal(failed.httpStatus,403);assert.equal(failed.error,'AGBRIO_ADAPTER_DELIVERY_UNCONFIRMED');assert.equal(logs.length,1);assert.equal(passed,1);
+ assert(!JSON.stringify(logs).includes('a'.repeat(64)));assert(!JSON.stringify(logs).includes(sid));assert(!JSON.stringify(logs).includes(cwd));
+ assert.equal(posted[0].eventId,posted[1].eventId);
+ ok=true;await heartbeat();const healthy=JSON.parse((await callbacks.get('command.run')()).text);assert.equal(healthy.phase,'CONNECTED');assert.equal(healthy.error,null);assert.equal(healthy.pendingEvents,0);
+});
+test('identity API failures pass through and report sanitized stage without publishing',async()=>{
+ const callbacks=new Map(),logs=[];let posts=0,passed=0;
+ register((name,...args)=>{callbacks.set(name,args.at(-1));return{catch:()=>{}};},{hostUrl:'http://127.0.0.1:12345',token:'a'.repeat(64)});
+ const $={command:{register:async()=>{}},ui:{log:async t=>logs.push(t)},session:{id:async()=>sid,cwd:async()=>cwd,version:async()=>{throw new Error('PRIVATE_CALLBACK_TOKEN_'+('a'.repeat(64)));}},http:{fetch:async()=>posts++}};
+ await callbacks.get('session.start')($,{},async()=>passed++);await new Promise(resolve=>setImmediate(resolve));
+ const status=JSON.parse((await callbacks.get('command.run')()).text);assert.equal(status.phase,'VERSION');assert.equal(status.error,'AGBRIO_VERSION_FAILED');assert.equal(status.identityReady,false);assert.equal(passed,1);assert.equal(posts,0);
+ assert.equal(logs.length,1);assert(!logs[0].includes('PRIVATE_CALLBACK'));assert(!logs[0].includes('a'.repeat(64)));
 });

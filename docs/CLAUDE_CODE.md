@@ -2,8 +2,9 @@
 
 Owner decision, 2026-10-12: implement Claude Code Desktop integration, but do not
 send messages using the owner's Claude Code or consume the limited quota.
-This document records a **source candidate**, not a released/native acceptance.
-Installed Agbrio remains0.1.30 unless a separate verified release is recorded.
+Agbrio0.1.32 is released and installed as recorded below. Real Claude session
+activation and naturally occurring reply acceptance remain OPEN. Plugin0.1.2 is
+a separate diagnostic update; successful installation is not live acceptance.
 
 ## 2026-10-12 continuation: live observation authorized
 
@@ -168,3 +169,18 @@ Revoke the limited connection or disable the native plugin to stop observation.
 The observation plugin does not automatically bind sessions, submit prompts or
 forward replies. Existing assistant delegations and subscriptions retain their
 separate authorization rules; this setup does not broaden them.
+
+## Diagnostic plugin0.1.2
+
+Observed defect: callback/init errors were swallowed, leaving no visible failure
+phase. Plugin0.1.2 records sanitized identity/API/delivery stages, HTTP status and
+bounded queue counters; reports only changed failures through the native log; and
+adds immediate `/agbrio-status` without a model/prompt/control call. Initialization
+errors pass the original session through. Credential/public-callback guards and
+production write-disable remain unchanged. Loader refusal precedes this command,
+so an absent command requires the actual reload result/load error, not speculation.
+
+Node10 and nativeVM2 checks pass, including fail-open identity errors, secret/raw
+exception omission and stable-ID retry. These are fixtures, not the current Code
+session. Do not restart/force reload or send a prompt to test activation. Keep
+original binding while genuine publisher registration/full reply are unproven.

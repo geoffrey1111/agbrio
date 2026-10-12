@@ -1,6 +1,6 @@
 {
   "name": "agbrio-bridge",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Observe exact local Claude Code sessions for Agbrio. Read-only by default; no model calls or automatic handoffs.",
   "author": {
     "name": "Agbrio"
