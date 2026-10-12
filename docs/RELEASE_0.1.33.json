@@ -1,0 +1,13 @@
+{
+  "version": "0.1.33",
+  "sourceCommit": "6a417da260744c9d8f77e9aff0f670c2b2f99d8b",
+  "sourceWindowsRun": 38228339459,
+  "sourceWindowsConclusion": "SUCCESS",
+  "installer": "Agbrio_0.1.33_x64-setup.exe",
+  "bytes": 276300456,
+  "sha256": "581aab2dad478c55799030b9385df3e585aa561221abea8c020ff9d7596e62c9",
+  "signingGate": "actual public-key signature and tamper rejection PASS",
+  "realFirstTimeAppConfiguration": "NOT_EXECUTED",
+  "naturalBridgeReply": "OPEN",
+  "exactPublicInstallerWindows": "PENDING"
+}
