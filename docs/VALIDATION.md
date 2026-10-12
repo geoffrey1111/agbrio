@@ -1,5 +1,9 @@
 # Windows alpha validation
 
+## Shared history response fix — 0.1.35 candidate
+
+A complete normalized history page may exceed the old16MiB shared WebSocket receive ceiling. Native-backend responses and the Core transport now use a bounded100MiB envelope, while owner-sent requests retain16MiB and all original localhost/process-owner/capability checks. Oversized backend replies report a safe category. The actual production transport regression verifies52939021bytes byte-for-byte, a following request on the same connection, rejection above100MiB and the smaller outbound request bound;21response/lifecycle checks pass. No provider/model prompt, user-history rewrite or automatic resubmission. Source correction is distinct from resident runtime activation and real Desktop acceptance; those remain pending until the fixed package/gateway is loaded. A running supervisor does not hot-reload its module simply because files change.
+
 ## 2026-10-12 — Claude manual replies released and installed 0.1.34
 
 Authenticated owner text replies and standalone Claude watches are implemented; the Bridge original-chat action uses the existing desktop/PWA composer. Manual input retains exact native session/root/binding identity, original model/permissions, durable at-most-once dispatch and independently observed stored-row SENT receipts. No acknowledgement modal; delayed history merges the sent row once. Autonomous/MCP/cross-provider Claude writes, attachments, goal/abort/steer remain closed.
