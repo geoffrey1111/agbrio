@@ -169,3 +169,7 @@ Desktop Settings → AI assistant offers a six-step human-operated guide, with c
 ## Claude Desktop Code observation
 
 Choose Claude Code in the Bridge binding picker. Generate an observation credential only on desktop, install/configure the packaged local plugin, then select its verified session/root. Existing sessions require safe plugin reload; never force reload or restart a live task. No test prompt, model call or write is enabled. [Detailed contract](CLAUDE_CODE.md).
+
+## Claude Code manual replies (0.1.34)
+
+Update the optional Agbrio plugin to0.1.3, safely reload plugins once in the original conversation without force, and wait for Agbrio to confirm manual input protocol1. Then choose Claude Code in monitored conversations or open Reply in its bound Bridge. Only owner-authored text is sent; this is not autonomous/MCP access. [Details](CLAUDE_CODE.md).

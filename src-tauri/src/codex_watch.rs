@@ -140,9 +140,21 @@ fn select_message(
     Ok(None)
 }
 pub(crate) fn candidates(core:&RouterCore)->Result<ExistingCodexThreadCatalog,String>{
- let bound:std::collections::HashSet<_>=core.store.bridge_codex_thread_ids()?.into_iter().collect();let mut catalog=crate::role_bridge::catalog(core)?;catalog.threads.retain(|t|!bound.contains(&t.id));Ok(catalog)
+ let claude=crate::claude_code::catalog(core)?;
+ let bound:std::collections::HashSet<_>=core.store.bridge_codex_thread_ids()?.into_iter().collect();
+ let mut catalog=match crate::role_bridge::catalog(core){Ok(c)=>c,Err(_) if !claude.sessions.is_empty()=>ExistingCodexThreadCatalog{threads:vec![],complete:false},Err(e)=>return Err(e)};
+ catalog.threads.retain(|t|!bound.contains(&t.id));
+ for s in claude.sessions {
+   if s.lease_until<=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64{continue;}
+   let key=format!("{}{}",router_core::store::claude_manual::PREFIX,s.session_id);
+   if core.store.codex_chat_context(&key).is_ok_and(|w|w.generation<0){continue;}
+   catalog.threads.push(ExistingCodexThreadCandidate{id:key,label:s.title.unwrap_or_else(||"未命名对话".into()),preview:Some("Claude Code".into()),updated_at:None,project_provenance:Some(s.cwd),recency_at:None,project_id:None,project_label:None,project_status:"PROJECTLESS".into()});
+ }
+ catalog.complete &= claude.complete;
+ Ok(catalog)
 }
 pub(crate) fn enable(core: &RouterCore, thread_id: &str) -> Result<(), String> {
+    if thread_id.starts_with(router_core::store::claude_manual::PREFIX){return crate::claude_chat::enable(core,thread_id);}
     let mut s = core
         .session
         .lock()
@@ -162,12 +174,13 @@ pub(crate) fn poll(
     watch: &CodexWatch,
     epoch: u64,
 ) -> Result<bool, String> {
+    if watch.thread_id.starts_with(router_core::store::claude_manual::PREFIX){return Ok(false);}
     let outcome = (|| {
         let mut s = session.lock().map_err(|_| "Router session unavailable")?;
         if s.codex_observer_epoch != epoch {
             return Ok(false);
         }
-        if s.codex_adapter_borrowed && s.adapter.is_none() { return Ok(false); }
+        if s.codex_adapter_borrowed&&s.adapter.is_none(){return Ok(false);}
         let a = s
             .adapter
             .as_mut()

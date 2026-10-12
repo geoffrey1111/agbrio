@@ -1,5 +1,12 @@
 # Agbrio observation plugin for Claude Code Desktop
 
+## Plugin 0.1.3: explicit owner replies
+
+Receiving remains automatic and quota-free. Only an authenticated owner Send in Agbrio submits the approved exact text to the original native session via the official Mods prompt API. No helper model call, new/resumed session, permission override, goal control, interrupt or autonomous/MCP relay. Original model and permissions apply. The existing heartbeat carries a single durable command offer; submission is not SENT until an independently stored native user row is observed. Unknown attempts never automatically resend; only receipts retry.
+
+After updating the installed plugin, safely run the built-in `/reload-plugins` once in the original conversation, without `--force`. Do not type `/agbrio-status` as a diagnostic prompt. Agbrio enables input only after observing protocol 1 from the real publisher. [Full contract](../../Docs/CLAUDE_CODE.md). Genuine owner-message acceptance is separate from SDK fixtures.
+
+
 Agbrio0.1.32 packages the observation adapter. Plugin0.1.2 adds connection
 failure diagnostics; static/native fixture checks are not real-session acceptance.
 Installing or reloading this plugin does not submit a model prompt. Live operation

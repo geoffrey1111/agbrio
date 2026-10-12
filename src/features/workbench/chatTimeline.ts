@@ -55,7 +55,7 @@ export function chatTimeline(history:ChatMessage[],observed:ObservedMessage[],re
    (receipt.mode!=='STEER'&&receipt.status==='SENT'?group.find(m=>m.role==='user'&&!m.receipt):undefined);
   if(match){match.receipt=receipt;continue;}
   if(['CANCELLED','FAILED','ACKNOWLEDGED'].includes(receipt.status)&&!currentAttemptIds.has(receipt.id))continue;
-  if(loaded&&receipt.status==='SENT'&&!nativeTurns.has(turn))continue;
+  if(loaded&&receipt.status==='SENT'&&!nativeTurns.has(turn)&&!currentAttemptIds.has(receipt.id))continue;
   const message:TimelineMessage={id:`receipt:${receipt.id}`,turnId:turn,role:'user',text:receipt.text,receipt};
   times.set(turn,Math.min(times.get(turn)??Infinity,receipt.createdAt));
   // A native page owns item order. Unreflected sends follow its known items;

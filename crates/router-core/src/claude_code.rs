@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 pub const PROVIDER: &str = "CLAUDE_CODE";
-/// Owner's quota boundary: this engineering phase cannot submit or abort a turn.
+/// Autonomous/MCP/cross-provider writes remain closed. A separate authenticated
+/// owner UI may submit a journaled manual text reply through ClaudeCodeAdapter.
 pub const WRITES_ENABLED: bool = false;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

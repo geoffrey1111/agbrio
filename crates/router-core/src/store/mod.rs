@@ -10,6 +10,7 @@ pub mod migration;
 pub mod relay;
 pub mod role_bridge;
 pub mod claude_code;
+pub mod claude_manual;
 pub mod codex_watch;
 pub mod watch_delivery;
 pub mod watch_reply;
@@ -770,6 +771,7 @@ impl RouterStore {
         role_bridge::migrate(&mut connection, &path)?;
         endpoint_claims::migrate(&mut connection, &path)?;
         claude_code::migrate(&mut connection, &path)?;
+        claude_manual::migrate(&mut connection)?;
         bridge_notifications::migrate(&mut connection)?;
         goal_control::migrate(&connection)?;
         assistant_processed::migrate(&connection)?;
@@ -3883,8 +3885,8 @@ mod tests {
                         "assistant_drafts",
                         "assistant_grants",
                         "assistant_sent_handoffs",
-                        "claude_connections",
-                        "claude_event_journal",
+                        "claude_connections", "claude_control_leases",
+                        "claude_event_journal", "claude_manual_commands",
                         "claude_sessions",
                         "codex_feedback_drafts",
                         "codex_watch_events",

@@ -71,7 +71,7 @@ pub(super) fn migrate(c: &mut Connection, path: &Path) -> Result<(), String> {
     c.execute_batch("PRAGMA foreign_keys=ON;").map_err(db_error)?;
     result
 }
-fn auth(c: &Connection, token: &str, at: i64) -> Result<String, String> {
+pub(super) fn auth(c: &Connection, token: &str, at: i64) -> Result<String, String> {
     if token.len() != 64 || !token.bytes().all(|b| b.is_ascii_hexdigit()) { return Err("CLAUDE_CONNECTION_UNAUTHORIZED".into()); }
     let hash = format!("{:x}", Sha256::digest(token.as_bytes()));
     c.query_row("SELECT id FROM claude_connections WHERE token_hash=?1 AND revoked_at IS NULL AND expires_at>?2", params![hash, at], |r| r.get(0)).optional().map_err(db_error)?.ok_or("CLAUDE_CONNECTION_UNAUTHORIZED".into())

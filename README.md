@@ -10,7 +10,7 @@ Do you already keep one agent conversation for decisions and another for impleme
 
 **Keep the reasoning in one conversation. Keep the execution in another. Carry the right work between them.**
 
-[Download Windows v0.1.33](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.33) · [Install and pair](docs/SETUP.md) · [Connect an assistant](docs/ASSISTANT_CONNECTION_GUIDE.en.md) · [MIT license](LICENSE)
+[Download Windows v0.1.34](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.34) · [Install and pair](docs/SETUP.md) · [Connect an assistant](docs/ASSISTANT_CONNECTION_GUIDE.en.md) · [MIT license](LICENSE)
 
 Optional daily reports: after real read-only acceptance, choose time (suggested22:00 local), timezone, delivery destination and delegated Bridges; explicitly submit to your assistant. It verifies real scheduler tools and the original saved task, or says unsupported. Change or disable the same task without duplicating it; disabling works without active Bridges/MCP. Read-only receipt windows and honest partial attribution: [daily reports](docs/DAILY_REPORTS.md).
 
@@ -63,7 +63,7 @@ The computer must stay powered on, awake and connected for live work. A new brow
 
 Windows x64 + Codex + paired PWA is the alpha scope. App languages: **English, Simplified Chinese, Traditional Chinese** (Settings → Language). Japanese and Korean are introduction translations; macOS and other execution agents are not verified release targets. Source data is review material, never a way to enlarge authorization. An accepted handoff does not prove its downstream task completed.
 
-[Build from source](docs/BUILD.md) · [Assistant protocol](docs/ASSISTANT_MCP.md) · [v0.1.33 changes](docs/RELEASE_0.1.26.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+[Build from source](docs/BUILD.md) · [Assistant protocol](docs/ASSISTANT_MCP.md) · [v0.1.34 changes](docs/RELEASE_0.1.26.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 [Contact the author](mailto:geoffreyzjx@qq.com) · [Report a problem](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [Suggest an improvement](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
 
@@ -80,3 +80,5 @@ Bridge now has a quiet **Codex usage** row. Open it to see native quota windows,
 These use actual UI components and fictional demo data; they are browser captures, not physical iPhone recordings.
 
 Claude Desktop Code observation is available as an optional plugin candidate: exact-session status/final replies, no automatic model calls, production sends disabled. Native live-session activation/reply delivery remain unverified until read back at Bridge. [Scope and setup](docs/CLAUDE_CODE.md).
+
+Claude Code now supports standalone monitored conversations and authenticated owner text replies to the original session. Native model/permissions are inherited; no autonomous/MCP Claude writer or goal control. Receipt requires a stored native message, not submit/HTTP success. Real owner-message acceptance remains separate. [Contract](docs/CLAUDE_CODE.md).

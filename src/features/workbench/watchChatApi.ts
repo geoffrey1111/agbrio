@@ -10,7 +10,7 @@ export type GoalTarget={threadId:string;generation:number;workstreamId:string|nu
 export type GoalControls={target:GoalTarget;canPause:boolean;canResume:boolean;resumeRequiresOwnerAnswer:boolean;blockedReason:string|null};
 export type GoalControlReceipt={id:string;threadId:string;payloadHash:string;status:"READY"|"SENDING"|"APPLIED"|"REJECTED"|"UNKNOWN";result:MobileCodexGoal|null;errorCode:string|null};
 export type NativeTurnDiagnostic={threadId:string;turnId:string;status:string;errorCode:string|null;willRetry:boolean|null;confirmedTerminal:boolean};
-export type WatchChatState = {latestTurn?:NativeTurnDiagnostic|null;goalControls?:GoalControls|null; publicMessages?:ChatMessage[]; activity?:"THINKING"|"EXECUTING"|null; checkedAt?:number; watch: CodexWatch; host: string; ownedTurnId: string | null; controllableTurnId?:string|null; externalBusy: boolean; replies: WatchReply[]; requests: MobileCodexRequest[]; goal: MobileCodexGoal | null };
+export type WatchChatState = {provider?:"CODEX"|"CLAUDE_CODE";inputReady?:boolean;latestTurn?:NativeTurnDiagnostic|null;goalControls?:GoalControls|null; publicMessages?:ChatMessage[]; activity?:"THINKING"|"EXECUTING"|null; checkedAt?:number; watch: CodexWatch; host: string; ownedTurnId: string | null; controllableTurnId?:string|null; externalBusy: boolean; replies: WatchReply[]; requests: MobileCodexRequest[]; goal: MobileCodexGoal | null };
 export type ChatCommand = { action: string; threadId: string; [key: string]: unknown };
 export type ChatMessage = { id: string; turnId: string; role: "user" | "assistant"; text: string };
 export type ChatHistory = { messages: ChatMessage[]; nextCursor: string | null };
@@ -29,5 +29,5 @@ export function cachedWatchChatApi(raw:WatchChatApi):WatchChatApi {
   return result;
  }};
 }
-export const desktopWatchChatApi = cachedWatchChatApi({state:threadId=>invoke("codex_watch_chat",{threadId}),command:input=>invoke("codex_watch_chat_command",{input})});
-export const webWatchChatApi = cachedWatchChatApi({state:threadId=>request(`/codex-watches/chat/${encodeURIComponent(threadId)}`),command:input=>request("/codex-watches/chat",{method:"POST",body:JSON.stringify(input)})});
+export const desktopWatchChatApi = cachedWatchChatApi({state:threadId=>invoke(threadId.startsWith("claude_code:")?"claude_watch_chat":"codex_watch_chat",{threadId}),command:input=>invoke(input.threadId.startsWith("claude_code:")?"claude_watch_chat_command":"codex_watch_chat_command",{input})});
+export const webWatchChatApi = cachedWatchChatApi({state:threadId=>request(`${threadId.startsWith("claude_code:")?"/claude-code/chat":"/codex-watches/chat"}/${encodeURIComponent(threadId)}`),command:input=>request(input.threadId.startsWith("claude_code:")?"/claude-code/chat":"/codex-watches/chat",{method:"POST",body:JSON.stringify(input)})});

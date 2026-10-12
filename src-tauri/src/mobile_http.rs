@@ -288,6 +288,9 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         .route("/v1/mobile/workstreams", get(workstreams))
         .route("/v1/mobile/claude-code/sessions", get(claude_code_sessions))
         .route("/v1/claude-code/events", post(claude_code_event))
+        .route("/v1/claude-code/receipts", post(claude_code_receipt))
+        .route("/v1/mobile/claude-code/chat/{thread_id}", get(claude_chat_state))
+        .route("/v1/mobile/claude-code/chat", post(claude_chat_command))
         .route("/v1/mobile/bridge-activity", post(bridge_activity))
         .route("/v1/mobile/workstreams/{workstream_id}", get(workstream))
         .route("/v1/mobile/workstreams/{workstream_id}/role-bridge", get(role_bridge_state).post(role_bridge_command))
@@ -1262,10 +1265,23 @@ async fn claude_code_event(State(state):State<MobileHttpState>,headers:HeaderMap
  // Dedicated observation-only credential. No mobile/OAuth/Cloudflare grants
  // permit publishing adapter state. Refuse browser and public proxy traffic.
  let token=claude_adapter_token(&headers)?;
+ let control=headers.get("x-agbrio-control-version").and_then(|h|h.to_str().ok())==Some("1");
  let core=state.core.clone();
- let inserted=run_core_blocking("Claude Code observation",move||crate::claude_code::ingest(&core,&token,&event)).await?;
- Ok(Json(serde_json::json!({"accepted":true,"duplicate":!inserted,"writesEnabled":false})))
+ let result=run_core_blocking("Claude Code adapter",move||{
+   let inserted=crate::claude_code::ingest(&core,&token,&event)?;
+   crate::claude_chat::update_watch(&core,&event.session_id)?;
+   let command=if control {core.store.offer_claude_manual(&token,&event)?}else{None};
+   Ok(serde_json::json!({"accepted":true,"duplicate":!inserted,"writesEnabled":false,"manualInputProtocol":if control{Some(1)}else{None},"command":command}))
+ }).await?;
+ Ok(Json(result))
 }
+async fn claude_code_receipt(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<router_core::store::claude_manual::ManualReceipt>)->ApiResult<serde_json::Value>{
+ let token=claude_adapter_token(&headers)?;
+ state.core.store.accept_claude_manual_receipt(&token,&input).map_err(core_error)?;
+ Ok(Json(serde_json::json!({"accepted":true})))
+}
+async fn claude_chat_state(State(state):State<MobileHttpState>,headers:HeaderMap,Path(thread_id):Path<String>)->ApiResult<serde_json::Value>{authenticated(&headers,&state,false).await?;crate::claude_chat::state(&state.core,&thread_id).map(Json).map_err(core_error)}
+async fn claude_chat_command(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<crate::watch_chat::ChatCommand>)->ApiResult<serde_json::Value>{authenticated(&headers,&state,true).await?;crate::claude_chat::command(&state.core,input).map(Json).map_err(core_error)}
 async fn role_bridge_command(Path(workstream_id):Path<String>,State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<RoleBridgeCommand>)->ApiResult<serde_json::Value>{
  authenticated(&headers,&state,true).await?;let core=state.core.clone();
  let result=run_core_blocking("Role Bridge command",move||{

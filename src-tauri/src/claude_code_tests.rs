@@ -6,6 +6,25 @@ use std::{collections::HashMap,sync::{Arc,Mutex}};
 fn event(root:&std::path::Path,session:&str,kind:&str,sequence:i64)->Event {
  Event{event_id:uuid::Uuid::new_v4().to_string(),session_id:session.into(),instance_id:format!("20000000-0000-4000-8000-{}",&session[24..]),sequence,cwd:root.to_string_lossy().into(),version:"2.1.286".into(),kind:kind.into(),turn_id:None,text:None,completed_at:None}
 }
+#[test]fn manual_claude_chat_uses_current_bridge_generation_and_never_enables_mcp_writes(){
+ let temp=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
+ let core=RouterCore{chatgpt:Arc::new(Default::default()),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::new(Mutex::new(HashMap::new())),store:store.clone()};
+ let pair=store.create_claude_connection().unwrap();let sid="10000000-0000-4000-8000-000000000001";
+ ingest(&core,&pair.token,&event(temp.path(),sid,"SESSION_START",1)).unwrap();
+ let project=store.create_project("fictional".into(),None).unwrap();let w=store.create_workstream(&project.id,"fictional".into()).unwrap();
+ let input=RoleBindingInput{provider:"CLAUDE_CODE".into(),external_id:sid.into(),label:"original Claude".into(),cwd:Some(temp.path().to_string_lossy().into())};
+ ingest(&core,&pair.token,&event(temp.path(),"10000000-0000-4000-8000-000000000002","SESSION_START",1)).unwrap();
+ crate::role_bridge::bind(&core,&w.id,w.binding_revision,input.clone(),RoleBindingInput{external_id:"10000000-0000-4000-8000-000000000002".into(),..input}).unwrap();
+ let turn=uuid::Uuid::new_v4().to_string();let mut running=event(temp.path(),sid,"RUNNING",2);running.turn_id=Some(turn.clone());ingest(&core,&pair.token,&running).unwrap();
+ let mut complete=event(temp.path(),sid,"COMPLETE",3);complete.turn_id=Some(turn.clone());complete.text=Some("observed original answer".into());complete.completed_at=Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64);ingest(&core,&pair.token,&complete).unwrap();
+ let key=format!("claude_code:{sid}");let before=crate::claude_chat::state(&core,&key).unwrap();assert_eq!(before["inputReady"],false);let generation=before["watch"]["generation"].as_i64().unwrap();assert!(generation<0);
+ let mut beat=event(temp.path(),sid,"HEARTBEAT",4);beat.turn_id=Some(turn.clone());ingest(&core,&pair.token,&beat).unwrap();store.offer_claude_manual(&pair.token,&beat).unwrap();assert_eq!(crate::claude_chat::state(&core,&key).unwrap()["inputReady"],true);
+ let command=|generation|crate::watch_chat::ChatCommand::Send{thread_id:key.clone(),id:uuid::Uuid::new_v4().to_string(),generation,source_sequence:None,expected_turn_id:Some(turn.clone()),mode:"SEND".into(),text:"owner supplied actual reply".into(),options:Default::default()};
+ assert_eq!(crate::claude_chat::command(&core,command(generation-1)).unwrap_err(),"REPLY_TARGET_CHANGED_REFRESH");
+ let r=crate::claude_chat::command(&core,command(generation)).unwrap();assert_eq!(r["status"],"QUEUED");let offered=store.offer_claude_manual(&pair.token,&beat).unwrap().unwrap();assert_eq!(offered.session_id,sid);
+ assert!(!router_core::claude_code::WRITES_ENABLED);assert_eq!(router_core::claude_code::require_write_capability().unwrap_err(),"CLAUDE_WRITES_DISABLED_BY_OWNER");
+ assert!(crate::claude_chat::command(&core,crate::watch_chat::ChatCommand::Stop{thread_id:key,turn_id:turn}).is_err());
+}
 #[test] fn claude_fixture_bridge_read_review_and_send_gate_without_any_provider() {
  let temp=tempfile::tempdir().unwrap();
  let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());

@@ -85,3 +85,10 @@ it('a dispatched queued reply with native material text decorates its initiating
  const result=chatTimeline([m('t2','u2','user','prompt\nMaterial manifest: demo.txt'),source],[],[reply],source,true);
  expect(result.map(x=>x.id)).toEqual(['u2','a2']);expect(result[0].receipt?.id).toBe('queued');
 });
+it('keeps the current send visible until its native history arrives, then merges it once',()=>{
+ const sent=receipt('current','next','current prompt',250,'SENT');
+ const pendingHistory=chatTimeline([source],[],[sent],source,true,undefined,false,new Set(['current']));
+ expect(pendingHistory.filter(m=>m.text==='current prompt')).toHaveLength(1);
+ const confirmedHistory=chatTimeline([source,m('next','native-user','user','current prompt')],[],[sent],source,true,undefined,false,new Set(['current']));
+ expect(confirmedHistory.filter(m=>m.text==='current prompt')).toHaveLength(1);expect(confirmedHistory.find(m=>m.id==='native-user')?.receipt?.id).toBe('current');
+});

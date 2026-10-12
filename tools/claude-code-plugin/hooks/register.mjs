@@ -7,7 +7,7 @@ export function hostOrigin(value) {
   return u.origin;
 }
 function diagnostic(state) {
-  return JSON.stringify({pluginVersion:'0.1.2',mode:'OBSERVATION_ONLY',phase:state.phase,error:state.error,httpStatus:state.httpStatus,identityReady:!!state.identity,pendingEvents:state.pending.length,deliveredEvents:state.delivered,writesEnabled:false});
+  return JSON.stringify({pluginVersion:'0.1.3',mode:'OWNER_MANUAL_INPUT',phase:state.phase,error:state.error,httpStatus:state.httpStatus,identityReady:!!state.identity,pendingEvents:state.pending.length,deliveredEvents:state.delivered,writesEnabled:false,manualInputProtocol:1});
 }
 function noteError(state, error) {
   const message=typeof error?.message==='string' ? error.message : '';
@@ -24,10 +24,12 @@ async function flush($, state) {
   while (state.pending.length) {
     state.phase='HTTP';
     let response;
-    try { response = await $.http.fetch(`${state.origin}/v1/claude-code/events`, {method: 'POST', headers: {'content-type': 'application/json', authorization: `Bearer ${state.token}`}, body: JSON.stringify(state.pending[0])}); } catch {throw new Error('AGBRIO_HTTP_UNAVAILABLE');}
+    try { response = await $.http.fetch(`${state.origin}/v1/claude-code/events`, {method: 'POST', headers: {'content-type': 'application/json', authorization: `Bearer ${state.token}`, 'x-agbrio-control-version':'1'}, body: JSON.stringify(state.pending[0])}); } catch {throw new Error('AGBRIO_HTTP_UNAVAILABLE');}
     state.httpStatus=Number.isInteger(response.status) ? response.status : null;
     if (!response.ok) throw new Error('AGBRIO_ADAPTER_DELIVERY_UNCONFIRMED');
     state.pending.shift();state.delivered++;state.phase='CONNECTED';state.error=null;state.reported=null;
+    let envelope;try{envelope=JSON.parse(response.text||'{}');}catch{throw new Error('AGBRIO_COMMAND_RESPONSE_INVALID');}
+    if(envelope.command) await acceptManual($,state,envelope.command);
   }
 }
 function emit($, state, kind, extra = {}) {
@@ -42,6 +44,7 @@ export function register(on, options) {
   const origin = hostOrigin(options.hostUrl);
   if (!/^[0-9a-f]{64}$/.test(options.token ?? '')) throw new Error('AGBRIO_ADAPTER_TOKEN_REQUIRED');
   const state = {origin, token: options.token, instanceId: crypto.randomUUID(), identity: null, sequence: 0, turnId: null, stopped: false, queue: Promise.resolve(), pending: [],phase:'REGISTERED',error:null,httpStatus:null,delivered:0,reported:null};
+  registerManual(on,state);
   on('command.run', {command:'agbrio-status'}, async () => ({text:diagnostic(state)}));
   on('session.start', async ($, e, next) => {
     // This is a native immediate command, not a prompt/model/tool registration.
@@ -53,7 +56,7 @@ export function register(on, options) {
       if (!nativeId(sessionId) || !/^\d+\.\d+\.\d+$/.test(version)) throw new Error('AGBRIO_NATIVE_IDENTITY_UNAVAILABLE');
       state.identity={sessionId,cwd,version};
       void emit($,state,'SESSION_START').catch(async error=>{noteError(state,error);await report($,state);});
-      $.clock.every(5_000,async()=>{try {await emit($,state,'HEARTBEAT');} catch(error){noteError(state,error);await report($,state);}});
+      $.clock.every(5_000,async()=>{try {await flushReceipt($,state);await emit($,state,'HEARTBEAT');} catch(error){noteError(state,error);await report($,state);}});
     } catch(error) {noteError(state,error);void report($,state);}
     return next(e);
   });
@@ -77,4 +80,64 @@ export function register(on, options) {
   });
   on('classic.PermissionRequest', async ($, e, next) => { if (!e.agent_id) void emit($, state, 'WAITING_DECISION').catch(async error => {noteError(state,error);await report($,state);}); return next(e); }).catch(async ($, e, next) => { if (next.called) throw new Error('AGBRIO_NATIVE_PERMISSION_UNCONFIRMED'); return next(e); });
   on('session.end', async ($, e, next) => { const delivery=emit($, state, 'SESSION_END'); state.stopped = true; void delivery.catch(async error => {noteError(state,error);await report($,state);}); return next(e); });
+}
+
+// Official Mods calls only. No model helper, child session or UI automation.
+export async function textHash(text){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text)))).map(v=>v.toString(16).padStart(2,'0')).join('');}
+function receiptKey(id){return `agbrio-manual-v1:${id}`;}
+async function postReceipt($,state,receipt){
+  const result=await $.http.fetch(`${state.origin}/v1/claude-code/receipts`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${state.token}`},body:JSON.stringify(receipt)});
+  if(!result.ok)throw new Error('AGBRIO_RECEIPT_UNCONFIRMED');
+}
+async function saveReceipt($,state,status,messageId=null){
+  const command=state.manualActive;
+  if(!command)return;
+  const receipt={requestId:command.requestId,sessionId:command.sessionId,instanceId:command.instanceId,cwd:command.cwd,status,messageId,textSha256:command.textSha256};
+  state.manualReceipt=receipt;
+  try{await $.store.set(receiptKey(command.requestId),{fingerprint:command.fingerprint,receipt});}catch{if(status!=='SENT')throw new Error('AGBRIO_RECEIPT_STORAGE_UNAVAILABLE');}
+  try{await postReceipt($,state,receipt);state.manualReceipt=null;}catch{}
+}
+export async function flushReceipt($,state){if(state.manualReceipt){const current=state.manualReceipt;await postReceipt($,state,current);if(state.manualReceipt===current)state.manualReceipt=null;}}
+export async function acceptManual($,state,command){
+  if(!command)return;
+  if(!state.identity||state.stopped||!nativeId(command.requestId)||command.sessionId!==state.identity.sessionId||command.instanceId!==state.instanceId||command.cwd!==state.identity.cwd||typeof command.text!=='string'||!command.text.trim()||new TextEncoder().encode(command.text).length>100_000||await textHash(command.text)!==command.textSha256)throw new Error('AGBRIO_COMMAND_TARGET_INVALID');
+  const fingerprint=JSON.stringify([command.sessionId,command.instanceId,command.cwd,command.textSha256]);
+  const key=receiptKey(command.requestId);
+  const old=await $.store.get(key);
+  if(old){
+    if(old.fingerprint!==fingerprint)throw new Error('AGBRIO_COMMAND_REPLAY_CONFLICT');
+    // Even a previously interrupted/unknown attempt is NEVER submitted again.
+    state.manualReceipt=old.receipt;await flushReceipt($,state);return;
+  }
+  if(state.manualActive)throw new Error('AGBRIO_COMMAND_WRITER_BUSY');
+  const active={...command,fingerprint,provenSent:false,notSent:false};
+  state.manualActive=active;
+  try{
+    // A durable uncertainty marker is required before entering the physical call.
+    // If persistence fails, no prompt is submitted.
+    await $.store.set(key,{fingerprint,receipt:{requestId:command.requestId,sessionId:command.sessionId,instanceId:command.instanceId,cwd:command.cwd,status:'UNKNOWN',messageId:null,textSha256:command.textSha256}});
+    const result=await $.prompt.submit({text:command.text});
+    // Other mods can rewrite the result after core. A refusal-looking answer
+    // alone cannot prove that no prompt was queued, so remain fail closed.
+    if(result?.drop&&!active.provenSent)await saveReceipt($,state,'UNKNOWN');
+    // submit resolving only proves acceptance/queueing, not a transcript row.
+    // session.append below is the independent stored-message receipt.
+  }catch(error){if(!active.provenSent)try{await saveReceipt($,state,'UNKNOWN');}catch{}throw error;}
+  finally{if(state.manualActive===active&&(active.provenSent||active.notSent))state.manualActive=null;}
+}
+export function registerManual(on,state){
+  on('session.append',async($,e,next)=>{
+    const result=await next(e);
+    const active=state.manualActive;
+    if(!active||e.agentId||!['prompt','delivery'].includes(e.door)||e.origin?.kind!=='plugin'||e.origin.name!=='agbrio-bridge'||result?.message?.type!=='user'||result.message.isMeta||!nativeId(result.uuid))return result;
+    const blocks=result.message.content;
+    if(!Array.isArray(blocks)||blocks.some(b=>b.type!=='text'||typeof b.text!=='string'))return result;
+    const text=blocks.map(b=>b.text).join('');
+    if(text!==active.text||await textHash(text)!==active.textSha256)return result;
+    // A failed receipt transport must never abort/change the user's native row.
+    active.provenSent=true;
+    try{await saveReceipt($,state,'SENT',result.uuid);}catch{}
+    if(state.manualActive===active)state.manualActive=null;
+    return result;
+  }).catch(async($,e,next)=>{if(next.called)throw new Error('AGBRIO_NATIVE_RECEIPT_UNCONFIRMED');return next(e);});
 }

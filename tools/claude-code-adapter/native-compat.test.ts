@@ -1,4 +1,28 @@
 import {expect,test,mock} from 'claude-code/testing';
+test('native VM submits one owner command and receipts the independently stored row',async(driver,on)=>{
+ mock.store(on);const clock=mock.clock(on,{now:1791777600000});let submitCount=0;let offered=false;const receipts=[];
+ const sid='10000000-0000-4000-8000-000000000001',rid='30000000-0000-4000-8000-000000000001',row='40000000-0000-4000-8000-000000000001';
+ const text='Owner approved exact text';
+ const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text)))).map(v=>v.toString(16).padStart(2,'0')).join('');
+ on('command.register',()=>({value:undefined}));on('ui.log',()=>({value:undefined}));
+ on('session.id',()=>({value:sid}));on('session.cwd',()=>({value:'D:\\fixture'}));on('session.version',()=>({value:{version:'2.1.295'}}));
+ on('session.start',()=>({cwd:'D:\\fixture'}));
+ on('session.append',($,e,next)=>next(e));
+ on('prompt.submit',async($,e)=>{
+  submitCount++;
+  await driver.session.append({uuid:row,door:'prompt',origin:{kind:'plugin',name:'agbrio-bridge'},message:{type:'user',role:'user',content:[{type:'text',text:e.text}]}});
+  return{text:e.text};
+ });
+ on('http.fetch',($,e)=>{
+  const body=JSON.parse(e.init.body);
+  if(e.url.endsWith('/receipts')){receipts.push(body);return{value:{ok:true,status:200,headers:{},text:'{}'}};}
+  const command=body.kind==='HEARTBEAT'&&!offered?{requestId:rid,sessionId:sid,instanceId:body.instanceId,cwd:body.cwd,text,textSha256:hash}:null;
+  if(command)offered=true;
+  return{value:{ok:true,status:200,headers:{},text:JSON.stringify({accepted:true,command})}};
+ });
+ await driver.session.start({surface:'desktop',isInteractive:true,cwd:'D:\\fixture'});await clock.advance(5000);await clock.advance(5000);
+ expect(submitCount).toBe(1);expect(receipts.length).toBe(1);expect(receipts[0].status).toBe('SENT');expect(receipts[0].messageId).toBe(row);expect(receipts[0].textSha256).toBe(hash);
+});
 test('native VM observes full final bytes without sending or network',async ($,on)=>{
  on('command.register',()=>({value:undefined}));on('ui.log',()=>({value:undefined}));
  const clock=mock.clock(on,{now:1791777600000});const posted=[];

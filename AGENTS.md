@@ -11,4 +11,4 @@ Read README.md and docs/SETUP.md before setup. Windows + Codex + PWA is the curr
 - Never commit credentials, private keys, personal conversations, runtime/profile data or attachments. Test artifacts remain ignored.
 - Validate affected tests and real paths where feasible. Unit/browser/screenshot checks are not physical-device acceptance. Report unavailable platforms and account/security steps honestly.
 
-- Claude Code observation routes by native session UUID + canonical local root, fresh publisher lease and exact turn. Keep production writes closed; never submit test prompts without owner quota permission. Follow docs/CLAUDE_CODE.md.
+- Claude Code observation routes by native session UUID + canonical local root, fresh publisher lease and exact turn. Keep autonomous/MCP/cross-provider writes closed; authenticated owner manual text replies use a durable command and independent stored-row receipt; never submit test prompts without owner quota permission. Follow docs/CLAUDE_CODE.md.

@@ -7,8 +7,8 @@
     {
       "name": "agbrio-bridge",
       "source": "./",
-      "description": "Exact-session local observation only; no model calls or sends."
+      "description": "Exact-session observation and explicit owner text replies; no automatic sends."
     }
   ],
-  "description": "Observation-only Agbrio Bridge plugin for local Claude Code sessions."
+  "description": "Agbrio Bridge plugin for exact local Claude Code sessions."
 }

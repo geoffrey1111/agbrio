@@ -1,4 +1,17 @@
 {
+  "回复这个 Claude Code 对话": "Reply to this Claude Code conversation",
+  "本地对话": "Local conversations",
+  "先在「监听对话」选择你要关注的 Codex 或 Claude Code 对话。": "Choose a Codex or Claude Code conversation in Monitored conversations.",
+  "回复将发送到原 Claude Code 对话，模型和权限沿用原设置。这里只显示 Agbrio 已接收的消息。": "Replies go to the original Claude Code conversation with its existing model and permissions. Only messages received by Agbrio appear here.",
+  "接收已连接；发送模块尚未加载。更新插件后，在原对话重新加载插件即可。": "Receiving is connected; the sending module is not loaded yet. Update the plugin and reload it in the original conversation.",
+  "发送模块尚未加载，请先在原 Claude Code 对话重新加载插件。草稿已保留。": "The sending module is not loaded. Reload the plugin in the original Claude Code conversation. Your draft is saved.",
+  "Claude Code 正在等待权限确认，请先在原对话处理。草稿已保留。": "Claude Code is waiting for permission. Handle it in the original conversation. Your draft is saved.",
+  "Claude Code 当前支持文字回复，模型和权限沿用原设置。": "Claude Code currently supports text replies with the original model and permissions.",
+  "Claude Code 会话连接已变化，请重新检查原对话。不会自动重发。": "The Claude Code session connection changed. Check the original conversation. This message will not be resent automatically.",
+  "权限沿用原 Claude Code 设置。请在原对话处理权限请求。": "Permissions follow the original Claude Code settings. Handle permission requests in the original conversation.",
+  "最新公开回复": "Latest public reply",
+  "通知原文": "Original notification",
+
   "观察插件目录": "Observation plugin directory",
   "Claude Code 目录暂不可用，请确认 Host 已更新。": "The Claude Code directory is unavailable. Check that Host is up to date.",
   "Claude Code 当前仅观察；发送和中断尚未启用，不会自动消耗额度。": "Claude Code is observation only. Sending and interruption are disabled; this connection does not start model requests.",

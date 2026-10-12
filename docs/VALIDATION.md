@@ -1,5 +1,9 @@
 # Windows alpha validation
 
+## Claude manual reply candidate0.1.34
+
+564 frontend/61files, full Core231PASS/2ignored before one additional bootstrap regression (three scoped manual tests PASS), Host237PASS/33ignored,15Node fixtures, native engine2.1.295 strict validation and3isolated VM cases PASS. Mock desktop1280x900 and phone430x932 submit once, no acknowledgement modal, one displayed row, visible composer, no horizontal overflow. Full-history/receipt delay regression fixed. No real owner Claude prompt or provider cost. Public Windows, signed installer, local update and genuine owner-message receipt remain OPEN.
+
 ## 0.1.33 delivered and installed
 
 Source Windows38228339459 and exact public signed installer38233876498 SUCCESS. Installer276300456bytes, SHA256581aab2dad478c55799030b9385df3e585aa561221abea8c020ff9d7596e62c9; real trusted signature/tamper verification PASS. Normal native updater installed33, reports UP_TO_DATE; native named conversation radio and existing-connection check PASS with zero new credentials. Original data/grants/observation credentials/subscriptions and current shared processes preserved. No Claude message or original task restart. First-time app-owned native configuration and complete reply rendering at a bound Bridge remain separate OPEN gates; published code and reuse acceptance do not claim those passed.
