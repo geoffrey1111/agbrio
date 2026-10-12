@@ -1,0 +1,14 @@
+{
+  "name": "agbrio-observation",
+  "owner": {
+    "name": "Agbrio"
+  },
+  "plugins": [
+    {
+      "name": "agbrio-bridge",
+      "source": "./tools/claude-code-plugin",
+      "description": "Exact-session local observation only; no model calls or sends."
+    }
+  ],
+  "description": "Observation-only Agbrio Bridge plugin for local Claude Code sessions."
+}

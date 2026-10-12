@@ -9,6 +9,7 @@ pub mod dispatch;
 pub mod migration;
 pub mod relay;
 pub mod role_bridge;
+pub mod claude_code;
 pub mod codex_watch;
 pub mod watch_delivery;
 pub mod watch_reply;
@@ -254,6 +255,7 @@ pub struct CodexFeedbackDraft {
 pub enum Provider {
     Chatgpt,
     Codex,
+    ClaudeCode,
 }
 
 impl Provider {
@@ -261,6 +263,7 @@ impl Provider {
         match self {
             Self::Chatgpt => "CHATGPT",
             Self::Codex => "CODEX",
+            Self::ClaudeCode => "CLAUDE_CODE",
         }
     }
 }
@@ -766,6 +769,7 @@ impl RouterStore {
         run_normal_feature_migrations(&mut connection)?;
         role_bridge::migrate(&mut connection, &path)?;
         endpoint_claims::migrate(&mut connection, &path)?;
+        claude_code::migrate(&mut connection, &path)?;
         bridge_notifications::migrate(&mut connection)?;
         goal_control::migrate(&connection)?;
         assistant_processed::migrate(&connection)?;
@@ -1690,7 +1694,7 @@ impl RouterStore {
         self.with_connection(|connection| {
             let endpoint = endpoint_by_id(connection, endpoint_id)?;
             if endpoint.workstream_id != workstream_id
-                || !["CHATGPT", "CODEX"].contains(&endpoint.provider.as_str())
+                || !["CHATGPT", "CODEX", "CLAUDE_CODE"].contains(&endpoint.provider.as_str())
                 || endpoint.status != "ACTIVE"
             {
                 return Err("Reply observation requires the ACTIVE provider Endpoint for this Workstream".into());
@@ -3879,6 +3883,9 @@ mod tests {
                         "assistant_drafts",
                         "assistant_grants",
                         "assistant_sent_handoffs",
+                        "claude_connections",
+                        "claude_event_journal",
+                        "claude_sessions",
                         "codex_feedback_drafts",
                         "codex_watch_events",
                         "codex_watches",

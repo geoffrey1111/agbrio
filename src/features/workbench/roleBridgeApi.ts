@@ -6,6 +6,10 @@ import type { ExistingCodexThreadCatalog } from "../codex/types";
 import type { RoleBridgeApi, RoleBindings, RoleInput, RoleState, RoleHandoff } from "./RoleBridgePanel";
 
 export const desktopRoleBridgeApi: RoleBridgeApi = cachedRoleBridgeApi({
+ claudeSessions:()=>invoke("claude_code_sessions"),
+ claudeConnections:()=>invoke("claude_code_connections"),
+ claudeSetup:()=>invoke("claude_code_setup"),
+ claudeRevoke:connectionId=>invoke("claude_code_revoke",{connectionId}),
  chat:desktopWatchChatApi,
  markRead:codexApi.markReplyObservationRead,
  openChat:async thread=>(await desktopWatchChatApi.state(thread)).watch,

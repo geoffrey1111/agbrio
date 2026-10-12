@@ -9,6 +9,7 @@ import type { WatchChatApi } from "./watchChatApi";
 import {messageMedia} from "../codex/messageMedia";
 import type { ExistingCodexThreadCatalog } from "../codex/types";
 import { BridgeBindingDialog } from "./BridgeBindingDialog";
+import type {ClaudePickerApi} from "./ClaudeSessionPicker";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {NativeSurfaceContext} from "./NativeSurfaceContext";
@@ -27,8 +28,8 @@ import { Columns2, History, RefreshCw, Settings2, SquarePen, SlidersHorizontal, 
 
 export type BridgeRole = "DECISION" | "EXECUTION";
 export type RelayTextBlock = { id: string; kind: "INSTRUCTION" | "CODE" | "PROSE"; recommended: boolean; text: string };
-export type RoleInput = { provider: "CODEX" | "CHATGPT"; externalId: string; label: string; cwd?: string | null };
-type Endpoint = { id: string; provider: "CODEX" | "CHATGPT"; externalId: string; label: string };
+export type RoleInput = { provider: "CODEX" | "CHATGPT" | "CLAUDE_CODE"; externalId: string; label: string; cwd?: string | null };
+type Endpoint = { id: string; provider: RoleInput["provider"]; externalId: string; label: string };
 type Side = { role: BridgeRole; endpoint: Endpoint; cwd?: string | null };
 export type RoleBindings = { workstreamId: string; bindingRevision: number; decision?: Side | null; execution?: Side | null; explicitRoles: boolean };
 type Reply = { id: string; endpointId: string; text: string; assistantIdentity?: string | null; observedAt?: number;completedAt?:number|null;readAt?:number|null;handledAt?:number|null };
@@ -36,7 +37,7 @@ export type RoleHandoff = { id: string; workstreamId: string; approvedText: stri
 export type RoleActivity={role:BridgeRole;endpointId:string;state:string;checkedAt:number;turnId?:string|null;resultObservationId?:string|null;goalStatus?:string|null;turnActive?:boolean;latestTurn?:import("./watchChatApi").NativeTurnDiagnostic|null;goal?:import("../../mobile/api").MobileCodexGoal|null;goalControls?:import("./watchChatApi").GoalControls|null};
 export type AssistantProcessed={handoffId:string;observationId:string;sourceRole:BridgeRole;destinationEndpointId:string;destinationTurnId?:string|null;sentAt:number;expiresAt:number};
 export type RoleState = {assistantProcessed?:AssistantProcessed|null; bindings: RoleBindings; replies: Reply[]; handoffs: RoleHandoff[];handoffSources?:{id:string;role:BridgeRole;bindingRevision:number}[];activities?:RoleActivity[];snapshotAt?:number;readOutcome?:{role:BridgeRole;endpointId:string;state:string;retainedReply:boolean} };
-export type RoleBridgeApi = {
+export type RoleBridgeApi = ClaudePickerApi & {
   cachedState?: (workstream:string) => RoleState | undefined;
   subscribeState?: (workstream:string, listener:()=>void) => () => void;
   warmState?: (workstream:string) => void;
@@ -343,12 +344,12 @@ export function RoleBridgePanel({ workstreamId, workstreamName, api, onModeChang
       }}>{uiText("继续")}{h.status === "APPROVED" ? uiText("已批准交接") : uiText("审阅")}</button>}</article>)}</details> : null}</section>}
     </>}
     {chat&&api.chat&&<Dialog.Root open onOpenChange={open=>{if(!open)setChat(null);}}><Dialog.Portal><Dialog.Overlay className="v3-role-dialog-overlay"/><Dialog.Content className="v5-role-chat" aria-describedby={undefined}><Dialog.Title className="v5-sr-only">{uiText("原对话回复")}</Dialog.Title><WatchChat original={chat} api={api.chat} onBack={()=>setChat(null)} backLabel="Bridge"/></Dialog.Content></Dialog.Portal></Dialog.Root>}
-    {editing && <BridgeBindingDialog workstreamName={workstreamName} decision={decision} execution={execution} setDecision={setDecision} setExecution={setExecution} step={bindingStep} setStep={setBindingStep} catalog={catalog} busy={busy} error={uiText(error)} canSave={Boolean(bindings)} refresh={loadCatalog} close={() => setEditing(false)} save={() => void act(async valid => {
+    {editing && <BridgeBindingDialog claudeApi={api} workstreamName={workstreamName} decision={decision} execution={execution} setDecision={setDecision} setExecution={setExecution} step={bindingStep} setStep={setBindingStep} catalog={catalog} busy={busy} error={uiText(error)} canSave={Boolean(bindings)} refresh={loadCatalog} close={() => setEditing(false)} save={() => void act(async valid => {
         await api.bind(workstreamId, bindings!.bindingRevision, decision, execution);
         const next = await api.state(workstreamId); if(!valid()) return; setState(next); onModeChange?.(next.bindings.explicitRoles); setReview(null); setReviewOpen(false); setEditing(false); onBindingsChanged?.();
     })} />}
     {review && reviewOpen && <Dialog.Root open onOpenChange={open=>{if(!open&&!busy)setReviewOpen(false);}}><Dialog.Portal><Dialog.Overlay className="v3-role-dialog-overlay r2-relay-overlay"/><Dialog.Content className="r2-relay" aria-describedby={undefined}>
-      <RelayReviewSurface sources={(state?.replies??[]).filter(r=>r.endpointId===review.reply.endpointId).sort((a,b)=>(replyTime(a).at??0)-(replyTime(b).at??0))} sourceStopped={state?.activities?.some(a=>a.role===review.role&&a.goalStatus==="blocked"&&Date.now()-a.checkedAt<15000)??false} onSourceChange={switchReviewSource} review={review} busy={busy} oldReview={oldReview} sourceLabel={(review.role==="DECISION"?bindings?.decision:bindings?.execution)?.endpoint.label??label(review.role)} targetLabel={review.prepared?.destinationEndpoint.label??(review.role==="DECISION"?bindings?.execution:bindings?.decision)?.endpoint.label??uiText("未绑定")} media={messageMedia({kind:"ROLE",workstreamId,role:review.role,observationId:review.reply.id})} error={uiText(error)} connectionAction={connectionAction} change={setReview} attachmentChange={selectAttachments} submit={sendReview} close={()=>setReviewOpen(false)} discard={endReview} checkStatus={()=>void act(async valid=>{const next=await api.state(workstreamId);if(valid()){setState(next);const receipt=next.handoffs.find(item=>item.id===review.approved?.id);if(receipt)setReview({...review,approved:receipt});}})}/>
+      <RelayReviewSurface sources={(state?.replies??[]).filter(r=>r.endpointId===review.reply.endpointId).sort((a,b)=>(replyTime(a).at??0)-(replyTime(b).at??0))} sourceStopped={state?.activities?.some(a=>a.role===review.role&&a.goalStatus==="blocked"&&Date.now()-a.checkedAt<15000)??false} onSourceChange={switchReviewSource} sendDisabledReason={(review?.role==="DECISION"?bindings?.execution:bindings?.decision)?.endpoint.provider==="CLAUDE_CODE"?uiText("Claude Code 当前仅观察；发送和中断尚未启用，不会自动消耗额度。"):null} review={review} busy={busy} oldReview={oldReview} sourceLabel={(review.role==="DECISION"?bindings?.decision:bindings?.execution)?.endpoint.label??label(review.role)} targetLabel={review.prepared?.destinationEndpoint.label??(review.role==="DECISION"?bindings?.execution:bindings?.decision)?.endpoint.label??uiText("未绑定")} media={messageMedia({kind:"ROLE",workstreamId,role:review.role,observationId:review.reply.id})} error={uiText(error)} connectionAction={connectionAction} change={setReview} attachmentChange={selectAttachments} submit={sendReview} close={()=>setReviewOpen(false)} discard={endReview} checkStatus={()=>void act(async valid=>{const next=await api.state(workstreamId);if(valid()){setState(next);const receipt=next.handoffs.find(item=>item.id===review.approved?.id);if(receipt)setReview({...review,approved:receipt});}})}/>
     </Dialog.Content></Dialog.Portal></Dialog.Root>}
     {error && !editing && !reviewOpen && <><p role="alert">{uiText(error)}</p>{connectionAction}</>}
     {nativeSurface&&error&&!state&&!editing&&<button type="button" disabled={busy} onClick={()=>void act(async valid=>{const next=await api.state(workstreamId);if(valid()){setState(next);onModeChange?.(Boolean(next.bindings.explicitRoles));}})}>{uiText("重试")}</button>}

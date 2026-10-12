@@ -286,6 +286,8 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         .route("/v1/mobile/push/test-reply", post(test_reply_push))
         .route("/v1/mobile/push/rendered", post(record_rendered_push))
         .route("/v1/mobile/workstreams", get(workstreams))
+        .route("/v1/mobile/claude-code/sessions", get(claude_code_sessions))
+        .route("/v1/claude-code/events", post(claude_code_event))
         .route("/v1/mobile/bridge-activity", post(bridge_activity))
         .route("/v1/mobile/workstreams/{workstream_id}", get(workstream))
         .route("/v1/mobile/workstreams/{workstream_id}/role-bridge", get(role_bridge_state).post(role_bridge_command))
@@ -1246,6 +1248,24 @@ async fn role_bridge_state(Path(workstream_id):Path<String>,State(state):State<M
  authenticated(&headers,&state,false).await?;
  crate::role_bridge::state(&state.core,&workstream_id).map(Json).map_err(core_error)
 }
+
+async fn claude_code_sessions(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<router_core::store::claude_code::Catalog>{
+ authenticated(&headers,&state,false).await?;
+ state.core.store.claude_catalog().map(Json).map_err(core_error)
+}
+fn claude_adapter_token(headers:&HeaderMap)->Result<String,ApiError>{
+ if ["origin","cf-connecting-ip","cf-access-jwt-assertion","x-forwarded-for","forwarded"].iter().any(|h|headers.contains_key(*h)) {return Err(ApiError(StatusCode::FORBIDDEN,"CLAUDE_LOCAL_ADAPTER_ONLY".into()));}
+ let token=headers.get("authorization").and_then(|h|h.to_str().ok()).and_then(|v|v.strip_prefix("Bearer ")).ok_or_else(||ApiError(StatusCode::UNAUTHORIZED,"CLAUDE_CONNECTION_UNAUTHORIZED".into()))?.to_owned();
+ Ok(token)
+}
+async fn claude_code_event(State(state):State<MobileHttpState>,headers:HeaderMap,Json(event):Json<router_core::claude_code::Event>)->ApiResult<serde_json::Value>{
+ // Dedicated observation-only credential. No mobile/OAuth/Cloudflare grants
+ // permit publishing adapter state. Refuse browser and public proxy traffic.
+ let token=claude_adapter_token(&headers)?;
+ let core=state.core.clone();
+ let inserted=run_core_blocking("Claude Code observation",move||crate::claude_code::ingest(&core,&token,&event)).await?;
+ Ok(Json(serde_json::json!({"accepted":true,"duplicate":!inserted,"writesEnabled":false})))
+}
 async fn role_bridge_command(Path(workstream_id):Path<String>,State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<RoleBridgeCommand>)->ApiResult<serde_json::Value>{
  authenticated(&headers,&state,true).await?;let core=state.core.clone();
  let result=run_core_blocking("Role Bridge command",move||{
@@ -2009,6 +2029,17 @@ async fn chatgpt_handoff_review(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn claude_callback_credential_is_not_a_browser_or_public_proxy_grant(){
+        let mut headers=HeaderMap::new();assert!(claude_adapter_token(&headers).is_err());
+        headers.insert("authorization","Bearer fictional-observation-token".parse().unwrap());
+        assert_eq!(claude_adapter_token(&headers).unwrap(),"fictional-observation-token");
+        for name in ["origin","cf-connecting-ip","cf-access-jwt-assertion","x-forwarded-for","forwarded"]{
+            headers.insert(name,"fictional".parse().unwrap());
+            assert_eq!(claude_adapter_token(&headers).err().unwrap().0,StatusCode::FORBIDDEN);
+            headers.remove(name);
+        }
+    }
     use serde_json::json;
     use std::{
         fs,
@@ -2494,7 +2525,7 @@ process.stdout.write(JSON.stringify({keys:[jwk],token}));
             .to_path_buf();
         let evidence = root.join("runtime/integrated-provider-router");
         fs::create_dir_all(&evidence).unwrap();
-        let scratch = PathBuf::from(r"D:\fixtures\临时处理");
+        let scratch = PathBuf::from(r"D:\desktop\临时处理");
         fs::create_dir_all(&scratch).unwrap();
         let directory = tempfile::Builder::new()
             .prefix("aiwr-mobile-ui-")

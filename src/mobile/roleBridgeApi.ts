@@ -20,6 +20,7 @@ export function mobileRoleBridgeApi(workstreamId:string): RoleBridgeApi {
   edit: (handoffId,expectedHash,text) => roleCommand(workstreamId,{action:"EDIT",handoffId,expectedHash,text}),
   approve: (handoffId,expectedHash) => roleCommand(workstreamId,{action:"APPROVE",handoffId,expectedHash}),
   send: handoffId => roleCommand(workstreamId,{action:"SEND",handoffId}),
+  claudeSessions:()=>request("/claude-code/sessions"),
   threads: id => roleCommand(id,{action:"THREADS"}),
   connect: () => roleCommand(workstreamId,{action:"CONNECT"}),
  });

@@ -1,5 +1,10 @@
 # Windows alpha validation
 
+## Claude observation candidate0.1.31
+
+553 frontend/61files,229Core/2ignored,228Host/32ignored,7Node fixtures and production release check PASS in source. Current Desktop engine2.1.295 official strict validator passes after fixing a module-helper analyzer incompatibility. No real model request, native session startup/restart or observed Claude reply. Windows release/install checks and natural Bridge delivery are OPEN. Existing8Events scopes and daily task must remain unchanged.
+
+
 ## Daily report release0.1.30 — delivered, not universal client acceptance
 
 Source847a9b5 Windows38112631151 and exact signed installer38114215965 SUCCESS.541frontend,224Core/1ignored,226Host/32ignored+main1 PASS;16targeted configuration/guide tests. Actual publisher signature/tamper PASS. Normal installed app updated28→30 once, UP_TO_DATE;15static files exact, only official bundle marker differs in native EXE. Grant/pair/history IDs, same8subscriptions and4shared process creation identities preserved. Installed report entry present, copy disabled until explicit configuration; no real Bridge chosen or schedule submitted. Pure fixture proves offline/no-Bridge disabling and desktop/phone layout.

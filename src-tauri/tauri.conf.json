@@ -40,7 +40,8 @@
       "resources/web-availability": "web-availability",
       "resources/codex-shared": "codex-shared",
       "resources/hosted-relay": "hosted-relay",
-      "resources/mcp-dns": "mcp-dns"
+      "resources/mcp-dns": "mcp-dns",
+      "../tools/claude-code-plugin": "claude-code-plugin"
     },
     "externalBin": [
       "binaries/browser-executor-node"

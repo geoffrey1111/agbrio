@@ -160,3 +160,7 @@ References: [Tailscale Funnel](https://tailscale.com/docs/reference/tailscale-cl
 ## AI assistant connection
 
 Desktop Settings → AI assistant offers a six-step human-operated guide, with cloud/local routes and copy-to-AI instructions. Use your actual instance MCP URL, reuse valid authorization and consent personally. Verify actual tools in the intended dot/client. [English](ASSISTANT_CONNECTION_GUIDE.en.md) · [简体中文](ASSISTANT_CONNECTION_GUIDE.zh-CN.md) · [繁體中文](ASSISTANT_CONNECTION_GUIDE.zh-TW.md).
+
+## Claude Desktop Code observation
+
+Choose Claude Code in the Bridge binding picker. Generate an observation credential only on desktop, install/configure the packaged local plugin, then select its verified session/root. Existing sessions require safe plugin reload; never force reload or restart a live task. No test prompt, model call or write is enabled. [Detailed contract](CLAUDE_CODE.md).

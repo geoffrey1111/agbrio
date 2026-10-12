@@ -9,11 +9,11 @@ import type {RoleReview} from "./roleReviewDrafts";
 import {CopyAction} from "./NativeReaderActions";
 import {RelaySourcePicker,type RelaySource} from "./RelaySourcePicker";
 
-export function RelayReviewSurface({review,busy,oldReview,sourceLabel,targetLabel,media,error,connectionAction,change,attachmentChange,submit,close,discard,checkStatus,sources=[],sourceStopped=false,onSourceChange}:{
+export function RelayReviewSurface({review,busy,oldReview,sourceLabel,targetLabel,media,error,connectionAction,change,attachmentChange,submit,close,discard,checkStatus,sendDisabledReason=null,sources=[],sourceStopped=false,onSourceChange}:{
  review:RoleReview;busy:boolean;oldReview:boolean;sourceLabel:string;targetLabel:string;media:MediaResolver;
  error:string|null;connectionAction:ReactNode;change:(value:RoleReview)=>void;
  attachmentChange:(ids:string[])=>void;submit:()=>void;close:()=>void;discard:()=>void;checkStatus:()=>void;
- sources?:RelaySource[];sourceStopped?:boolean;onSourceChange?:(id:string)=>void;
+ sendDisabledReason?:string|null; sources?:RelaySource[];sourceStopped?:boolean;onSourceChange?:(id:string)=>void;
 }){
  useLanguage();
  const [view,setView]=useState<"BLOCKS"|"EDIT"|"PREVIEW">(review.approved?"PREVIEW":review.blocks?.length?"BLOCKS":"EDIT");
@@ -46,10 +46,10 @@ export function RelayReviewSurface({review,busy,oldReview,sourceLabel,targetLabe
     {review.prepared?.attachments.length? <div className="r2-relay-files">{review.prepared.attachments.map(file=><small key={file.id}>{file.filename} · {file.size} {uiText("字节")}</small>)}</div>:null}
     {oldReview&&<p role="status">{uiText("绑定已更改 · 此草稿仅供查看")}</p>}
     {receipt&&<p role="status" className="r2-relay-receipt"><Check size={18}/>{uiText(receipt)}</p>}
-    {error&&<p role="alert">{uiText(error)}</p>}{connectionAction}
+    {sendDisabledReason&&<p role="status">{sendDisabledReason}</p>}{error&&<p role="alert">{uiText(error)}</p>}{connectionAction}
   </div>
   <footer className="r2-relay-dock"><div><span aria-live="polite"><CircleCheck size={16}/>{tc("{0} 段",count)}</span><button type="button" className="r2-icon" aria-label={view==="EDIT"&&review.blocks?.length?uiText("选择段落"):uiText("编辑发送内容")} aria-pressed={view==="EDIT"} disabled={busy||frozen||!payload.trim()} onClick={()=>{if(view==="EDIT"&&review.blocks?.length){setView("BLOCKS");return;}if(review.choosing)change({...review,text:payload,choosing:false});setView("EDIT");}}>{view==="EDIT"&&review.blocks?.length?<Check size={20}/>:<Pencil size={20}/>}</button><button type="button" className="r2-icon" aria-label={uiText("预览发送内容")} aria-pressed={view==="PREVIEW"} disabled={busy||!payload.trim()} onClick={()=>setView("PREVIEW")}><Eye size={20}/></button></div>
-    {settled?<button type="button" className="r2-action" disabled={busy||(status==="SENT"&&!receiptReady)} onClick={status==="SENT"||status==="CANCELLED"?close:checkStatus}>{status==="SENT"||status==="CANCELLED"?uiText("返回对话"):uiText("检查送达状态")}</button>:<button type="button" className="r2-action" aria-label={uiText("确认并发送给{0}", review.role==="DECISION"?uiText("执行端"):uiText("控制端"))} disabled={!canSend} onClick={submit}><ArrowUp size={20}/>{busy?uiText("提交中…"):uiText("确认发送")}</button>}
+    {settled?<button type="button" className="r2-action" disabled={busy||(status==="SENT"&&!receiptReady)} onClick={status==="SENT"||status==="CANCELLED"?close:checkStatus}>{status==="SENT"||status==="CANCELLED"?uiText("返回对话"):uiText("检查送达状态")}</button>:<button type="button" className="r2-action" aria-label={uiText("确认并发送给{0}", review.role==="DECISION"?uiText("执行端"):uiText("控制端"))} disabled={!canSend||Boolean(sendDisabledReason)} onClick={submit}><ArrowUp size={20}/>{busy?uiText("提交中…"):uiText("确认发送")}</button>}
   </footer>
  </>;
 }

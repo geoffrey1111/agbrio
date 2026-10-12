@@ -3645,6 +3645,7 @@ pub(crate) fn external_project_link_from_input(
 ) -> Result<NewExternalProjectLink, String> {
     let provider = parse_provider(&input.provider)?;
     let (external_project_id, canonical_url) = match provider {
+        Provider::ClaudeCode => return Err("CLAUDE_PROJECT_LINK_UNSUPPORTED_USE_EXACT_SESSION_BINDING".into()),
         Provider::Chatgpt => {
             let supplied_url = input.canonical_url.as_deref().ok_or(
                 "ChatGPT Project links require a canonical https://chatgpt.com/g/<project-id>/project URL",

@@ -10,7 +10,7 @@
 
 **思考留在思考端，执行留在执行端，Bridge 负责准确交接。**
 
-[下载 Windows v0.1.30](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.30) · [安装与配对](docs/SETUP.md) · [连接 AI 助手](docs/ASSISTANT_CONNECTION_GUIDE.zh-CN.md) · [MIT 许可证](LICENSE)
+[下载 Windows v0.1.31](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.31) · [安装与配对](docs/SETUP.md) · [连接 AI 助手](docs/ASSISTANT_CONNECTION_GUIDE.zh-CN.md) · [MIT 许可证](LICENSE)
 
 可选日报：真实只读验收后，选择时间（推荐本地22:00）、时区、发送位置与委托Bridge，再明确提交给助手。它核对真实定时工具与既有任务；不支持就说明未启用。修改或停用沿用原任务，不重复创建；Bridge删除或MCP离线也可请求停用。只读连续计窗及部分核实规则：[日报教程](docs/DAILY_REPORTS.md)。
 
@@ -63,7 +63,7 @@
 
 当前为 Windows x64 + Codex + 配对 PWA 的 Alpha。应用支持**简体中文、繁体中文、英语**，在设置 → 语言切换。日语和韩语目前仅翻译产品介绍；macOS 和其他执行 Agent 尚未列入已验证发行范围。来源正文不能扩大授权，收到交接回执不等于下游任务已经完成。
 
-[从源码构建](docs/BUILD.md) · [助手协议](docs/ASSISTANT_MCP.md) · [v0.1.30 更新](docs/RELEASE_0.1.26.md) · [第三方声明](THIRD_PARTY_NOTICES.md)
+[从源码构建](docs/BUILD.md) · [助手协议](docs/ASSISTANT_MCP.md) · [v0.1.31 更新](docs/RELEASE_0.1.26.md) · [第三方声明](THIRD_PARTY_NOTICES.md)
 
 [联系作者](mailto:geoffreyzjx@qq.com) · [反馈问题](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [提出建议](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
 
@@ -78,3 +78,5 @@ Bridge 页面新增轻量 **Codex 额度**入口：按原生实际周期显示�
 <p><img src="docs/assets/zh-CN/codex-quota.png" width="320" alt="额度详情，演示数值"> <img src="docs/assets/zh-CN/assistant-guide-simple.png" width="320" alt="简化的助手连接教程"></p>
 
 以上为真实组件配虚构演示数据的浏览器截图，不是真机录屏。
+
+Claude Desktop Code observation is available as an optional plugin candidate: exact-session status/final replies, no automatic model calls, production sends disabled. Native live-session activation/reply delivery remain unverified until read back at Bridge. [Scope and setup](docs/CLAUDE_CODE.md).

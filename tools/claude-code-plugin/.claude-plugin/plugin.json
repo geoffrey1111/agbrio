@@ -1,0 +1,10 @@
+{
+  "name": "agbrio-bridge",
+  "version": "0.1.0",
+  "description": "Observe exact local Claude Code sessions for Agbrio. Read-only by default; no model calls or automatic handoffs.",
+  "author": {"name": "Agbrio"},
+  "userConfig": {
+    "hostUrl": {"type": "string", "title": "Agbrio local Host URL", "description": "Exact http://127.0.0.1:port origin from Agbrio setup; never a public URL.", "required": true},
+    "token": {"type": "string", "title": "Agbrio adapter credential", "description": "Private limited adapter token from an explicit Agbrio setup action.", "sensitive": true, "required": true}
+  }
+}

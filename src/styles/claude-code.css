@@ -1,0 +1,5 @@
+.r2-claude-picker { display: grid; gap: 12px; min-width: 0; }
+.r2-claude-picker p { margin: 0; overflow-wrap: anywhere; }
+.r2-claude-picker label { display: grid; gap: 6px; min-width: 0; }
+.r2-claude-picker input, .r2-claude-picker select { width: 100%; min-width: 0; max-width: 100%; padding: 10px; font: inherit; font-size: 16px; }
+.r2-claude-picker details > * + * { margin-top: 12px; }

@@ -1,4 +1,5 @@
 mod codex_quota;
+mod claude_code;
 mod desktop_update;
 use desktop_update::{desktop_update_check,desktop_update_status,desktop_update_download,desktop_update_install,desktop_update_open_release};
 mod message_media;
@@ -181,6 +182,22 @@ fn rename_bridge_workstream(workstream_id:String,name:String,state:State<'_,Rout
 async fn sync_role_bridge(workstream_id:String,state:State<'_,RouterState>)->Result<role_bridge::BridgeState,String>{let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||role_bridge::sync_cached(&core,&workstream_id)).await.map_err(|_|"BRIDGE_SYNC_UNAVAILABLE".to_string())?}
 #[tauri::command]
 fn role_bridge_threads(state:State<'_,RouterState>)->Result<ExistingCodexThreadCatalog,String>{role_bridge::catalog(state.inner())}
+#[tauri::command]
+fn claude_code_sessions(state:State<'_,RouterState>)->Result<router_core::store::claude_code::Catalog,String>{state.store.claude_catalog()}
+#[tauri::command]
+fn claude_code_connections(state:State<'_,RouterState>)->Result<Vec<router_core::store::claude_code::ConnectionSummary>,String>{state.store.claude_connections()}
+#[tauri::command]
+fn claude_code_setup(app:AppHandle,state:State<'_,RouterState>)->Result<serde_json::Value,String>{
+    let config=mobile_http::MobileHttpConfig::from_env(std::path::PathBuf::new())?;
+    let plugin=app.path().resource_dir().map_err(|_|"CLAUDE_PLUGIN_RESOURCE_UNAVAILABLE")?.join("claude-code-plugin");
+    #[cfg(debug_assertions)]
+    let plugin=if plugin.is_dir(){plugin}else{std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tools/claude-code-plugin")};
+    if !plugin.join(".claude-plugin/plugin.json").is_file(){return Err("CLAUDE_OBSERVATION_PLUGIN_NOT_PACKAGED".into());}
+    let pairing=state.store.create_claude_connection()?;
+    Ok(serde_json::json!({"connectionId":pairing.connection_id,"hostUrl":format!("http://127.0.0.1:{}",config.port),"token":pairing.token,"pluginDirectory":plugin.to_string_lossy(),"expiresAt":pairing.expires_at,"writesEnabled":false}))
+}
+#[tauri::command]
+fn claude_code_revoke(connection_id:String,state:State<'_,RouterState>)->Result<(),String>{state.store.revoke_claude_connection(&connection_id)}
 #[tauri::command]
 fn bind_role_bridge(workstream_id:String,revision:i64,decision:router_core::store::role_bridge::RoleBindingInput,execution:router_core::store::role_bridge::RoleBindingInput,state:State<'_,RouterState>)->Result<router_core::store::role_bridge::RoleBridge,String>{role_bridge::bind(state.inner(),&workstream_id,revision,decision,execution)}
 #[tauri::command]
@@ -1413,7 +1430,7 @@ pub fn run() {
     let store = Arc::new(
         if probe_mode {
             RouterStore::open_at(
-                std::path::PathBuf::from(r"D:\fixtures\临时处理")
+                std::path::PathBuf::from(r"D:\desktop\临时处理")
                     .join(format!("aiwr-provider-probe-{}", std::process::id()))
                     .join("fixture.db"),
             )
@@ -1453,6 +1470,7 @@ pub fn run() {
     let builder = builder.setup(|app| configure_host(app));
     #[cfg(debug_assertions)]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        claude_code_sessions,claude_code_connections,claude_code_setup,claude_code_revoke,
         desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
         codex_watch_candidates,codex_watch_list, codex_watch_enable, codex_watch_pause, codex_watch_remove, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
@@ -1540,6 +1558,7 @@ pub fn run() {
     ]);
     #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        claude_code_sessions,claude_code_connections,claude_code_setup,claude_code_revoke,
         desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
         read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,

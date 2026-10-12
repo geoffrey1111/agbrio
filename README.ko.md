@@ -8,7 +8,7 @@
 
 계획용 대화와 실행용 대화를 따로 사용하시나요? Agbrio는 이 작업 방식에 맞춘 인계 도구입니다. 결과를 읽고, 다음 작업에 필요한 부분을 선택하고, 받을 대화를 확인한 뒤 전달합니다. 두 대화의 문맥을 유지하면서 여러 프로젝트에서도 정확한 대상으로 보낼 수 있습니다.
 
-[Windows v0.1.30 다운로드](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.30) · [설치와 연결](docs/SETUP.md) · [MIT](LICENSE)
+[Windows v0.1.31 다운로드](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.31) · [설치와 연결](docs/SETUP.md) · [MIT](LICENSE)
 
 선택형 일일 보고: 읽기 전용 연결 확인 후 시간(현지22:00 권장), 시간대, 수신 위치와 위임된Bridge를 지정해 도우미에게 명시적으로 요청하세요. 실제 예약 도구와 기존 작업을 확인하고, 지원하지 않으면 활성화됐다고 주장하지 않습니다. 같은 작업을 수정하거나 중지하며 중복 생성하지 않습니다.[보고 및 검증 범위](docs/DAILY_REPORTS.md).
 
@@ -45,3 +45,5 @@ INSTANCE + CONVERSATION_REVIEW 권한은 30일이며 취소할 수 있습니다.
 ## 사용량과 연결 안내
 
 Codex의 실제 사용량 기간, 잔여량과 초기화 시간을 확인하고 수동 새로고침할 수 있습니다. AI 도우미 연결은 클라우드/로컬 경로를 선택하고 설정 지침을 복사합니다. 사용자는 인증과 위임할 Bridge 선택을 담당합니다. PWA 설정에서 수동 업데이트할 수 있으며 재설치나 재페어링은 필요하지 않습니다.
+
+Claude Desktop Code observation is available as an optional plugin candidate: exact-session status/final replies, no automatic model calls, production sends disabled. Native live-session activation/reply delivery remain unverified until read back at Bridge. [Scope and setup](docs/CLAUDE_CODE.md).

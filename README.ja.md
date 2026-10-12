@@ -8,7 +8,7 @@
 
 計画用の会話と実行用の会話を分けていませんか？Agbrio は、その使い方のための引き継ぎツールです。結果を読み、次の作業に必要な部分を選び、受信側を確認して送信します。計画の文脈と実装の文脈を保ちながら、複数のプロジェクトでも正確な相手へ渡せます。
 
-[Windows v0.1.30 をダウンロード](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.30) · [セットアップ](docs/SETUP.md) · [MIT](LICENSE)
+[Windows v0.1.31 をダウンロード](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.31) · [セットアップ](docs/SETUP.md) · [MIT](LICENSE)
 
 任意の日報：読み取り専用の接続確認後、時刻（現地22:00を推奨）、タイムゾーン、送信先、委任済みBridgeを指定してアシスタントに依頼します。実際のスケジュール機能と既存タスクを確認し、非対応なら有効化済みとは表示しません。同じタスクを変更・停止し、重複作成しません。[日報と検証範囲](docs/DAILY_REPORTS.md)。
 
@@ -45,3 +45,5 @@ INSTANCE + CONVERSATION_REVIEW は30日間・取り消し可能です。アシ�
 ## 使用量と接続ガイド
 
 Codex の実際の使用量ウィンドウ、残りとリセット時刻を確認でき、手動で更新できます。AI アシスタント接続はクラウド／ローカルを選び、設定用の指示をコピー。ユーザーは認証と委任する Bridge の選択を行います。PWA は設定から手動更新でき、再インストールや再ペアリングは不要です。
+
+Claude Desktop Code observation is available as an optional plugin candidate: exact-session status/final replies, no automatic model calls, production sends disabled. Native live-session activation/reply delivery remain unverified until read back at Bridge. [Scope and setup](docs/CLAUDE_CODE.md).

@@ -242,19 +242,25 @@ impl RouterStore {
         execution: RoleBindingInput,
     ) -> Result<RoleBridge, String> {
         for input in [&decision, &execution] {
-            if !matches!(input.provider.as_str(), "CODEX" | "CHATGPT")
+            if !matches!(input.provider.as_str(), "CODEX" | "CHATGPT" | "CLAUDE_CODE")
                 || input.external_id.len() < 8
                 || input.label.trim().is_empty()
             {
                 return Err("BRIDGE_BINDING_INVALID".into());
             }
-            if input.provider == "CODEX"
+            if matches!(input.provider.as_str(), "CODEX" | "CLAUDE_CODE")
                 && input
                     .cwd
                     .as_deref()
                     .is_none_or(|v| !Path::new(v).is_absolute())
             {
                 return Err("BRIDGE_CODEX_ROOT_REQUIRED".into());
+            }
+            if input.provider == "CLAUDE_CODE" {
+                let session=self.claude_session(&input.external_id)?;
+                if session.lease_until<=now() || session.state=="SESSION_END" { return Err("CLAUDE_SESSION_UNCONFIRMED".into()); }
+                let exact=input.cwd.as_ref().and_then(|cwd|fs::canonicalize(cwd).ok()).zip(fs::canonicalize(&session.cwd).ok()).is_some_and(|(a,b)|a==b);
+                if !exact { return Err("CLAUDE_ROOT_CHANGED".into()); }
             }
         }
         if decision.provider == "CHATGPT" && execution.provider == "CHATGPT" {
@@ -350,6 +356,7 @@ impl RouterStore {
         self.with_connection(|c| {
             let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
             let h=handoff_by_id(&tx,handoff)?;validate_handoff(&tx,&h)?;
+
             if tx.execute("UPDATE handoffs SET status='APPROVED',approved_at=?2 WHERE id=?1 AND status='READY' AND payload_hash=?3",params![handoff,now(),expected_hash]).map_err(db_error)?!=1 {return Err("BRIDGE_REVIEW_CHANGED_OR_NOT_READY".into());}
             tx.commit().map_err(db_error)?;handoff_by_id(c,handoff)
         })
@@ -396,6 +403,7 @@ impl RouterStore {
         self.with_connection(|c| {
             let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
             let h=handoff_by_id(&tx,handoff)?;validate_handoff(&tx,&h)?;
+            if h.destination_endpoint.provider=="CLAUDE_CODE" {crate::claude_code::require_write_capability()?;}
             if let Some((thread, _)) = steer {
                 if h.destination_endpoint.provider != "CODEX" || h.destination_endpoint.external_id != thread { return Err("BRIDGE_STEER_IDENTITY_INVALID".into()); }
             }

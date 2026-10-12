@@ -190,6 +190,10 @@ pub(crate) fn bind(
     let mut urls = Vec::new();
     for input in [&mut decision, &mut execution] {
         match input.provider.as_str() {
+            "CLAUDE_CODE" => {
+                let session=crate::claude_code::verified_session(core,&input.external_id,None)?;
+                input.cwd=Some(session.cwd);
+            }
             "CODEX" => {
                 let mut s = core
                     .session
@@ -237,6 +241,14 @@ fn side(core: &RouterCore, workstream: &str, role: &str) -> Result<RoleEndpoint,
 pub(crate) fn read(core: &RouterCore, workstream: &str, role: &str) -> Result<BridgeState, String> {
     let side = side(core, workstream, role)?;
     let (identity, text,completed) = match side.endpoint.provider.as_str() {
+        "CLAUDE_CODE" => {
+            let session=crate::claude_code::verified_session(core,&side.endpoint.external_id,side.cwd.as_deref())?;
+            if session.state!="COMPLETE" {
+                return read_without_new_reply(core,workstream,role,&side.endpoint.id,match session.state.as_str(){"RUNNING"=>"LATEST_TURN_ACTIVE","INTERRUPTED"|"FAILED"=>"LATEST_TURN_INTERRUPTED",_=>"EXTERNAL_STATUS_UNCONFIRMED"});
+            }
+            let reply=session.latest_reply.ok_or("CLAUDE_COMPLETE_REPLY_UNPROVEN")?;
+            (format!("claude_code:{}",reply.turn_id),reply.text,Some(reply.completed_at))
+        }
         "CODEX" => {
             let mut s = core
                 .session
@@ -357,6 +369,7 @@ pub(crate) fn attachments(
     id: &str,
 ) -> Result<Vec<AttachmentOption>, String> {
     let (src, obs) = observation(core, workstream, role, id)?;
+    if src.endpoint.provider=="CLAUDE_CODE" {return Ok(Vec::new());}
     if src.endpoint.provider == "CHATGPT" {
         let native = obs
             .assistant_identity
@@ -509,6 +522,12 @@ pub(crate) fn send(core: &RouterCore, handoff: &str) -> Result<BridgeState, Stri
         return Err("BRIDGE_NOT_APPROVED_OR_ALREADY_ATTEMPTED".into());
     }
     let destination = preview.destination_endpoint.clone();
+    if destination.provider=="CLAUDE_CODE" {
+        // Quota boundary is below both desktop/mobile and MCP. No claim, run,
+        // queued prompt, native abort or UNKNOWN write is created in this phase.
+        router_core::claude_code::require_write_capability()?;
+        return Err("CLAUDE_CONTROL_TRANSPORT_NOT_VERIFIED".into());
+    }
     let mut files = preclaim(core,&preview,"FILES",handoff_files(&preview))?;
     if destination.provider == "CHATGPT" {
         let h = core.store.claim_role_handoff(handoff)?;
@@ -770,7 +789,7 @@ pub(crate) fn directory_activity(core:&RouterCore,ids:&[String])->Result<Vec<Dir
  if ids.len()>20||ids.iter().any(|id|id.is_empty()||id.len()>128){return Err("BRIDGE_ACTIVITY_REQUEST_INVALID".into());}
  let mut rows=Vec::new();for id in ids{let initial=state(core,id)?;let w=core.store.snapshot_for_workstream(id)?.workstreams.into_iter().find(|w|w.id==*id).ok_or("BRIDGE_UNAVAILABLE")?;if w.trashed_at.is_some()||w.archived_at.is_some(){continue;}
   let bindings=&initial.bindings;let epoch=core.session.try_lock().ok().map(|s|s.codex_observer_epoch);let cache=activity_cache(&core.store);let cached=cache.lock().ok().and_then(|c|c.rows.get(id).filter(|row|epoch.is_none_or(|e|e==c.epoch)&&row.binding_revision==bindings.binding_revision).cloned());
-  let sides=[&bindings.decision,&bindings.execution].into_iter().flatten().map(|side|cached.as_ref().and_then(|r|r.sides.iter().find(|a|a.endpoint_id==side.endpoint.id&&a.role==side.role&&a.checked_at>0&&activity_now().saturating_sub(a.checked_at)<15000)).cloned().unwrap_or(RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:0,turn_id:None,result_observation_id:None,goal_status:None,turn_active:false,latest_turn:None,goal:None,goal_controls:None})).collect();
+  let sides=[&bindings.decision,&bindings.execution].into_iter().flatten().map(|side|if side.endpoint.provider=="CLAUDE_CODE"{crate::claude_code::activity(core,side)}else{cached.as_ref().and_then(|r|r.sides.iter().find(|a|a.endpoint_id==side.endpoint.id&&a.role==side.role&&a.checked_at>0&&activity_now().saturating_sub(a.checked_at)<15000)).cloned().unwrap_or(RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:0,turn_id:None,result_observation_id:None,goal_status:None,turn_active:false,latest_turn:None,goal:None,goal_controls:None})}).collect();
   let latest_role=initial.replies.iter().filter(|r|[&bindings.decision,&bindings.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).max_by_key(|r|r.completed_at.unwrap_or(r.observed_at)).and_then(|r|[&bindings.decision,&bindings.execution].into_iter().flatten().find(|side|side.endpoint.id==r.endpoint_id).map(|side|side.role.clone()));
   let unread_count=initial.replies.iter().filter(|r|r.read_at.is_none()&&r.handled_at.is_none()&&[&bindings.decision,&bindings.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).count();rows.push(DirectoryActivity{workstream_id:id.clone(),binding_revision:bindings.binding_revision,unread_count,latest_role,sides,assistant_processed:initial.assistant_processed});
  }Ok(rows)
