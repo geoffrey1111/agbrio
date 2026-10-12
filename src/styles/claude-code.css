@@ -3,3 +3,21 @@
 .r2-claude-picker label { display: grid; gap: 6px; min-width: 0; }
 .r2-claude-picker input, .r2-claude-picker select { width: 100%; min-width: 0; max-width: 100%; padding: 10px; font: inherit; font-size: 16px; }
 .r2-claude-picker details > * + * { margin-top: 12px; }
+.r2-claude-list { display: grid; gap: 10px; max-height: 24rem; overflow-y: auto; overscroll-behavior: contain; }
+.r2-claude-row { min-width: 0; padding: 2px; }
+.r2-binding .r2-claude-picker .r2-claude-row > button { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px 12px; width: 100%; padding: 14px 16px; border: 1px solid var(--v3-border, #d7cdc4); border-radius: 14px; background: var(--awr-panel, #faf7f2); color: inherit; text-align: start; min-height: 60px; font: inherit; cursor: pointer; }
+.r2-binding .r2-claude-picker .r2-claude-row > button[aria-checked="true"] { border-color: var(--awr-accent, #a25532); background: var(--awr-accent-soft, #f5e7db); }
+.r2-binding .r2-claude-picker .r2-claude-row > button:focus-visible { outline: 2px solid var(--awr-accent, #a25532); outline-offset: 2px; }
+.r2-binding .r2-claude-picker .r2-claude-row > button:disabled { opacity: .55; cursor: default; }
+.r2-claude-name { font-weight: 600; overflow-wrap: anywhere; }
+.r2-claude-state { font-size: 13px; white-space: nowrap; align-self: start; }
+.r2-claude-root { grid-column: 1 / -1; font-size: 13px; color: var(--v3-muted, #74685e); overflow-wrap: anywhere; }
+.r2-claude-identity { margin: 4px 8px 0; color: var(--v3-muted, #74685e); font-size: 12px; }
+.r2-claude-identity summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+.r2-claude-identity code { display: block; overflow-wrap: anywhere; user-select: text; }
+.r2-claude-identity small { display: block; }
+.r2-claude-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.r2-claude-actions button { min-height: 44px; padding: 10px 16px; }
+.r2-claude-hint, .r2-claude-manual { color: var(--v3-muted, #74685e); font-size: 14px; }
+.r2-claude-manual summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+@media (max-width: 520px) { .r2-binding .r2-claude-picker .r2-claude-row > button { grid-template-columns: minmax(0,1fr); } .r2-claude-state { white-space: normal; } .r2-claude-list { max-height: 20rem; } }

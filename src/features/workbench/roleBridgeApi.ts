@@ -9,6 +9,7 @@ export const desktopRoleBridgeApi: RoleBridgeApi = cachedRoleBridgeApi({
  claudeSessions:()=>invoke("claude_code_sessions"),
  claudeConnections:()=>invoke("claude_code_connections"),
  claudeSetup:()=>invoke("claude_code_setup"),
+ claudeConnect:()=>invoke("claude_code_connect"),
  claudeRevoke:connectionId=>invoke("claude_code_revoke",{connectionId}),
  chat:desktopWatchChatApi,
  markRead:codexApi.markReplyObservationRead,

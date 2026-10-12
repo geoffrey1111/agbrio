@@ -1,5 +1,10 @@
 # Install and pair
 
+## Claude Code desktop connection
+
+In a Bridge's Choose control/execution view select Claude Code, then Connect Claude Code. It configures only the observation plugin through official plugin administration. Existing registration/saved configuration is reused. Configuration-ready is separate from connected: open your existing conversation and reload the observation plugin when convenient; stop on any cost or forced-reload warning. Never submit a test prompt or restart a task for setup. Once genuinely registered, choose by title and folder, verify identity details if needed, and save the role. Writes remain disabled. Mobile selects already-connected conversations; manual setup is a troubleshooting fallback. [Scope](CLAUDE_CODE.md).
+
+
 Optional daily reports: after actual read-only acceptance, configure local time/timezone/destination/delegated scope, explicitly submit to your assistant, verify real tools and saved task, or report unsupported. Reuse existing task; no duplicate or Events changes. [Daily report contract](DAILY_REPORTS.md).
 
 Agbrio connects the existing conversation that manages a project with the

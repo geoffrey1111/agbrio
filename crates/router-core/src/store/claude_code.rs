@@ -78,7 +78,7 @@ fn auth(c: &Connection, token: &str, at: i64) -> Result<String, String> {
 }
 fn session_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Session> {
     let reply: Option<String> = r.get(9)?;
-    Ok(Session { session_id: r.get(0)?, instance_id: r.get(1)?, cwd: r.get(2)?, version: r.get(3)?, state: r.get(4)?, turn_id: r.get(5)?, checked_at: r.get(6)?, lease_until: r.get(7)?, latest_reply: reply.map(|v| serde_json::from_str(&v)).transpose().map_err(|e| rusqlite::Error::FromSqlConversionFailure(9, rusqlite::types::Type::Text, Box::new(e)))? })
+    Ok(Session { title: None, session_id: r.get(0)?, instance_id: r.get(1)?, cwd: r.get(2)?, version: r.get(3)?, state: r.get(4)?, turn_id: r.get(5)?, checked_at: r.get(6)?, lease_until: r.get(7)?, latest_reply: reply.map(|v| serde_json::from_str(&v)).transpose().map_err(|e| rusqlite::Error::FromSqlConversionFailure(9, rusqlite::types::Type::Text, Box::new(e)))? })
 }
 const SESSION_FIELDS: &str = "session_id,instance_id,cwd,version,state,turn_id,checked_at,lease_until,sequence,latest_reply";
 impl RouterStore {

@@ -1,5 +1,10 @@
 # Windows alpha validation
 
+## 0.1.33 named Claude conversations and explicit native setup
+
+Local engineering:560frontend/61files,229Core/2ignored,236Host/33ignored+main1;10latest picker cases and9scoped Host cases. Real read-only existing Desktop title-prefix projection PASS. Fictional desktop1280x900/phone430x932 has no overflow, visible footer, exact same-name/keyboard selection, manual setup0 and provider sends0. A shared-lock collision in parallel independent fixtures was corrected at the production Connect entry; full Host suite then passed. Public Windows build and exact signed installer checks pending; source is not installed acceptance. Real first-time application setup and a complete naturally arriving Bridge reply remain OPEN.
+
+
 ## Claude observation candidate0.1.31
 
 553 frontend/61files,229Core/2ignored,228Host/32ignored,7Node fixtures and production release check PASS in source. Current Desktop engine2.1.295 official strict validator and native no-session VM test pass after fixing module-helper analysis and asynchronous completion time. Public checkout544frontend/59files and7Node tests PASS. No real model request, native session startup/restart or observed Claude reply. Windows release/install checks and natural Bridge delivery are OPEN. Existing8Events scopes and daily task must remain unchanged.

@@ -1251,7 +1251,7 @@ async fn role_bridge_state(Path(workstream_id):Path<String>,State(state):State<M
 
 async fn claude_code_sessions(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<router_core::store::claude_code::Catalog>{
  authenticated(&headers,&state,false).await?;
- state.core.store.claude_catalog().map(Json).map_err(core_error)
+ crate::claude_code::catalog(&state.core).map(Json).map_err(core_error)
 }
 fn claude_adapter_token(headers:&HeaderMap)->Result<String,ApiError>{
  if ["origin","cf-connecting-ip","cf-access-jwt-assertion","x-forwarded-for","forwarded"].iter().any(|h|headers.contains_key(*h)) {return Err(ApiError(StatusCode::FORBIDDEN,"CLAUDE_LOCAL_ADAPTER_ONLY".into()));}

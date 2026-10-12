@@ -1,5 +1,16 @@
 # Claude Code Desktop — quota-free engineering phase
 
+## Named conversations and explicit desktop Connect (0.1.33)
+
+Conversation title is primary, folder/status secondary, native UUID/version in identity details. Duplicate names remain distinct; exact native identity and canonical root still route. Missing titles are explicitly unnamed. Picker positions stay fixed during the visit; arrow/Home/End navigation selects the same native identities.
+
+The Desktop adapter reads only the native metadata prefix for already-registered session UUID/root pairs. It stops before conversation bodies, MCP configuration and approvals; unknown layouts and conflicting metadata fail closed. Titles are cached for60seconds and never create registrations, replies, tasks or permissions. This native-format compatibility layer is not a documented Mods title getter; unsupported future layouts fall back to unnamed.
+
+Desktop Connect is an explicit user action using official plugin administrative CLI only. A live publisher is reused before any command, otherwise both marketplace and SDK-inline configuration namespaces are checked. Saved complete configuration waits for real registration without rotating credentials. First configuration installs/enables the observation plugin and saves values through stdin, never argv/files/clipboard or an IPC-secret response. It never starts/resumes a model session, submits a prompt, forces reload, restarts Claude or interrupts a task. Existing configuration for another Host is refused. Partial failure revokes only the newly minted observation credential and remains unconfirmed. Mobile and MCP expose no administrative setup. Manual credentials remain under collapsed connection management.
+
+Engineering evidence:560frontend tests/61files,229Core/2ignored,236Host/33ignored+main1;10latest picker cases and9scoped Host cases. Read-only real Desktop title projection passes for an existing native registration; fictional1280x900/430x932 rendering has no horizontal overflow, visible footer, exact same-name selection and keyboard behavior, no manual credential generation or sends. First-time real app-owned install/configuration and naturally completed Bridge reply delivery remain OPEN. The original agent credential-write refusal was not retried through this feature; actual secret-writing checks use isolated fixtures only. Installed/Windows delivery is tracked in VALIDATION.md.
+
+
 Owner decision, 2026-10-12: implement Claude Code Desktop integration, but do not
 send messages using the owner's Claude Code or consume the limited quota.
 Agbrio0.1.32 is released and installed as recorded below. Real Claude session

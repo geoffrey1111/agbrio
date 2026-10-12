@@ -92,6 +92,9 @@ pub struct Session {
     pub turn_id: Option<String>,
     pub checked_at: i64,
     pub lease_until: i64,
+    /// Native display metadata only; never a routing or authorization key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     pub latest_reply: Option<CompleteReply>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]

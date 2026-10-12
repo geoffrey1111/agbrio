@@ -1,5 +1,12 @@
 # Security and private data
 
+## Claude desktop setup and title metadata
+
+Native Connect is an explicit desktop-only user action, separate from mobile/MCP authorization. Fixed official plugin-admin argv only; limited credentials pass stdin in memory, never arguments/files/clipboard or returned IPC. No prompt, session resume, restart, force reload or provider-account credential read. Live publishers/saved configuration are reused; other Host configuration is refused; only a failed attempt's own newly minted credential is revoked.
+
+Title projection checks an already-registered native UUID and canonical root before reading the current-user Desktop metadata title. It stops parsing before transcript/MCP-config/approval fields, skips links/outside paths/ambiguous records and fails closed on unsupported layouts. Files never establish registration, replies, status or authorization. Real first-time application configuration remains a distinct native acceptance gate; fixtures do not bypass a previously refused agent credential operation.
+
+
 Please report exploitable security problems privately to geoffreyzjx@qq.com.
 Do not include credentials, live cookies, private files or complete chat logs.
 

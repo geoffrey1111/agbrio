@@ -64,3 +64,66 @@ fn native_setup_uses_live_listener_not_deployment_parser_or_working_directory(){
  let response=reqwest::blocking::Client::new().post(format!("http://{before}/v1/claude-code/events")).bearer_auth(result["token"].as_str().unwrap()).json(&event).send().unwrap();assert!(response.status().is_success());
  assert_eq!(host.mobile_address(),Some(before));host.shutdown(&core);
 }
+
+struct FakePluginAdmin {
+ path:std::path::PathBuf,
+ configured:Mutex<HashMap<String,(String,String)>>,
+ calls:Mutex<Vec<Vec<String>>>,
+ fail_inline:bool,
+}
+impl crate::claude_code_desktop::PluginAdmin for FakePluginAdmin {
+ fn run(&self,args:&[String],input:Option<&[u8]>)->Result<serde_json::Value,String>{
+  assert!(!args.iter().any(|a|matches!(a.as_str(),"-p"|"--resume"|"--continue"|"--force"|"--fork-session")));
+  self.calls.lock().unwrap().push(args.to_vec());
+  if args==["plugin","list","--json"] {return Ok(serde_json::json!([{"id":"agbrio-bridge@agbrio-observation","scope":"user","enabled":true,"installPath":self.path}]));}
+  assert_eq!(args[2],"plugin");assert_eq!(args[3],"configure");
+  let identity=&args[4];
+  if let Some(input)=input {
+   if self.fail_inline&&identity=="agbrio-bridge@inline" {return Err("CLAUDE_PLUGIN_ADMIN_REFUSED".into());}
+   let value:serde_json::Value=serde_json::from_slice(input).unwrap();
+   let token=value["token"].as_str().unwrap();assert_eq!(token.len(),64);assert!(!args.iter().any(|a|a.contains(token)));
+   self.configured.lock().unwrap().insert(identity.clone(),(value["hostUrl"].as_str().unwrap().into(),token.into()));
+   Ok(serde_json::json!({"saved":["hostUrl","token"],"unconfigured":[]}))
+  }else if let Some((host,_))=self.configured.lock().unwrap().get(identity) {
+   Ok(serde_json::json!({"pluginId":identity,"configured":["hostUrl","token"],"unconfigured":[],"inputs":{"hostUrl":host,"token":""}}))
+  }else{Ok(serde_json::json!({"pluginId":identity,"configured":[],"unconfigured":["hostUrl","token"],"inputs":{"hostUrl":"","token":""}}))}
+ }
+}
+fn connection_fixture(temp:&tempfile::TempDir)->(RouterCore,crate::HostRuntime,std::path::PathBuf,FakePluginAdmin){
+ let core=RouterCore{chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default(),store:Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap())};
+ let host=crate::HostRuntime::default();*host.test_web_auth.lock().unwrap()=Some(Arc::new(crate::web_auth::WebAuth::open(None).unwrap()));
+ host.ensure_mobile(core.clone(),crate::mobile_http::MobileHttpConfig{port:0,allowed_host:"127.0.0.1:0".into(),allowed_origin:"http://127.0.0.1:0".into(),access_issuer:String::new(),access_audience:String::new(),access_jwks_url:String::new(),static_dir:temp.path().into()});
+ let package=temp.path().join("claude-code-plugin/.claude-plugin");let cache=temp.path().join("cache/agbrio-observation/agbrio-bridge/0.1.2/.claude-plugin");
+ let manifest=serde_json::json!({"name":"agbrio-bridge","version":"0.1.2","userConfig":{"token":{"sensitive":true}}}).to_string();
+ for folder in [&package,&cache] {std::fs::create_dir_all(folder).unwrap();std::fs::write(folder.join("plugin.json"),&manifest).unwrap();}
+ let admin=FakePluginAdmin{path:cache.parent().unwrap().into(),configured:Mutex::default(),calls:Mutex::default(),fail_inline:false};
+ (core,host,temp.path().join("cache"),admin)
+}
+#[test] fn native_connect_configures_both_identities_via_stdin_and_reuses_saved_config(){
+ let temp=tempfile::tempdir().unwrap();let(core,host,cache,admin)=connection_fixture(&temp);
+ let first=connect_admin(&core,&host,temp.path(),&admin,&cache).unwrap();assert_eq!(first.phase,"WAITING_SESSION");
+ assert!(!first.writes_enabled);assert!(core.store.claude_catalog().unwrap().sessions.is_empty());
+ assert_eq!(core.store.claude_connections().unwrap().len(),1);
+ let saved=admin.configured.lock().unwrap();assert_eq!(saved["agbrio-bridge@inline"],saved["agbrio-bridge@agbrio-observation"]);drop(saved);
+ let second=connect_admin(&core,&host,temp.path(),&admin,&cache).unwrap();assert_eq!(second.phase,"WAITING_SESSION");
+ assert_eq!(core.store.claude_connections().unwrap().len(),1);assert!(core.session.lock().unwrap().adapter.is_none());host.shutdown(&core);
+}
+#[test] fn native_connect_reuses_real_registered_publisher_without_admin_or_credentials(){
+ let temp=tempfile::tempdir().unwrap();let(core,host,cache,admin)=connection_fixture(&temp);
+ let pair=core.store.create_claude_connection().unwrap();ingest(&core,&pair.token,&event(temp.path(),"10000000-0000-4000-8000-000000000001","SESSION_START",1)).unwrap();
+ assert_eq!(connect_admin(&core,&host,temp.path(),&admin,&cache).unwrap().phase,"CONNECTED");
+ assert!(admin.calls.lock().unwrap().is_empty());assert_eq!(core.store.claude_connections().unwrap().len(),1);host.shutdown(&core);
+}
+#[test] fn partial_configuration_failure_revokes_only_its_new_connection(){
+ let temp=tempfile::tempdir().unwrap();let(core,host,cache,mut admin)=connection_fixture(&temp);admin.fail_inline=true;
+ let prior=core.store.create_claude_connection().unwrap();
+ assert_eq!(connect_admin(&core,&host,temp.path(),&admin,&cache).err().unwrap(),"CLAUDE_PLUGIN_ADMIN_REFUSED");
+ let connections=core.store.claude_connections().unwrap();assert_eq!(connections.len(),2);
+ assert!(!connections.iter().find(|c|c.connection_id==prior.connection_id).unwrap().revoked);
+ assert!(connections.iter().find(|c|c.connection_id!=prior.connection_id).unwrap().revoked);host.shutdown(&core);
+}
+#[test] fn native_connect_never_overwrites_other_host_configuration(){
+ let temp=tempfile::tempdir().unwrap();let(core,host,cache,admin)=connection_fixture(&temp);
+ admin.configured.lock().unwrap().insert("agbrio-bridge@agbrio-observation".into(),("http://127.0.0.1:12345".into(),"not exported".into()));
+ assert_eq!(connect_admin(&core,&host,temp.path(),&admin,&cache).err().unwrap(),"CLAUDE_PLUGIN_DIFFERENT_HOST");assert!(core.store.claude_connections().unwrap().is_empty());host.shutdown(&core);
+}
