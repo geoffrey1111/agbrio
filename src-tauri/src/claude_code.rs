@@ -46,3 +46,12 @@ pub(crate) fn ingest(core:&RouterCore,token:&str,event:&Event)->Result<bool,Stri
     }
     Ok(inserted)
 }
+
+/// Read the already-running listener. Never reparse or rewrite deployment config.
+pub(crate) fn setup(core:&RouterCore,host:&crate::HostRuntime,resources:&std::path::Path)->Result<serde_json::Value,String>{
+    let plugin=resources.join("claude-code-plugin");
+    if !plugin.join(".claude-plugin/plugin.json").is_file(){return Err("CLAUDE_OBSERVATION_PLUGIN_NOT_PACKAGED".into());}
+    let address=host.mobile_address().filter(|a|a.ip().is_loopback()&&a.port()>0).ok_or("CLAUDE_OBSERVATION_HOST_UNAVAILABLE")?;
+    let pairing=core.store.create_claude_connection()?;
+    Ok(serde_json::json!({"connectionId":pairing.connection_id,"hostUrl":format!("http://{}",address),"token":pairing.token,"pluginDirectory":plugin.to_string_lossy(),"expiresAt":pairing.expires_at,"writesEnabled":false}))
+}

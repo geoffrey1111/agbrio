@@ -39,3 +39,23 @@ fn event(root:&std::path::Path,session:&str,kind:&str,sequence:i64)->Event {
  ingest(&core,&pair.token,&later).unwrap();assert_eq!(store.reply_observations_for_workstream(&w.id).unwrap().len(),1);
  assert!(bindings.explicit_roles);
 }
+
+#[test]
+fn native_setup_uses_live_listener_not_deployment_parser_or_working_directory(){
+ let temp=tempfile::tempdir().unwrap();
+ let core=RouterCore{chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default(),store:Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap())};
+ let host=crate::HostRuntime::default();
+ assert!(setup(&core,&host,temp.path()).is_err());assert!(core.store.claude_connections().unwrap().is_empty());
+ let plugin=temp.path().join("claude-code-plugin/.claude-plugin");std::fs::create_dir_all(&plugin).unwrap();std::fs::write(plugin.join("plugin.json"),"{}").unwrap();
+ assert_eq!(setup(&core,&host,temp.path()).unwrap_err(),"CLAUDE_OBSERVATION_HOST_UNAVAILABLE");assert!(core.store.claude_connections().unwrap().is_empty());
+ // No index.html is required by observation setup, and configured port0 is not
+ // the returned address: the actual kernel-assigned live listener is authoritative.
+ *host.test_web_auth.lock().unwrap()=Some(Arc::new(crate::web_auth::WebAuth::open(None).unwrap()));
+ let config=crate::mobile_http::MobileHttpConfig{port:0,allowed_host:"127.0.0.1:0".into(),allowed_origin:"http://127.0.0.1:0".into(),access_issuer:String::new(),access_audience:String::new(),access_jwks_url:String::new(),static_dir:temp.path().into()};
+ host.ensure_mobile(core.clone(),config);
+ let before=host.mobile_address().unwrap();let result=setup(&core,&host,temp.path()).unwrap();
+ assert_eq!(result["hostUrl"],format!("http://{before}"));assert_eq!(result["writesEnabled"],false);assert_eq!(core.store.claude_connections().unwrap().len(),1);assert!(core.session.lock().unwrap().adapter.is_none());
+ let event=event(temp.path(),"10000000-0000-4000-8000-000000000001","SESSION_START",1);
+ let response=reqwest::blocking::Client::new().post(format!("http://{before}/v1/claude-code/events")).bearer_auth(result["token"].as_str().unwrap()).json(&event).send().unwrap();assert!(response.status().is_success());
+ assert_eq!(host.mobile_address(),Some(before));host.shutdown(&core);
+}

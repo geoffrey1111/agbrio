@@ -8,7 +8,7 @@
 
 계획용 대화와 실행용 대화를 따로 사용하시나요? Agbrio는 이 작업 방식에 맞춘 인계 도구입니다. 결과를 읽고, 다음 작업에 필요한 부분을 선택하고, 받을 대화를 확인한 뒤 전달합니다. 두 대화의 문맥을 유지하면서 여러 프로젝트에서도 정확한 대상으로 보낼 수 있습니다.
 
-[Windows v0.1.31 다운로드](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.31) · [설치와 연결](docs/SETUP.md) · [MIT](LICENSE)
+[Windows v0.1.32 다운로드](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.32) · [설치와 연결](docs/SETUP.md) · [MIT](LICENSE)
 
 선택형 일일 보고: 읽기 전용 연결 확인 후 시간(현지22:00 권장), 시간대, 수신 위치와 위임된Bridge를 지정해 도우미에게 명시적으로 요청하세요. 실제 예약 도구와 기존 작업을 확인하고, 지원하지 않으면 활성화됐다고 주장하지 않습니다. 같은 작업을 수정하거나 중지하며 중복 생성하지 않습니다.[보고 및 검증 범위](docs/DAILY_REPORTS.md).
 

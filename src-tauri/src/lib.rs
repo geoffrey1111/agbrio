@@ -187,14 +187,11 @@ fn claude_code_sessions(state:State<'_,RouterState>)->Result<router_core::store:
 #[tauri::command]
 fn claude_code_connections(state:State<'_,RouterState>)->Result<Vec<router_core::store::claude_code::ConnectionSummary>,String>{state.store.claude_connections()}
 #[tauri::command]
-fn claude_code_setup(app:AppHandle,state:State<'_,RouterState>)->Result<serde_json::Value,String>{
-    let config=mobile_http::MobileHttpConfig::from_env(std::path::PathBuf::new())?;
-    let plugin=app.path().resource_dir().map_err(|_|"CLAUDE_PLUGIN_RESOURCE_UNAVAILABLE")?.join("claude-code-plugin");
+fn claude_code_setup(app:AppHandle,state:State<'_,RouterState>,host:State<'_,HostRuntime>)->Result<serde_json::Value,String>{
+    let resources=app.path().resource_dir().map_err(|_|"CLAUDE_PLUGIN_RESOURCE_UNAVAILABLE")?;
     #[cfg(debug_assertions)]
-    let plugin=if plugin.is_dir(){plugin}else{std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tools/claude-code-plugin")};
-    if !plugin.join(".claude-plugin/plugin.json").is_file(){return Err("CLAUDE_OBSERVATION_PLUGIN_NOT_PACKAGED".into());}
-    let pairing=state.store.create_claude_connection()?;
-    Ok(serde_json::json!({"connectionId":pairing.connection_id,"hostUrl":format!("http://127.0.0.1:{}",config.port),"token":pairing.token,"pluginDirectory":plugin.to_string_lossy(),"expiresAt":pairing.expires_at,"writesEnabled":false}))
+    let resources=if resources.join("claude-code-plugin/.claude-plugin/plugin.json").is_file(){resources}else{std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tools")};
+    claude_code::setup(state.inner(),host.inner(),&resources)
 }
 #[tauri::command]
 fn claude_code_revoke(connection_id:String,state:State<'_,RouterState>)->Result<(),String>{state.store.revoke_claude_connection(&connection_id)}
@@ -1430,7 +1427,7 @@ pub fn run() {
     let store = Arc::new(
         if probe_mode {
             RouterStore::open_at(
-                std::path::PathBuf::from(r"D:\desktop\临时处理")
+                std::path::PathBuf::from(r"D:\fixtures\临时处理")
                     .join(format!("aiwr-provider-probe-{}", std::process::id()))
                     .join("fixture.db"),
             )
