@@ -4,7 +4,7 @@
   "sourceCommit": "ddb280e933b2271250dfc3dbdc5a8edfae64f0ab",
   "scope": "Optional local Claude Desktop Code observation; production Claude writes disabled",
   "pluginVersion": "0.1.1",
-  "installerBytes": 276231897,
+  "installerBytes": 276235532,
   "installerSha256": "fab51b9d4c9bc1fb611ba7ca520798025c974f91508302bdb17d9fd6e10c794f",
   "checks": {
     "publicFrontend": 544,
@@ -15,8 +15,13 @@
     "strictNativeValidator": "PASS",
     "publisherSignatureAndTamperRejection": "PASS",
     "sourceWindowsRun": 38202650862,
-    "sourceWindows": "PENDING",
-    "exactReleasedWindows": "PENDING"
+    "sourceWindows": "SUCCESS",
+    "exactReleasedWindows": "PENDING",
+    "corePassed": 229,
+    "coreIgnored": 2,
+    "hostPassed": 228,
+    "hostIgnored": 32,
+    "hostMainPassed": 1
   },
   "nativeSessionObservation": "NOT_EXECUTED",
   "installedNative": "0.1.30",
