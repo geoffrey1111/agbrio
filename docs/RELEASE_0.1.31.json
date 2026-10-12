@@ -16,15 +16,16 @@
     "publisherSignatureAndTamperRejection": "PASS",
     "sourceWindowsRun": 38202650862,
     "sourceWindows": "SUCCESS",
-    "exactReleasedWindows": "PENDING",
+    "exactReleasedWindows": "SUCCESS",
     "corePassed": 229,
-    "coreIgnored": 2,
+    "coreIgnored": 1,
     "hostPassed": 228,
     "hostIgnored": 32,
-    "hostMainPassed": 1
+    "hostMainPassed": 1,
+    "exactReleasedWindowsRun": 38204588421
   },
   "nativeSessionObservation": "NOT_EXECUTED",
-  "installedNative": "0.1.30",
+  "installedNative": "0.1.31",
   "realClaudeMessages": 0,
   "realClaudeModelRequests": 0,
   "bindingChanged": false,
@@ -32,6 +33,8 @@
   "limitations": [
     "Live plugin activation and natural reply readback at Bridge remain OPEN",
     "Production Claude send/stop/goal/approval controls not enabled",
-    "Native fixture and signature are independent of real provider acceptance"
-  ]
+    "Native fixture and signature are independent of real provider acceptance",
+    "Native setup on unmanaged config needs corrected32 live-listener discovery; no credential/binding changed in31."
+  ],
+  "nativeSetup": "FAILED_UNMANAGED_CONFIG_BEFORE_CREDENTIAL"
 }
