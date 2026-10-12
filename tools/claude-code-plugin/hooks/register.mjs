@@ -46,12 +46,12 @@ export function register(on, options) {
       if (!nativeId(e.turnId) || e.turnId!==state.turnId || typeof e.answer!=='string') {void emit($, state,'RESULT_PENDING').catch(()=>{});}
       else if (!e.answer.trim()) {void emit($, state,'EMPTY').catch(()=>{});}
       else if (new TextEncoder().encode(e.answer).length>1_000_000) {void emit($, state,'LIMITED').catch(()=>{});}
-      else {void emit($, state, 'COMPLETE', {turnId: e.turnId, text: e.answer, completedAt: $.clock.now()}).catch(() => {});}
+      else {void emit($, state, 'COMPLETE', {turnId: e.turnId, text: e.answer, completedAt: await $.clock.now()}).catch(() => {});}
     } else {
       void emit($, state, e.reason === 'aborted' || e.isAborted ? 'INTERRUPTED' : 'FAILED').catch(() => {});
     }
     return result;
   });
-  on('classic.PermissionRequest', async ($, e, next) => { if (!e.agent_id) void emit($, state, 'WAITING_DECISION').catch(() => {}); return next(e); }).catch(async ($, e, next) => next(e));
+  on('classic.PermissionRequest', async ($, e, next) => { if (!e.agent_id) void emit($, state, 'WAITING_DECISION').catch(() => {}); return next(e); }).catch(async ($, e, next) => { if (next.called) throw new Error('AGBRIO_NATIVE_PERMISSION_UNCONFIRMED'); return next(e); });
   on('session.end', async ($, e, next) => { const delivery=emit($, state, 'SESSION_END'); state.stopped = true; void delivery.catch(() => {}); return next(e); });
 }

@@ -2,7 +2,7 @@
 
 ## Claude observation candidate0.1.31
 
-553 frontend/61files,229Core/2ignored,228Host/32ignored,7Node fixtures and production release check PASS in source. Current Desktop engine2.1.295 official strict validator passes after fixing a module-helper analyzer incompatibility. No real model request, native session startup/restart or observed Claude reply. Windows release/install checks and natural Bridge delivery are OPEN. Existing8Events scopes and daily task must remain unchanged.
+553 frontend/61files,229Core/2ignored,228Host/32ignored,7Node fixtures and production release check PASS in source. Current Desktop engine2.1.295 official strict validator and native no-session VM test pass after fixing module-helper analysis and asynchronous completion time. Public checkout544frontend/59files and7Node tests PASS. No real model request, native session startup/restart or observed Claude reply. Windows release/install checks and natural Bridge delivery are OPEN. Existing8Events scopes and daily task must remain unchanged.
 
 
 ## Daily report release0.1.30 — delivered, not universal client acceptance

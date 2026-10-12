@@ -125,3 +125,9 @@ Official sources checked2026-10-12:
 - [Mods API](https://code.claude.com/docs/en/plugins/mods/api)
 - [Plugin manifest / sensitive config](https://code.claude.com/docs/en/plugins/manifest-reference)
 - [Official published type declarations](https://github.com/anthropics/claude-code/blob/main/mods/types/claude-code.d.ts)
+
+## Native no-session compatibility gate
+
+Engine2.1.295 native test kit caught an asynchronous clock mismatch that synchronous Node fixtures missed. Await $.clock.now before serializing completedAt; native VM test verifies numeric time and full final bytes. The earlier signed candidate is retired and must not be distributed. Signature acceptance does not prove callback semantics.
+
+Run `node tools/claude-code-adapter/native-compat.mjs <Claude executable> <existing task scratch directory>` to create an isolated fake-config fixture and run only `claude plugin test`. No session, sign-in, real network, model call or real turn is created. Remove the printed task-owned fixture after preserving the minimal result. This native test is still a fixture, not live Bridge delivery acceptance.

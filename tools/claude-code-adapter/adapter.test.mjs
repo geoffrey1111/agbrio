@@ -49,16 +49,23 @@ test('native interruption pins expected turn and pending approval never becomes 
 });
 test('SDK turn.complete uses exact native turn and full final answer; interruption is not a reply',async()=>{
  const callbacks=new Map(),posted=[];register((name,fn)=>{callbacks.set(name,fn);return {catch:()=>{}};},{hostUrl:'http://127.0.0.1:12345',token:'a'.repeat(64)});
- const $={session:{id:async()=>sid,cwd:async()=>cwd,version:async()=>({version:'2.1.286'})},clock:{every:()=>{},now:()=>1791763200000},http:{fetch:async(_,init)=>{posted.push(JSON.parse(init.body));return{ok:true};}}};
+ const $={session:{id:async()=>sid,cwd:async()=>cwd,version:async()=>({version:'2.1.286'})},clock:{every:()=>{},now:async()=>1791763200000},http:{fetch:async(_,init)=>{posted.push(JSON.parse(init.body));return{ok:true};}}};
  const next=async e=>e;
  await callbacks.get('session.start')($,{},next);
  await callbacks.get('turn.start')($,{turnId:mid},next);
  const answer='完整答复\n\n```text\n原代码块\n```';
  await callbacks.get('turn.complete')($,{turnId:mid,reason:'answer',isAborted:false,answer},next);
  await new Promise(resolve=>setImmediate(resolve));
- assert.equal(posted.at(-1).kind,'COMPLETE');assert.equal(posted.at(-1).text,answer);assert.equal(posted.at(-1).turnId,mid);
+ assert.equal(typeof posted.at(-1).completedAt,'number');assert.equal(posted.at(-1).kind,'COMPLETE');assert.equal(posted.at(-1).text,answer);assert.equal(posted.at(-1).turnId,mid);
  await callbacks.get('turn.complete')($,{turnId:mid,reason:'aborted',isAborted:true,answer:'partial'},next);
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(posted.at(-1).kind,'INTERRUPTED');assert.equal(posted.at(-1).text,null);
  assert(!callbacks.has('classic.Stop')); // No transcript-file reader needed.
+});
+
+test('permission observation error never retries an already-called native request',async()=>{
+ let permissionError;register((name,fn)=>({catch:handler=>{if(name==='classic.PermissionRequest')permissionError=handler;}}),{hostUrl:'http://127.0.0.1:12345',token:'a'.repeat(64)});
+ let calls=0;const next=async()=>{calls++;return{native:true};};next.called=true;
+ await assert.rejects(()=>permissionError({}, {}, next),/AGBRIO_NATIVE_PERMISSION_UNCONFIRMED/);assert.equal(calls,0);
+ next.called=false;assert.deepEqual(await permissionError({}, {}, next),{native:true});assert.equal(calls,1);
 });
