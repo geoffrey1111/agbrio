@@ -14,8 +14,13 @@
     "strictNativeValidator": "PASS",
     "publisherSignatureAndTamperRejection": "PASS",
     "sourceWindowsRun": 38205960554,
-    "sourceWindows": "PENDING",
-    "exactReleasedWindows": "PENDING"
+    "sourceWindows": "SUCCESS",
+    "exactReleasedWindows": "PENDING",
+    "corePassed": 229,
+    "coreIgnored": 1,
+    "hostPassed": 229,
+    "hostIgnored": 32,
+    "hostMainPassed": 1
   },
   "installedNative": "0.1.31",
   "nativeSessionObservation": "NOT_EXECUTED",
