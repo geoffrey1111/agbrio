@@ -1,0 +1,32 @@
+{
+  "version": "0.1.31",
+  "interface": "2026.10.12-43",
+  "sourceCommit": "ddb280e933b2271250dfc3dbdc5a8edfae64f0ab",
+  "scope": "Optional local Claude Desktop Code observation; production Claude writes disabled",
+  "pluginVersion": "0.1.1",
+  "installerBytes": 276231897,
+  "installerSha256": "fab51b9d4c9bc1fb611ba7ca520798025c974f91508302bdb17d9fd6e10c794f",
+  "checks": {
+    "publicFrontend": 544,
+    "publicFrontendFiles": 59,
+    "nodeAdapterTests": 8,
+    "nativeVmNoSessionTests": 1,
+    "installedEngineVersion": "2.1.295",
+    "strictNativeValidator": "PASS",
+    "publisherSignatureAndTamperRejection": "PASS",
+    "sourceWindowsRun": 38202650862,
+    "sourceWindows": "PENDING",
+    "exactReleasedWindows": "PENDING"
+  },
+  "nativeSessionObservation": "NOT_EXECUTED",
+  "installedNative": "0.1.30",
+  "realClaudeMessages": 0,
+  "realClaudeModelRequests": 0,
+  "bindingChanged": false,
+  "existingSubscriptionsChanged": false,
+  "limitations": [
+    "Live plugin activation and natural reply readback at Bridge remain OPEN",
+    "Production Claude send/stop/goal/approval controls not enabled",
+    "Native fixture and signature are independent of real provider acceptance"
+  ]
+}
