@@ -7,8 +7,10 @@ $mutex=[Threading.Mutex]::new($false,('Local\Agbrio.SharedCodex.'+$key));$held=$
 try{
  try{$held=$mutex.WaitOne(0)}catch [Threading.AbandonedMutexException]{$held=$true}
  if(!$held){throw 'SHARED_START_UNAVAILABLE'}
- $output=& $node (Join-Path $PSScriptRoot 'launch-entry.mjs') $PSScriptRoot 2>&1
- if($LASTEXITCODE -ne 0){throw 'SHARED_LAUNCH_NOT_COMPLETED'}
+ if(!(Test-Path -LiteralPath $node -PathType Leaf)){throw 'SHARED_NATIVE_LAUNCHER_MISSING'}
+ $savedPreference=$ErrorActionPreference
+ try{$ErrorActionPreference='Continue';$output=& $node (Join-Path $PSScriptRoot 'launch-entry.mjs') $PSScriptRoot 2>&1;$nativeExit=$LASTEXITCODE}finally{$ErrorActionPreference=$savedPreference}
+ if($nativeExit -ne 0){throw 'SHARED_LAUNCH_NOT_COMPLETED'}
 }catch{
  Add-Type -AssemblyName System.Windows.Forms
  $code=[regex]::Match(([string]$output+' '+$_.Exception.Message),'SHARED_[A-Z_]+').Value
@@ -20,6 +22,7 @@ try{
   'SHARED_START_UNAVAILABLE' {$message=if($zh){'另一个连接操作正在进行，请等待它完成。当前 Codex 保持原状。'}else{'Another connection operation is in progress. Wait for it to finish. Current Codex is unchanged.'}}
   'SHARED_CONNECTION_UNCERTAIN' {$message=if($zh){'无法确认共享后台状态，未结束进程。请继续使用普通 Codex。'}else{'The shared backend state could not be verified. No process was stopped. Keep using ordinary Codex.'}}
  }
+ if($code){$message+=' ['+$code+']'}
  [void][Windows.Forms.MessageBox]::Show($message,'Agbrio')
  exit 1
 }finally{if($held){$mutex.ReleaseMutex()};$mutex.Dispose()}

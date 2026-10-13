@@ -18,6 +18,16 @@ function Remove-NativeStaging([string]$Staged,[string]$NativeRoot){
  foreach($entry in $entries){Remove-Item -LiteralPath $entry.FullName -ErrorAction Stop}
  Remove-Item -LiteralPath $path -ErrorAction Stop
 }
+function Copy-NativeBytes([string]$SourceFile,[string]$TargetFile){
+ # WindowsApps files can carry package encryption metadata that Copy-Item tries
+ # to preserve. Read the authorized executable bytes into a new ordinary file;
+ # never modify source encryption/ACLs or overwrite an existing cache member.
+ $inputStream=[IO.File]::Open($SourceFile,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+ try{
+  $outputStream=[IO.File]::Open($TargetFile,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+  try{$inputStream.CopyTo($outputStream)}finally{$outputStream.Dispose()}
+ }finally{$inputStream.Dispose()}
+}
 function Read-NativeCohort([string]$Path) {
  $root=[IO.Path]::GetFullPath($Path);$files=@();$signer=$null
  if((Get-Item -LiteralPath $root).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'SHARED_NATIVE_RUNTIME_LINK_REJECTED'}
@@ -60,7 +70,7 @@ if($MyInvocation.InvocationName -ne '.'){
   if(!(Test-Path -LiteralPath $target)){
    $staged=Join-Path $nativeRoot ('staging-'+[guid]::NewGuid().ToString('N'));New-Item -ItemType Directory -Path $staged | Out-Null
    try{
-    foreach($name in $NativeNames){Copy-Item -LiteralPath (Join-Path $source $name) -Destination (Join-Path $staged $name)}
+    foreach($name in $NativeNames){Copy-NativeBytes (Join-Path $source $name) (Join-Path $staged $name)}
     Assert-NativeManifest $manifest (Read-NativeCohort $staged)
     [IO.File]::WriteAllText((Join-Path $staged 'manifest.json'),($manifest | ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
     Move-Item -LiteralPath $staged -Destination $target

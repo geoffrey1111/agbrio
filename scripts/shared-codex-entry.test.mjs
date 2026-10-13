@@ -61,3 +61,11 @@ test('reused resident launch failure never disables its existing writer',async()
 test('failed activation cleanup reports incomplete recovery instead of hiding it',async()=>{
  let prepared=false;await assert.rejects(launchEntry(options,{control:async o=>{if(o.action==='setup')prepared=true;if(o.action==='launch')throw Error('SHARED_DESKTOP_CONNECTION_FAILED');if(o.action==='disable'&&prepared)throw Error('SHARED_DESKTOP_BUSY');return {ready:false};},discover:async()=>({binary:'new',version:'new'}),stage:async()=>{}}),/SHARED_ROLLBACK_INCOMPLETE/);
 });
+
+test('native discovery failure retains its stage and sanitized code from child stderr',async()=>{
+ await assert.rejects(launchEntry(options,{control:async()=>({ready:false}),discover:async()=>{throw Object.assign(Error('private command must not escape'),{stderr:'SHARED_NATIVE_SIGNATURE_INVALID private-value'});}}),error=>error.message==='SHARED_NATIVE_SIGNATURE_INVALID'&&error.launchStage==='NATIVE_DISCOVERY'&&!error.message.includes('private'));
+});
+
+test('reused resident errors are attributed to Desktop launch without stopping the writer',async()=>{
+ const actions=[];await assert.rejects(launchEntry(options,{control:async o=>{actions.push(o.action);if(o.action==='launch')throw Error('SHARED_DESKTOP_CONNECTION_FAILED');return {ready:true,desktopConnected:true};}}),error=>error.launchStage==='DESKTOP_LAUNCH');assert.deepEqual(actions,['status','launch']);
+});

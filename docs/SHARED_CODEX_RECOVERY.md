@@ -1,5 +1,8 @@
 # Shared Codex repair candidate
 
+The rc3 candidate subsequently failed actual owner startup. The WindowsApps source files carry package encryption metadata: metadata-preserving copy raised "The specified file could not be encrypted". A running-cache copy and matching content hashes had missed this cold source branch. The current rc4 fix copies authorized executable bytes to new files, preserves source encryption/security, and re-verifies all four signatures, versions and hashes before cache promotion. Actual encrypted-bundle retention and native execution now pass. A separate blank-profile real Desktop also attached successfully without using a daily profile or account credentials. These are bounded engineering results; original history and owner-profile Desktop tools remain separate unaccepted gates. No stable release is published.
+
+
 This is development source pending actual Desktop acceptance. The current stable
 release remains0.1.34. Do not enable shared mode merely because a package builds.
 

@@ -36,34 +36,36 @@ export async function stageSharedResources({directory,source,node,stamp},{move=r
   }finally{try{const stat=await lstat(next);if(stat.isSymbolicLink())throw Error('SHARED_RUNTIME_LINK_REJECTED');if(dirname(resolve(next))!==resolve(directory)||!next.includes('runtime-next-'))throw Error('SHARED_RUNTIME_CLEANUP_REJECTED');await discardStage(next);}catch(e){if(e.code!=='ENOENT')throw e;}}
 }
 export async function launchEntry(options,dependencies={}){
+ let stage='STATUS';
+ try{
  const control=dependencies.control??lifecycle,exec=dependencies.exec??execute;
  const {directory,source,node}=options,base={directory,scripts:source};
  const previous=await control({...base,action:'status'});
  // Reuse the live owner. No update, background stop, or second native writer.
- if(previous.ready&&(previous.desktopConnected||previous.activeTurns!==0))return control({...base,action:'launch'});
+ if(previous.ready&&(previous.desktopConnected||previous.activeTurns!==0)){stage='DESKTOP_LAUNCH';return await control({...base,action:'launch'});}
  // Fail before native retention, resource staging or starting any shared writer.
  // A normal Desktop owns its backend until the owner explicitly exits it.
- const currentDesktop=await (dependencies.desktopState??(()=>readDesktopState(source,exec)))();
+ stage='DESKTOP_STATE';const currentDesktop=await (dependencies.desktopState??(()=>readDesktopState(source,exec)))();
  if(!Number.isInteger(currentDesktop.count)||currentDesktop.count<0)throw Error('SHARED_DESKTOP_BINARY_UNRESOLVED');
  if(currentDesktop.count>0)throw Error('SHARED_DESKTOP_CLOSE_REQUIRED');
  // No native retention while an unreachable supervisor may still own work.
- await control({...base,action:'prepare-check'});
+ stage='PREPARE_CHECK';await control({...base,action:'prepare-check'});
  const native=dependencies.discover??(async()=>{
   const p=join(process.env.WINDIR,'System32/WindowsPowerShell/v1.0/powershell.exe');
   const out=await exec(p,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(source,'desktop-runtime.ps1'),'-Directory',directory,'-ProbeNode',node],{windowsHide:true,timeout:120000,maxBuffer:262144});return JSON.parse(out.stdout);
  });
- const candidate=await native(); // Entire candidate is checked before old state changes.
- if(previous.ready){const saved=await (dependencies.saved??(async()=>JSON.parse(await readFile(join(directory,'settings.json'),'utf8'))))();if(saved.binary===candidate.binary&&saved.version===candidate.version&&await (dependencies.resourcesMatch??sharedResourcesMatch)(options))return control({...base,action:'launch'});}
- await control({...base,action:'disable'});
- const stage=dependencies.stage??(()=>stageSharedResources(options));
- await stage();
- await control({...base,...candidate,action:'setup'});
- try{return await control({...base,action:'launch'});}catch(error){
+ stage='NATIVE_DISCOVERY';const candidate=await native(); // Entire candidate is checked before old state changes.
+ stage='RESOURCE_VALIDATION';if(previous.ready){const saved=await (dependencies.saved??(async()=>JSON.parse(await readFile(join(directory,'settings.json'),'utf8'))))();if(saved.binary===candidate.binary&&saved.version===candidate.version&&await (dependencies.resourcesMatch??sharedResourcesMatch)(options)){stage='DESKTOP_LAUNCH';return await control({...base,action:'launch'});}}
+ stage='DISABLE';await control({...base,action:'disable'});
+ stage='RESOURCE_STAGING';await (dependencies.stage??(()=>stageSharedResources(options)))();
+ stage='NATIVE_SETUP';await control({...base,...candidate,action:'setup'});
+ stage='DESKTOP_LAUNCH';try{return await control({...base,action:'launch'});}catch(error){
   // This entry owns the new preparation, unlike reuse of a resident above.
   // Failed activation must retire it, with existing busy/identity guards intact.
-  try{await control({...base,action:'disable'});}catch{throw Error('SHARED_ROLLBACK_INCOMPLETE');}
+  try{await control({...base,action:'disable'});}catch{stage='RECOVERY';throw Error('SHARED_ROLLBACK_INCOMPLETE');}
   throw error;
  }
+ }catch(error){const code=String(error.stderr??error.message).match(/SHARED_[A-Z_]+/)?.[0]??'SHARED_LAUNCH_NOT_COMPLETED';throw Object.assign(Error(code,{cause:error}),{launchStage:stage});}
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  try{
@@ -76,5 +78,10 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   await launchEntry({source,directory:join(process.env.LOCALAPPDATA,'AIWorkRouter/codex-shared'),node:join(dirname(source),'browser-executor-node.exe')});
  }
  }
- catch(e){process.stderr.write(String(e.message).match(/SHARED_[A-Z_]+/)?.[0]??(process.argv[2]==='--stage-only'?'SHARED_RUNTIME_COPY_FAILED':'SHARED_LAUNCH_NOT_COMPLETED'));process.exitCode=1;}
+ catch(e){
+  const code=String(e.stderr??e.message).match(/SHARED_[A-Z_]+/)?.[0]??(process.argv[2]==='--stage-only'?'SHARED_RUNTIME_COPY_FAILED':'SHARED_LAUNCH_NOT_COMPLETED');
+  const diagnostic={code,stage:e.launchStage??'ENTRY',updatedAt:Date.now()};
+  if(process.argv[2]!=='--stage-only')try{const directory=join(process.env.LOCALAPPDATA,'AIWorkRouter/codex-shared'),path=join(directory,'launch-diagnostic.json');if((await lstat(directory)).isSymbolicLink())throw Error('link');const existing=await lstat(path).catch(err=>{if(err.code==='ENOENT')return null;throw err;});if(existing?.isSymbolicLink()||existing?.isDirectory())throw Error('link');await writeFile(path,JSON.stringify(diagnostic));}catch{/* Diagnostics cannot create a missing owner root or hide recovery failure. */}
+  process.stderr.write(process.argv[2]==='--stage-only'?code:JSON.stringify(diagnostic));process.exitCode=1;
+ }
 }
