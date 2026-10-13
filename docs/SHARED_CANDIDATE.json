@@ -1,7 +1,7 @@
 {
-  "sha256": "f2d2d5feb000ef47598c35d4f4e80f5f6fce671e07ce3702d93d193304c31592",
-  "releaseId": 411387979,
+  "version": "0.1.35-rc.3",
+  "sha256": "31f43225ae898872601d53bc3b58ef4228d431a277afb3f49ecefb689a2f8c21",
+  "releaseId": 411448234,
   "installedLocally": false,
-  "version": "0.1.35-rc.2",
   "status": "UNPUBLISHED_DRAFT_PENDING_DESKTOP_ACCEPTANCE"
 }
