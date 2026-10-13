@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([Parameter(Mandatory=$true)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$')][string]$Version,[string]$NotesFile='',[ValidateSet('lzma','zlib')][string]$Compression='lzma',[string]$HostedControlOrigin=$env:AGBRIO_HOSTED_CONTROL_ORIGIN,[switch]$SelfHostedOnly)
+param([Parameter(Mandatory=$true)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$')][string]$Version,[string]$NotesFile='',[ValidateSet('lzma','zlib')][string]$Compression='lzma',[string]$HostedControlOrigin=$env:AGBRIO_HOSTED_CONTROL_ORIGIN,[switch]$SelfHostedOnly,[string]$SigningCredentialsDirectory='')
 $ErrorActionPreference='Stop'
 $baseVersion=[version]($Version.Split('-')[0])
 if($baseVersion -lt [version]'0.1.1'){throw 'The first signed update must use version 0.1.1 or higher; installed 0.1.0 clients cannot update to a 0.1.0 prerelease'}
@@ -11,6 +11,10 @@ if(!$SelfHostedOnly){
  $HostedControlOrigin=$publisherOrigin.GetLeftPart([UriPartial]::Authority)
 }
 $repoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+# An absolute existing Cargo target permits reuse without creating another huge
+# target tree. Relative Cargo paths depend on its child cwd, so reject ambiguity.
+if($env:CARGO_TARGET_DIR -and ![IO.Path]::IsPathRooted($env:CARGO_TARGET_DIR)){throw 'CARGO_TARGET_DIR must be absolute for signed artifact readback'}
+$buildTarget=if($env:CARGO_TARGET_DIR){[IO.Path]::GetFullPath($env:CARGO_TARGET_DIR)}else{Join-Path $repoRoot 'src-tauri/target'}
 $releaseRoot=Join-Path $repoRoot ('runtime/signed-release-'+$Version)
 if(Test-Path -LiteralPath $releaseRoot){throw 'Preserve the existing release directory; choose a new version'}
 New-Item -ItemType Directory -Path $releaseRoot | Out-Null
@@ -18,7 +22,7 @@ $savedPrivate=$env:TAURI_SIGNING_PRIVATE_KEY;$savedPassword=$env:TAURI_SIGNING_P
 try{
  $env:AGBRIO_HOSTED_CONTROL_ORIGIN=if($SelfHostedOnly){$null}else{$HostedControlOrigin}
  if(!$env:TAURI_SIGNING_PRIVATE_KEY){
-  $privateRoot=Join-Path $repoRoot 'runtime/desktop-update-20261008/private'
+  $privateRoot=if($SigningCredentialsDirectory){(Resolve-Path -LiteralPath $SigningCredentialsDirectory).Path}else{Join-Path $repoRoot 'runtime/desktop-update-20261008/private'}
   $keyPath=Join-Path $privateRoot 'agbrio-updater.key';$passwordPath=Join-Path $privateRoot 'signing-password.dpapi'
   if(!(Test-Path -LiteralPath $keyPath) -or !(Test-Path -LiteralPath $passwordPath)){throw 'Set TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD securely before a publisher build'}
   $env:TAURI_SIGNING_PRIVATE_KEY=$keyPath
@@ -33,7 +37,7 @@ try{
  try{
   & npm run build:windows -- --config $overlay
   if($LASTEXITCODE -ne 0){throw 'Signed build failed; nothing was published'}
-  $installer=Join-Path $repoRoot ('src-tauri/target/release/bundle/nsis/Agbrio_'+$Version+'_x64-setup.exe')
+  $installer=Join-Path $buildTarget ('release/bundle/nsis/Agbrio_'+$Version+'_x64-setup.exe')
   if(!(Test-Path -LiteralPath ($installer+'.sig'))){throw 'No updater signature was generated; do not publish as an in-app update'}
   Copy-Item -LiteralPath $installer,($installer+'.sig') -Destination $releaseRoot
   $arguments=@('scripts/create-update-manifest.mjs','--version',$Version,'--installer',(Join-Path $releaseRoot (Split-Path $installer -Leaf)),'--output',(Join-Path $releaseRoot 'latest.json'))

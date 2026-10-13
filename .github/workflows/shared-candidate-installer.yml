@@ -1,0 +1,55 @@
+name: Exact shared connection candidate installer
+on:
+  push:
+    branches: [codex/open-alpha]
+    paths:
+      - docs/SHARED_CANDIDATE.json
+      - .github/workflows/shared-candidate-installer.yml
+      - scripts/windows-shared-install-smoke.ps1
+permissions:
+  contents: read
+concurrency:
+  group: shared-candidate-installer
+  cancel-in-progress: false
+jobs:
+  signed-upgrade-uninstall:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+      - name: Download exact signed draft candidate and known baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $spec=Get-Content docs/SHARED_CANDIDATE.json -Raw|ConvertFrom-Json
+          if($spec.version -notmatch '^0\.1\.[0-9]+-rc\.[0-9]+$' -or $spec.sha256 -notmatch '^[a-f0-9]{64}$'){throw 'Invalid candidate specification'}
+          $name='Agbrio_'+$spec.version+'_x64-setup.exe'
+          $headers=@{Authorization=('Bearer '+$env:GH_TOKEN);Accept='application/vnd.github+json';'X-GitHub-Api-Version'='2022-11-28'}
+          $release=$null
+          for($attempt=0;$attempt -lt 12;$attempt++){
+            try{$release=Invoke-RestMethod ('https://api.github.com/repos/geoffrey1111/agbrio/releases/tags/v'+$spec.version) -Headers $headers;break}catch{Start-Sleep -Seconds 5}
+          }
+          if(!$release -or !$release.draft -or $release.tag_name -cne ('v'+$spec.version)){throw 'Owned unpublished candidate draft required'}
+          $asset=@($release.assets|Where-Object {$_.name -ceq $name})
+          if($asset.Count -ne 1){throw 'Exact candidate asset missing or ambiguous'}
+          $root=Join-Path (Get-Location) 'runtime/candidate'
+          New-Item -ItemType Directory -Path $root|Out-Null
+          $headers.Accept='application/octet-stream'
+          $candidate=Join-Path $root $name
+          Invoke-WebRequest ('https://api.github.com/repos/geoffrey1111/agbrio/releases/assets/'+$asset[0].id) -Headers $headers -OutFile $candidate
+          if((Get-FileHash -LiteralPath $candidate).Hash.ToLowerInvariant() -cne $spec.sha256){throw 'Signed candidate bytes mismatch'}
+          $baseline=Join-Path $root 'Agbrio_0.1.34_x64-setup.exe'
+          Invoke-WebRequest 'https://github.com/geoffrey1111/agbrio/releases/download/v0.1.34/Agbrio_0.1.34_x64-setup.exe' -OutFile $baseline
+          if((Get-FileHash -LiteralPath $baseline).Hash.ToLowerInvariant() -cne '91b7a71131635def036369e1e9d46f67fff3183480d44d1b152b517a2a79707d'){throw 'Baseline bytes mismatch'}
+          pwsh -NoProfile -File scripts/windows-shared-install-smoke.ps1 -BaselineInstaller $baseline -CandidateInstaller $candidate -Version $spec.version
+          if($LASTEXITCODE -ne 0){throw 'Actual upgrade/uninstall gate failed'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agbrio-shared-candidate-upgrade-proof
+          path: runtime/shared-install/proof.json

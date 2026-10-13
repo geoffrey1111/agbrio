@@ -15,6 +15,23 @@ export function desktopLaunchOptions(url,environment=process.env){
 }
 export function restoreChanges(snapshot,installed){return Object.entries(installed).map(([name,value])=>({name,installed:value,previous:snapshot[name]??null}));}
 export function sharedUrl(value){try{const u=new URL(value);return ['ws:','wss:'].includes(u.protocol)&&u.hostname==='127.0.0.1'&&u.port==='47116'&&u.pathname==='/rpc'&&!u.username&&!u.password&&!u.search&&!u.hash;}catch{return false;}}
+export async function readDesktopState(scripts,execute=exec){
+ try{
+  const ps=join(process.env.WINDIR,'System32/WindowsPowerShell/v1.0/powershell.exe');
+  const result=await execute(ps,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(scripts,'desktop-state.ps1')],{windowsHide:true,timeout:10000,maxBuffer:16384});
+  const value=JSON.parse(result.stdout);
+  if(!value||!Number.isInteger(value.count)||value.count<0||typeof value.desktop!=='string'||!value.desktop)throw Error('invalid');
+  return value;
+ }catch{throw Error('SHARED_DESKTOP_BINARY_UNRESOLVED');}
+}
+export function mergeStopSnapshots(previous,current){
+ const identity=value=>value&&Number.isInteger(value.pid)&&typeof value.createdAt==='string'&&typeof value.ownerSid==='string'&&typeof value.imagePath==='string'?JSON.stringify([value.pid,value.createdAt,value.ownerSid,value.imagePath.toLowerCase()]):null;
+ const root=identity(current.root);
+ if(!root||identity(previous?.root)!==root)return current;
+ if(!Array.isArray(previous.children)||!Array.isArray(current.children))throw Error('SHARED_PROCESS_SNAPSHOT_INVALID');
+ const children=new Map();for(const value of [...previous.children,...current.children]){const key=identity(value);if(!key)throw Error('SHARED_PROCESS_SNAPSHOT_INVALID');children.set(key,value);}
+ return {...current,children:[...children.values()]};
+}
 export async function lifecycle(options,dependencies={}){
  const persist=dependencies.atomic??atomic,execute=dependencies.exec??exec,createProcess=dependencies.spawn??spawn,request=dependencies.fetch??fetch,pause=dependencies.sleep??sleep,now=dependencies.now??Date.now;
  const {directory,binary,version,desktop,action}=options,settingsPath=join(directory,'settings.json'),configPath=join(directory,'runtime-config.json'),journalPath=join(directory,'environment-journal.json');
@@ -23,16 +40,42 @@ export async function lifecycle(options,dependencies={}){
  const load=async(path)=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(e){if(e.code==='ENOENT')return null;throw Error('SHARED_SETTINGS_INVALID');}};
  let saved=await load(settingsPath),cfg=await load(configPath);
  const health=async()=>{try{const v=await(await request(`http://127.0.0.1:${cfg.port}/health`,{signal:AbortSignal.timeout(1500)})).json();return v.instance===cfg.instance?v:null;}catch{return null;}};
- const status=async()=>{const h=cfg?.format===2?await health():null;return{enabled:saved?.enabled===true&&saved?.format===2,ready:!!h?.ready,desktopConnected:!!h?.desktopConnected,state:saved?.format!==2?(saved?.enabled?'LEGACY_REPAIR_REQUIRED':'INDEPENDENT'):saved.phase==='RECOVERY_REQUIRED'?'RECOVERY_REQUIRED':saved.phase==='ACTIVE'?(h?.desktopConnected?'SHARED_CONNECTED':'SHARED_RECONNECTING'):saved.phase==='PREPARED'&&h?.ready?'SHARED_PREPARED':'INDEPENDENT',updatePending:false,launchProgress:await load(join(directory,'launch-progress.json')).catch(()=>null)};};
+ const verifyRuntime=dependencies.verifyRuntime??(async(nativeBinary,nativeVersion)=>{
+  try{const source=options.scripts??join(directory,'runtime');const value=await execute(ps,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(source,'native-runtime.ps1'),'-Action','Verify','-Binary',nativeBinary,'-Version',nativeVersion],{windowsHide:true,timeout:60000,maxBuffer:262144});const verified=JSON.parse(value.stdout);
+   const output=await execute(process.execPath,[join(source,'code-mode-probe.mjs'),join(dirname(nativeBinary),'codex-code-mode-host.exe')],{windowsHide:true,timeout:20000,maxBuffer:16384});const proof=JSON.parse(output.stdout);
+   if(proof.javascriptCellsExecuted!==2||proof.persistentStoreVerified!==true||proof.delegateCalls!==0)throw Error('SHARED_NATIVE_TOOL_HOST_EXEC_FAILED');return verified;}
+  catch(e){throw Error(String(e.stderr??e.message).match(/SHARED_[A-Z_]+/)?.[0]??'SHARED_NATIVE_RUNTIME_UNVERIFIED');}
+ });
+ const requireKnownLifecycle=async()=>{
+  if(cfg?.format===2&&!await health()){
+   const identity=await run(['-Action','SupervisorState','-Directory',directory]);
+   if(identity.alive)throw Error('SHARED_CONNECTION_UNCERTAIN');
+  }
+ };
+ const checkPreparation=async()=>{
+  await requireKnownLifecycle();
+  const h=cfg?.format===2?await health():null;
+  if(h&&(!Number.isInteger(h.activeTurns)||h.activeTurns<0))throw Error('SHARED_CONNECTION_UNCERTAIN');
+  if(h?.activeTurns>0)throw Error(action==='setup'&&(saved?.binary!==binary||saved?.version!==version)?'SHARED_RUNTIME_UPDATE_PENDING':'SHARED_DESKTOP_BUSY');
+  const installed=await readDesktopState(options.scripts??join(directory,'runtime'),execute);
+  if(installed.count>0)throw Error('SHARED_DESKTOP_CLOSE_REQUIRED');
+ };
+ const status=async()=>{const h=cfg?.format===2?await health():null;return{enabled:saved?.enabled===true&&saved?.format===2,ready:!!h?.ready,desktopConnected:!!h?.desktopConnected,state:saved?.format!==2?(saved?.enabled?'LEGACY_REPAIR_REQUIRED':'INDEPENDENT'):saved.phase==='RECOVERY_REQUIRED'?'RECOVERY_REQUIRED':saved.phase==='ACTIVE'?(h?.desktopConnected?'SHARED_CONNECTED':'SHARED_RECONNECTING'):saved.phase==='PREPARED'&&h?.ready?'SHARED_PREPARED':'INDEPENDENT',updatePending:false,activeTurns:h?.activeTurns??null,launchProgress:await load(join(directory,'launch-progress.json')).catch(()=>null)};};
  const stop=async()=>{
   const h=cfg?.format===2?await health():null;
   if(h?.activeTurns)throw Error('SHARED_DESKTOP_BUSY');
+  const snapshotPath=join(directory,'stop-processes.json');
+  // Capture while the root still exists. Keep an earlier valid capture across
+  // a failed shutdown so already-orphaned children can be checked on recovery.
+  const captured=await run(['-Action','CaptureStop','-Directory',directory]);
+  if(captured.root&&!captured.rootAbsent)await persist(snapshotPath,mergeStopSnapshots(await load(snapshotPath),captured));
   if(h){const r=await request(`http://127.0.0.1:${cfg.port}/stop`,{method:'POST',headers:{Authorization:'Bearer '+cfg.controlToken},signal:AbortSignal.timeout(6000)});if(!r.ok)throw Error(r.status===409?'SHARED_DESKTOP_BUSY':'SHARED_STOP_FAILED');
    for(let i=0;i<40;i++){if(!await health())break;await sleep(100);}
   }
   // Also cleans verified startup failures and legacy supervisors without /stop.
-  await run(['-Action','Stop','-Directory',directory]);
+  await run(['-Action','Stop','-Directory',directory,'-SnapshotPath',snapshotPath]);
   if(cfg?.format===2&&await health())throw Error('SHARED_STOP_FAILED');
+  await unlink(snapshotPath).catch(e=>{if(e.code!=='ENOENT')throw e;});
  };
  const restore=async()=>{
   let journal=await load(journalPath);
@@ -46,6 +89,7 @@ export async function lifecycle(options,dependencies={}){
   if(journal)await run(['-Action','Restore','-SnapshotPath',journalPath]);
  };
  const rollback=async()=>{
+  await requireKnownLifecycle();
   if((cfg?.format===2?await health():null)?.activeTurns)throw Error('SHARED_DESKTOP_BUSY');
   const failures=[];try{await restore();}catch(e){failures.push(e);}
   try{await stop();}catch(e){if(e.message==='SHARED_DESKTOP_BUSY')throw e;failures.push(e);}
@@ -56,16 +100,16 @@ export async function lifecycle(options,dependencies={}){
   await unlink(journalPath).catch(e=>{if(e.code!=='ENOENT')throw e;});
  };
  if(action==='status')return status();
+ if(action==='prepare-check'){await checkPreparation();return status();}
  if(action==='disable'){await rollback();return status();}
  if(action==='launch'){
   const progress=async(step,state='RUNNING',errorCode=null)=>persist(join(directory,'launch-progress.json'),{step,state,errorCode,updatedAt:now()}).catch(()=>{});
   await progress('CHECKING');
   try{
   if(saved?.format!==2||!['PREPARED','ACTIVE'].includes(saved.phase)||!(await health())?.ready)throw Error('SHARED_NOT_PREPARED');
+  await verifyRuntime(cfg.binary,cfg.version);
   // Never close or launch into the owner's already-running Desktop instance.
-  const scan=await execute(ps,['-NoProfile','-NonInteractive','-Command',"$ErrorActionPreference='Stop';$root=(Get-AppxPackage -Name 'OpenAI.Codex').InstallLocation;$desktop=Join-Path $root 'app/ChatGPT.exe';if(!(Test-Path -LiteralPath $desktop)){throw 'SHARED_DESKTOP_BINARY_UNRESOLVED'};$count=@(Get-CimInstance Win32_Process -Filter \"Name='ChatGPT.exe'\" | Where-Object {$_.ExecutablePath -match '^C:\\\\Program Files\\\\WindowsApps\\\\OpenAI\\.Codex_'}).Count;@{desktop=$desktop;count=$count}|ConvertTo-Json -Compress"],{windowsHide:true,timeout:10000});
-  let installed;try{installed=JSON.parse(scan.stdout);}catch{throw Error('SHARED_DESKTOP_BINARY_UNRESOLVED');}
-  if(!Number.isInteger(installed.count)||typeof installed.desktop!=='string'||!installed.desktop)throw Error('SHARED_DESKTOP_BINARY_UNRESOLVED');
+  const installed=await readDesktopState(options.scripts??join(directory,'runtime'),execute);
   if(installed.count>0){
    if((await health())?.desktopConnected){
     await progress('SHOWING');
@@ -118,7 +162,12 @@ export async function lifecycle(options,dependencies={}){
   }catch(e){await progress('FAILED','FAILED',/^SHARED_[A-Z_]+$/.test(e.message)?e.message:'SHARED_LIFECYCLE_FAILED');throw e;}
  }
  if(action!=='setup')throw Error('SHARED_ACTION_INVALID');
- if(saved?.format===2&&['ACTIVE','PREPARED'].includes(saved.phase)&&(await health())?.ready)return status();
+ await checkPreparation();
+ const verifiedNative=await verifyRuntime(binary,version);
+ if(saved?.format===2&&['ACTIVE','PREPARED'].includes(saved.phase)&&(await health())?.ready){
+  if(saved.binary!==binary||saved.version!==version)throw Error('SHARED_RUNTIME_UPDATE_PENDING');
+  return status();
+ }
  // Recovery is idempotent; legacy self-pointers are never saved as originals.
  if(saved||cfg)await rollback();
  await run(['-Action','Protect','-Directory',directory]);
@@ -126,7 +175,7 @@ export async function lifecycle(options,dependencies={}){
  if(snapshot.CODEX_APP_SERVER_WS_URL)throw Error('SHARED_STALE_ENDPOINT_REQUIRES_REPAIR');
  const nativeVersion=(await execute(binary,['--version'],{windowsHide:true,timeout:10000})).stdout.trim();if(nativeVersion!==`codex-cli ${version}`)throw Error('SHARED_NATIVE_BINARY_UNVERIFIED');
  const sid=(await execute(ps,['-NoProfile','-NonInteractive','-Command','[Security.Principal.WindowsIdentity]::GetCurrent().User.Value'],{windowsHide:true,timeout:10000})).stdout.trim();
- cfg={format:2,enabled:false,phase:'PREPARING',binary,version,desktop,ownerSid:sid,port:47116,instance:randomUUID(),controlToken:randomBytes(32).toString('hex')};
+ cfg={format:2,enabled:false,phase:'PREPARING',binary,version,desktop,nativeFiles:verifiedNative.files,ownerSid:sid,port:47116,instance:randomUUID(),controlToken:randomBytes(32).toString('hex')};
  cfg={...cfg,...dependencies.config};saved={...cfg,originalEnvironment:snapshot};delete saved.controlToken;
  try{
   await persist(settingsPath,saved);await persist(configPath,cfg);

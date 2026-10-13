@@ -997,5 +997,10 @@
   "连接正在配置，请稍候。": "Connection setup is in progress. Please wait.",
   "配置超时，未确认连接成功。请稍后检查连接。": "Setup timed out; the connection is not confirmed. Check the connection later.",
   "Claude 拒绝了插件配置；原任务未启动或重启，请检查插件权限。": "Claude refused plugin configuration. Your task was not started or restarted. Check plugin permissions.",
-  "连接配置未完成，请检查 Claude 是否已安装；也可以展开手动连接。": "Connection setup is incomplete. Check that Claude is installed, or expand manual setup."
+  "连接配置未完成，请检查 Claude 是否已安装；也可以展开手动连接。": "Connection setup is incomplete. Check that Claude is installed, or expand manual setup.",
+"共享连接已断开": "Shared connection is disconnected",
+"恢复共享连接": "Restore shared connection",
+"后台未连接。可以明确恢复连接或停用；不会自动重发消息。": "The backend is disconnected. Restore or disable it explicitly; messages will not be resent.",
+"Codex 本地工具组件不完整或校验失败，共享连接未启动。请保持普通 Codex 使用。": "Codex local tool components are incomplete or failed verification. Shared mode was not started. Keep using ordinary Codex.",
+"无法确认共享后台状态，未结束进程。请保持普通 Codex 使用。": "The shared backend state could not be verified. No process was stopped. Keep using ordinary Codex."
 }

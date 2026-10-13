@@ -5,6 +5,30 @@ use std::{path::{Path,PathBuf},sync::{Mutex,OnceLock},process::Command,fs};
 use sha2::{Digest,Sha256};
 #[derive(Clone)]struct Assets{source:PathBuf,node:PathBuf}
 static ASSETS:OnceLock<Assets>=OnceLock::new();static START:Mutex<()>=Mutex::new(());
+// Serialize the whole preparation, including native pinning, with the installed
+// entry. Locking only the short controller leaves a cross-process staging race.
+#[cfg(windows)]struct OwnerMutex(*mut std::ffi::c_void);
+#[cfg(windows)]mod owner_mutex_api{
+ #[link(name="kernel32")]unsafe extern "system"{
+  pub fn CreateMutexW(attributes:*mut std::ffi::c_void,initial_owner:i32,name:*const u16)->*mut std::ffi::c_void;
+  pub fn WaitForSingleObject(handle:*mut std::ffi::c_void,milliseconds:u32)->u32;
+  pub fn ReleaseMutex(handle:*mut std::ffi::c_void)->i32;
+  pub fn CloseHandle(handle:*mut std::ffi::c_void)->i32;
+ }
+}
+#[cfg(windows)]impl OwnerMutex{
+ fn acquire()->Result<Self,String>{Self::at(&folder()?)}
+ fn at(directory:&Path)->Result<Self,String>{
+  let key=directory.to_string_lossy().replace('/',"\\");let hash=format!("{:x}",Sha256::digest(key.as_bytes()));
+  let name:Vec<u16>=format!("Local\\Agbrio.SharedCodex.{hash}").encode_utf16().chain(Some(0)).collect();
+  let handle=unsafe{owner_mutex_api::CreateMutexW(std::ptr::null_mut(),0,name.as_ptr())};
+  if handle.is_null(){return Err("SHARED_START_UNAVAILABLE".into())}
+  let wait=unsafe{owner_mutex_api::WaitForSingleObject(handle,0)};
+  if wait!=0&&wait!=0x80{unsafe{owner_mutex_api::CloseHandle(handle)};return Err("SHARED_START_UNAVAILABLE".into())}
+  Ok(Self(handle))
+ }
+}
+#[cfg(windows)]impl Drop for OwnerMutex{fn drop(&mut self){unsafe{owner_mutex_api::ReleaseMutex(self.0);owner_mutex_api::CloseHandle(self.0);}}}
 #[derive(Clone,Serialize,Deserialize)]#[serde(rename_all="camelCase")]
 struct Settings{enabled:bool,#[serde(default)]format:u32,#[serde(default)]phase:String,binary:PathBuf,version:String,owner_sid:String,port:u16,instance:String,#[serde(default)]desktop:Option<PathBuf>}
 #[derive(Serialize,Deserialize)]#[serde(rename_all="camelCase")]
@@ -30,10 +54,21 @@ pub(crate)fn status()->Status{
  let h=health(&s);let ready=h.as_ref().is_some_and(|h|h["ready"]==true);let desktop=h.as_ref().is_some_and(|h|h["desktopConnected"]==true);
  Status{enabled:s.enabled,ready,desktop_connected:desktop,state:if s.phase=="RECOVERY_REQUIRED"{"RECOVERY_REQUIRED"}else if s.phase=="PREPARED"&&ready{"SHARED_PREPARED"}else if s.enabled&&desktop{"SHARED_CONNECTED"}else if s.enabled{"SHARED_RECONNECTING"}else{"INDEPENDENT"}.into(),update_pending:runtime_update_pending(),launch_progress:launch_progress()}
 }
-fn copy_tree(from:&Path,to:&Path)->Result<(),String>{fs::create_dir_all(to).map_err(|_|"SHARED_RUNTIME_COPY_FAILED")?;for e in fs::read_dir(from).map_err(|_|"SHARED_RUNTIME_COPY_FAILED")?{let e=e.map_err(|_|"SHARED_RUNTIME_COPY_FAILED")?;let ty=e.file_type().map_err(|_|"SHARED_RUNTIME_COPY_FAILED")?;if ty.is_symlink(){return Err("SHARED_RUNTIME_LINK_REJECTED".into())}if ty.is_dir(){copy_tree(&e.path(),&to.join(e.file_name()))?}else{fs::copy(e.path(),to.join(e.file_name())).map_err(|_|"SHARED_RUNTIME_COPY_FAILED")?;}}Ok(())}
-fn asset_stamp(a:&Assets)->Result<String,String>{let mut digest=Sha256::new();for name in ["runtime.mjs","transport.mjs","peer-owner.ps1","desktop-runtime.ps1","peer-service.ps1","control.mjs","environment.ps1","desktop-identity.ps1"]{digest.update(fs::read(a.source.join(name)).map_err(|_|"SHARED_RUNTIME_ASSET_MISSING")?);}digest.update(fs::read(&a.node).map_err(|_|"SHARED_NODE_MISSING")?);let ws=a.source.parent().ok_or("SHARED_RUNTIME_ASSET_MISSING")?.join("browser-executor/node_modules/ws");for name in ["index.js","package.json"]{digest.update(fs::read(ws.join(name)).map_err(|_|"SHARED_WS_MISSING")?);}let mut files:Vec<_>=fs::read_dir(ws.join("lib")).map_err(|_|"SHARED_WS_MISSING")?.filter_map(Result::ok).collect();files.sort_by_key(|f|f.file_name());for f in files{digest.update(fs::read(f.path()).map_err(|_|"SHARED_WS_MISSING")?);}Ok(format!("{:x}",digest.finalize()))}
+const SHARED_ASSET_NAMES:[&str;16]=["runtime.mjs","transport.mjs","peer-owner.ps1","desktop-runtime.ps1","desktop-state.ps1","native-runtime.ps1","native-cohort.mjs","backend-recovery.mjs","code-mode-probe.mjs","peer-service.ps1","control.mjs","environment.ps1","owned-processes.ps1","desktop-identity.ps1","launch.ps1","launch-entry.mjs"];
+fn resource_stamp(source:&Path,node:&Path,ws:&Path)->Result<String,String>{
+ let mut digest=Sha256::new();
+ for name in SHARED_ASSET_NAMES{digest.update(fs::read(source.join(name)).map_err(|_|"SHARED_RUNTIME_ASSET_MISSING")?);}
+ digest.update(fs::read(node).map_err(|_|"SHARED_NODE_MISSING")?);
+ for name in ["index.js","package.json"]{digest.update(fs::read(ws.join(name)).map_err(|_|"SHARED_WS_MISSING")?);}
+ let mut files:Vec<_>=fs::read_dir(ws.join("lib")).map_err(|_|"SHARED_WS_MISSING")?.collect::<Result<_,_>>().map_err(|_|"SHARED_WS_MISSING")?;
+ files.sort_by_key(|f|f.file_name());for f in files{let bytes=fs::read(f.path()).map_err(|_|"SHARED_WS_MISSING")?;digest.update(f.file_name().to_string_lossy().as_bytes());digest.update((bytes.len() as u64).to_le_bytes());digest.update(bytes);}Ok(format!("{:x}",digest.finalize()))
+}
+fn asset_stamp(a:&Assets)->Result<String,String>{resource_stamp(&a.source,&a.node,&a.source.parent().ok_or("SHARED_RUNTIME_ASSET_MISSING")?.join("browser-executor/node_modules/ws"))}
+fn cached_resources_match(root:&Path,stamp:&str)->bool{
+ fs::read_to_string(root.join("version")).ok().as_deref()==Some(stamp)&&resource_stamp(root,&root.join("node.exe"),&root.join("ws")).ok().as_deref()==Some(stamp)
+}
 fn live_assets_stamp(source:&Path,node:&Path,ws:&Path)->Option<String>{
- let mut digest=Sha256::new();for name in ["runtime.mjs","transport.mjs","peer-service.ps1"]{digest.update(fs::read(source.join(name)).ok()?);}digest.update(fs::read(node).ok()?);
+ let mut digest=Sha256::new();for name in ["runtime.mjs","transport.mjs","native-cohort.mjs","backend-recovery.mjs","peer-service.ps1"]{digest.update(fs::read(source.join(name)).ok()?);}digest.update(fs::read(node).ok()?);
  for name in ["index.js","package.json"]{digest.update(fs::read(ws.join(name)).ok()?);}
  let mut files:Vec<_>=fs::read_dir(ws.join("lib")).ok()?.collect::<Result<_,_>>().ok()?;files.sort_by_key(|f|f.file_name());
  for file in files{digest.update(file.file_name().to_string_lossy().as_bytes());digest.update(fs::read(file.path()).ok()?);}Some(format!("{:x}",digest.finalize()))
@@ -56,14 +91,91 @@ fn same_supervisor_identity(saved:&serde_json::Value,current:&serde_json::Value,
 }
 #[cfg(not(windows))]fn supervisor_alive()->bool{false}
 
-fn pin(a:&Assets)->Result<PathBuf,String>{let root=folder()?.join("runtime");let stamp=asset_stamp(a)?;if fs::read_to_string(root.join("version")).ok().as_deref()==Some(&stamp){return Ok(root)}if supervisor_alive(){return Err("SHARED_RUNTIME_UPDATE_PENDING".into())}let staged=folder()?.join(format!("runtime-next-{}",uuid::Uuid::new_v4()));copy_tree(&a.source,&staged)?;copy_tree(&a.source.parent().ok_or("SHARED_RUNTIME_ASSET_MISSING")?.join("browser-executor/node_modules/ws"),&staged.join("ws"))?;fs::copy(&a.node,staged.join("node.exe")).map_err(|_|"SHARED_NODE_COPY_FAILED")?;fs::write(staged.join("version"),stamp).map_err(|_|"SHARED_RUNTIME_COPY_FAILED")?;let previous=folder()?.join(format!("runtime-previous-{}",uuid::Uuid::new_v4()));let had=root.exists();if had{fs::rename(&root,&previous).map_err(|_|"SHARED_RUNTIME_UPDATE_PENDING")?}if fs::rename(&staged,&root).is_err(){if had{let _=fs::rename(previous,&root);}return Err("SHARED_RUNTIME_COPY_FAILED".into())}Ok(root)}
+fn reuse_preparation(health:&serde_json::Value,assets_changed:bool)->Result<bool,String>{
+ if health["ready"]!=true{return Ok(false)}
+ let active=health["activeTurns"].as_u64().ok_or("SHARED_CONNECTION_UNCERTAIN")?;
+ if health["desktopConnected"]==true||active>0{
+  if assets_changed{return Err("SHARED_RUNTIME_UPDATE_PENDING".into())}
+  return Ok(true)
+ }
+ Ok(false)
+}
+
+fn pin(a:&Assets)->Result<PathBuf,String>{
+ let directory=folder()?;let root=directory.join("runtime");
+ if fs::symlink_metadata(&root).is_ok_and(|m|m.file_type().is_symlink()){return Err("SHARED_RUNTIME_LINK_REJECTED".into())}
+ let stamp=asset_stamp(a)?;
+ if cached_resources_match(&root,&stamp){return Ok(root)}
+ if supervisor_alive(){return Err("SHARED_RUNTIME_UPDATE_PENDING".into())}
+ // Use the same checked staging/promotion/rollback transaction as the installed
+ // entry. Do not leave a second, less complete Rust copy implementation.
+ let mut command=Command::new(&a.node);
+ command.arg(a.source.join("launch-entry.mjs")).arg("--stage-only").arg(&a.source).arg(&directory).arg(&a.node).arg(&stamp);hidden(&mut command);
+ let output=command.output().map_err(|_|"SHARED_RUNTIME_STAGE_FAILED")?;
+ if !output.status.success(){let code=String::from_utf8_lossy(&output.stderr).trim().to_owned();return Err(if code.starts_with("SHARED_")&&code.len()<128{code}else{"SHARED_RUNTIME_STAGE_FAILED".into()})}
+ let value:serde_json::Value=serde_json::from_slice(&output.stdout).map_err(|_|"SHARED_RUNTIME_STAGE_FAILED")?;
+ if value["staged"]!=true{return Err("SHARED_RUNTIME_STAGE_FAILED".into())}
+ Ok(root)
+}
 fn control(action:&str,binary:Option<&Path>,version:Option<&str>,desktop:Option<&Path>)->Result<Status,String>{let a=ASSETS.get().ok_or("SHARED_RUNTIME_NOT_CONFIGURED")?;fs::create_dir_all(folder()?).map_err(|_|"SHARED_SETTINGS_UNAVAILABLE")?;let input=folder()?.join("control-request.json");let value=serde_json::json!({"action":action,"directory":folder()?,"scripts":a.source,"binary":binary,"version":version,"desktop":desktop});fs::write(&input,serde_json::to_vec(&value).unwrap()).map_err(|_|"SHARED_SETTINGS_UNAVAILABLE")?;let mut command=Command::new(&a.node);command.arg(a.source.join("control.mjs")).arg(input);hidden(&mut command);let output=command.output().map_err(|_|"SHARED_LIFECYCLE_FAILED")?;if !output.status.success(){let error=String::from_utf8_lossy(&output.stderr).trim().to_string();return Err(if error.starts_with("SHARED_")&&error.len()<128{error}else{"SHARED_LIFECYCLE_FAILED".into()})}serde_json::from_slice(&output.stdout).map_err(|_|"SHARED_LIFECYCLE_FAILED".into())}
 pub(crate)fn enabled()->bool{settings().ok().flatten().is_some_and(|s|s.enabled&&s.format==2&&s.phase=="ACTIVE")}
 pub(crate)fn transport_command()->Result<Option<Command>,String>{let Some(s)=settings()?else{return Ok(None)};if s.format!=2&&s.enabled{return Err("SHARED_LEGACY_REPAIR_REQUIRED".into())}if s.phase=="RECOVERY_REQUIRED"{return Err("SHARED_ROLLBACK_INCOMPLETE".into())}if !s.enabled{return Ok(None)}if s.phase!="ACTIVE"||!health(&s).is_some_and(|h|h["ready"]==true){return Err("SHARED_RECONNECTING".into())}let root=folder()?.join("runtime");let mut command=Command::new(root.join("node.exe"));command.arg(root.join("transport.mjs")).arg(format!("ws://127.0.0.1:{}/rpc",s.port));hidden(&mut command);Ok(Some(command))}
-pub(crate)fn disable()->Result<Status,String>{let _lock=START.lock().map_err(|_|"SHARED_START_UNAVAILABLE")?;control("disable",None,None,None)}
-pub(crate)fn launch()->Result<Status,String>{let _lock=START.lock().map_err(|_|"SHARED_START_UNAVAILABLE")?;control("launch",None,None,None)}
-#[cfg(windows)]pub(crate)fn setup()->Result<Status,String>{let _lock=START.lock().map_err(|_|"SHARED_START_UNAVAILABLE")?;let a=ASSETS.get().ok_or("SHARED_RUNTIME_NOT_CONFIGURED")?;if let Some(s)=settings()?{if s.format==2&&!runtime_update_pending()&&health(&s).is_some_and(|h|h["ready"]==true){return Ok(status())}control("disable",None,None,None)?;}
- let mut discovery=Command::new(PathBuf::from(std::env::var_os("WINDIR").ok_or("SHARED_OWNER_UNAVAILABLE")?).join("System32/WindowsPowerShell/v1.0/powershell.exe"));discovery.args(["-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-File"]).arg(a.source.join("desktop-runtime.ps1"));hidden(&mut discovery);let output=discovery.output().map_err(|_|"SHARED_DESKTOP_BACKEND_UNRESOLVED")?;if !output.status.success(){return Err("SHARED_DESKTOP_BACKEND_UNRESOLVED".into())}let v:serde_json::Value=serde_json::from_slice(&output.stdout).map_err(|_|"SHARED_DESKTOP_BACKEND_UNRESOLVED")?;let binary=PathBuf::from(v["binary"].as_str().ok_or("SHARED_NATIVE_BINARY_UNVERIFIED")?);let version=v["version"].as_str().ok_or("SHARED_NATIVE_BINARY_UNVERIFIED")?;let desktop=PathBuf::from(v["desktop"].as_str().ok_or("SHARED_DESKTOP_BINARY_UNRESOLVED")?);pin(a)?;control("setup",Some(&binary),Some(version),Some(&desktop))}
+pub(crate)fn disable()->Result<Status,String>{let _lock=START.lock().map_err(|_|"SHARED_START_UNAVAILABLE")?;#[cfg(windows)]let _owner=OwnerMutex::acquire()?;control("disable",None,None,None)}
+pub(crate)fn launch()->Result<Status,String>{let _lock=START.lock().map_err(|_|"SHARED_START_UNAVAILABLE")?;#[cfg(windows)]let _owner=OwnerMutex::acquire()?;control("launch",None,None,None)}
+#[cfg(windows)]pub(crate)fn setup()->Result<Status,String>{
+ let _lock=START.lock().map_err(|_|"SHARED_START_UNAVAILABLE")?;
+ let _owner=OwnerMutex::acquire()?;
+ let a=ASSETS.get().ok_or("SHARED_RUNTIME_NOT_CONFIGURED")?;
+ // Reuse active work without discovery/pinning. Both entry points must reject
+ // ordinary Desktop or uncertain ownership before copying native resources.
+ if let Some(s)=settings()?{if let Some(h)=health(&s){if reuse_preparation(&h,runtime_update_pending())?{return Ok(status())}}}
+ control("prepare-check",None,None,None)?;
+ let mut discovery=Command::new(PathBuf::from(std::env::var_os("WINDIR").ok_or("SHARED_OWNER_UNAVAILABLE")?).join("System32/WindowsPowerShell/v1.0/powershell.exe"));
+ discovery.args(["-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-File"]).arg(a.source.join("desktop-runtime.ps1")).arg("-Directory").arg(folder()?).arg("-ProbeNode").arg(&a.node);hidden(&mut discovery);
+ let output=discovery.output().map_err(|_|"SHARED_DESKTOP_BACKEND_UNRESOLVED")?;
+ if !output.status.success(){let text=String::from_utf8_lossy(&output.stderr);let category=text.split(|c:char|!c.is_ascii_uppercase()&&c!='_').find(|s|s.starts_with("SHARED_")).unwrap_or("SHARED_DESKTOP_BACKEND_UNRESOLVED");return Err(category.into())}
+ let v:serde_json::Value=serde_json::from_slice(&output.stdout).map_err(|_|"SHARED_DESKTOP_BACKEND_UNRESOLVED")?;
+ let binary=PathBuf::from(v["binary"].as_str().ok_or("SHARED_NATIVE_BINARY_UNVERIFIED")?);
+ let version=v["version"].as_str().ok_or("SHARED_NATIVE_BINARY_UNVERIFIED")?;
+ let desktop=PathBuf::from(v["desktop"].as_str().ok_or("SHARED_DESKTOP_BINARY_UNRESOLVED")?);
+ // Candidate verification precedes retiring a live resident. Never restart tasks
+ // or choose a second writer to work around an incomplete updated runtime.
+ if let Some(s)=settings()?{
+  if s.format==2&&!runtime_update_pending()&&health(&s).is_some_and(|h|h["ready"]==true){
+   if s.version!=version||s.binary!=binary{return Err("SHARED_RUNTIME_UPDATE_PENDING".into())}
+   return Ok(status())
+  }
+  control("disable",None,None,None)?;
+ }
+ pin(a)?;control("setup",Some(&binary),Some(version),Some(&desktop))
+}
 #[cfg(not(windows))]pub(crate)fn setup()->Result<Status,String>{Err("SHARED_WINDOWS_REQUIRED".into())}
 #[cfg(test)]mod tests{use super::*;
+ #[test]fn cached_version_never_hides_missing_or_changed_runtime_files(){
+  let base=Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("runtime/shared-native-compatibility");
+  let directory=base.join(format!("stamp-{}",uuid::Uuid::new_v4()));
+  struct Fixture(PathBuf,PathBuf);impl Drop for Fixture{fn drop(&mut self){assert_eq!(self.0.parent(),Some(self.1.as_path()));fs::remove_dir_all(&self.0).unwrap();}}
+  fs::create_dir_all(directory.join("ws/lib")).unwrap();let _fixture=Fixture(directory.clone(),base);
+  for name in SHARED_ASSET_NAMES{fs::write(directory.join(name),name).unwrap();}
+  for name in ["node.exe","ws/index.js","ws/package.json","ws/lib/test.js"]{fs::write(directory.join(name),"text fixture").unwrap();}
+  let stamp=resource_stamp(&directory,&directory.join("node.exe"),&directory.join("ws")).unwrap();fs::write(directory.join("version"),&stamp).unwrap();
+  assert!(cached_resources_match(&directory,&stamp));
+  fs::remove_file(directory.join("transport.mjs")).unwrap();assert!(!cached_resources_match(&directory,&stamp));fs::write(directory.join("transport.mjs"),"transport.mjs").unwrap();assert!(cached_resources_match(&directory,&stamp));
+  fs::write(directory.join("ws/lib/test.js"),"changed fixture").unwrap();assert!(!cached_resources_match(&directory,&stamp));
+  fs::write(directory.join("ws/lib/test.js"),"text fixture").unwrap();assert!(cached_resources_match(&directory,&stamp));fs::rename(directory.join("ws/lib/test.js"),directory.join("ws/lib/renamed.js")).unwrap();assert!(!cached_resources_match(&directory,&stamp));
+ }
+ #[test]fn preparation_reuses_active_work_without_discovery_and_defers_updates(){
+  for h in [serde_json::json!({"ready":true,"desktopConnected":true,"activeTurns":0}),serde_json::json!({"ready":true,"desktopConnected":false,"activeTurns":2})]{assert_eq!(reuse_preparation(&h,false),Ok(true));assert_eq!(reuse_preparation(&h,true),Err("SHARED_RUNTIME_UPDATE_PENDING".into()));}
+  assert_eq!(reuse_preparation(&serde_json::json!({"ready":true,"desktopConnected":false,"activeTurns":0}),true),Ok(false));
+  assert_eq!(reuse_preparation(&serde_json::json!({"ready":true,"desktopConnected":false}),false),Err("SHARED_CONNECTION_UNCERTAIN".into()));
+ }
+ #[cfg(windows)]#[test]fn installed_entry_cannot_prepare_while_native_owner_mutex_is_held(){
+  let directory=std::env::current_dir().unwrap().join("runtime").join(format!("mutex-{}",uuid::Uuid::new_v4()));
+  let guard=OwnerMutex::at(&directory).unwrap();
+  let quote=directory.to_string_lossy().replace("'","''");
+  let script=format!("$d=[IO.Path]::GetFullPath('{quote}');$s=[Security.Cryptography.SHA256]::Create();$k=([BitConverter]::ToString($s.ComputeHash([Text.Encoding]::UTF8.GetBytes($d)))).Replace('-','').ToLowerInvariant();$s.Dispose();$m=[Threading.Mutex]::new($false,('Local\\Agbrio.SharedCodex.'+$k));$held=$m.WaitOne(0);if($held){{$m.ReleaseMutex();$m.Dispose();exit 0}};$m.Dispose();exit 42");
+  let run=||{let mut c=Command::new(PathBuf::from(std::env::var_os("WINDIR").unwrap()).join("System32/WindowsPowerShell/v1.0/powershell.exe"));c.args(["-NoProfile","-NonInteractive","-Command",&script]);hidden(&mut c);c.status().unwrap().code().unwrap()};
+  assert_eq!(run(),42);drop(guard);assert_eq!(run(),0);
+ }
+
 #[cfg(windows)]#[test]fn native_tool_paths_remove_only_local_drive_extended_prefix(){assert_eq!(tool_path(PathBuf::from(r"\\?\D:\apps\AI Work Router\node.exe")),PathBuf::from(r"D:\apps\AI Work Router\node.exe"));assert_eq!(tool_path(PathBuf::from(r"\\?\UNC\server\share")),PathBuf::from(r"\\?\UNC\server\share"));}#[test]fn recycled_pid_wrong_owner_and_wrong_image_never_match_supervisor(){let saved=serde_json::json!({"pid":42,"createdAt":"134056789123456789","ownerSid":"S-1-5-21-fixture","imagePath":"C:/fixture/node.exe"});assert!(same_supervisor_identity(&saved,&saved,"C:\\fixture\\node.exe","S-1-5-21-fixture"));for(field,value)in[("pid",serde_json::json!(43)),("createdAt",serde_json::json!("134056789123456790")),("ownerSid",serde_json::json!("S-1-other")),("imagePath",serde_json::json!("C:/another/node.exe"))]{let mut current=saved.clone();current[field]=value;assert!(!same_supervisor_identity(&saved,&current,"C:/fixture/node.exe","S-1-5-21-fixture"));}assert!(!same_supervisor_identity(&saved,&serde_json::Value::Null,"C:/fixture/node.exe","S-1-5-21-fixture"));}}

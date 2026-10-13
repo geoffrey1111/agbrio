@@ -3,6 +3,8 @@
 // browser Origin headers are rejected. The inner backend additionally uses a
 // random bearer capability that never appears in the gateway URL or logs.
 import{createRequire}from'node:module';import{createServer}from'node:http';import{createServer as tcpServer,connect as tcpConnect}from'node:net';import{spawn,execFile}from'node:child_process';import{readFile,writeFile,rename}from'node:fs/promises';import{randomBytes,createHash}from'node:crypto';import{dirname,join}from'node:path';
+import {assertNativeCohort} from './native-cohort.mjs';
+import {backendRecovery,verifiedBackendStart} from './backend-recovery.mjs';
 const require=createRequire(import.meta.url),{WebSocket,WebSocketServer}=require('./ws/index.js'),configPath=process.argv[2],cfg=JSON.parse(await readFile(configPath,'utf8'));
 if(!cfg.ownerSid?.startsWith('S-1-')||!Number.isInteger(cfg.port)||cfg.port<1024||cfg.port>65535)throw Error('SHARED_CONFIGURATION_INVALID');
 const folder=dirname(configPath),nonce=cfg.instance,readyPath=join(folder,'ready.json'),powershell=join(process.env.WINDIR,'System32/WindowsPowerShell/v1.0/powershell.exe');
@@ -39,18 +41,26 @@ gateway.on('upgrade',async(req,socket,head)=>{if(cfg.testOnly)console.error('TES
  upstream.on('message',(data,binary)=>{if(client&&!binary){try{const v=JSON.parse(data.toString());if(v.method==='turn/started'&&v.params?.turn?.id)activeTurns.add(v.params.turn.id);if(v.method==='turn/completed'&&v.params?.turn?.id)activeTurns.delete(v.params.turn.id);if(!v.method&&v.id!==undefined&&JSON.stringify(v.id)===client.initializeId&&Object.hasOwn(v,'result'))client.initialized=true;}catch{}}if(client?.readyState===WebSocket.OPEN)client.send(data,{binary});});upstream.on('close',()=>{if(client)client.close();else socket.destroy();});upstream.on('error',error=>{if(cfg.testOnly)console.error('TEST_UPSTREAM_ERROR');const oversized=error.code==='WS_ERR_UNSUPPORTED_MESSAGE_LENGTH';console.error(oversized?'SHARED_BACKEND_RESPONSE_TOO_LARGE':'SHARED_BACKEND_CONNECTION_FAILED');if(client)client.close(oversized?1009:1011,oversized?'SHARED_BACKEND_RESPONSE_TOO_LARGE':'SHARED_BACKEND_CONNECTION_FAILED');else socket.destroy();});
 });
 process.on('SIGTERM',()=>void stop());process.on('SIGINT',()=>void stop());process.on('uncaughtException',()=>{console.error('SHARED_RUNTIME_FAILED');void stop();});
+const recovery=backendRecovery(startBackend,async()=>{console.error('SHARED_BACKEND_RECOVERY_FAILED');await stop();});
 startPeerService();
 try{
  if(!await Promise.race([peerReady,new Promise(resolve=>setTimeout(()=>resolve(false),6000))]))throw Error("SHARED_OWNER_SERVICE_FAILED");
  await new Promise((resolve,reject)=>{gateway.once('error',reject);gateway.listen(cfg.port,'127.0.0.1',resolve);});
 }catch{console.error('SHARED_START_FAILED');await stop();}
 async function freePort(){return new Promise((r,j)=>{const s=tcpServer();s.once('error',j);s.listen(0,'127.0.0.1',()=>{const port=s.address().port;s.close(()=>r(port));});});}
-async function startBackend(){if(closing)return;innerPort=await freePort();token=randomBytes(32).toString('hex');const digest=createHash('sha256').update(token).digest('hex');backendReady=false;
- backend=spawn(cfg.binary,['-c','features.code_mode_host=true','app-server','--listen',`ws://127.0.0.1:${innerPort}`,'--ws-auth','capability-token','--ws-token-sha256',digest],{env:{...process.env,...cfg.codexHome?{CODEX_HOME:cfg.codexHome}:{}},windowsHide:true,stdio:['ignore','ignore','pipe']});backend.stderr.resume();const current=backend;let recovered=false;const recover=()=>{if(recovered||backend!==current)return;recovered=true;backendReady=false;activeTurns.clear();for(const client of clients)client.close();void saveReady();if(!closing){setTimeout(()=>void startBackend(),backoff);backoff=Math.min(backoff*2,30000);}};current.once('error',recover);current.once('exit',recover);current.once('close',recover);
- for(let n=0;n<40&&!closing&&backend.exitCode===null;n++){try{const r=await fetch(`http://127.0.0.1:${innerPort}/readyz`,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(500)});if(r.ok){backendReady=true;backoff=1000;break;}}catch{}await new Promise(r=>setTimeout(r,100));}await saveReady();
+async function startBackend(){if(closing)return;backendReady=false;
+ const current=await verifiedBackendStart(()=>closing,async()=>{
+  const port=await freePort(),capability=randomBytes(32).toString('hex');return {port,capability,digest:createHash('sha256').update(capability).digest('hex')};
+ },async()=>{if(!cfg.testOnly)await assertNativeCohort(cfg.binary,cfg.nativeFiles);},candidate=>{
+  innerPort=candidate.port;token=candidate.capability;
+  backend=spawn(cfg.binary,['-c','features.code_mode_host=true','app-server','--listen',`ws://127.0.0.1:${innerPort}`,'--ws-auth','capability-token','--ws-token-sha256',candidate.digest],{env:{...process.env,...cfg.codexHome?{CODEX_HOME:cfg.codexHome}:{}},windowsHide:true,stdio:['ignore','ignore','pipe']});backend.stderr.resume();
+  const owned=backend;let recovered=false;const recover=()=>{if(recovered||backend!==owned)return;recovered=true;backendReady=false;activeTurns.clear();for(const client of clients)client.close();void saveReady();if(!closing){recovery.schedule(backoff);backoff=Math.min(backoff*2,30000);}};owned.once('error',recover);owned.once('exit',recover);owned.once('close',recover);return owned;
+ });
+ if(!current)return;
+ for(let n=0;n<40&&!closing&&backend===current&&current.exitCode===null;n++){try{const r=await fetch(`http://127.0.0.1:${innerPort}/readyz`,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(500)});if(r.ok&&!closing&&backend===current&&current.exitCode===null){backendReady=true;backoff=1000;break;}}catch{}await new Promise(r=>setTimeout(r,100));}await saveReady();
 }
 async function stop(){
- if(closing)return;closing=true;backendReady=false;clearTimeout(peerRetry);
+ if(closing)return;closing=true;backendReady=false;clearTimeout(peerRetry);recovery.cancel();
  for(const ws of clients)ws.terminate();for(const raw of gatewaySockets)raw.destroy();gateway.close();failPeers();
  // Wait for proven children to exit before ending the supervisor. Windows SIGTERM
  // alone does not run JS cleanup when an unrelated controller terminates Node.

@@ -1,4 +1,4 @@
-param([ValidateSet('Snapshot','Restore','Protect','Stop','CleanCertificate','DesktopWindow','ShowDesktop')][string]$Action,[string]$Directory,[string]$SnapshotPath,[string]$Url,[string]$TestRegistryPath,[uint32]$DesktopPid)
+﻿param([ValidateSet('Snapshot','Restore','Protect','Stop','CaptureStop','SupervisorState','CleanCertificate','DesktopWindow','ShowDesktop')][string]$Action,[string]$Directory,[string]$SnapshotPath,[string]$Url,[string]$TestRegistryPath,[uint32]$DesktopPid)
 $ErrorActionPreference='Stop'
 $names=@('CODEX_APP_SERVER_WS_URL','NODE_EXTRA_CA_CERTS','NODE_USE_SYSTEM_CA')
 if($TestRegistryPath -and $TestRegistryPath -notmatch '^Software\\AIWorkRouter\\Tests\\[a-f0-9-]{36}$'){throw 'SHARED_TEST_REGISTRY_INVALID'}
@@ -72,35 +72,34 @@ public static class AIWRDesktopVisibility { [DllImport("user32.dll")] public sta
   }
   [IO.Directory]::SetAccessControl($resolved,$acl);'{"ok":true}'
  }
- 'Stop' {
-  $readyPath=Join-Path $Directory 'ready.json';if(!(Test-Path -LiteralPath $readyPath)){Write-Output '{"stopped":true,"absent":true}';break}
-  $ready=Get-Content -LiteralPath $readyPath -Raw|ConvertFrom-Json
-  $saved=$ready.supervisorIdentity
+ 'SupervisorState' {
+  $path=Join-Path $Directory 'ready.json'
+  if(!(Test-Path -LiteralPath $path)){Write-Output '{"alive":false}';break}
+  $saved=(Get-Content -LiteralPath $path -Raw|ConvertFrom-Json).supervisorIdentity
   if(!$saved){throw 'SHARED_PROCESS_IDENTITY_MISSING'}
-  $liveJson=& (Join-Path $Directory 'runtime/peer-service.ps1') -QueryPid ([uint32]$saved.pid)
-  $live=$liveJson|ConvertFrom-Json
-  if(!$live){Write-Output '{"stopped":true,"absent":true}';break}
+  $live=(& (Join-Path $Directory 'runtime/peer-service.ps1') -QueryPid ([uint32]$saved.pid))|ConvertFrom-Json
   $expected=Join-Path $Directory 'runtime/node.exe'
-  if($live.pid -ne $saved.pid -or $live.createdAt -cne $saved.createdAt -or $live.ownerSid -cne $saved.ownerSid -or $live.ownerSid -cne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value -or ![string]::Equals($live.imagePath,$expected,[StringComparison]::OrdinalIgnoreCase)){
-   # The saved process has exited and its PID can be recycled. Do not kill the
-   # new occupant, or turn a proven-absent old supervisor into a recovery loop.
-   Write-Output '{"stopped":true,"absent":true,"identityRecycled":true}';break
-  }
-  # Capture children and their start-time identities before stopping this proven root.
-  $children=@(Get-CimInstance Win32_Process -Filter ('ParentProcessId='+$saved.pid))
-  $identities=@()
-  foreach($child in $children){
-   if(($child.Name -eq 'codex.exe' -and $child.CommandLine -match '\bapp-server\b') -or ($child.Name -eq 'powershell.exe' -and $child.CommandLine.Contains((Join-Path $Directory 'runtime/peer-service.ps1')))){
-    $identity=(& (Join-Path $Directory 'runtime/peer-service.ps1') -QueryPid ([uint32]$child.ProcessId))|ConvertFrom-Json
-    if($identity.ownerSid -ceq $saved.ownerSid){$identities+=@{pid=$child.ProcessId;createdAt=$identity.createdAt;imagePath=$identity.imagePath}}
-   }
-  }
-  Stop-Process -Id ([int]$saved.pid) -ErrorAction Stop
-  foreach($identity in $identities){
-   $current=(& (Join-Path $Directory 'runtime/peer-service.ps1') -QueryPid ([uint32]$identity.pid))|ConvertFrom-Json
-   if($current -and $current.createdAt -ceq $identity.createdAt -and $current.imagePath -ceq $identity.imagePath){Stop-Process -Id ([int]$identity.pid) -ErrorAction Stop}
-  }
-  '{"stopped":true}'
+  $alive=$live -and $live.createdAt -ceq $saved.createdAt -and $live.ownerSid -ceq $saved.ownerSid -and $live.ownerSid -ceq [Security.Principal.WindowsIdentity]::GetCurrent().User.Value -and [string]::Equals($live.imagePath,$expected,[StringComparison]::OrdinalIgnoreCase)
+  @{alive=[bool]$alive}|ConvertTo-Json -Compress
+ }
+ 'CaptureStop' {
+  . (Join-Path $PSScriptRoot 'owned-processes.ps1')
+  $readyPath=Join-Path $Directory 'ready.json'
+  if(!(Test-Path -LiteralPath $readyPath)){Write-Output '{"root":null,"children":[],"rootAbsent":true}';break}
+  $saved=(Get-Content -LiteralPath $readyPath -Raw|ConvertFrom-Json).supervisorIdentity
+  $snapshot=Get-SharedStopSnapshot $saved $Directory ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value)
+  $snapshot|ConvertTo-Json -Depth 8 -Compress
+ }
+ 'Stop' {
+  . (Join-Path $PSScriptRoot 'owned-processes.ps1')
+  $readyPath=Join-Path $Directory 'ready.json'
+  if(!(Test-Path -LiteralPath $readyPath)){Write-Output '{"stopped":true,"absent":true}';break}
+  $saved=(Get-Content -LiteralPath $readyPath -Raw|ConvertFrom-Json).supervisorIdentity
+  $owner=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+  if($SnapshotPath -and (Test-Path -LiteralPath $SnapshotPath)){
+   $snapshot=Get-Content -LiteralPath $SnapshotPath -Raw|ConvertFrom-Json
+  }else{$snapshot=Get-SharedStopSnapshot $saved $Directory $owner}
+  Invoke-SharedStopSnapshot $snapshot $saved $Directory $owner|ConvertTo-Json -Compress
  }
  'CleanCertificate' {
   $pem=Join-Path $Directory 'server.pem'

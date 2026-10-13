@@ -4,6 +4,16 @@ import {SharedCodexConnection,type SharedCodexStatus} from "./SharedCodexConnect
 afterEach(()=>{cleanup();vi.useRealTimers();});
 const independent:SharedCodexStatus={enabled:false,ready:false,desktopConnected:false,state:"INDEPENDENT"};
 const ready:SharedCodexStatus={enabled:false,ready:true,desktopConnected:false,state:"SHARED_PREPARED"};
+it('incomplete native components report that shared mode did not start',async()=>{
+ const api={status:vi.fn().mockResolvedValue(independent),setup:vi.fn().mockRejectedValue('SHARED_NATIVE_RUNTIME_INCOMPLETE'),launch:vi.fn()};
+ render(<SharedCodexConnection api={api}/>);fireEvent.click(await screen.findByRole('button',{name:'准备共享连接'}));
+ expect(await screen.findByRole('alert')).toHaveTextContent('共享连接未启动');expect(api.launch).not.toHaveBeenCalled();
+});
+it('uncertain recovery reports no process stop instead of a perpetual recovery claim',async()=>{
+ const api={status:vi.fn().mockResolvedValue({...independent,enabled:true,state:'SHARED_RECONNECTING'}),setup:vi.fn().mockRejectedValue('SHARED_CONNECTION_UNCERTAIN')};
+ render(<SharedCodexConnection api={api}/>);fireEvent.click(await screen.findByRole('button',{name:'恢复共享连接'}));
+ expect(await screen.findByRole('alert')).toHaveTextContent('未结束进程');expect(screen.queryByText('正在恢复共享连接')).not.toBeInTheDocument();
+});
 it('polls real launch progress during the pending operation',async()=>{
  vi.useFakeTimers();let finish!:(s:SharedCodexStatus)=>void;
  const api={status:vi.fn().mockResolvedValueOnce(ready).mockResolvedValue({...ready,launchProgress:{step:'CONNECTING',state:'RUNNING',updatedAt:Date.now()}}),setup:vi.fn(),launch:vi.fn(()=>new Promise<SharedCodexStatus>(r=>{finish=r;}))};
@@ -30,8 +40,8 @@ it("preserves the connected state while deferring a runtime update",async()=>{
  const api={status:vi.fn().mockResolvedValue({...ready,enabled:true,desktopConnected:true,updatePending:true}),setup:vi.fn()};render(<SharedCodexConnection api={api}/>);await screen.findByText("Desktop 已接入共享连接");expect(screen.getByRole("status")).toHaveTextContent("停用后重新准备");expect(api.setup).not.toHaveBeenCalled();
 });
 
-it("checking a disconnected shared backend never repeats certificate setup",async()=>{
- const api={status:vi.fn().mockResolvedValue({...ready,enabled:true,ready:false,state:"SHARED_RECONNECTING"}),setup:vi.fn()};render(<SharedCodexConnection api={api}/>);await screen.findByText("正在恢复共享连接");fireEvent.click(screen.getByRole("button",{name:"检查连接"}));await waitFor(()=>expect(api.status).toHaveBeenCalledTimes(2));expect(api.setup).not.toHaveBeenCalled();
+it("a disconnected backend offers explicit recovery without starting automatically",async()=>{
+ const api={status:vi.fn().mockResolvedValue({...ready,enabled:true,ready:false,state:"SHARED_RECONNECTING"}),setup:vi.fn().mockResolvedValue(ready)};render(<SharedCodexConnection api={api}/>);await screen.findByText("共享连接已断开");expect(api.setup).not.toHaveBeenCalled();fireEvent.click(screen.getByRole("button",{name:"恢复共享连接"}));await screen.findByText("共享连接已准备好");expect(api.setup).toHaveBeenCalledTimes(1);
 });
 
 it("prepared mode needs explicit launch and offers disable without reinstalling certificates",async()=>{

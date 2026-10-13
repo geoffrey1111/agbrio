@@ -11,7 +11,7 @@
     "tauri": "tauri",
     "build:windows": "tauri build --bundles nsis",
     "build:browser-executor": "node scripts/build-browser-executor.mjs",
-    "test:shared-lifecycle": "node --test scripts/shared-codex-lifecycle.test.mjs scripts/shared-codex-response.test.mjs"
+    "test:shared-lifecycle": "node --test scripts/shared-codex-lifecycle.test.mjs scripts/shared-codex-entry.test.mjs scripts/shared-codex-native.test.mjs scripts/shared-codex-response.test.mjs scripts/shared-code-mode-probe.test.mjs scripts/shared-entry-staging.test.mjs scripts/shared-owned-processes.test.mjs scripts/shared-backend-recovery.test.mjs scripts/shared-native-staging.test.mjs scripts/shared-launcher.test.mjs scripts/shared-desktop-discovery.test.mjs scripts/windows-shared-install-guard.test.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
