@@ -2,6 +2,11 @@ name: Windows alpha candidate
 on:
   push:
     branches: [main, codex/open-alpha]
+    paths-ignore:
+      # Signed-draft transport/receipt metadata does not change product inputs.
+      - .github/workflows/shared-candidate-installer.yml
+      - docs/SHARED_CANDIDATE.json
+      - docs/SHARED_CODEX_RECOVERY.md
   pull_request:
   workflow_dispatch:
     inputs:
