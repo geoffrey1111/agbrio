@@ -13,6 +13,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   signed-upgrade-uninstall:
+    # Owner-approved for this controlled validation run; restore after its result.
+    permissions:
+      contents: write
     runs-on: windows-2025
     timeout-minutes: 20
     steps:
@@ -37,7 +40,11 @@ jobs:
               $release=Invoke-RestMethod ('https://api.github.com/repos/geoffrey1111/agbrio/releases/'+$spec.releaseId) -Headers $headers
               $asset=@($release.assets|Where-Object {$_.name -ceq $name -and $_.state -ceq 'uploaded' -and $_.digest -ceq ('sha256:'+$spec.sha256)})
               if($asset.Count -eq 1){break}
-            }catch{}
+            }catch{
+              $status=if($_.Exception.Response){[int]$_.Exception.Response.StatusCode}else{'NO_HTTP_RESPONSE'}
+              Write-Host ('CANDIDATE_DRAFT_FETCH_STATUS='+$status)
+              if($status -in @(401,403,404)){throw 'CANDIDATE_DRAFT_ACCESS_DENIED'}
+            }
             Start-Sleep -Seconds 5
           }
           if(!$release -or !$release.draft -or $release.tag_name -cne ('v'+$spec.version)){throw 'Owned unpublished candidate draft required'}
