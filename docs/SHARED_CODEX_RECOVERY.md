@@ -26,7 +26,11 @@ tool execution and bounded crash recovery, in-flight native-command shutdown,
 isolated bilingual launcher guards, shortcut creation/removal, and signed package
 readback. The exact draft installer is tested on a disposable Windows runner for
 stable-to-candidate upgrade, fictional user-data/cache preservation and uninstall.
-Runner results are reported separately; adding this workflow is not a PASS.
+The exact signed rc2 upgrade/uninstall [run38362980350](https://github.com/geoffrey1111/agbrio/actions/runs/38362980350) passed, as did the full source Windows [run38363358741](https://github.com/geoffrey1111/agbrio/actions/runs/38363358741). The temporary draft-reading job grant was restored to read-only. Eight text resources needed only Git CRLF-to-LF normalization; the whole signed installer had a separately pinned exact digest.
+
+Further review found that an idle unchanged native cohort could reuse outdated shared application resources. The rc3 source verifies actual runtime, Node and ws file identities/bytes before idle reuse. The full source suite now has88 passing tests. The rc2 installer result does not cover this later shipping-file change; rc3 packaging and Windows checks are separate pending gates.
+
+A zero-billed native automatic-host test also passed: an empty fixture home and an ephemeral conversation used three loopback mock Responses requests, two native Code Mode cells and persistent state. The native backend found its exact signed helper without an explicit host-program override; in-process fallback was disabled for that fixture. Eleven captured fixture descendants were removed by exact identity after shutdown. No account credentials, real conversation or model request was used. This proves native discovery/execution, not the Desktop caller.
 
 Actual installed positive launch, shared Desktop history loading and Desktop
 initiated Code Mode remain separate gates. No live user task or credentials are

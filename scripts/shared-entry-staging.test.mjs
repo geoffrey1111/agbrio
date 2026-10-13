@@ -6,7 +6,7 @@ import {join,resolve,basename} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {stageSharedResources} from '../src-tauri/resources/codex-shared/launch-entry.mjs';
+import {stageSharedResources,sharedResourcesMatch} from '../src-tauri/resources/codex-shared/launch-entry.mjs';
 const exec=promisify(execFile),entry=resolve('src-tauri/resources/codex-shared/launch-entry.mjs');
 async function discard(path){for(const e of await readdir(path,{withFileTypes:true})){const file=join(path,e.name);assert.equal((await lstat(file)).isSymbolicLink(),false);if(e.isDirectory())await discard(file);else await unlink(file);}await rmdir(path);}
 async function fixture(run){
@@ -49,4 +49,15 @@ test('actual staging command rejects a missing node and preserves old runtime wi
 test('invalid version stamp is rejected before any resource staging',()=>fixture(async o=>{
  await assert.rejects(stageSharedResources({...o,stamp:'not a version hash'}),/SHARED_RUNTIME_STAMP_INVALID/);
  assert.deepEqual(await readdir(o.directory),['runtime']);
+}));
+
+test('idle resource comparison verifies runtime, node, ws bytes and file identities despite an unchanged stamp',()=>fixture(async o=>{
+ await stageSharedResources({...o,stamp:'c'.repeat(64)});assert.equal(await sharedResourcesMatch(o),true);
+ await writeFile(join(o.directory,'runtime/control.mjs'),'changed');assert.equal(await sharedResourcesMatch(o),false);
+ await writeFile(join(o.directory,'runtime/control.mjs'),'new text');assert.equal(await sharedResourcesMatch(o),true);
+ await writeFile(join(o.directory,'runtime/node.exe'),'changed node');assert.equal(await sharedResourcesMatch(o),false);
+ await writeFile(join(o.directory,'runtime/node.exe'),'not an executable');assert.equal(await sharedResourcesMatch(o),true);
+ await rename(join(o.directory,'runtime/ws/index.js'),join(o.directory,'runtime/ws/renamed.js'));assert.equal(await sharedResourcesMatch(o),false);
+ await rename(join(o.directory,'runtime/ws/renamed.js'),join(o.directory,'runtime/ws/index.js'));assert.equal(await sharedResourcesMatch(o),true);
+ await unlink(join(o.directory,'runtime/control.mjs'));assert.equal(await sharedResourcesMatch(o),false);
 }));

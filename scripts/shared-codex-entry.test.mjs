@@ -28,6 +28,16 @@ test('active native work defers discovery, update and stop even without an open 
  assert.deepEqual(actions,['status','launch']);
 });
 
+test('idle entry replaces changed resources even when the native cohort has not changed',async()=>{
+ const actions=[];await launchEntry(options,{control:async o=>{actions.push(o.action);return {ready:true,desktopConnected:false,activeTurns:0};},discover:async()=>({binary:'same',version:'same'}),saved:async()=>({binary:'same',version:'same'}),resourcesMatch:async()=>false,stage:async()=>actions.push('stage')});
+ assert.deepEqual(actions,['status','prepare-check','disable','stage','setup','launch']);
+});
+
+test('idle entry reuses only matching native and actual shared resources',async()=>{
+ const actions=[];await launchEntry(options,{control:async o=>{actions.push(o.action);return {ready:true,desktopConnected:false,activeTurns:0};},discover:async()=>({binary:'same',version:'same'}),saved:async()=>({binary:'same',version:'same'}),resourcesMatch:async()=>true,stage:()=>assert.fail('Matching resources must remain in place')});
+ assert.deepEqual(actions,['status','prepare-check','launch']);
+});
+
 test('ordinary Desktop blocks the cold entry before copying or starting shared resources',async()=>{
  const actions=[];await assert.rejects(launchEntry(options,{control:async o=>{actions.push(o.action);return {ready:false};},desktopState:async()=>({count:3}),discover:()=>assert.fail('Must not pin native files'),stage:()=>assert.fail('Must not stage resources')}),/SHARED_DESKTOP_CLOSE_REQUIRED/);
  assert.deepEqual(actions,['status']);

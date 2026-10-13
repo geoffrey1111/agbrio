@@ -4,8 +4,24 @@ import {promisify} from 'node:util';
 import {mkdir,readFile,writeFile,readdir,lstat,copyFile,rename,unlink,rmdir} from 'node:fs/promises';
 import {join,dirname,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 const execute=promisify(execFile);
+async function resourceMap(root){
+ const result=new Map();
+ async function walk(path,prefix=''){if((await lstat(path)).isSymbolicLink())throw Error('SHARED_RUNTIME_LINK_REJECTED');for(const name of await readdir(path)){const file=join(path,name),stat=await lstat(file),key=prefix+name;if(stat.isSymbolicLink())throw Error('SHARED_RUNTIME_LINK_REJECTED');if(stat.isDirectory())await walk(file,key+'/');else result.set(key,createHash('sha256').update(await readFile(file)).digest('hex'));}}
+ await walk(root);return result;
+}
+export async function sharedResourcesMatch({directory,source,node}){
+ // Compare actual files, not a marker or the native version. Missing, renamed,
+ // changed or linked resources cannot authorize reuse of an idle old writer.
+ try{
+  const expected=await resourceMap(source),ws=await resourceMap(join(dirname(source),'browser-executor/node_modules/ws'));
+  for(const [name,hash] of ws)expected.set('ws/'+name,hash);
+  expected.set('node.exe',createHash('sha256').update(await readFile(node)).digest('hex'));
+  const actual=await resourceMap(join(directory,'runtime'));actual.delete('version');
+  return expected.size===actual.size&&[...expected].every(([name,hash])=>actual.get(name)===hash);
+ }catch(error){if(error.code==='ENOENT')return false;throw error;}
+}
 async function copyTree(from,to){if((await lstat(from)).isSymbolicLink())throw Error('SHARED_RUNTIME_LINK_REJECTED');await mkdir(to,{recursive:true});for(const name of await readdir(from)){const source=join(from,name),stat=await lstat(source);if(stat.isSymbolicLink())throw Error('SHARED_RUNTIME_LINK_REJECTED');if(stat.isDirectory())await copyTree(source,join(to,name));else await copyFile(source,join(to,name));}}
 async function discardStage(path){for(const name of await readdir(path)){const entry=join(path,name),stat=await lstat(entry);if(stat.isSymbolicLink())throw Error('SHARED_RUNTIME_LINK_REJECTED');if(stat.isDirectory())await discardStage(entry);else await unlink(entry);}await rmdir(path);}
 export async function stageSharedResources({directory,source,node,stamp},{move=rename}={}){
@@ -37,7 +53,7 @@ export async function launchEntry(options,dependencies={}){
   const out=await exec(p,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(source,'desktop-runtime.ps1'),'-Directory',directory,'-ProbeNode',node],{windowsHide:true,timeout:120000,maxBuffer:262144});return JSON.parse(out.stdout);
  });
  const candidate=await native(); // Entire candidate is checked before old state changes.
- if(previous.ready){const saved=await (dependencies.saved??(async()=>JSON.parse(await readFile(join(directory,'settings.json'),'utf8'))))();if(saved.binary===candidate.binary&&saved.version===candidate.version)return control({...base,action:'launch'});}
+ if(previous.ready){const saved=await (dependencies.saved??(async()=>JSON.parse(await readFile(join(directory,'settings.json'),'utf8'))))();if(saved.binary===candidate.binary&&saved.version===candidate.version&&await (dependencies.resourcesMatch??sharedResourcesMatch)(options))return control({...base,action:'launch'});}
  await control({...base,action:'disable'});
  const stage=dependencies.stage??(()=>stageSharedResources(options));
  await stage();
