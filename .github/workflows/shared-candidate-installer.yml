@@ -11,9 +11,6 @@ concurrency:
   cancel-in-progress: false
 jobs:
   signed-upgrade-uninstall:
-    # Existing owner-authorized isolated draft check; restore after this run.
-    permissions:
-      contents: write
     runs-on: windows-2025
     timeout-minutes: 20
     steps:
