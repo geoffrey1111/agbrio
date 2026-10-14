@@ -1,7 +1,8 @@
 {
-  "version": "0.1.35-rc.4",
-  "sha256": "0bf9a0a135af91aa6d4d83a8db642fb7ad840a756dae83c99f96c338facfef58",
-  "releaseId": 411552323,
   "installedLocally": false,
-  "status": "UNPUBLISHED_DRAFT_PENDING_OWNER_PROFILE_ACCEPTANCE"
+  "sha256": "735a6b349b111d61e80e6cd3f1b5e2af06d1c1045be6ecedf3a93f422e98b405",
+  "releaseId": 412353967,
+  "status": "UNPUBLISHED_DRAFT_PENDING_EXACT_WINDOWS_CHECK",
+  "version": "0.1.35-rc.5",
+  "sourceCommit": "f53297ab16db612488eb46bd830afe5b3f689673"
 }
