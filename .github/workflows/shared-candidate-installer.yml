@@ -11,8 +11,6 @@ concurrency:
   cancel-in-progress: false
 jobs:
   signed-upgrade-uninstall:
-    permissions:
-      contents: write
     runs-on: windows-2025
     timeout-minutes: 20
     steps:
