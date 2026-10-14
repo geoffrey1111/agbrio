@@ -21,6 +21,8 @@ try{
   'SHARED_NATIVE_*' {$message=if($zh){'Codex 本地工具验证失败，未切换连接。请继续使用普通 Codex。'}else{'Codex local tool verification failed. The connection was not changed. Keep using ordinary Codex.'}}
   'SHARED_START_UNAVAILABLE' {$message=if($zh){'另一个连接操作正在进行，请等待它完成。当前 Codex 保持原状。'}else{'Another connection operation is in progress. Wait for it to finish. Current Codex is unchanged.'}}
   'SHARED_CONNECTION_UNCERTAIN' {$message=if($zh){'无法确认共享后台状态，未结束进程。请继续使用普通 Codex。'}else{'The shared backend state could not be verified. No process was stopped. Keep using ordinary Codex.'}}
+  'SHARED_BACKEND_*' {$message=if($zh){'共享后台连接失败，未完成桌面切换。已保留启动诊断；请继续使用普通 Codex。'}else{'The shared backend connection failed. Desktop switching did not complete. Startup diagnostics are retained; keep using ordinary Codex.'}}
+  'SHARED_STATE_WRITE_FAILED' {$message=if($zh){'共享状态保存失败，未完成桌面切换。已保留诊断；请继续使用普通 Codex。'}else{'Shared state could not be saved. Desktop switching did not complete. Diagnostics are retained; keep using ordinary Codex.'}}
  }
  if($code){$message+=' ['+$code+']'}
  [void][Windows.Forms.MessageBox]::Show($message,'Agbrio')

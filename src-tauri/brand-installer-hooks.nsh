@@ -14,9 +14,10 @@ Var AgbrioLegacyMigration
 !macro AGBRIO_INSTALL_SHARED_ENTRY programsDirectory installDirectory
   CreateDirectory "${programsDirectory}"
   CreateShortCut "${programsDirectory}\Codex (Agbrio shared).lnk" "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${installDirectory}\codex-shared\launch.ps1"' "${installDirectory}\${MAINBINARYNAME}.exe"
+  CreateShortCut "${programsDirectory}\Codex (return to normal).lnk" "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${installDirectory}\codex-shared\return-normal.ps1"' "${installDirectory}\${MAINBINARYNAME}.exe"
 !macroend
 
-!macro AGBRIO_REMOVE_SHARED_ENTRY programsDirectory installDirectory
+!macro AGBRIO_REMOVE_EXACT_ENTRY programsDirectory installDirectory entryName scriptName
   ; The PowerShell target is shared by many shortcuts. Verify the exact launcher
   ; arguments too, so removing an old installation preserves a replaced entry.
   Push $0
@@ -27,14 +28,14 @@ Var AgbrioLegacyMigration
   ${If} $0 P<> 0
     ${IUnknown::QueryInterface} $0 '("${IID_IPersistFile}", .r1)'
     ${If} $1 P<> 0
-      ${IPersistFile::Load} $1 '("${programsDirectory}\Codex (Agbrio shared).lnk", ${STGM_READ})'
+      ${IPersistFile::Load} $1 '("${programsDirectory}\${entryName}.lnk", ${STGM_READ})'
       StrCpy $2 ""
       StrCpy $3 ""
       ${IShellLink::GetArguments} $0 '(.r2, ${NSIS_MAX_STRLEN})'
       ${IShellLink::GetPath} $0 '(.r3, ${NSIS_MAX_STRLEN}, 0, ${SLGP_RAWPATH})'
-      ${If} $2 == '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${installDirectory}\codex-shared\launch.ps1"'
+      ${If} $2 == '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${installDirectory}\codex-shared\${scriptName}"'
       ${AndIf} $3 == "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
-        Delete "${programsDirectory}\Codex (Agbrio shared).lnk"
+        Delete "${programsDirectory}\${entryName}.lnk"
       ${EndIf}
       ${IUnknown::Release} $1 ""
     ${EndIf}
@@ -44,6 +45,11 @@ Var AgbrioLegacyMigration
   Pop $2
   Pop $1
   Pop $0
+!macroend
+
+!macro AGBRIO_REMOVE_SHARED_ENTRY programsDirectory installDirectory
+  !insertmacro AGBRIO_REMOVE_EXACT_ENTRY "${programsDirectory}" "${installDirectory}" "Codex (Agbrio shared)" "launch.ps1"
+  !insertmacro AGBRIO_REMOVE_EXACT_ENTRY "${programsDirectory}" "${installDirectory}" "Codex (return to normal)" "return-normal.ps1"
 !macroend
 
 !macro NSIS_HOOK_PREINSTALL

@@ -241,3 +241,13 @@ test('launch verifies retained tools again before it can open Desktop',async()=>
  await assert.rejects(lifecycle({...f.options,action:'launch'},f.dependencies),/SHARED_NATIVE_COHORT_MISMATCH/);
  assert.ok(!f.calls.slice(count).includes('spawn-Desktop'));assert.equal((await lifecycle({...f.options,action:'status'},f.dependencies)).ready,true);
 });
+
+test('a backend lost during verification blocks Desktop startup and preserves diagnostics',async()=>{
+ const f=await fixture();await lifecycle({...f.options,action:'setup'},f.dependencies);
+ let lost=false;const fetch=f.dependencies.fetch;
+ f.dependencies.fetch=async(...args)=>{if(lost)throw Error('producer absent');return fetch(...args);};
+ f.dependencies.verifyRuntime=async()=>{lost=true;return{cohortVerified:true};};
+ f.dependencies.spawn=()=>assert.fail('Never open a Desktop against a missing producer');
+ await assert.rejects(lifecycle({...f.options,action:'launch'},f.dependencies),/SHARED_BACKEND_LOST_BEFORE_DESKTOP/);
+ assert.equal(JSON.parse(await readFile(join(f.options.directory,'launch-progress.json'),'utf8')).errorCode,'SHARED_BACKEND_LOST_BEFORE_DESKTOP');
+});

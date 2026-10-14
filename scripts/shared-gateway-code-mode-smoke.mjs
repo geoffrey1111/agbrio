@@ -31,7 +31,7 @@ const ownerSid=(await exec(ps,['-NoProfile','-NonInteractive','-Command','[Secur
 const require=createRequire(import.meta.url),wsRoot=dirname(require.resolve('ws/package.json',{paths:[resolve('tools/isolated-browser-executor')]})),{WebSocket}=require(wsRoot);
 const scratch=resolve('runtime/shared-native-compatibility');await mkdir(scratch,{recursive:true});
 const root=await mkdtemp(join(scratch,'gateway-code-mode-')),runtime=join(root,'runtime'),home=join(root,'home');
-const files=['runtime.mjs','native-cohort.mjs','backend-recovery.mjs','peer-service.ps1'];
+const files=['runtime.mjs','native-cohort.mjs','backend-recovery.mjs','state-file.mjs','peer-service.ps1'];
 let child,closed,ws,health,config,origin,cleanable=true,heldCommand=null,capturedChildren=[],shutdownVerified=false,automaticHostCount=null;const pending=new Map();let id=0,cells=0,restarts=0;
 let mockServer,mockRequests=0,automaticCells=0,automaticHostIdentity=false,automaticHostPid=null,fixtureTurn=null;
 let desktopChild=null,desktopAttached=false,desktopRetired=false,desktopStopScript=null;
@@ -212,6 +212,9 @@ if($Action -eq 'Capture'){
   if(automaticHostPid)assert.ok(capturedChildren.some(v=>v.pid===automaticHostPid),'Capture the automatically discovered helper before shutdown');
   for(const pid of [heldCommand.helperPid,heldCommand.hostPid,...automaticHostPid?[automaticHostPid]:[]])assert.equal((await exec(ps,['-NoProfile','-NonInteractive','-Command',`if(Get-Process -Id ${pid} -ErrorAction SilentlyContinue){'ALIVE'}else{'ABSENT'}`],{windowsHide:true})).stdout.trim(),'ABSENT');
  }
+ const diagnostic=await readFile(join(root,'runtime-events.json'),'utf8'),journal=JSON.parse(diagnostic);
+ assert.ok(journal.events.length<=64);assert.ok(journal.events.some(v=>v.event==='BACKEND_READY'));assert.ok(journal.events.some(v=>v.event==='RUNTIME_STOP'));
+ for(const secret of [config.controlToken,config.instance,config.ownerSid,binary])assert.equal(diagnostic.includes(secret),false,'Lifecycle diagnostics contain no credentials, identities or executable paths');
  console.log(JSON.stringify({isolatedGatewayCodeMode:'PASS',version:inspected.version,javascriptCellsExecuted:cells,nativeRestartsObserved:restarts,persistentStoreVerified:true,threadsCreated:executeAutoHost?1:0,ephemeralFixtureThreads:executeAutoHost?1:0,modelRequests:0,loopbackMockRequests:mockRequests,delegateCalls:0,nativeCopies:0,desktopStarts:isolatedDesktop?1:0,productionSettingsUnchanged:true,ownedRuntimeStopped:true,ownedBackendAbsent:true,...isolatedDesktop?{isolatedDesktopAttach:desktopAttached?'PASS':'FAIL',fixtureDesktopRetired:desktopRetired,dailyProfileUsed:false}:{},...stopWithCommand?{inFlightNativeToolShutdown:'PASS',capturedNativeDescendants:capturedChildren.length,toolHelperAbsent:true,officialToolHostAbsent:true}:{},...observeAutoHost||executeAutoHost?{nativeAutoHostCount:automaticHostCount,nativeSiblingDiscovery:automaticHostCount>0?'PASS':'NOT_PROVEN',nativeAutomaticHostExecution:automaticHostIdentity?'PASS':'NOT_PROVEN',automaticJavaScriptCells:automaticCells}:{} }));
 }finally{
  for(const p of pending.values())clearTimeout(p.timer);pending.clear();ws?.terminate();

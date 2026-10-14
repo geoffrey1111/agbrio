@@ -54,7 +54,7 @@ pub(crate)fn status()->Status{
  let h=health(&s);let ready=h.as_ref().is_some_and(|h|h["ready"]==true);let desktop=h.as_ref().is_some_and(|h|h["desktopConnected"]==true);
  Status{enabled:s.enabled,ready,desktop_connected:desktop,state:if s.phase=="RECOVERY_REQUIRED"{"RECOVERY_REQUIRED"}else if s.phase=="PREPARED"&&ready{"SHARED_PREPARED"}else if s.enabled&&desktop{"SHARED_CONNECTED"}else if s.enabled{"SHARED_RECONNECTING"}else{"INDEPENDENT"}.into(),update_pending:runtime_update_pending(),launch_progress:launch_progress()}
 }
-const SHARED_ASSET_NAMES:[&str;16]=["runtime.mjs","transport.mjs","peer-owner.ps1","desktop-runtime.ps1","desktop-state.ps1","native-runtime.ps1","native-cohort.mjs","backend-recovery.mjs","code-mode-probe.mjs","peer-service.ps1","control.mjs","environment.ps1","owned-processes.ps1","desktop-identity.ps1","launch.ps1","launch-entry.mjs"];
+const SHARED_ASSET_NAMES:[&str;19]=["runtime.mjs","transport.mjs","peer-owner.ps1","desktop-runtime.ps1","desktop-state.ps1","native-runtime.ps1","native-cohort.mjs","backend-recovery.mjs","code-mode-probe.mjs","peer-service.ps1","control.mjs","environment.ps1","owned-processes.ps1","desktop-identity.ps1","launch.ps1","launch-entry.mjs","state-file.mjs","return-normal.ps1","shared-offline-recovery.ps1"];
 fn resource_stamp(source:&Path,node:&Path,ws:&Path)->Result<String,String>{
  let mut digest=Sha256::new();
  for name in SHARED_ASSET_NAMES{digest.update(fs::read(source.join(name)).map_err(|_|"SHARED_RUNTIME_ASSET_MISSING")?);}
@@ -151,6 +151,11 @@ pub(crate)fn launch()->Result<Status,String>{let _lock=START.lock().map_err(|_|"
 }
 #[cfg(not(windows))]pub(crate)fn setup()->Result<Status,String>{Err("SHARED_WINDOWS_REQUIRED".into())}
 #[cfg(test)]mod tests{use super::*;
+ #[test]fn declared_assets_cover_every_packaged_shared_resource(){
+  let source=Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/codex-shared");
+  let mut packaged:Vec<_>=fs::read_dir(source).unwrap().map(|e|e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+  let mut declared:Vec<_>=SHARED_ASSET_NAMES.iter().map(|s|s.to_string()).collect();packaged.sort();declared.sort();assert_eq!(packaged,declared);
+ }
  #[test]fn cached_version_never_hides_missing_or_changed_runtime_files(){
   let base=Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("runtime/shared-native-compatibility");
   let directory=base.join(format!("stamp-{}",uuid::Uuid::new_v4()));
@@ -160,6 +165,7 @@ pub(crate)fn launch()->Result<Status,String>{let _lock=START.lock().map_err(|_|"
   for name in ["node.exe","ws/index.js","ws/package.json","ws/lib/test.js"]{fs::write(directory.join(name),"text fixture").unwrap();}
   let stamp=resource_stamp(&directory,&directory.join("node.exe"),&directory.join("ws")).unwrap();fs::write(directory.join("version"),&stamp).unwrap();
   assert!(cached_resources_match(&directory,&stamp));
+  fs::remove_file(directory.join("state-file.mjs")).unwrap();assert!(!cached_resources_match(&directory,&stamp));fs::write(directory.join("state-file.mjs"),"state-file.mjs").unwrap();assert!(cached_resources_match(&directory,&stamp));
   fs::remove_file(directory.join("transport.mjs")).unwrap();assert!(!cached_resources_match(&directory,&stamp));fs::write(directory.join("transport.mjs"),"transport.mjs").unwrap();assert!(cached_resources_match(&directory,&stamp));
   fs::write(directory.join("ws/lib/test.js"),"changed fixture").unwrap();assert!(!cached_resources_match(&directory,&stamp));
   fs::write(directory.join("ws/lib/test.js"),"text fixture").unwrap();assert!(cached_resources_match(&directory,&stamp));fs::rename(directory.join("ws/lib/test.js"),directory.join("ws/lib/renamed.js")).unwrap();assert!(!cached_resources_match(&directory,&stamp));

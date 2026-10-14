@@ -49,6 +49,7 @@ SectionEnd
  await exec(makensis,['/V2',fixture],{windowsHide:true,timeout:30000,maxBuffer:16384});
  await exec(binary,[],{windowsHide:true,timeout:15000});
  assert.ok((await lstat(shortcut)).size>0);
+ const recoveryShortcut=join(programs,'Codex (return to normal).lnk');assert.ok((await lstat(recoveryShortcut)).size>0);
  const inspect=join(directory,'inspect.ps1');
  await writeFile(inspect,`param([string]$Shortcut,[string]$ReplacementArguments,[string]$ReplacementTarget)
 $ErrorActionPreference='Stop'
@@ -59,6 +60,9 @@ try{$link=$shell.CreateShortcut($Shortcut);if($ReplacementArguments){$link.Argum
  assert.ok(value.target.toLowerCase().endsWith('\\windowspowershell\\v1.0\\powershell.exe'));
  assert.equal(value.arguments,`-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${join(installed,'codex-shared/launch.ps1')}"`);
  assert.equal(value.icon,join(installed,'ai-work-router.exe')+',0');
+ const recovery=JSON.parse((await exec('pwsh.exe',['-NoProfile','-NonInteractive','-File',inspect,'-Shortcut',recoveryShortcut],{windowsHide:true,timeout:15000,maxBuffer:16384})).stdout);
+ assert.equal(recovery.arguments,`-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${join(installed,'codex-shared/return-normal.ps1')}"`);
+ assert.equal(recovery.target.toLowerCase(),value.target.toLowerCase());
  await exec('pwsh.exe',['-NoProfile','-NonInteractive','-File',inspect,'-Shortcut',shortcut,'-ReplacementArguments','"D:\\Another Installation\\launch.ps1"'],{windowsHide:true,timeout:15000});
  const replaced=await readFile(shortcut);await exec(binary,['/REMOVE'],{windowsHide:true,timeout:15000});assert.deepEqual(await readFile(shortcut),replaced);
  await exec(binary,[],{windowsHide:true,timeout:15000});
@@ -67,6 +71,7 @@ try{$link=$shell.CreateShortcut($Shortcut);if($ReplacementArguments){$link.Argum
  await exec(binary,[],{windowsHide:true,timeout:15000});
  await exec(binary,['/REMOVE'],{windowsHide:true,timeout:15000});
  assert.equal(await lstat(shortcut).catch(e=>{if(e.code==='ENOENT')return null;throw e;}),null);
+ assert.equal(await lstat(recoveryShortcut).catch(e=>{if(e.code==='ENOENT')return null;throw e;}),null);
  assert.equal(await readFile(foreign,'utf8'),'unrelated shortcut marker');verified=true;
  console.log(JSON.stringify({compiledNSISShortcutMacros:'PASS',pathWithSpaces:true,quotedLauncherArguments:true,removeOwnShortcut:true,replacedArgumentsPreserved:true,replacedTargetPreserved:true,unrelatedShortcutPreserved:true,realStartMenuChanges:0,productRegistrations:0,desktopStarts:0}));
 }finally{if(verified)await clean(directory);else console.error('Shortcut fixture retained for diagnosis: '+directory);}

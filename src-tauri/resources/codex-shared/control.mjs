@@ -1,13 +1,14 @@
 // Owner-local lifecycle. No token, URL credential or public message is logged.
 import {spawn,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {readFile,writeFile,rename,mkdir,unlink} from 'node:fs/promises';
+import {readFile,mkdir,unlink} from 'node:fs/promises';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
+import {replaceStateFile} from './state-file.mjs';
 const exec=promisify(execFile),sleep=ms=>new Promise(r=>setTimeout(r,ms));
-export async function atomic(path,value){await writeFile(path+'.pending',JSON.stringify(value));await rename(path+'.pending',path);}
+export async function atomic(path,value){await replaceStateFile(path,value);}
 export function desktopLaunchOptions(url,environment=process.env){
  // libuv's Windows job kills non-detached children when this controller exits.
  // Desktop is explicitly requested as a visible, independent user application.
@@ -108,6 +109,7 @@ export async function lifecycle(options,dependencies={}){
   try{
   if(saved?.format!==2||!['PREPARED','ACTIVE'].includes(saved.phase)||!(await health())?.ready)throw Error('SHARED_NOT_PREPARED');
   await verifyRuntime(cfg.binary,cfg.version);
+  if(!(await health())?.ready)throw Error('SHARED_BACKEND_LOST_BEFORE_DESKTOP');
   // Never close or launch into the owner's already-running Desktop instance.
   const installed=await readDesktopState(options.scripts??join(directory,'runtime'),execute);
   if(installed.count>0){
@@ -203,6 +205,6 @@ export async function probeGateway({directory,url}){
 }
 const normalizedEntry=path=>path.replace(/^\\\\\?\\/,'').replaceAll('\\','/').toLowerCase();
 if(process.argv[1]&&normalizedEntry(fileURLToPath(import.meta.url))===normalizedEntry(resolve(process.argv[1]))){
- try{const result=await lifecycle(JSON.parse(await readFile(process.argv[2],'utf8')));process.stdout.write(JSON.stringify(result));}
+ try{const options=process.argv[2]==='--disable'?{action:'disable',directory:resolve(process.argv[3]),scripts:dirname(fileURLToPath(import.meta.url))}:JSON.parse(await readFile(process.argv[2],'utf8'));const result=await lifecycle(options);process.stdout.write(JSON.stringify(result));}
  catch(e){process.stderr.write(/^SHARED_[A-Z_]+$/.test(e.message)?e.message:'SHARED_LIFECYCLE_FAILED');process.exitCode=1;}
 }

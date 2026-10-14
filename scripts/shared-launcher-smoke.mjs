@@ -20,7 +20,7 @@ async function clean(path){assert.ok(!relative(directory,path).startsWith('..'))
 try{
  await mkdir(resources,{recursive:true});await mkdir(localData);
  await copyFile(process.execPath,join(layout,'browser-executor-node.exe'));
- for(const name of ['launch.ps1','launch-entry.mjs','control.mjs','desktop-state.ps1'])await copyFile(join(source,name),join(resources,name));
+ for(const name of ['launch.ps1','launch-entry.mjs','control.mjs','state-file.mjs','desktop-state.ps1','return-normal.ps1','shared-offline-recovery.ps1'])await copyFile(join(source,name),join(resources,name));
  const helper=join(directory,'inspect-dialog.ps1');
  await writeFile(helper,`param([uint32]$OwnedPid,[string]$Expected)
 $ErrorActionPreference='Stop'
@@ -33,14 +33,14 @@ public static class AgbrioFixtureDialog {
  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr h,StringBuilder b,int n);
  [DllImport("user32.dll")] static extern int GetDlgCtrlID(IntPtr h);
- [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h,uint m,IntPtr w,IntPtr l);
+ [DllImport("user32.dll",SetLastError=true)] static extern IntPtr SendMessage(IntPtr h,uint m,IntPtr w,IntPtr l);
  public static string InspectAndDismiss(uint pid){string result=null;
   EnumWindows((h,p)=>{uint owner;GetWindowThreadProcessId(h,out owner);var title=new StringBuilder(1024);GetWindowText(h,title,title.Capacity);
    if(owner!=pid||title.ToString()!="Agbrio")return true;
    var texts=new List<string>();IntPtr ok=IntPtr.Zero;
    EnumChildWindows(h,(c,q)=>{uint childOwner;GetWindowThreadProcessId(c,out childOwner);if(childOwner!=pid)return true;
-    var text=new StringBuilder(4096);GetWindowText(c,text,text.Capacity);if(text.Length>0)texts.Add(text.ToString());if(GetDlgCtrlID(c)==1)ok=c;return true;},IntPtr.Zero);
-   result=string.Join("\\n",texts);if(ok!=IntPtr.Zero)SendMessage(ok,0xf5,IntPtr.Zero,IntPtr.Zero);return false;
+    var text=new StringBuilder(4096);GetWindowText(c,text,text.Capacity);if(text.Length>0)texts.Add(GetDlgCtrlID(c)+":"+text.ToString());if(GetDlgCtrlID(c)==1)ok=c;return true;},IntPtr.Zero);
+   SendMessage(h,0x10,IntPtr.Zero,IntPtr.Zero);result=string.Join("\\n",texts)+" error="+Marshal.GetLastWin32Error();return false;
   },IntPtr.Zero);return result;
  }
 }
@@ -48,11 +48,16 @@ public static class AgbrioFixtureDialog {
 $until=[DateTime]::UtcNow.AddSeconds(20);$text=$null
 while([DateTime]::UtcNow -lt $until){$text=[AgbrioFixtureDialog]::InspectAndDismiss($OwnedPid);if($null -ne $text){break};Start-Sleep -Milliseconds 100}
 if($null -eq $text){throw 'FIXTURE_DIALOG_NOT_FOUND'}
+# A newly created MessageBox can appear before its modal loop accepts WM_CLOSE.
+# Retry only this captured test PID/window; never interact with Codex windows.
+$dismissed=$false
+for($attempt=0;$attempt -lt 50;$attempt++){Start-Sleep -Milliseconds 100;$remaining=[AgbrioFixtureDialog]::InspectAndDismiss($OwnedPid);if($null -eq $remaining){$dismissed=$true;break}}
+if(!$dismissed){throw ('FIXTURE_DIALOG_DISMISS_FAILED: '+$text)}
 @{expected=$text.Contains($Expected);text=$text}|ConvertTo-Json -Compress
 `,{encoding:'utf8'});
  const results=[];
- for(const [culture,expected] of [['en-US','Ordinary Codex is still running.'],['zh-CN','普通 Codex 仍在运行']]){
-  const launcher=join(resources,'launch.ps1');
+ for(const [culture,expected,script,expectedExit] of [['en-US','Ordinary Codex is still running.','launch.ps1',1],['zh-CN','普通 Codex 仍在运行','launch.ps1',1],['zh-CN','共享连接尚未配置','return-normal.ps1',0]]){
+  const launcher=join(resources,script);
   const command=`[Threading.Thread]::CurrentThread.CurrentUICulture=[Globalization.CultureInfo]::GetCultureInfo('${culture}'); & '${launcher.replaceAll("'","''")}'`;
   child=spawn(ps,['-NoProfile','-NonInteractive','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-Command',command],{windowsHide:true,stdio:'ignore',env:{...process.env,LOCALAPPDATA:localData}});
   closed=new Promise((yes,no)=>{child.once('error',no);child.once('close',code=>yes(code));});
@@ -60,8 +65,9 @@ if($null -eq $text){throw 'FIXTURE_DIALOG_NOT_FOUND'}
   // inspector; the production launcher is loaded normally with -File semantics.
   const inspect=`& '${helper.replaceAll("'","''")}' -OwnedPid ${child.pid} -Expected '${expected}'`;
   const value=JSON.parse((await exec(ps,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',Buffer.from(inspect,'utf16le').toString('base64')],{windowsHide:true,timeout:30000,maxBuffer:16384})).stdout);
-  assert.equal(await closed,1);child=null;
-  assert.equal(value.expected,true,`Incorrect ${culture} dialog: ${value.text}`);results.push({culture,ordinaryDesktopGuard:'PASS'});
+  assert.equal(value.expected,true,`Incorrect ${culture} dialog: ${value.text}`);
+  let timer;const exit=await Promise.race([closed,new Promise((_,no)=>{timer=setTimeout(()=>no(Error('FIXTURE_DIALOG_PROCESS_DID_NOT_EXIT')),10000);})]);clearTimeout(timer);assert.equal(exit,expectedExit);child=null;
+  results.push({culture,script,guard:'PASS'});
  }
  assert.equal(await lstat(join(localData,'AIWorkRouter')).catch(e=>{if(e.code==='ENOENT')return null;throw e;}),null,'Launcher must not create a shared runtime');
  const after=await Promise.all(['settings.json','runtime-config.json'].map(n=>readFile(join(production,n)).catch(e=>{if(e.code==='ENOENT')return null;throw e;})));
