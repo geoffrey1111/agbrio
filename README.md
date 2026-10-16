@@ -10,13 +10,13 @@ Do you already keep one agent conversation for decisions and another for impleme
 
 **Keep the reasoning in one conversation. Keep the execution in another. Carry the right work between them.**
 
-[Download Windows v0.1.34](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.34) · [Install and pair](docs/SETUP.md) · [Connect an assistant](docs/ASSISTANT_CONNECTION_GUIDE.en.md) · [MIT license](LICENSE)
+[Download Windows v0.1.35-rc.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5) · [Install and pair](docs/SETUP.md) · [Connect an assistant](docs/ASSISTANT_CONNECTION_GUIDE.en.md) · [MIT license](LICENSE)
 
-[Shared Codex repair candidate v0.1.35-rc.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5): guarded startup and return-to-normal entries, verified native tools and Windows state recovery. [Checks and remaining limits](docs/RELEASE_0.1.35-rc.5.md). Stable remains v0.1.34; private character-board work is excluded.
+[Latest shared Codex repair v0.1.35-rc.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5): guarded startup and return-to-normal entries, verified native tools and Windows state recovery. [Checks and remaining limits](docs/RELEASE_0.1.35-rc.5.md). This is the latest recommended download; its exact rc.5 version and validation limits are retained. Private character-board work is excluded.
 
 ## Start here
 
-**New user? Read the [complete walkthrough](docs/SETUP.md) and [FAQ](docs/FAQ.md).** Shared-connection repairs are in the explicitly selected **0.1.35-rc.5 candidate** above, not stable/latest 0.1.34.
+**New user? Read the [complete walkthrough](docs/SETUP.md) and [FAQ](docs/FAQ.md).** Shared-connection repairs are in the **0.1.35-rc.5 release** above, now the latest recommended download; 0.1.34 is historical.
 
 1. Install Agbrio and complete your official Codex installation/login.
 2. With ordinary Codex exited after tasks finish, use **Codex (Agbrio shared)** (rc.5), or prepare/open from Agbrio settings. Verify Desktop-connected, not just backend-prepared.

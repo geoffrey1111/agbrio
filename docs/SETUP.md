@@ -6,12 +6,9 @@ Public Windows releases, checked 2026-10-16. Complete desktop setup first; phone
 
 ## 1. Choose a version and install
 
-| Download | Scope |
-| --- | --- |
-| [0.1.34 stable](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.34) | Existing deployments. Does not contain the later rc.5 shared-startup, retained tool-cohort and independent recovery-entry repairs. |
-| [0.1.35-rc.5 repair candidate](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5) | For these repairs, subject to candidate limits. Independent shared/recovery-entry instructions below describe this version. GitHub latest still selects stable 0.1.34. |
+Use [0.1.35-rc.5, the latest recommended release](https://github.com/geoffrey1111/agbrio/releases/latest). 0.1.34 remains historical; existing users upgrade instead of choosing between two recommended channels.
 
-Read the [exact package identity and validation limits](RELEASE_0.1.35-rc.5.md). New documentation does not promote a candidate to stable or change its installer bytes. The public release excludes the private character board.
+The exact **0.1.35-rc.5** installer version, signature and verified bytes are retained. Latest promotion does not certify every future Codex version, history or crash case. [Package identity and validation limits](RELEASE_0.1.35-rc.5.md). The public release excludes the private character board.
 
 1. Use Windows x64 with your own official Windows Store Codex Desktop. Complete official installation/login first if needed. Agbrio does not bundle Desktop or provide an account/quota.
 2. Download the installer from the selected release. Compare `Get-FileHash -Algorithm SHA256 -LiteralPath 'full installer path'` with its `SHA256SUMS.txt`; stop on mismatch.
@@ -114,7 +111,7 @@ Authenticated owner text replies require plugin 0.1.3 actually advertising manua
 
 ## 10. Updates, recovery and support
 
-- **Windows:** check app updates or select a specific candidate release. Keep data; the stable updater may not offer candidates.
+- **Windows:** check app updates or use the latest release page. Keep data; 0.1.34 is historical.
 - **Phone interface:** use About's interface-update control; rc.5 also has a duplicate Settings-root entry. Web-shell updates do not update Windows Host. Do not clear pairing/drafts to update.
 - **Shared recovery:** use section 4's guarded return/disable flow; no all-Node kills, profile copy, certificate change or uncertain-send replay.
 - **Provider security challenge:** stop automated navigation/refresh/submit. The owner clears it; no cookie copying, identity rotation or retry loop.

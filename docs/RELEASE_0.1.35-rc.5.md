@@ -1,9 +1,9 @@
 # Agbrio 0.1.35-rc.5 — shared Codex startup and recovery
 
-This public candidate contains the shared-connection repairs prepared before the
+This latest recommended public release contains the shared-connection repairs prepared before the
 private character-board work. It does not include that board, private artwork,
-conversation data, credentials or local runtime state. The stable download remains
-0.1.34; this release retains its tested candidate version and original signed bytes.
+conversation data, credentials or local runtime state. The owner promoted this repair to latest on 2026-10-16. 0.1.34 is historical;
+this release retains its tested rc.5 version and original signed bytes.
 
 ## Changes
 
@@ -36,7 +36,7 @@ Later owner-reported startup and exact live connection checks confirmed that sha
 Desktop and a local shell tool could use the retained backend. This is bounded
 evidence; it does not certify every old conversation history, every Desktop Code
 Mode path, all Codex updates, all crash conditions or physical-phone acceptance.
-The candidate designation and those remaining limits are preserved.
+The exact rc.5 package identity and those remaining limits are preserved.
 
 The release source ZIP is a Git archive of the tagged commit, never a copy of an
 active workspace. Later local character-board and settings-interface changes are

@@ -6,7 +6,7 @@
 
 ### Which version should I download? What if 0.1.34 cannot connect?
 
-Stable remains 0.1.34. The [0.1.35-rc.5 candidate](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5) contains later shared-startup/native-tool/recovery repairs; latest does not select it. Distinguish shared Codex, phone and assistant failures, retaining the exact error. An upgrade cannot be promised to fix all network/account issues. Use official assets and [setup](SETUP.md), not repeated reinstall/data deletion.
+Use [0.1.35-rc.5, the latest recommended release](https://github.com/geoffrey1111/agbrio/releases/latest). 0.1.34 is historical. The installer retains its exact rc.5 version/signature and bounded validation, without claiming every scenario is accepted. Distinguish shared Codex, phone and assistant failures, retaining the exact error. An upgrade cannot be promised to fix all network/account issues. Use official assets and [setup](SETUP.md), not repeated reinstall/data deletion.
 
 ### Must I buy a code or new account? Does Agbrio reset quotas?
 
@@ -44,7 +44,7 @@ Use the shared entry as the same Windows user; normally keep Bridges/login/pairi
 
 ### A helper is missing, verification fails or no window appears. What now?
 
-Retain `SHARED_...` code/stage and versions. Check complete official installation and intended candidate. Do not download arbitrary helpers, copy profiles or loop restarts. Follow [fallback](SETUP.md#4-daily-startup-reboot-official-updates-and-fallback) and report sanitized diagnostics. Generic failure text does not identify a unique cause.
+Retain `SHARED_...` code/stage and versions. Check complete official installation and intended release. Do not download arbitrary helpers, copy profiles or loop restarts. Follow [fallback](SETUP.md#4-daily-startup-reboot-official-updates-and-fallback) and report sanitized diagnostics. Generic failure text does not identify a unique cause.
 
 ### How do I disable shared mode? Why are there several Node processes?
 

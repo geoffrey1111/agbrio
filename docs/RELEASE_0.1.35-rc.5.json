@@ -1,7 +1,7 @@
 {
   "version": "0.1.35-rc.5",
-  "classification": "PUBLIC_PRERELEASE",
-  "stableVersion": "0.1.34",
+  "classification": "LATEST_PUBLIC_RELEASE",
+  "stableVersion": "0.1.35-rc.5",
   "scope": "pre-board shared Codex startup and recovery",
   "includesCharacterBoard": false,
   "productCodeCommit": "f53297ab16db612488eb46bd830afe5b3f689673",
@@ -22,5 +22,6 @@
     "fullDesktopHistoryAndCodeMode": "NOT_FULLY_VALIDATED",
     "wholeClientUserAcceptance": "NOT_CLAIMED"
   },
-  "publicationAuthority": "Explicit owner request, 2026-10-16; retain candidate label and exclude board."
+  "publicationAuthority": "Explicit owner request, 2026-10-16: promote shared repair to latest; retain exact installer version/bytes and validation limits; exclude board.",
+  "previousVersion": "0.1.34"
 }

@@ -4,6 +4,15 @@
 [简体中文完整教程](SETUP.zh-CN.md) and [FAQ](FAQ.md). The dated sections below are
 engineering history, not a sequence of setup instructions.**
 
+## 2026-10-16 — latest recommendation supersedes initial candidate channel
+
+The owner explicitly selected this shared repair as the single latest recommended
+release. The existing exact rc.5 installer/signature/source tag and bounded tests
+are retained; 0.1.34 is historical. Earlier candidate/stable-channel statements
+below describe prior checkpoints, not the current download recommendation.
+Current onboarding is in the setup guide above. This channel change does not
+claim full history/Code Mode/future-version/crash or whole-client acceptance.
+
 ## 2026-10-16 — authorized public candidate publication
 
 The owner authorized publication of the pre-board shared-connection candidate.

@@ -10,13 +10,13 @@
 
 **思考留在思考端，执行留在执行端，Bridge 负责准确交接。**
 
-[下载 Windows v0.1.34](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.34) · [完整使用流程](docs/SETUP.zh-CN.md) · [连接 AI 助手](docs/ASSISTANT_CONNECTION_GUIDE.zh-CN.md) · [MIT 许可证](LICENSE)
+[下载 Windows v0.1.35-rc.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5) · [完整使用流程](docs/SETUP.zh-CN.md) · [连接 AI 助手](docs/ASSISTANT_CONNECTION_GUIDE.zh-CN.md) · [MIT 许可证](LICENSE)
 
-[共享 Codex 修复候选版 v0.1.35-rc.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5)：独立共享与退回普通入口、本地工具组件校验及 Windows 状态恢复。[已完成检查与剩余限制](docs/RELEASE_0.1.35-rc.5.md)。稳定版仍为 v0.1.34，不含私人角色看板。
+[最新共享 Codex 修复版 v0.1.35-rc.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5)：独立共享与退回普通入口、本地工具组件校验及 Windows 状态恢复。[已完成检查与剩余限制](docs/RELEASE_0.1.35-rc.5.md)。这是当前最新推荐下载，不含私人角色看板；安装器保留准确的 rc.5 版本号和既有检查范围。
 
 ## 新用户从这里开始
 
-**先读 [完整使用流程](docs/SETUP.zh-CN.md) 和 [常见问题 Q&A](docs/FAQ.zh-CN.md)。** [0.1.34 升级指令：复制给自己的 Codex](docs/UPGRADE_WITH_AI.zh-CN.md)。共享连接修复在上方指定的 **0.1.35-rc.5 候选版**，稳定版/latest 仍是 0.1.34，请勿混淆。
+**先读 [完整使用流程](docs/SETUP.zh-CN.md) 和 [常见问题 Q&A](docs/FAQ.zh-CN.md)。** [0.1.34 升级指令：复制给自己的 Codex](docs/UPGRADE_WITH_AI.zh-CN.md)。共享连接修复在上方指定的 **0.1.35-rc.5 修复版**，最新推荐版本是 0.1.35-rc.5，请勿混淆。
 
 1. 安装 Agbrio，完成官方 Codex 的安装与本人登录。
 2. 结束任务、正常退出普通 Codex后，用 **Codex (Agbrio shared)**（rc.5），或从设置准备并打开共享连接；核对 Desktop 已接入，不能只看后台准备好。
