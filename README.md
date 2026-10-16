@@ -14,6 +14,19 @@ Do you already keep one agent conversation for decisions and another for impleme
 
 [Shared Codex repair candidate v0.1.35-rc.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5): guarded startup and return-to-normal entries, verified native tools and Windows state recovery. [Checks and remaining limits](docs/RELEASE_0.1.35-rc.5.md). Stable remains v0.1.34; private character-board work is excluded.
 
+## Start here
+
+**New user? Read the [complete walkthrough](docs/SETUP.md) and [FAQ](docs/FAQ.md).** Shared-connection repairs are in the explicitly selected **0.1.35-rc.5 candidate** above, not stable/latest 0.1.34.
+
+1. Install Agbrio and complete your official Codex installation/login.
+2. With ordinary Codex exited after tasks finish, use **Codex (Agbrio shared)** (rc.5), or prepare/open from Agbrio settings. Verify Desktop-connected, not just backend-prepared.
+3. Bind two exact conversations, select content, preview destination/text, send once and check the receipt.
+4. Optionally add a paired phone, Claude Code or a scoped AI assistant; each connection is verified separately.
+
+**Why open ordinary Codex and then close it?** Older preparation used its running backend; actual switching needed a clean exit. **rc.5 can discover the official installation while Desktop is closed.** After initial installation/login, use the shared shortcut directly on later launches/reboots. Official default/taskbar startup stays unchanged. Official updates are rechecked at idle startup, with no guarantee for every future version. [Startup and fallback](docs/SETUP.md#4-daily-startup-reboot-official-updates-and-fallback).
+
+Development and current documentation use **main**. Release tags preserve the exact published source; historical branch links are not a second supported setup path.
+
 Optional daily reports: after real read-only acceptance, choose time (suggested22:00 local), timezone, delivery destination and delegated Bridges; explicitly submit to your assistant. It verifies real scheduler tools and the original saved task, or says unsupported. Change or disable the same task without duplicating it; disabling works without active Bridges/MCP. Read-only receipt windows and honest partial attribution: [daily reports](docs/DAILY_REPORTS.md).
 
 ## From review to the next task
@@ -53,7 +66,7 @@ For whole-app access, Agbrio offers a revocable 30-day **INSTANCE + CONVERSATION
 
 Within your explicit delegation, ordinary reviewed handoffs can proceed without a phone approval every round. Conflicts, scope changes and unresolved decisions come back to you. Agbrio reuses prepare → confirm → receipt, exact versions, decision records and duplicate-send protection.
 
-Official MCP Events is implemented from 0.1.25. A formal 0.1.26 run verified one real event-woken handoff using the previously authorized delegated-scope scan fallback, without a new user prompt or periodic polling; eight subscriptions across two delegated Bridges remain active. Automatic event-result injection remains unresolved, and recipient execution is not task completion. [Events tutorial](docs/MCP_EVENTS_WORKFLOW.md) · [Goal recovery limits](docs/GOAL_RECOVERY.md).
+Official MCP Events is implemented from 0.1.25. A formal 0.1.26 run verified one real event-woken handoff using the previously authorized delegated-scope scan fallback, without a new user prompt or periodic polling; that historical acceptance does not provision subscriptions for new users. Automatic event-result injection remains unresolved, and recipient execution is not task completion. [Events tutorial](docs/MCP_EVENTS_WORKFLOW.md) · [Goal recovery limits](docs/GOAL_RECOVERY.md).
 
 ## Reach your own Host
 
@@ -65,7 +78,7 @@ The computer must stay powered on, awake and connected for live work. A new brow
 
 Windows x64 + Codex + paired PWA is the alpha scope. App languages: **English, Simplified Chinese, Traditional Chinese** (Settings → Language). Japanese and Korean are introduction translations; macOS and other execution agents are not verified release targets. Source data is review material, never a way to enlarge authorization. An accepted handoff does not prove its downstream task completed.
 
-[Build from source](docs/BUILD.md) · [Assistant protocol](docs/ASSISTANT_MCP.md) · [v0.1.34 changes](docs/RELEASE_0.1.26.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+[Build from source](docs/BUILD.md) · [Assistant protocol](docs/ASSISTANT_MCP.md) · [v0.1.34 changes](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.34) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 [Contact the author](mailto:geoffreyzjx@qq.com) · [Report a problem](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [Suggest an improvement](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
 
@@ -80,7 +93,5 @@ Bridge now has a quiet **Codex usage** row. Open it to see native quota windows,
 <p><img src="docs/assets/en/codex-quota.png" width="320" alt="Actual native quota UI with fictional usage"> <img src="docs/assets/en/assistant-guide-simple.png" width="320" alt="Agent-first connection steps in English"></p>
 
 These use actual UI components and fictional demo data; they are browser captures, not physical iPhone recordings.
-
-Claude Desktop Code observation is available as an optional plugin candidate: exact-session status/final replies, no automatic model calls, production sends disabled. Native live-session activation/reply delivery remain unverified until read back at Bridge. [Scope and setup](docs/CLAUDE_CODE.md).
 
 Claude Code now supports standalone monitored conversations and authenticated owner text replies to the original session. Native model/permissions are inherited; no autonomous/MCP Claude writer or goal control. Receipt requires a stored native message, not submit/HTTP success. Real owner-message acceptance remains separate. [Contract](docs/CLAUDE_CODE.md).

@@ -1,5 +1,9 @@
 # Shared Codex repair candidate
 
+**For current installation and everyday steps, use the [setup guide](SETUP.md) /
+[简体中文完整教程](SETUP.zh-CN.md) and [FAQ](FAQ.md). The dated sections below are
+engineering history, not a sequence of setup instructions.**
+
 ## 2026-10-16 — authorized public candidate publication
 
 The owner authorized publication of the pre-board shared-connection candidate.

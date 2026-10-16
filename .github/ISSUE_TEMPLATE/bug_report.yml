@@ -10,7 +10,7 @@ body:
     attributes:
       label: Version / 版本
       description: App version and interface revision from About. If testing a future source release, include the commit.
-      placeholder: "App 0.1.0; interface 2026.10.06-7"
+      placeholder: "App 0.1.34 or 0.1.35-rc.5; interface revision from About"
     validations:
       required: true
   - type: textarea
@@ -21,6 +21,24 @@ body:
       placeholder: "Windows; iPhone/iOS; Codex; Cloudflare Tunnel"
     validations:
       required: true
+  - type: dropdown
+    id: connection_type
+    attributes:
+      label: Connection / 哪条连接出错
+      options:
+        - Shared Codex / 共享 Codex
+        - Phone pairing or HTTPS / 手机配对或入口
+        - Assistant MCP or Events / 助手连接或事件
+        - Claude Code
+        - Other / 其他
+    validations:
+      required: true
+  - type: textarea
+    id: error_step
+    attributes:
+      label: Exact error and failing step / 原始错误与失败步骤
+      description: Include the error code, approximate time, startup entry used and whether a task is active. Do not include private paths, callback URLs or credentials.
+      placeholder: "Prepare shared connection / Open shared Codex / Pair phone; SHARED_...; time; active task yes/no"
   - type: textarea
     id: steps
     attributes:

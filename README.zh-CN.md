@@ -10,9 +10,22 @@
 
 **思考留在思考端，执行留在执行端，Bridge 负责准确交接。**
 
-[下载 Windows v0.1.34](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.34) · [安装与配对](docs/SETUP.md) · [连接 AI 助手](docs/ASSISTANT_CONNECTION_GUIDE.zh-CN.md) · [MIT 许可证](LICENSE)
+[下载 Windows v0.1.34](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.34) · [完整使用流程](docs/SETUP.zh-CN.md) · [连接 AI 助手](docs/ASSISTANT_CONNECTION_GUIDE.zh-CN.md) · [MIT 许可证](LICENSE)
 
 [共享 Codex 修复候选版 v0.1.35-rc.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5)：独立共享与退回普通入口、本地工具组件校验及 Windows 状态恢复。[已完成检查与剩余限制](docs/RELEASE_0.1.35-rc.5.md)。稳定版仍为 v0.1.34，不含私人角色看板。
+
+## 新用户从这里开始
+
+**先读 [完整使用流程](docs/SETUP.zh-CN.md) 和 [常见问题 Q&A](docs/FAQ.zh-CN.md)。** [0.1.34 升级指令：复制给自己的 Codex](docs/UPGRADE_WITH_AI.zh-CN.md)。共享连接修复在上方指定的 **0.1.35-rc.5 候选版**，稳定版/latest 仍是 0.1.34，请勿混淆。
+
+1. 安装 Agbrio，完成官方 Codex 的安装与本人登录。
+2. 结束任务、正常退出普通 Codex后，用 **Codex (Agbrio shared)**（rc.5），或从设置准备并打开共享连接；核对 Desktop 已接入，不能只看后台准备好。
+3. 绑定两段精确对话，选段、预览接收端与正文、发送一次并查回执。
+4. 按需加手机、Claude Code 或指定范围的 AI 助手；每条连接分别验收。
+
+**为什么以前先打开普通 Codex，又要关掉？** 旧准备流程借正在运行的后端识别安装，真正切换又必须退出，避免抢占原工作。**rc.5 已能在 Desktop 关闭时发现官方安装**；初次安装登录后，日常及重启后直接用共享快捷入口，不需要反复先开普通版。原官方/任务栏入口不自动改绑；官方更新在空闲启动时重新校验，不承诺所有未来版本兼容。[首次连接、日常启动与回退](docs/SETUP.zh-CN.md)。
+
+当前源码与教程统一使用 **main**；发行 tag 保留当时准确源码，旧历史分支链接不是另一套推荐流程。
 
 可选日报：真实只读验收后，选择时间（推荐本地22:00）、时区、发送位置与委托Bridge，再明确提交给助手。它核对真实定时工具与既有任务；不支持就说明未启用。修改或停用沿用原任务，不重复创建；Bridge删除或MCP离线也可请求停用。只读连续计窗及部分核实规则：[日报教程](docs/DAILY_REPORTS.md)。
 
@@ -53,23 +66,21 @@
 
 明确委托内的常规交接，助手审阅后可以推进，不需要每轮回手机审批；要求冲突、超出范围或需要你决定时，再向你提问。沿用准备交接 → 核对与确认 → 查回执，保留版本、决策记录和防重复发送。
 
-官方 MCP Events 从0.1.25起实现。0.1.26正式范围已验证真实事件唤醒后，沿用预先授权的范围扫描 fallback 完成一次交接，原目标收到并开始执行；没有新的用户消息或周期轮询，两个已委托 Bridge 的8项订阅保留。自动事件详情注入仍未修，开始执行不等于任务完成。[Events 使用教程](docs/MCP_EVENTS_WORKFLOW.zh-CN.md) · [目标恢复能力与缺口](docs/GOAL_RECOVERY.md)。
+官方 MCP Events 从0.1.25起实现。0.1.26正式范围已验证真实事件唤醒后，沿用预先授权的范围扫描 fallback 完成一次交接，原目标收到并开始执行；没有新的用户消息或周期轮询，这是当时的授权验收，不表示新用户自动拥有订阅。自动事件详情注入仍未修，开始执行不等于任务完成。[Events 使用教程](docs/MCP_EVENTS_WORKFLOW.zh-CN.md) · [目标恢复能力与缺口](docs/GOAL_RECOVERY.md)。
 
 ## 连接自己的电脑
 
 保留已有部署。在桌面设置 → 设备选择自己的 Cloudflare Tunnel 域名、Tailscale Funnel / Serve 或现有 HTTPS 入口；也可使用运营者提供的托管兑换码，自部署仍可使用。部署步骤可复制给自己的 AI 助手。托管激活后的实例凭据和租户路由独立，没有给所有用户一份共享 MCP 凭据。
 
-实时读取与发送需要电脑开机、不休眠并联网；有效登录直接复用，新浏览器确实需要时再配对。[安装说明](docs/SETUP.md) · [托管选项](docs/HOSTED_RELAY.md)。
+实时读取与发送需要电脑开机、不休眠并联网；有效登录直接复用，新浏览器确实需要时再配对。[安装说明](docs/SETUP.zh-CN.md) · [托管选项](docs/HOSTED_RELAY.md)。
 
 ## 版本与参与
 
 当前为 Windows x64 + Codex + 配对 PWA 的 Alpha。应用支持**简体中文、繁体中文、英语**，在设置 → 语言切换。日语和韩语目前仅翻译产品介绍；macOS 和其他执行 Agent 尚未列入已验证发行范围。来源正文不能扩大授权，收到交接回执不等于下游任务已经完成。
 
-[从源码构建](docs/BUILD.md) · [助手协议](docs/ASSISTANT_MCP.md) · [v0.1.34 更新](docs/RELEASE_0.1.26.md) · [第三方声明](THIRD_PARTY_NOTICES.md)
+[从源码构建](docs/BUILD.md) · [助手协议](docs/ASSISTANT_MCP.md) · [v0.1.34 更新](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.34) · [第三方声明](THIRD_PARTY_NOTICES.md)
 
 [联系作者](mailto:geoffreyzjx@qq.com) · [反馈问题](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [提出建议](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
-
-## 额度与助手连接
 
 ## 交给 agent 配置，自己完成必要步骤
 
@@ -80,7 +91,5 @@ Bridge 页面新增轻量 **Codex 额度**入口：按原生实际周期显示�
 <p><img src="docs/assets/zh-CN/codex-quota.png" width="320" alt="额度详情，演示数值"> <img src="docs/assets/zh-CN/assistant-guide-simple.png" width="320" alt="简化的助手连接教程"></p>
 
 以上为真实组件配虚构演示数据的浏览器截图，不是真机录屏。
-
-Claude Desktop Code observation is available as an optional plugin candidate: exact-session status/final replies, no automatic model calls, production sends disabled. Native live-session activation/reply delivery remain unverified until read back at Bridge. [Scope and setup](docs/CLAUDE_CODE.md).
 
 Claude Code now supports standalone monitored conversations and authenticated owner text replies to the original session. Native model/permissions are inherited; no autonomous/MCP Claude writer or goal control. Receipt requires a stored native message, not submit/HTTP success. Real owner-message acceptance remains separate. [Contract](docs/CLAUDE_CODE.md).

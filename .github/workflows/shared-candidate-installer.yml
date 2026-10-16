@@ -1,7 +1,7 @@
 name: Exact shared connection candidate installer
 on:
   push:
-    branches: [codex/open-alpha]
+    branches: [main]
     paths:
       - docs/SHARED_CANDIDATE.json
 permissions:

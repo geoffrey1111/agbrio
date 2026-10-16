@@ -14,6 +14,14 @@
 
 [共享 Codex 修復候選版 v0.1.35-rc.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5)：獨立共享與返回普通入口、本機工具元件驗證及 Windows 狀態恢復。[已完成檢查與剩餘限制](docs/RELEASE_0.1.35-rc.5.md)。穩定版仍為 v0.1.34，不含私人角色看板。
 
+## 新使用者從這裡開始
+
+[完整流程（簡體中文）](docs/SETUP.zh-CN.md) · [Q&A（簡體中文）](docs/FAQ.zh-CN.md) · [English guide](docs/SETUP.md)
+
+共享連線修復請明確選擇 **0.1.35-rc.5 候選版**；穩定版/latest 仍是 0.1.34。先安裝及登入官方 Codex，完成任務並正常退出普通 Desktop，再用 **Codex (Agbrio shared)** 或從設定準備/開啟；核對 Desktop 已接入，之後才綁定兩端、預覽及傳送。手機和助手是選用且獨立驗證的連線。
+
+舊流程先開普通版是為了發現後端。**rc.5 在 Desktop 關閉時也能辨識官方安裝**；日常與重開機後直接用共享入口，不需每次先開普通版。官方入口不改綁，未來官方更新不保證全數相容；回退用 **Codex (return to normal)**，勿批次結束 Node。當前原始碼與文件統一在 **main**，發行 tag 保留原版本。
+
 可選日報：真實唯讀驗收後，選擇時間（建議本地22:00）、時區、接收位置與委託Bridge，再明確提交給助手。它核對真實定時工具與既有任務；不支援就說明未啟用。修改或停用沿用原任務，不重複建立；Bridge刪除或MCP離線也可請求停用。唯讀連續計窗及部分核實規則：[日報教學](docs/DAILY_REPORTS.md)。
 
 ## 從審閱到下一項任務
@@ -53,7 +61,7 @@
 
 明確委託內的常規交接，助手審閱後可以推進，不需要每輪回手機審批；要求衝突、超出範圍或需要你決定時，再向你提問。沿用準備交接 → 核對與確認 → 查回執，保留版本、決策紀錄與防重複傳送。
 
-官方 MCP Events 從0.1.25起實作。0.1.26正式範圍已驗證真實事件喚醒後，沿用預先授權的範圍掃描 fallback 完成一次交接，原目標收到並開始執行；沒有新的使用者訊息或週期輪詢，兩個已委託 Bridge 的8項訂閱保留。自動事件詳情注入尚未修復，開始執行不等於任務完成。[Events 教程](docs/MCP_EVENTS_WORKFLOW.zh-CN.md) · [Goal 恢復限制](docs/GOAL_RECOVERY.md)。
+官方 MCP Events 從0.1.25起實作。0.1.26正式範圍已驗證真實事件喚醒後，沿用預先授權的範圍掃描 fallback 完成一次交接，原目標收到並開始執行；沒有新的使用者訊息或週期輪詢，這是當時的授權驗收，不代表新使用者自動擁有訂閱。自動事件詳情注入尚未修復，開始執行不等於任務完成。[Events 教程](docs/MCP_EVENTS_WORKFLOW.zh-CN.md) · [Goal 恢復限制](docs/GOAL_RECOVERY.md)。
 
 ## 連接自己的電腦
 
@@ -65,7 +73,7 @@
 
 目前為 Windows x64 + Codex + 配對 PWA 的 Alpha。應用支援**繁體中文、簡體中文、英語**，在設定 → 語言切換。日語與韓語目前僅翻譯產品介紹；macOS 和其他執行 Agent 尚未列入已驗證發行範圍。來源正文不能擴大授權，交接回執不等於下游任務已完成。
 
-[從原始碼建置](docs/BUILD.md) · [助手協定](docs/ASSISTANT_MCP.md) · [v0.1.34 更新](docs/RELEASE_0.1.26.md) · [第三方聲明](THIRD_PARTY_NOTICES.md)
+[從原始碼建置](docs/BUILD.md) · [助手協定](docs/ASSISTANT_MCP.md) · [v0.1.34 更新](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.34) · [第三方聲明](THIRD_PARTY_NOTICES.md)
 
 [聯絡作者](mailto:geoffreyzjx@qq.com) · [回報問題](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [提出建議](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
 
@@ -74,7 +82,5 @@
 在**設定 → AI 助手**先選 **ChatGPT / dot 雲端**或 **Codex 本地**，再點**複製給 agent 的指令**。指令使用你的實例位址，agent 先檢查並復用現有部署和授權；你只需選擇授權、本人登入同意，並告訴助手接管哪些 Bridge。詳細手動教學保留折疊入口。本地認證不代表雲端連接成功。
 
 Bridge 的 **Codex 額度**入口顯示原生週期、剩餘、重置與上次讀取，可手動刷新；不支援時顯示暫不可讀取，離線舊結果明確標示。手機設定及關於可手動檢查介面更新，準備好後點擊套用，不必刪除 PWA 或重新配對。
-
-Claude Desktop Code observation is available as an optional plugin candidate: exact-session status/final replies, no automatic model calls, production sends disabled. Native live-session activation/reply delivery remain unverified until read back at Bridge. [Scope and setup](docs/CLAUDE_CODE.md).
 
 Claude Code now supports standalone monitored conversations and authenticated owner text replies to the original session. Native model/permissions are inherited; no autonomous/MCP Claude writer or goal control. Receipt requires a stored native message, not submit/HTTP success. Real owner-message acceptance remains separate. [Contract](docs/CLAUDE_CODE.md).

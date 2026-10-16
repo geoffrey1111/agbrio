@@ -12,6 +12,12 @@
 
 [공유 Codex 수정 후보 v0.1.35-rc.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5): 공유 실행과 일반 실행 복귀, 네이티브 도구 검증, Windows 상태 복구.[검증 범위와 제한](docs/RELEASE_0.1.35-rc.5.md). 안정 버전은 v0.1.34이며 비공개 캐릭터 보드는 포함되지 않습니다.
 
+## 시작하기
+
+[Complete setup (English)](docs/SETUP.md) · [FAQ (English)](docs/FAQ.md) · [简体中文完整教程](docs/SETUP.zh-CN.md)
+
+공유 연결 수정은 **0.1.35-rc.5 후보 버전**에 있습니다. stable/latest는 여전히 0.1.34입니다. rc.5는 공식 Desktop이 종료된 상태에서도 설치를 확인하므로 최초 로그인 후 **Codex (Agbrio shared)**로 바로 실행할 수 있습니다. 매번 일반 버전을 열고 닫을 필요는 없습니다. 진행 중인 작업을 마친 뒤 일반 Desktop을 정상 종료하세요. 공식 실행 방식은 바꾸지 않으며 향후 모든 업데이트의 호환성을 보장하지 않습니다. 현재 소스와 안내는 **main**으로 통일합니다.
+
 선택형 일일 보고: 읽기 전용 연결 확인 후 시간(현지22:00 권장), 시간대, 수신 위치와 위임된Bridge를 지정해 도우미에게 명시적으로 요청하세요. 실제 예약 도구와 기존 작업을 확인하고, 지원하지 않으면 활성화됐다고 주장하지 않습니다. 같은 작업을 수정하거나 중지하며 중복 생성하지 않습니다.[보고 및 검증 범위](docs/DAILY_REPORTS.md).
 
 ## 검토에서 다음 작업까지
@@ -47,7 +53,5 @@ INSTANCE + CONVERSATION_REVIEW 권한은 30일이며 취소할 수 있습니다.
 ## 사용량과 연결 안내
 
 Codex의 실제 사용량 기간, 잔여량과 초기화 시간을 확인하고 수동 새로고침할 수 있습니다. AI 도우미 연결은 클라우드/로컬 경로를 선택하고 설정 지침을 복사합니다. 사용자는 인증과 위임할 Bridge 선택을 담당합니다. PWA 설정에서 수동 업데이트할 수 있으며 재설치나 재페어링은 필요하지 않습니다.
-
-Claude Desktop Code observation is available as an optional plugin candidate: exact-session status/final replies, no automatic model calls, production sends disabled. Native live-session activation/reply delivery remain unverified until read back at Bridge. [Scope and setup](docs/CLAUDE_CODE.md).
 
 Claude Code now supports standalone monitored conversations and authenticated owner text replies to the original session. Native model/permissions are inherited; no autonomous/MCP Claude writer or goal control. Receipt requires a stored native message, not submit/HTTP success. Real owner-message acceptance remains separate. [Contract](docs/CLAUDE_CODE.md).

@@ -1,175 +1,123 @@
-# Install and pair
+# Complete setup and everyday use
 
-## Claude Code desktop connection
+Public Windows releases, checked 2026-10-16. Complete desktop setup first; phone, Claude Code and external assistants are optional, separate connections.
 
-In a Bridge's Choose control/execution view select Claude Code, then Connect Claude Code. It configures only the observation plugin through official plugin administration. Existing registration/saved configuration is reused. Configuration-ready is separate from connected: open your existing conversation and reload the observation plugin when convenient; stop on any cost or forced-reload warning. Never submit a test prompt or restart a task for setup. Once genuinely registered, choose by title and folder, verify identity details if needed, and save the role. In0.1.34, authenticated owner text replies are available after plugin0.1.3 actually advertises manual-input protocol1. Wait for the original task to finish before the deferred reload; do not use --force or submit setup test prompts. Use Reply to original chat in the Bridge or the standalone watched conversation. Autonomous/MCP/cross-provider Claude writes remain disabled. Mobile selects already-connected conversations; manual setup is a troubleshooting fallback. [Scope](CLAUDE_CODE.md).
+[简体中文完整教程](SETUP.zh-CN.md) · [FAQ and troubleshooting](FAQ.md) · [Home](../README.md)
 
+## 1. Choose a version and install
 
-Optional daily reports: after actual read-only acceptance, configure local time/timezone/destination/delegated scope, explicitly submit to your assistant, verify real tools and saved task, or report unsupported. Reuse existing task; no duplicate or Events changes. [Daily report contract](DAILY_REPORTS.md).
+| Download | Scope |
+| --- | --- |
+| [0.1.34 stable](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.34) | Existing deployments. Does not contain the later rc.5 shared-startup, retained tool-cohort and independent recovery-entry repairs. |
+| [0.1.35-rc.5 repair candidate](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5) | For these repairs, subject to candidate limits. Independent shared/recovery-entry instructions below describe this version. GitHub latest still selects stable 0.1.34. |
 
-Agbrio connects the existing conversation that manages a project with the
-conversation that executes it. Windows x64 + Codex + a phone PWA is the first
-alpha target. You supply your existing agent login. Phone access can use an optional
-redemption-code hosted connection or your own HTTPS provider. Codex Desktop
-is never bundled. Free self-deployment does not require a redemption code.
+Read the [exact package identity and validation limits](RELEASE_0.1.35-rc.5.md). New documentation does not promote a candidate to stable or change its installer bytes. The public release excludes the private character board.
 
-## 1. Desktop
+1. Use Windows x64 with your own official Windows Store Codex Desktop. Complete official installation/login first if needed. Agbrio does not bundle Desktop or provide an account/quota.
+2. Download the installer from the selected release. Compare `Get-FileHash -Algorithm SHA256 -LiteralPath 'full installer path'` with its `SHA256SUMS.txt`; stop on mismatch.
+3. Save work. Quit Agbrio through its tray menu before updating; do not run two instances. If switching Codex modes, finish tasks and exit Desktop normally at that point. Never force-stop a working task.
+4. Install while retaining data, login, Bridges, drafts and pairing. Personally review Windows confirmations. The updater `.sig` is not a Windows Authenticode signature and does not promise no SmartScreen warning.
+5. Open Agbrio and check Settings/About. rc.5 installs **Codex (Agbrio shared)** and **Codex (return to normal)** in the Start Menu.
 
-Use the Windows installer from [Releases](https://github.com/geoffrey1111/agbrio/releases).
-The0.1.8 package includes a publisher signature for in-app updating; it is not Windows Authenticode-signed. Verify `SHA256SUMS.txt` against the downloaded file;
-review the source before trusting a build. WebView2 must be available; the
-installer uses Microsoft's bootstrapper if necessary. Do not install alongside
-another running Agbrio/AI Work Router instance.
+Closing the Agbrio window normally leaves the Host in the tray; quitting there stops it. Remote access needs the computer awake and online. Settings → Language offers English, 简体中文, 繁體中文 or system default. Desktop and phone retain their own choice; messages are not translated. Japanese/Korean currently have README introductions only.
 
-Open Agbrio. It stays in the system tray when the window closes. Quit from its
-tray menu to stop the Host. Keep the computer awake for remote access.
+## 2. Why ordinary Codex used to open first
 
-Choose **Settings → Language** for English, 简体中文, 繁體中文 or system default.
-Desktop and phone keep their own choice. The pairing screen also offers this control.
-Changing language keeps conversations, drafts and device login. Original messages
-and outgoing instructions are not translated. Japanese/Korean currently describe
-the product in the README only.
+Official Codex Desktop is your existing application. Agbrio Host provides local Bridge/API/mobile service. Shared Codex starts the official Desktop against the checked shared backend so Desktop and Router can continue the same work.
 
-## 2. Codex connection
+Older discovery used a running native backend. Preparation and switching were separate: an ordinary Desktop already owns its backend, which cannot safely be replaced underneath active work. It had to exit before shared startup.
 
-The Windows Store Codex Desktop must already be installed and signed in. Keep its
-ordinary window open for the first preparation so Agbrio can identify its running
-native backend. In Settings (设置) → Codex,
-prepare the shared connection (准备共享连接). This checks the existing installation;
-it does not install a second Desktop or a root certificate. Finish current agent
-work, quit Desktop yourself, then choose Open shared Codex (打开共享 Codex) in
-Agbrio. This starts the existing application with a session-specific local
-endpoint. Its ordinary default launch remains unchanged. Once prepared, you do
-not need to repeatedly open an ordinary Desktop first.
+**rc.5 discovers and verifies the registered official installation while Desktop is closed. After official installation/login, an ordinary-open → prepare → close loop is no longer required on each use.** This is an alpha compatibility integration, not an official OpenAI remote-control feature or an ordinary MCP connection. Interface changes may make it fail closed.
 
-Windows Store/Desktop versions can change the external app-server interface.
-Shared mode is an alpha compatibility integration, not an official OpenAI remote
-access feature. If preparation/launch fails, retain the error state, disable
-shared mode and use normal Desktop; do not blindly resend a handoff or kill
-unrelated processes. Mac and other agent adapters are not validated targets.
+Prepared backend, connected Desktop, paired phone and authorized assistant are four different checks.
 
-## 3. Choose your phone entry
+## 3. First shared startup (rc.5)
 
-### Optional hosted connection (preview 16)
+### Independent Start Menu route
 
-Install the **preview.16** Windows package for redemption support; alpha.1 does
-not include it. In **Settings → Devices**, enter a code supplied separately by
-the author and activate once on your desktop. The packaged service is
-`https://agbrio-connect.geoffreygroup.cc`; you do not enter a domain, tunnel
-command or connection method. The app verifies your isolated HTTPS entrance
-before saving it. Keep Agbrio running and the computer awake, then pair your
-phone using the displayed mobile address.
+1. Ensure official installation/login is ready.
+2. If ordinary Desktop is running, save work, let tasks finish and exit the whole app normally. Closing one window may leave a background instance. Do not kill all Node processes.
+3. Open **Codex (Agbrio shared)**. It checks the install, native tools and existing owner before starting the official app. The Agbrio window need not be open first.
+4. Run Agbrio Host for Bridge/mobile/assistant access. In Settings → Codex, verify **Desktop connected to shared connection** (`Desktop 已接入共享连接`).
 
-Codes have 7-, 30- or 365-day durations starting at first successful redemption.
-A code binds to one desktop installation identity. A fresh code renews that
-installation's existing entrance; re-entering a used code does not extend time.
-Phones and tablets do not each redeem a code. The limit is **20 paired browser
-sessions**, not 20 purchased licenses. For a reinstalled PWA, select **Replace**
-and the exact old login when generating a pairing code. The old login is revoked
-only after successful pairing. No automatic physical-device matching is claimed.
-Desktop transfer/reset is not yet self-service; do not share app-data or your
-installation key with another person.
+### Agbrio settings route
 
-Hosted codes are optional and not included in the public installer/source.
-Ask the author at **geoffreyzjx@qq.com** for availability; this preview does not
-implement checkout or promise unlimited hosted capacity. Expired/revoked access
-stops the hosted entrance while local conversations remain. TLS protects network
-connections; this relay is **not end-to-end encrypted against the operator or
-Cloudflare**. See [hosted service source](../services/hosted-relay/README.md).
+With ordinary Desktop exited, choose Settings → Codex → **Prepare shared connection** (`准备共享连接`), then **Open shared Codex** (`打开共享 Codex`). **Shared connection prepared** (`共享连接已准备好`) only means backend-ready; wait for actual Desktop-connected status.
 
-### Use your own entrance
+Active-task, still-running Desktop, unknown identity or native-tool errors are stop/diagnose conditions. Keep the exact code and stage; do not click repeatedly or terminate unrelated work. See [FAQ](FAQ.md).
 
-Choose **Configure myself** for the four existing entry types. The HTTP Host binds only
-to `127.0.0.1:47114` by default. Use the port displayed by your running instance.
-Your proxy must preserve the browser's exact Host header and HTTPS origin.
+## 4. Daily startup, reboot, official updates and fallback
 
-| Entry | Domain required | Who can reach the entry |
-| --- | --- | --- |
-| Cloudflare Tunnel | Your Cloudflare domain | Public HTTPS; optional Access |
-| Tailscale Funnel | No purchased domain | Public `.ts.net` HTTPS |
-| Tailscale Serve | No purchased domain | Your private tailnet; phone needs Tailscale |
-| Existing HTTPS | Depends on provider | Your proxy/tunnel's policy |
+| Situation | Action |
+| --- | --- |
+| Use shared mode again | Open **Codex (Agbrio shared)** directly. No ordinary-first loop or Agbrio-window prerequisite. Host must still run for Bridge/mobile. |
+| Reboot | Sign into the same Windows user and use the shared entry. Do not recreate all Bridges or pairing. Automatic startup is not guaranteed. |
+| Open official/taskbar icon | Official startup remains unchanged; it is not rebound to shared mode. Pin/use the shared entry separately. |
+| Ordinary Desktop already open | Finish work and exit normally before switching. No competing writer around active work. |
+| Official Codex update | Update through official channels. Idle shared startup rediscovers/checks components. No active-backend hot-swap or guarantee for every future version. |
+| Shared runtime update pending | Finish work, exit shared Desktop, disable, then prepare/open again. Retain failures rather than looping. |
+| Return to ordinary Codex | Save work, exit shared Desktop, use **Codex (return to normal)** or **Disable shared connection**. After confirmed disable, use your original official entry. |
 
-Configure the chosen provider using its official login and tooling. Do not paste
-tokens, cookies or passwords into chats. For Tailscale, once its required account
-permissions are enabled, the typical commands are:
+The independent return entry does not need the Agbrio window. Unreachable-owner recovery requires explicit local confirmation, default No, and may interrupt unfinished shared work. Only proven instance/process creation/ancestry identities are eligible; uncertainty is retained and reported. Never kill all Node, erase the profile, replay uncertain sends or fill a missing helper with an arbitrary downloaded executable.
 
-```powershell
-tailscale funnel --bg http://127.0.0.1:47114
-# Or, for private access:
-tailscale serve --bg http://127.0.0.1:47114
-```
+## 5. Create a Bridge and send one handoff
 
-These are alternatives; do not run both for the same entry. Check Tailscale's
-printed HTTPS address and current account/ACL permissions. Serve uses your
-tailnet DNS/route, so both devices must be connected. The selector and validation
-are implemented; a real Tailscale-account end-to-end test is not yet claimed.
+1. Prepare the two actual conversations, such as project management and implementation. No billed test prompt is required for connection setup.
+2. Create a Bridge and select control/execution conversations. Check title, project and identity details. Routing uses stable native IDs, not names; equal titles are not equal chats.
+3. Save and inspect both sides. Cache is not proof of live connectivity. Rebinding requires another identity/direction check; do not steal another valid Bridge's endpoint.
+4. Wait for a complete source reply. Choose instruction/result blocks and necessary files; not all analysis needs forwarding.
+5. Edit and preview the complete outgoing text, exact destination, direction and files. Confirm send once and check its original record/receipt; no success-dismiss acknowledgement is required.
+6. `SENT` confirms that handoff's delivery, not completion of the target task. Follow execution and the next complete reply.
+7. Timeout or `UNKNOWN` is not proof of non-delivery. Read the same request receipt and exact target history before another action. Do not create another request to hide uncertainty or resend on duplicate notifications.
 
-For Cloudflare, create a named tunnel whose service is
-`http://127.0.0.1:47114`, retaining the original Host header. If you protect all
-paths with Cloudflare Access, make `/v1/mobile/connection/probe` and the read-only
-`/v1/mobile/auth/session` reachable for verification/health checks. These give no
-chat data or write permission; the probe additionally requires an expiring
-owner-issued nonce. A Quick Tunnel's random URL is for disposable trials,
-not a persistent PWA installation.
+Selected Codex files are copied to the target project's `.aiwr/incoming/<handoff-id>/`, with paths/SHA-256 in the message. This is not a ChatGPT upload or proof that every model received a visual image input. Check supported content in the preview.
 
-Paste the HTTPS root address into Devices and choose Verify and save
-(验证并保存). Agbrio checks real TLS and that the entry reaches this exact Host
-before storing the config. Failed verification retains the old connection.
-Only Agbrio's own local HTTP listener changes; it does not restart your agent or
-tunnel. A new origin requires new phone pairing and push registration there.
+Deleting a Bridge removes local association, not native chats. A deleted Bridge still claiming a chat is a bug to report, not a reason to edit the database.
 
-The Copy deployment instruction (复制部署指令) control produces an agent-readable
-prompt for the selected provider and actual port. Your agent can configure the
-provider, then submit the verified address with the source script:
+## 6. Monitor, receive notifications and answer questions
 
-```powershell
-pwsh -NoProfile -File scripts/configure-mobile.ps1 `
-  -Method TAILSCALE_FUNNEL -Origin https://your-computer.your-tailnet.ts.net
-```
+Monitoring follows a single native chat without a two-ended Bridge. Pause does not delete it; paused entries sort below active entries, with order stable during a visit. Notifications link to exact chats; historic notifications and dots are not delivery receipts.
 
-Run it as the same Windows user as Agbrio, with the current Host running. It
-submits a single local setup request and waits for verification; it does not
-weaken authentication or change the provider. No credentials are passed. Its
-`-DataDirectory` option is for a deliberately selected alternate Host profile;
-it does not change which directory a running Host owns.
+For supported Codex question cards, choose or supplement an answer after checking the role/request. Unsupported approvals/actions stay in the native app. Goal status synchronizes the native objective and accounting; Goal, turn, pending decision and send states differ. Pause/resume only supported states of the same Goal, never recreate or enlarge its budget. [Goal controls](GOAL_RECOVERY.md).
 
-## 4. Pair the phone
+An **AI assistant handled** transition label does not replace the independent receipt. An executing target can still show its previous complete reply; do not treat it as new work.
 
-Open the saved `/mobile` URL on your iPhone. Generate a one-use five-minute
-pairing code in Devices; enter it on the phone. Add to Home Screen from Safari.
-You can revoke the phone from Devices, or replace an exact old login during a new pairing. Remembered sessions last up to 90 days
-and renew on use; a cache does not mean the desktop is online.
+## 7. Add a phone (optional)
 
-Create a Bridge, select two different exact conversations, review the latest
-source reply, choose instruction/result blocks and files, then Confirm and send
-once. Selected Codex files are copied to the destination project's
-`.aiwr/incoming/<handoff-id>/`, with relative paths and SHA-256 in the message.
-This is a local project handoff, not a ChatGPT file-slot upload.
+1. Keep Windows, Agbrio Host and required shared/provider connections awake and online. PWA installation does not move the backend to the phone.
+2. Settings → Devices: select your own HTTPS/Cloudflare/Tailscale entrance or an optional separately supplied hosted code. Self-deployment requires no code.
+3. Use **Copy deployment instruction** for the provider/actual port. Verify HTTPS reaches this exact Host before saving; never expose unauthenticated chat access or share credentials.
+4. Open the displayed mobile URL, generate a desktop pairing code and enter it there. Do not use someone else's installation/code.
+5. On iPhone, add to Home Screen from Safari and allow notifications when supported. Other devices follow their own installation/notification controls. Pairing does not grant push permission automatically.
+6. Changing HTTPS origins requires pairing and push registration at the new origin.
 
-## Recovery and limits
+[Phone deployment and pairing](PHONE_SETUP.md) covers providers, TLS/Host checks, limits, renewal/revoke/replace and commands. Real Tailscale-account end-to-end acceptance is not claimed. Cached content offline is not a live status.
 
-- Wrong entry/TLS/Host: fix the provider and verify again. Old settings remain.
-- App restarted: pairing and saved address persist; keep the original URL.
-- Computer asleep/offline: phone may show cache; wait for a confirmed live state.
-- Uncertain send: inspect the exact target record before another attempt.
-- Disabling a watch/removing a Bridge is local; it does not delete provider chats.
-- ChatGPT browser integration is experimental. Claude Code and macOS are future
-  adapters; the README does not promise them as working.
+## 8. Connect an assistant (optional)
 
-References: [Tailscale Funnel](https://tailscale.com/docs/reference/tailscale-cli/funnel),
-[Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve),
-[Cloudflare Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).
+1. Settings → AI assistant: choose **ChatGPT / dot cloud** or **Codex local**, copy this instance's instructions and use the intended actual client.
+2. Complete personal consent without publishing credentials. Rediscover tools and perform a real read-only check in that client. Desktop-ready is not remote-connected.
+3. Explicitly delegate Bridges, directions, task, must-ask cases and stop conditions. Application-wide access does not delegate all projects.
+4. Routine delegated handoffs keep prepare → review → send → receipt and deduplication. Conflicts, scope changes and decisions still require the owner.
+5. **Events** need platform support, real subscriptions and wake acceptance. Ordinary MCP tools do not create subscriptions. Event-detail injection still has a known gap; only an explicitly preauthorized delegated-scope scan fallback may process a wake without details. Never add polling/new Bridge scope silently. [Events workflow](MCP_EVENTS_WORKFLOW.md).
+6. **Daily reports** follow read-only acceptance: choose time (suggested local 22:00), timezone, destination and scope; explicitly submit. Verify real scheduling tools, update/reuse existing reports and verify the saved task. Unsupported means not enabled. OAuth consent alone does not authorize schedules. [Accounting and continuous windows](DAILY_REPORTS.md).
 
+[Assistant walkthrough](ASSISTANT_CONNECTION_GUIDE.en.md) · [简体中文](ASSISTANT_CONNECTION_GUIDE.zh-CN.md) · [繁體中文](ASSISTANT_CONNECTION_GUIDE.zh-TW.md). Historical Events acceptance does not provision subscriptions for new users.
 
-## AI assistant connection
+## 9. Claude Desktop Code (optional)
 
-Desktop Settings → AI assistant offers a six-step human-operated guide, with cloud/local routes and copy-to-AI instructions. Use your actual instance MCP URL, reuse valid authorization and consent personally. Verify actual tools in the intended dot/client. [English](ASSISTANT_CONNECTION_GUIDE.en.md) · [简体中文](ASSISTANT_CONNECTION_GUIDE.zh-CN.md) · [繁體中文](ASSISTANT_CONNECTION_GUIDE.zh-TW.md).
+Select Claude Code in a Bridge role or watched-chat picker. First configuration uses desktop **Connect Claude Code**; mobile selects already-connected sessions. Reuse existing configuration, wait for real publisher registration and check title/root/native session ID. Configuration-saved is not session-connected.
 
-## Claude Desktop Code observation
+If reload is needed, wait for the original task to finish and use built-in `/reload-plugins` in that session, without `--force` or diagnostic/test prompts. Stop on extra-cost/forced-load warnings. Only observed status/replies are shown; full pre-connection history is not promised.
 
-Choose Claude Code in the Bridge binding picker. Generate an observation credential only on desktop, install/configure the packaged local plugin, then select its verified session/root. Existing sessions require safe plugin reload; never force reload or restart a live task. No test prompt, model call or write is enabled. [Detailed contract](CLAUDE_CODE.md).
+Authenticated owner text replies require plugin 0.1.3 actually advertising manual-input protocol 1. Use **Reply to original chat** and verify independent stored-native-row `SENT`, not submit/HTTP success. Unknown sends do not automatically repeat. Autonomous/MCP/cross-provider Claude writes, attachments, Goal control and abort/steer remain unavailable. [Claude contract](CLAUDE_CODE.md). Installed/reloaded does not equal real-provider send acceptance.
 
-## Claude Code manual replies (0.1.34)
+## 10. Updates, recovery and support
 
-Update the optional Agbrio plugin to0.1.3, safely reload plugins once in the original conversation without force, and wait for Agbrio to confirm manual input protocol1. Then choose Claude Code in monitored conversations or open Reply in its bound Bridge. Only owner-authored text is sent; this is not autonomous/MCP access. [Details](CLAUDE_CODE.md).
+- **Windows:** check app updates or select a specific candidate release. Keep data; the stable updater may not offer candidates.
+- **Phone interface:** use About's interface-update control; rc.5 also has a duplicate Settings-root entry. Web-shell updates do not update Windows Host. Do not clear pairing/drafts to update.
+- **Shared recovery:** use section 4's guarded return/disable flow; no all-Node kills, profile copy, certificate change or uncertain-send replay.
+- **Provider security challenge:** stop automated navigation/refresh/submit. The owner clears it; no cookie copying, identity rotation or retry loop.
+- **Feedback:** include Agbrio/Codex/Windows versions, entry, connection type, failing step, exact error/time and active-work status. Redact private text, username paths, full callback URLs, tokens, codes and keys. [Report a bug](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml).
+
+Bounded Windows/package/native/live-connection checks do not certify every history, Desktop Code Mode, future update, crash case or physical-phone experience. macOS is not an accepted release target. [FAQ](FAQ.md) · [Release evidence](RELEASE_0.1.35-rc.5.md) · [Build](BUILD.md).
