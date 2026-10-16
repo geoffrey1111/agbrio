@@ -25,3 +25,12 @@ it.each(["en","zh-TW"] as const)("renders every guide step in %s with no untrans
 it("copies only route-specific instructions and retains exact decision/retry safeguards",()=>{
  const local=assistantSetupInstructions("https://instance.fixture.invalid/mcp","en","local");const cloud=assistantSetupInstructions("https://instance.fixture.invalid/mcp","en","cloud");expect(local).toContain("local Codex");expect(local).not.toContain("ChatGPT Plugins → Add custom MCP server");expect(cloud).toContain("scope agbrio:instance");for(const prompt of [local,cloud]){expect(prompt).toContain("Which Bridges");expect(prompt).toContain("ruleId=null");expect(prompt).toContain("decisionId=null");expect(prompt).toContain("user-message reference");expect(prompt).toContain("requestId");}
 });
+it.each(["en","zh-TW","zh-CN"] as const)("provides general and WorkBuddy routes without claiming a live connection in %s",language=>{
+ setLanguagePreference(language);const a=setup();fireEvent.click(screen.getByRole("button",{name:"WorkBuddy"}));
+ const manual=language==="en"?"Do it yourself: detailed guide":language==="zh-TW"?"自己操作：查看詳細教程":"自己操作：查看详细教程";
+ fireEvent.click(screen.getByText(manual));const nav=screen.getByRole("navigation");fireEvent.click(nav.querySelectorAll("button")[2]);
+ expect(screen.getAllByText(/streamableHttp/).some(node=>node.tagName==="PRE")).toBe(true);expect(screen.queryByRole("button",{name:"Open Plugins in browser"})).toBeNull();
+ expect(a.openHelp).not.toHaveBeenCalled();expect(a.onAddGrant).not.toHaveBeenCalled();expect(a.onRouteChange).toHaveBeenLastCalledWith("workbuddy");
+ const section=screen.getByRole("region",{name:language==="en"?"Connect your assistant":language==="zh-TW"?"連接你的助手":"连接你的助手"});for(let i=0;i<6;i++){fireEvent.click(nav.querySelectorAll("button")[i]);if(language==="en")expect(section.textContent).not.toMatch(/[\u3400-\u9fff]/);}
+ fireEvent.click(screen.getByRole("button",{name:language==="en"?"Other MCP assistant":"其他 MCP 助手"}));expect(a.onRouteChange).toHaveBeenLastCalledWith("generic");
+});

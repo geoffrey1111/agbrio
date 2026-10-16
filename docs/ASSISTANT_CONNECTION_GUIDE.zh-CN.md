@@ -1,5 +1,7 @@
 # 自己操作：连接 AI 助手
 
+WorkBuddy 或其他 MCP 助手请使用[对应接入说明](ASSISTANT_CLIENTS.md)及[可直接复制的开发指令](tutorials/WORKBUDDY_DEVELOPMENT_PROMPT.zh-CN.txt)。以下 ChatGPT/dot 路线仅适用于该客户端；main 源码支持不代表旧安装包已有功能，也不代表已通过真实后台唤醒验收。
+
 ## 可选日报
 
 真实只读验收后，在 AI 助手设置选择「日报（可选）」，确认时区、时间（推荐本地22:00）、发送位置及精确委托 Bridge，再复制并明确提交。助手核真实定时工具、既有任务及保存结果；不支持就明确未启用，重新连接不重复创建。可修改或停用同一日报，不改 Events。 [连续计窗、来源归属及客户端限制](DAILY_REPORTS.md)。INSTANCE 现在17工具，旧 BRIDGE 仍8工具。

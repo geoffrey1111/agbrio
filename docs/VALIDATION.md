@@ -1,5 +1,14 @@
 # Windows alpha validation
 
+## 2026-10-17 WorkBuddy/general-client source update
+
+Engineering evidence from the development checkout: Core237 passed/2ignored; Host247 passed/36ignored, plus20affected HTTP tests after the optional client-name change; four focused frontend files24passed. The broad frontend run had581passes/two timeouts; the two affected files subsequently passed in separate65/74-test runs. Four phone/desktop browser cases passed for copy/layout/retaining old routes. The final44px touch-size assertion was added after that browser run and was not rerun. Existing checks are not an exact final public-source or real WorkBuddy-client certification.
+
+At the owner's explicit request, new public-checkout tests/builds were stopped and no additional validation was run before source push. No new installer was published or installed. Existing Dot grants/tokens/subscriptions and live shared services were not modified. A private local intermediate installer was superseded by final source edits and removed rather than distributed.
+
+The external user's WorkBuddy version, original failure, actual OAuth/read-only tool results and event wake are unavailable: **NOT VERIFIED**. Connecting tools, event-driven takeover and optional scheduling remain separate gates. [Client setup](ASSISTANT_CLIENTS.md) · [Development prompt](tutorials/WORKBUDDY_DEVELOPMENT_PROMPT.zh-CN.txt).
+
+
 ## Shared history response fix — 0.1.35 candidate
 
 A complete normalized history page may exceed the old16MiB shared WebSocket receive ceiling. Native-backend responses and the Core transport now use a bounded100MiB envelope, while owner-sent requests retain16MiB and all original localhost/process-owner/capability checks. Oversized backend replies report a safe category. The actual production transport regression verifies52939021bytes byte-for-byte, a following request on the same connection, rejection above100MiB and the smaller outbound request bound;21response/lifecycle checks pass. No provider/model prompt, user-history rewrite or automatic resubmission. Source correction is distinct from resident runtime activation and real Desktop acceptance; those remain pending until the fixed package/gateway is loaded. A running supervisor does not hot-reload its module simply because files change.

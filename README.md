@@ -1,5 +1,7 @@
 <img src="docs/assets/agbrio-icon.png" width="72" alt="Agbrio">
 
+Main source: [WorkBuddy / general MCP assistant setup](docs/ASSISTANT_CLIENTS.md) · [Copyable development instruction](docs/tutorials/WORKBUDDY_DEVELOPMENT_PROMPT.zh-CN.txt). This source change is not in the current rc.5 installer; real external-user WorkBuddy acceptance is pending.
+
 # Agbrio
 
 **Agent Bridge — one conversation plans and reviews; another executes.**

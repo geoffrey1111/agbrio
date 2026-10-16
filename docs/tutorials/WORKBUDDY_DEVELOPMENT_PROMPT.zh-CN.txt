@@ -1,0 +1,33 @@
+请在我的电脑上继续开发 Agbrio，先接通我的 WorkBuddy，并让连接入口对其他 MCP 助手通用。仓库：https://github.com/geoffrey1111/agbrio，维护 main；不要将另一位用户的私人开发目录、数据库或凭据搬过来。
+
+这是实现和诊断请求，不要只告诉我“无法托管”。你可以完成本机可逆的代码修改和工程检查；登录、OAuth 同意及真正无法代办的动作才交给我。未经明确指示，不提交/推送、不公开发行，不启动真实业务转发或创建后台任务。
+
+1. 恢复与定位
+先阅读实际仓库 AGENTS.md、README.md、docs/SETUP.zh-CN.md、docs/BUILD.md、docs/ASSISTANT_MCP.md、docs/ASSISTANT_CLIENTS.md 及适用项目技能。若当前仓库另有 Docs/CURRENT_PRODUCT.md、PRODUCT/SECURITY/PROTOCOLS/TESTING、AI/TASKS.md、AI/DEVLOG.md，也阅读其最新记录；没有的文件不要臆造，也不要因为公开仓库未带私人开发权威而停下。检查 cwd、Git remote/branch/HEAD、未提交修改、已装 Agbrio/WorkBuddy 版本。已有 checkout 就复用，保留所有 WIP；不要 reset、clean、force、覆盖配置或重建有效连接。没有源码时按我的实际工作目录取得上面的公开仓库，保持 main，不创建长期产品分支。
+
+2. 先查真正失败层
+区分：仅把提示词发给了助手、未添加 MCP、网络入口失败、OAuth 注册/回调/换码失败、工具不可用，以及只缺后台事件唤醒。检查目标 WorkBuddy 中实际工具，而不是普通网页能否打开。没有 agbrio_read_app 时先按官方连接器流程配置：https://open.workbuddy.cn/docs/connector 。已有可用配置不要重做。记录脱敏版本、时间、固定路由、状态码及失败阶段；不要输出完整 callback URL、OAuth 查询、code、verifier、Cookie、token 或密钥。
+
+3. 保留已有服务与授权
+保留 Dot/ChatGPT/Codex 的全部有效连接、授权、Events、日报、Bridge 绑定和写入所有权。不重启共享 Codex 或 Cloudflare，不按名称杀全部 Node，不改官方 Codex/Claude 安装、权限或模型，不发收费模型测试消息。读取现有 Agbrio HTTPS /mcp 入口，复用有效部署；不要为排错关闭认证或公网回调安全校验。
+
+4. 配置 WorkBuddy
+使用该版本实际支持的自定义 MCP 连接器，Streamable HTTP + OAuth/DCR/PKCE。文件方式仅合并 agbrio 到 ~/.workbuddy/mcp.json 的 mcpServers，保留其他所有项及字段；url 使用我实例的完整 HTTPS /mcp，不带凭据或查询参数，type 按 WorkBuddy 官方文档。不要填其他助手 token，不把手机配对码当 token，不编造 CLI。改现有配置前保留最小本地回退副本，不上传。由我本人完成登录和 OAuth 同意。
+
+5. 如源码缺兼容，再做最小修复
+先检查当前 main 是否已有实现，避免重复开发。必须保持 HTTPS 和本机 HTTP 回环回调兼容。按官方格式支持 workbuddy://workbuddy/mcp/connector%3A<source>/oauth/callback；仅接受精确 scheme/host/path 和受限 source，拒绝 userinfo、端口、查询、fragment、编码路径逃逸/穿越及任意其他自定义协议。DCR 回显原 redirect_uris，授权和换码按原始字符串精确匹配，PKCE 必须 S256。原生回调不属于事件 webhook，不放松 webhook 的 HTTPS/公网/DNS/challenge/签名要求。
+核实客户端刷新要求；需要时实现公共客户端 refresh_token、仅存哈希、绑定 client_id/resource/原授权、原绝对到期不延长、原子单次轮换与重放只撤销本令牌族。旧持久化客户端缺新字段应有向后兼容默认；旧访问令牌、授权和订阅不失效。错误客户端/资源/scope 不能消耗合法刷新令牌，撤销/到期/改绑后拒绝续期。数据库迁移必须可保留既有数据，不新建用户授权绕过原范围。不宣称仅改提示词就完成协议兼容。
+
+6. 通用界面与提示词
+保留原 ChatGPT/dot 和 Codex 流程，添加 WorkBuddy/其他 MCP 助手引导。按实际客户端给配置，不强迫所有助手使用 ChatGPT 插件页。连接、按需操作、事件持续托管、日报分别说明和验收；未验收就写未验收，不用工具数量、复制成功、HTTP 2xx 或手机通知替代真实能力。仅支持 MCP 不代表能后台被唤醒；没有实际事件运行时就明确按需操作，不创建轮询来冒充事件。不将整个应用 OAuth 等同于全部 Bridge 委托，不抢占原 Dot 的任务职责。
+
+7. 工程验证
+用隔离假数据/本地 HTTP fixture 验证 HTTPS、回环、WorkBuddy 原生回调从 discovery→DCR→本人同意→PKCE换码→tools/list/read_app；错 verifier、错 redirect/resource、授权码重复使用、刷新轮换/重放/重启/撤销/过期/scope边界均拒绝。证明旧客户端注册数据、访问令牌、Bridge/订阅身份保留。验证通用/WorkBuddy/原 Dot/Codex 引导和移动端布局、复制内容、三语及无虚假“已托管”。测试不得触发真实 provider。按仓库流程构建并验证准确签名包；未签名或未安装不能称本机已更新。旧服务运行时不要覆盖其活动程序；先备份和准备回退，确需退出安装时只安排 Agbrio 正常退出，不影响共享 Codex/Cloudflare。
+
+8. 真实 WorkBuddy 只读验收
+在我的目标 WorkBuddy 真实发现工具，agbrio_read_app 核对 INSTANCE、approvalMode、有效期和撤销状态；我指定 Bridge 后读取精确绑定和完整来源。只读验收不发送消息、不 prepare/send、不创建订阅或定时任务。不以你自己模拟的客户端代替 WorkBuddy。若被客户端不支持、本人未同意或未知错误挡住，给准确失败证据和下一步，不声称成功。
+
+9. 后续持续托管是另一个 Gate
+只有我另行明确授权且该客户端真实具备事件发现/订阅/签名 webhook/后台唤醒和运行时工具，才验收无轮询、无用户消息的真实唤醒及一次隔离授权交接。继续完整读取→去重→prepare→审阅→send→独立receipt，保持原 requestId、bindingRevision、observationId、来源方向和 UNKNOWN/待审批/循环边界。SENT只代表交接送达。没有事件能力时按需操作即可，不伪造后台常驻，不替换原Dot托管。
+
+完成后更新仓库实际使用的任务/开发记录（有 AI/TASKS.md 与 AI/DEVLOG.md 就更新，没有则用 docs/VALIDATION.md），说明修改文件、实际测试、源码/包/安装/WorkBuddy只读验收分别到哪层，哪些需要我本人操作；清理本任务临时包和缓存，保留准确交付包、必要回退和最小证据，不删用户数据或其他任务文件。不要将凭据和私人对话写进公开仓库。

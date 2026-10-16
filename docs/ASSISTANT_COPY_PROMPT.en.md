@@ -1,5 +1,7 @@
 # Agbrio assistant setup and delegation — en
 
+WorkBuddy or another MCP assistant: use the [client-specific setup](ASSISTANT_CLIENTS.md) and [development prompt](tutorials/WORKBUDDY_DEVELOPMENT_PROMPT.zh-CN.txt). The ChatGPT/dot workflow below applies to that client only. Source support is separate from the currently released installer and from actual background-wake acceptance.
+
 Current 0.1.30 instructions. Copying is not schedule consent. Actual client tool/saved-task verification required; no universal timed-run acceptance claimed. [Daily report accounting and management](DAILY_REPORTS.md). Disable an existing report even when Bridges are removed or MCP is offline; retain the original task ID when destination/time/scope changes.
 
 ```text

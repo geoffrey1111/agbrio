@@ -1,5 +1,14 @@
 # Agbrio assistant MCP — whole application
 
+## 2026-10-17 source update: general MCP clients and WorkBuddy
+
+Main now includes client-specific WorkBuddy/other-MCP onboarding, narrowly validated native WorkBuddy OAuth redirects and opt-in rotating refresh credentials. Existing Dot registrations default to their old code-only behavior; existing access tokens, grants and Events are not recreated. Refresh is hashed, client/resource/grant-bound and cannot extend the original lease; replay revokes only its token family. Webhook public-address/signature guards remain unchanged.
+
+[Client setup and evidence limits](ASSISTANT_CLIENTS.md) · [Copyable development prompt](tutorials/WORKBUDDY_DEVELOPMENT_PROMPT.zh-CN.txt).
+
+This is a source update, not a claim that the current rc.5 downloadable installer contains these changes. Actual external-user WorkBuddy OAuth/tools and event-woken takeover remain unverified. On-demand tools, real event wake and optional schedules require separate evidence. Older code-only metadata statements below are historical.
+
+
 0.1.7 adds the manual tutorial to the existing conversation-reviewed whole-app connection. One connection covers current/future Bridges,
 watches, notification inbox and original-chat follow-ups. Exact IDs/revisions
 still own operations; old BRIDGE/BRIEF_RULES grants are never silently upgraded.

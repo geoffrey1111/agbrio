@@ -1,5 +1,7 @@
 # Agbrio assistant setup and delegation — zh-CN
 
+WorkBuddy 或其他 MCP 助手请使用[对应接入说明](ASSISTANT_CLIENTS.md)及[可直接复制的开发指令](tutorials/WORKBUDDY_DEVELOPMENT_PROMPT.zh-CN.txt)。以下 ChatGPT/dot 路线仅适用于该客户端；main 源码支持不代表旧安装包已有功能，也不代表已通过真实后台唤醒验收。
+
 Current 0.1.30 instructions. Copying is not schedule consent. Actual client tool/saved-task verification required; no universal timed-run acceptance claimed. [Daily report accounting and management](DAILY_REPORTS.md). Disable an existing report even when Bridges are removed or MCP is offline; retain the original task ID when destination/time/scope changes.
 
 ```text

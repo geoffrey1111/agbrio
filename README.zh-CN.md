@@ -1,5 +1,7 @@
 <img src="docs/assets/agbrio-icon.png" width="72" alt="Agbrio">
 
+main 源码新增：[WorkBuddy / 通用 MCP 助手接入](docs/ASSISTANT_CLIENTS.md) · [给用户开发助手的完整指令](docs/tutorials/WORKBUDDY_DEVELOPMENT_PROMPT.zh-CN.txt)。此项尚未包含在当前 rc.5 安装包，对方用户真实 WorkBuddy 接通仍待验收。
+
 # Agbrio
 
 **Agent Bridge — 一个对话负责决策与审阅，一个对话负责执行。**

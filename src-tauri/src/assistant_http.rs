@@ -21,7 +21,7 @@ fn scope_allows_grant(scope:&str,grant_scope:&str)->bool{
 fn clock()->u64{std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()}
 fn secret()->String{format!("{}{}",uuid::Uuid::new_v4().simple(),uuid::Uuid::new_v4().simple())}
 fn digest(s:&str)->String{format!("{:x}",Sha256::digest(s.as_bytes()))}
-#[derive(Clone,Serialize,Deserialize)]struct Client{name:String,redirects:Vec<String>,expires:u64}
+#[derive(Clone,Serialize,Deserialize)]struct Client{name:String,redirects:Vec<String>,expires:u64,#[serde(default)]refresh:bool}
 #[derive(Clone)]struct Intent{client:Client,client_id:String,redirect:String,challenge:String,state:String,resource:String,scope:String,expires:u64}
 struct Code{intent:Intent,grant_id:String}
 #[derive(Default)]pub(super) struct AssistantOAuth{clients:HashMap<String,Client>,intents:HashMap<String,Intent>,codes:HashMap<String,Code>,path:Option<PathBuf>,fault:bool}
@@ -53,24 +53,33 @@ pub(super) async fn metadata(State(state):State<MobileHttpState>,headers:HeaderM
 }
 pub(super) async fn authorization_metadata(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<serde_json::Value>{
  boundary(&headers,&state)?;let origin=&state.config.allowed_origin;
- Ok(Json(serde_json::json!({"issuer":origin,"authorization_endpoint":format!("{origin}/oauth/authorize"),"token_endpoint":format!("{origin}/oauth/token"),"registration_endpoint":format!("{origin}/oauth/register"),"response_types_supported":["code"],"grant_types_supported":["authorization_code"],"code_challenge_methods_supported":["S256"],"token_endpoint_auth_methods_supported":["none"],"scopes_supported":[SCOPE,INSTANCE_SCOPE],"client_id_metadata_document_supported":false})))
+ Ok(Json(serde_json::json!({"issuer":origin,"authorization_endpoint":format!("{origin}/oauth/authorize"),"token_endpoint":format!("{origin}/oauth/token"),"registration_endpoint":format!("{origin}/oauth/register"),"response_types_supported":["code"],"grant_types_supported":["authorization_code","refresh_token"],"code_challenge_methods_supported":["S256"],"token_endpoint_auth_methods_supported":["none"],"scopes_supported":[SCOPE,INSTANCE_SCOPE],"client_id_metadata_document_supported":false})))
 }
-#[derive(Deserialize)]pub(super) struct Registration{client_name:String,redirect_uris:Vec<String>,token_endpoint_auth_method:Option<String>,grant_types:Option<Vec<String>>,response_types:Option<Vec<String>>}
+fn default_client_name()->String{"MCP client".into()}
+#[derive(Deserialize)]pub(super) struct Registration{#[serde(default="default_client_name")]client_name:String,redirect_uris:Vec<String>,token_endpoint_auth_method:Option<String>,grant_types:Option<Vec<String>>,response_types:Option<Vec<String>>}
 fn redirect_allowed(value:&str)->bool{
  let Ok(u)=url::Url::parse(value)else{return false};
  u.username().is_empty()&&u.password().is_none()&&u.fragment().is_none()&&u.host_str().is_some()&&value.len()<2048&&
- (u.scheme()=="https"||(u.scheme()=="http"&&matches!(u.host_str(),Some("127.0.0.1"|"[::1]"|"localhost"))))
+ (u.scheme()=="https"||(u.scheme()=="http"&&matches!(u.host_str(),Some("127.0.0.1"|"[::1]"|"localhost")))||workbuddy_redirect_allowed(value,&u))
+}
+// This is an OAuth native-app redirect, NOT an event webhook. Keep callback
+// delivery's HTTPS/public-address checks separate and unchanged. Validate the
+// raw canonical path too: URL normalization must not admit traversal/escapes.
+fn workbuddy_redirect_allowed(value:&str,u:&url::Url)->bool{
+ let Some(source)=value.strip_prefix("workbuddy://workbuddy/mcp/connector%3A").or_else(||value.strip_prefix("workbuddy://workbuddy/mcp/connector%3a")).and_then(|s|s.strip_suffix("/oauth/callback"))else{return false};
+ u.scheme()=="workbuddy"&&u.host_str()==Some("workbuddy")&&u.port().is_none()&&u.query().is_none()&&
+ !source.is_empty()&&source.len()<=128&&source.bytes().all(|b|b.is_ascii_lowercase()||b.is_ascii_digit()||b==b'-')&&source.as_bytes()[0].is_ascii_alphanumeric()
 }
 pub(super) async fn register(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<Registration>)->Result<(StatusCode,Json<serde_json::Value>),ApiError>{
  boundary(&headers,&state)?;
- // Codex/rmcp requests authorization_code + refresh_token even when the
- // server advertises authorization_code only. RFC7591 allows negotiation:
- // return only the supported grant below; never issue/advertise refresh tokens.
+ // Refresh is opt-in at registration. Legacy clients deserialize refresh=false;
+ // their existing authorization/token semantics and credentials are preserved.
  if input.client_name.trim().is_empty()||input.client_name.len()>120||input.redirect_uris.is_empty()||input.redirect_uris.len()>8||!input.redirect_uris.iter().all(|v|redirect_allowed(v))||input.token_endpoint_auth_method.as_deref().is_some_and(|m|m!="none")||input.grant_types.as_ref().is_some_and(|g|!g.iter().any(|v|v=="authorization_code")||g.len()>2||g.iter().any(|v|v!="authorization_code"&&v!="refresh_token")||(g.len()==2&&g[0]==g[1]))||input.response_types.as_ref().is_some_and(|g|g!=&["code"]){return Err(bad());}
  let mut auth=oauth(&state)?;auth.prune();if auth.clients.len()>=128{return Err(ApiError(StatusCode::TOO_MANY_REQUESTS,"ASSISTANT_CLIENT_LIMIT".into()));}
- let id=uuid::Uuid::new_v4().to_string();auth.clients.insert(id.clone(),Client{name:input.client_name.clone(),redirects:input.redirect_uris.clone(),expires:clock()+3600});
+ let refresh=input.grant_types.as_ref().is_some_and(|g|g.iter().any(|v|v=="refresh_token"));
+ let id=uuid::Uuid::new_v4().to_string();auth.clients.insert(id.clone(),Client{name:input.client_name.clone(),redirects:input.redirect_uris.clone(),expires:clock()+3600,refresh});
  if let Err(e)=auth.save(){auth.clients.remove(&id);return Err(e);}
- Ok((StatusCode::CREATED,Json(serde_json::json!({"client_id":id,"client_id_issued_at":clock(),"client_name":input.client_name,"redirect_uris":input.redirect_uris,"token_endpoint_auth_method":"none","grant_types":["authorization_code"],"response_types":["code"]}))))
+ Ok((StatusCode::CREATED,Json(serde_json::json!({"client_id":id,"client_id_issued_at":clock(),"client_name":input.client_name,"redirect_uris":input.redirect_uris,"token_endpoint_auth_method":"none","grant_types":if refresh{vec!["authorization_code","refresh_token"]}else{vec!["authorization_code"]},"response_types":["code"]}))))
 }
 #[derive(Deserialize)]pub(super) struct Authorization{client_id:String,redirect_uri:String,response_type:String,code_challenge:String,code_challenge_method:String,state:String,resource:String,scope:Option<String>}
 pub(super) async fn authorize(State(state):State<MobileHttpState>,headers:HeaderMap,Query(input):Query<Authorization>)->Result<Redirect,ApiError>{
@@ -113,18 +122,32 @@ pub(super) async fn consent(State(state):State<MobileHttpState>,headers:HeaderMa
  auth.intents.remove(&input.request);
  Ok(Json(serde_json::json!({"redirect":redirect.as_str()})))
 }
-#[derive(Deserialize)]pub(super) struct Exchange{grant_type:String,code:String,client_id:String,redirect_uri:String,code_verifier:String,resource:String}
+#[derive(Deserialize)]pub(super) struct Exchange{grant_type:String,#[serde(default)]code:String,client_id:String,#[serde(default)]redirect_uri:String,#[serde(default)]code_verifier:String,#[serde(default)]resource:String,#[serde(default)]refresh_token:String,scope:Option<String>}
 pub(super) async fn token(State(state):State<MobileHttpState>,headers:HeaderMap,Form(input):Form<Exchange>)->Result<Response,ApiError>{
  boundary(&headers,&state)?;let mut auth=oauth(&state)?;auth.prune();
+ if input.grant_type=="refresh_token"{
+  let audience=if input.resource.is_empty(){resource(&state)}else{input.resource.clone()};
+  let result=if audience!=resource(&state){Err("ASSISTANT_OAUTH_INVALID_GRANT".into())}else{state.core.store.refresh_assistant_oauth_tokens(&input.refresh_token,&input.client_id,&audience,input.scope.as_deref())};
+  return Ok(match result{Ok(pair)=>oauth_token_response(serde_json::json!({"access_token":pair.access_token,"refresh_token":pair.refresh_token,"token_type":"Bearer","expires_in":(pair.expires_at/1000-clock() as i64).max(0),"scope":pair.scope})),Err(_)=>{let mut r=oauth_token_response(serde_json::json!({"error":"invalid_grant"}));*r.status_mut()=StatusCode::BAD_REQUEST;r}});
+ }
  let code=auth.codes.get(&digest(&input.code)).ok_or_else(bad)?;
  if input.grant_type!="authorization_code"||input.client_id!=code.intent.client_id||input.redirect_uri!=code.intent.redirect||input.resource!=code.intent.resource||input.resource!=resource(&state)||!(43..=128).contains(&input.code_verifier.len())||!input.code_verifier.bytes().all(|b|b.is_ascii_alphanumeric()||b"-._~".contains(&b))||Base64UrlUnpadded::encode_string(&Sha256::digest(input.code_verifier.as_bytes()))!=code.intent.challenge{return Err(bad());}
  let grant=state.core.store.assistant_grant(&code.grant_id).map_err(core_error)?;
  // Tokens are revocable via the owner grant, expire no later than it, and never
  // authenticate human/device routes. Only their one-way hashes are persisted.
- let access=state.core.store.issue_assistant_access(&grant.id,&input.resource,grant.expires_at).map_err(core_error)?;
+ let result=if code.intent.client.refresh{
+  let pair=state.core.store.issue_assistant_oauth_tokens(&grant.id,&input.client_id,&input.resource).map_err(core_error)?;
+  serde_json::json!({"access_token":pair.access_token,"refresh_token":pair.refresh_token,"token_type":"Bearer","expires_in":(pair.expires_at/1000-clock() as i64).max(0),"scope":pair.scope})
+ }else{
+  let access=state.core.store.issue_assistant_access(&grant.id,&input.resource,grant.expires_at).map_err(core_error)?;
+  serde_json::json!({"access_token":access,"token_type":"Bearer","expires_in":(grant.expires_at/1000-clock() as i64).max(0),"scope":if grant.scope=="INSTANCE"{INSTANCE_SCOPE}else{SCOPE}})
+ };
  auth.codes.remove(&digest(&input.code));
- let mut response=Json(serde_json::json!({"access_token":access,"token_type":"Bearer","expires_in":(grant.expires_at/1000-clock() as i64).max(0),"scope":if grant.scope=="INSTANCE"{INSTANCE_SCOPE}else{SCOPE}})).into_response();
- response.headers_mut().insert("cache-control",HeaderValue::from_static("no-store"));response.headers_mut().insert("pragma",HeaderValue::from_static("no-cache"));Ok(response)
+ Ok(oauth_token_response(result))
+}
+fn oauth_token_response(value:serde_json::Value)->Response{
+ let mut response=Json(value).into_response();
+ response.headers_mut().insert("cache-control",HeaderValue::from_static("no-store"));response.headers_mut().insert("pragma",HeaderValue::from_static("no-cache"));response
 }
 pub(super) async fn mcp(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<serde_json::Value>)->Result<Response,ApiError>{
  let trace=state.assistant_discovery.begin(&headers,&input);

@@ -1,5 +1,6 @@
 pub mod control;
 pub mod assistant;
+pub mod assistant_oauth;
 pub mod assistant_actions;
 pub mod assistant_processed;
 pub mod assistant_report;
@@ -69,6 +70,7 @@ const NORMAL_FEATURE_MIGRATIONS: &[(&str, &str)] = &[
     ("notification-seen-v1", include_str!("../../migrations/normal/015_notification_seen.sql")),
     ("assistant-conversation-review-v1", include_str!("../../migrations/normal/016_assistant_conversation_review.sql")),
     ("mcp-events-v1", include_str!("../../migrations/normal/017_mcp_events.sql")),
+    ("assistant-oauth-refresh-v1", include_str!("../../migrations/normal/019_assistant_oauth_refresh.sql")),
 ];
 
 const MIGRATIONS: &[(i64, &str)] = &[
@@ -3884,6 +3886,7 @@ mod tests {
                         "assistant_decisions",
                         "assistant_drafts",
                         "assistant_grants",
+                        "assistant_oauth_refresh",
                         "assistant_sent_handoffs",
                         "claude_connections", "claude_control_leases",
                         "claude_event_journal", "claude_manual_commands",

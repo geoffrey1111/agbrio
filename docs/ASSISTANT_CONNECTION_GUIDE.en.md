@@ -1,5 +1,7 @@
 # Connect an assistant yourself
 
+WorkBuddy or another MCP assistant: use the [client-specific setup](ASSISTANT_CLIENTS.md) and [development prompt](tutorials/WORKBUDDY_DEVELOPMENT_PROMPT.zh-CN.txt). The ChatGPT/dot workflow below applies to that client only. Source support is separate from the currently released installer and from actual background-wake acceptance.
+
 ## Optional daily report
 
 After actual read-only acceptance, choose **Daily report (optional)**, timezone/time (suggested22:00 local), delivery destination and exact delegated Bridges, then copy and explicitly submit the request. Your assistant must verify real scheduler tools, existing task and saved configuration. Unsupported is NOT ENABLED; reconnecting never creates a duplicate. Change or disable the same report, without modifying Events. [Accounting and client limitations](DAILY_REPORTS.md). INSTANCE now17 tools; legacy BRIDGE remains8.
