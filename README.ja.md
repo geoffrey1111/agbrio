@@ -10,6 +10,8 @@
 
 [Windows v0.1.34 をダウンロード](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.34) · [セットアップ](docs/SETUP.md) · [MIT](LICENSE)
 
+[共有 Codex 修正候補 v0.1.35-rc.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5)：共有起動・通常起動への復帰、ネイティブツール検証、Windows 状態復旧。[検証範囲と制限](docs/RELEASE_0.1.35-rc.5.md)。安定版は v0.1.34 のままで、非公開のキャラクターボードは含みません。
+
 任意の日報：読み取り専用の接続確認後、時刻（現地22:00を推奨）、タイムゾーン、送信先、委任済みBridgeを指定してアシスタントに依頼します。実際のスケジュール機能と既存タスクを確認し、非対応なら有効化済みとは表示しません。同じタスクを変更・停止し、重複作成しません。[日報と検証範囲](docs/DAILY_REPORTS.md)。
 
 ## レビューから次の作業へ

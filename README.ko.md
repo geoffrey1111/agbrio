@@ -10,6 +10,8 @@
 
 [Windows v0.1.34 다운로드](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.34) · [설치와 연결](docs/SETUP.md) · [MIT](LICENSE)
 
+[공유 Codex 수정 후보 v0.1.35-rc.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5): 공유 실행과 일반 실행 복귀, 네이티브 도구 검증, Windows 상태 복구.[검증 범위와 제한](docs/RELEASE_0.1.35-rc.5.md). 안정 버전은 v0.1.34이며 비공개 캐릭터 보드는 포함되지 않습니다.
+
 선택형 일일 보고: 읽기 전용 연결 확인 후 시간(현지22:00 권장), 시간대, 수신 위치와 위임된Bridge를 지정해 도우미에게 명시적으로 요청하세요. 실제 예약 도구와 기존 작업을 확인하고, 지원하지 않으면 활성화됐다고 주장하지 않습니다. 같은 작업을 수정하거나 중지하며 중복 생성하지 않습니다.[보고 및 검증 범위](docs/DAILY_REPORTS.md).
 
 ## 검토에서 다음 작업까지

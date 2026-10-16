@@ -12,6 +12,8 @@ Do you already keep one agent conversation for decisions and another for impleme
 
 [Download Windows v0.1.34](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.34) · [Install and pair](docs/SETUP.md) · [Connect an assistant](docs/ASSISTANT_CONNECTION_GUIDE.en.md) · [MIT license](LICENSE)
 
+[Shared Codex repair candidate v0.1.35-rc.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5): guarded startup and return-to-normal entries, verified native tools and Windows state recovery. [Checks and remaining limits](docs/RELEASE_0.1.35-rc.5.md). Stable remains v0.1.34; private character-board work is excluded.
+
 Optional daily reports: after real read-only acceptance, choose time (suggested22:00 local), timezone, delivery destination and delegated Bridges; explicitly submit to your assistant. It verifies real scheduler tools and the original saved task, or says unsupported. Change or disable the same task without duplicating it; disabling works without active Bridges/MCP. Read-only receipt windows and honest partial attribution: [daily reports](docs/DAILY_REPORTS.md).
 
 ## From review to the next task

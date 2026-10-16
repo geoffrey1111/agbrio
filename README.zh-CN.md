@@ -12,6 +12,8 @@
 
 [下载 Windows v0.1.34](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.34) · [安装与配对](docs/SETUP.md) · [连接 AI 助手](docs/ASSISTANT_CONNECTION_GUIDE.zh-CN.md) · [MIT 许可证](LICENSE)
 
+[共享 Codex 修复候选版 v0.1.35-rc.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5)：独立共享与退回普通入口、本地工具组件校验及 Windows 状态恢复。[已完成检查与剩余限制](docs/RELEASE_0.1.35-rc.5.md)。稳定版仍为 v0.1.34，不含私人角色看板。
+
 可选日报：真实只读验收后，选择时间（推荐本地22:00）、时区、发送位置与委托Bridge，再明确提交给助手。它核对真实定时工具与既有任务；不支持就说明未启用。修改或停用沿用原任务，不重复创建；Bridge删除或MCP离线也可请求停用。只读连续计窗及部分核实规则：[日报教程](docs/DAILY_REPORTS.md)。
 
 ## 从审阅到下一项任务

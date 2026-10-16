@@ -12,6 +12,8 @@
 
 [下載 Windows v0.1.34](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.34) · [安裝與配對](docs/SETUP.md) · [連接 AI 助手](docs/ASSISTANT_CONNECTION_GUIDE.zh-TW.md) · [MIT 授權](LICENSE)
 
+[共享 Codex 修復候選版 v0.1.35-rc.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5)：獨立共享與返回普通入口、本機工具元件驗證及 Windows 狀態恢復。[已完成檢查與剩餘限制](docs/RELEASE_0.1.35-rc.5.md)。穩定版仍為 v0.1.34，不含私人角色看板。
+
 可選日報：真實唯讀驗收後，選擇時間（建議本地22:00）、時區、接收位置與委託Bridge，再明確提交給助手。它核對真實定時工具與既有任務；不支援就說明未啟用。修改或停用沿用原任務，不重複建立；Bridge刪除或MCP離線也可請求停用。唯讀連續計窗及部分核實規則：[日報教學](docs/DAILY_REPORTS.md)。
 
 ## 從審閱到下一項任務

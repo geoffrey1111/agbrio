@@ -1,5 +1,15 @@
 # Shared Codex repair candidate
 
+## 2026-10-16 — authorized public candidate publication
+
+The owner authorized publication of the pre-board shared-connection candidate.
+The exact rc.5 installer and its updater signature are retained; no private board
+code or source material is promoted. [Release scope and exact package identity](RELEASE_0.1.35-rc.5.md)
+distinguish later owner-reported connection/local-shell success from still-unproven
+full history/Desktop Code Mode and whole-client acceptance. Earlier unpublished
+and OPEN statements below describe their dated checkpoints. The stable channel
+remains 0.1.34; publication does not relabel rc.5 as a fully accepted stable build.
+
 ## rc5 source candidate — existing-state startup and packaged recovery
 
 Completed engineering receipts: [full Windows source/build/install run 38514056439](https://github.com/geoffrey1111/agbrio/actions/runs/38514056439) and [exact signed upgrade/uninstall run 38514860097](https://github.com/geoffrey1111/agbrio/actions/runs/38514860097) both SUCCESS. Shipping source is [f53297a](https://github.com/geoffrey1111/agbrio/commit/f53297ab16db612488eb46bd830afe5b3f689673). The exact signed installer is 276,359,040 bytes, SHA256 `735a6b349b111d61e80e6cd3f1b5e2af06d1c1045be6ecedf3a93f422e98b405`; trusted-key verification and changed-byte rejection passed. All 19 raw package resources and Node were read back. Nine text files needed only CRLF-to-LF normalization in the runner source comparison; installer bytes were separately pinned exactly. The temporary draft-reader grant was restored to read-only in dda35b5 and remote workflow content verified.
