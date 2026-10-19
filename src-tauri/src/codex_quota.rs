@@ -13,6 +13,9 @@ pub(crate) struct Window {
     pub remaining_percent: f64,
     pub window_duration_mins: Option<i64>,
     pub resets_at: Option<i64>,
+    /// Set only for local estimates where no plan limit (and so no percentage) is known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub used_tokens: Option<u64>,
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -48,6 +51,7 @@ pub(crate) fn project(value: &Value) -> Quota {
                 slot: slot.into(), used_percent: used, remaining_percent: 100.0 - used,
                 window_duration_mins: v.get("windowDurationMins").and_then(Value::as_i64).filter(|n| *n > 0),
                 resets_at: v.get("resetsAt").and_then(Value::as_i64).filter(|n| *n > 0 && *n <= 253402300799),
+                used_tokens: None,
             });
         }
         if !windows.is_empty() { buckets.push(Bucket { id, windows }); }

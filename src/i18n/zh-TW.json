@@ -1132,5 +1132,11 @@
   "正在读取连接状态…": "正在讀取連線狀態…",
   "在「对话」右上角点 +，监听你要关注的 Codex 或 Claude Code 对话。": "在「對話」右上角點 +，監聽你要關注的 Codex 或 Claude Code 對話。",
   "等待连接": "等待連線",
-  "Agbrio 还没有连上 Codex（例如刚重启）。打开任意 Codex 对话或 Bridge 后会自动读取，不会为读额度单独启动 Codex。": "Agbrio 還沒有連上 Codex（例如剛重啟）。打開任意 Codex 對話或 Bridge 後會自動讀取，不會為讀額度單獨啟動 Codex。"
+  "Agbrio 还没有连上 Codex（例如刚重启）。打开任意 Codex 对话或 Bridge 后会自动读取，不会为读额度单独启动 Codex。": "Agbrio 還沒有連上 Codex（例如剛重啟）。打開任意 Codex 對話或 Bridge 後會自動讀取，不會為讀額度單獨啟動 Codex。",
+  "{0}已用 {1} tokens": "{0}已用 {1} tokens",
+  "近 7 天": "近 7 天",
+  "当前 5 小时": "目前 5 小時",
+  "当前没有进行中的 5 小时窗口": "目前沒有進行中的 5 小時視窗",
+  "滚动统计": "滾動統計",
+  "按这台电脑上 Claude Code 的对话记录估算（含桌面 App）。Anthropic 不公开套餐上限，所以这里显示已用量而不是剩余百分比；在终端或 IDE 用 Claude Code 后会显示精确百分比。": "按這台電腦上 Claude Code 的對話紀錄估算（含桌面 App）。Anthropic 不公開方案上限，所以這裡顯示已用量而不是剩餘百分比；在終端或 IDE 用 Claude Code 後會顯示精確百分比。"
 }
