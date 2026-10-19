@@ -127,9 +127,11 @@ describe("role-compatible Bridge", () => {
     fireEvent.click(await screen.findByRole("button", { name: /绑定控制端与执行端/ }));
     await waitFor(() => expect(api.threads).toHaveBeenCalledWith("work-a"));
     fireEvent.click(screen.getByRole("button",{name:"选择控制端"}));
+    fireEvent.click(within(screen.getByRole("region",{name:"控制端 Codex 对话"})).getByRole("button",{name:/全部项目/}));
     fireEvent.click(within(screen.getByRole("region",{name:"控制端 Codex 对话"})).getByRole("button",{name:/决策对话/}));
 
     fireEvent.click(screen.getByRole("button",{name:"选择执行端"}));
+    fireEvent.click(within(screen.getByRole("region",{name:"执行端 Codex 对话"})).getByRole("button",{name:/全部项目/}));
     expect(within(screen.getByRole("region",{name:"执行端 Codex 对话"})).getByRole("button",{name:/决策对话/})).toBeDisabled();
     fireEvent.click(within(screen.getByRole("region",{name:"执行端 Codex 对话"})).getByRole("button",{name:/执行对话/}));
 

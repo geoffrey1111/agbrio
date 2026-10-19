@@ -1116,5 +1116,19 @@
   "Agbrio 只读取这个文件夹里的 index.html，以及它引用的、位于这个文件夹或上面列出的额外文件夹中的图片；手机通过电脑查看。": "Agbrio only reads index.html in this folder and the images it references inside this folder or the extra folders listed above; the phone views it through your computer.",
   "看板页面": "Board page",
   "正在读取看板…": "Loading the board…",
-  "请确认电脑上的看板文件夹仍可访问，Agbrio 保持运行。": "Check that the board folder on your computer is still reachable and Agbrio is running."
+  "请确认电脑上的看板文件夹仍可访问，Agbrio 保持运行。": "Check that the board folder on your computer is still reachable and Agbrio is running.",
+  "返回项目列表": "Back to projects",
+  "搜索全部对话": "Search all chats",
+  "在这个项目里搜索": "Search this project",
+  "1 天": "1 day",
+  "3 天": "3 days",
+  "7 天": "7 days",
+  "30 天": "30 days",
+  "没有找到匹配的对话。": "No matching chats.",
+  "这个时间范围里没有对话。": "No chats in this time range.",
+  "查看全部时间": "Show all time",
+  "这台设备上没有可设置的通知。": "No notification settings on this device.",
+  "没有需要显示的连接。": "No connections to show.",
+  "正在读取连接状态…": "Reading connection status…",
+  "在「对话」右上角点 +，监听你要关注的 Codex 或 Claude Code 对话。": "Tap + at the top right of Chats to watch a Codex or Claude Code chat."
 }
