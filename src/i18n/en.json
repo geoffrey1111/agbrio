@@ -1130,5 +1130,7 @@
   "这台设备上没有可设置的通知。": "No notification settings on this device.",
   "没有需要显示的连接。": "No connections to show.",
   "正在读取连接状态…": "Reading connection status…",
-  "在「对话」右上角点 +，监听你要关注的 Codex 或 Claude Code 对话。": "Tap + at the top right of Chats to watch a Codex or Claude Code chat."
+  "在「对话」右上角点 +，监听你要关注的 Codex 或 Claude Code 对话。": "Tap + at the top right of Chats to watch a Codex or Claude Code chat.",
+  "等待连接": "Waiting for connection",
+  "Agbrio 还没有连上 Codex（例如刚重启）。打开任意 Codex 对话或 Bridge 后会自动读取，不会为读额度单独启动 Codex。": "Agbrio is not connected to Codex yet (for example right after a restart). It reads usage once any Codex chat or Bridge is opened; it never starts Codex just to read usage."
 }

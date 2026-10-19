@@ -246,9 +246,9 @@ html .r2-router .r2-settings details>summary::-webkit-details-marker{display:non
 html .r2-router .r2-settings details>summary::after{content:"›";margin-left:auto;color:var(--awr-muted);transition:transform .2s}
 html .r2-router .r2-settings details[open]>summary::after{transform:rotate(90deg)}
 html .r2-router .r2-settings details>:not(summary){margin-bottom:12px}
-html .r2-router .r2-settings :is(button:not(.r2-icon):not(.v3-primary):not(.r2-action):not(.r2-quota-row)){min-height:44px;padding:8px 16px;border:0;border-radius:12px;background:var(--awr-shell);color:var(--awr-ink);font-size:14.5px;font-weight:500}
+html .r2-router .r2-settings :where(button:not(.r2-icon):not(.v3-primary):not(.r2-action):not(.r2-quota-row)){min-height:44px;padding:8px 16px;border:0;border-radius:12px;background:var(--awr-shell);color:var(--awr-ink);font-size:14.5px;font-weight:500}
 html .r2-router .r2-settings .r2-settings-group>button{background:transparent;border-radius:0;padding:0 16px;min-height:52px}
-html .r2-router .r2-settings label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--awr-muted)}
+html .r2-router .r2-settings :where(label){display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--awr-muted)}
 html .r2-router .r2-settings label:has(>input[type=checkbox]){flex-direction:row;align-items:center;gap:10px;color:var(--awr-ink);font-size:14.5px}
 html .r2-router .r2-settings input[type=checkbox]{width:20px;height:20px;accent-color:var(--awr-ink)}
 html .r2-router .r2-settings [role=alert]{color:var(--awr-danger);font-size:13.5px}
@@ -288,3 +288,19 @@ html .r2-router .r2-settings .r2-connection-row>span{margin-left:auto;color:var(
 .v4-chat-sheet .v4-chat-sheet-body>p{margin:4px 0;font-size:14px;color:var(--awr-ink);overflow-wrap:anywhere}
 .v4-chat-sheet .v4-chat-sheet-body>code{display:block;margin:4px 0;font-size:12px;color:var(--awr-muted);background:var(--awr-canvas);padding:6px 8px;border-radius:8px;overflow-wrap:anywhere}
 .v4-chat-sheet .v4-chat-options legend{font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--awr-muted);margin-bottom:4px}
+/* settings rows stay rows; language picker is a normal row */
+html .r2-router .r2-settings .r2-settings-group>button{background:transparent!important;color:var(--awr-ink)}
+html .r2-router .r2-settings .r2-settings-group>button:active{background:var(--awr-shell)!important}
+html .r2-router .r2-settings-group>.r2-language-picker{display:flex;flex-direction:row;align-items:center;gap:12px;min-height:52px;padding:0 16px;color:var(--awr-ink);font-size:15px}
+html .r2-router .r2-settings-group>.r2-language-picker>svg{flex:none;color:var(--awr-muted)}
+html .r2-router .r2-settings-group>.r2-language-picker>span{flex:1;text-align:left}
+html .r2-router .r2-settings-group>.r2-language-picker>select{flex:none;width:auto;min-height:36px;padding:4px 28px 4px 10px;border:0;background-color:var(--awr-shell);border-radius:10px;font-size:14px}
+/* the sidebar can never be scrolled sideways by focus */
+html .r2-router .r2-rail{overflow:clip}
+html .r2-router .r2-rail>*{max-width:100%;min-width:0}
+html .r2-router .r2-content{overflow-x:clip}
+/* dialogs: no accent ring when a dialog focuses its close button on open */
+:is(.r2-quota-sheet,.r2-sheet,.v4-chat-sheet,.r2-confirmation,.r2-menu,.v6-sheet,.r2-relay) :is(button,.r2-icon):focus:not(:focus-visible){outline:none!important;box-shadow:none!important}
+:is(.r2-quota-sheet,.r2-sheet,.v4-chat-sheet,.r2-confirmation,.r2-menu,.v6-sheet,.r2-relay) :is(button,.r2-icon):focus-visible{outline:2px solid var(--awr-ink)!important;outline-offset:2px;box-shadow:none!important}
+.r2-quota-sheet .r2-quota-handle{display:none}
+@media(min-width:761px) and (hover:hover) and (pointer:fine){.r2-quota-sheet{width:min(460px,calc(100vw - 48px))!important}}
