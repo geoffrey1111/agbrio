@@ -19,7 +19,7 @@ import type {
   WorkbenchLifecycle,
 } from "./models";
 
-export type WorkbenchSurface = "NOTIFICATIONS" | "SETTINGS" | "BRIDGES" | "NEW_BRIDGE" | "INBOX" | "WORKSPACE" | "DISCUSSION" | "PROJECT_HOME" | "PROJECT" | "NEW_WORK" | "GOAL" | "RUNTIME" | "PROVIDER_RUN_STATUS" | "CHATGPT_DIAGNOSTICS" | "HANDOFF_SELECTION" | "HANDOFF_REVIEW" | "HANDOFF_STATUS" | "EXIT_IMPACT" | "INSTALL" | "RECYCLE" | "PURGE_CONFIRM" | "TEST_CLEANUP" | "CODEX_HISTORY" | "CHATGPT_RESULTS" | "CODEX_RESULTS" | "CODEX_ATTACHMENTS" | "CODEX_FEEDBACK" | "CODEX_REQUEST";
+export type WorkbenchSurface = "BOARD" | "NOTIFICATIONS" | "SETTINGS" | "BRIDGES" | "NEW_BRIDGE" | "INBOX" | "WORKSPACE" | "DISCUSSION" | "PROJECT_HOME" | "PROJECT" | "NEW_WORK" | "GOAL" | "RUNTIME" | "PROVIDER_RUN_STATUS" | "CHATGPT_DIAGNOSTICS" | "HANDOFF_SELECTION" | "HANDOFF_REVIEW" | "HANDOFF_STATUS" | "EXIT_IMPACT" | "INSTALL" | "RECYCLE" | "PURGE_CONFIRM" | "TEST_CLEANUP" | "CODEX_HISTORY" | "CHATGPT_RESULTS" | "CODEX_RESULTS" | "CODEX_ATTACHMENTS" | "CODEX_FEEDBACK" | "CODEX_REQUEST";
 
 export interface UnifiedWorkbenchProps {
   bridgeActivityApi?:import("./bridgeActivity").BridgeActivityApi;
@@ -27,6 +27,8 @@ export interface UnifiedWorkbenchProps {
   onRenameBridge?:(id:string,name:string)=>Promise<void>;
   notificationSettings?:ReactNode;
   notificationCount?:number;
+  /** Watched-conversation projection shown in the unified conversation list. */
+  watchApi?:import("./CodexNotifications").NotificationApi;
   notificationDetail?:boolean;
   devicePanel?:ReactNode;
   assistantPanel?:ReactNode;

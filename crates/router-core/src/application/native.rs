@@ -742,7 +742,7 @@ pub(crate) mod tests {
     }
     #[test]
     fn candidate_absence_requires_the_exact_native_error_and_thread() {
-        let thread = "00000000-0000-7000-8000-71c072a2226b";
+        let thread = "01a0cbd3-9a08-7893-afb2-eb9f9a55ecb3";
         assert!(exact_native_error(
             &format!(
                 "Codex JSON-RPC error: {{\"message\":\"no rollout found for thread id {thread}\"}}"

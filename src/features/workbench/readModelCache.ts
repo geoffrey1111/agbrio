@@ -5,7 +5,8 @@ import {isTauri} from '@tauri-apps/api/core';
  * A mobile scope is enabled only by a live authenticated session response. */
 type Entry = { value?: unknown; at: number; touched: number; due: number; period: number; failed?:boolean; loader?: () => Promise<unknown>; pending?: Promise<unknown>; version: number; listeners: Set<() => void> };
 const STORAGE = "agbrio.private-read-cache.v1";
-const MAX_AGE = 24 * 60 * 60 * 1000;
+// Cache-first start shows the last week of presentation while the live check runs.
+const MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 const MAX_CHARS = 1_500_000;
 export class ReadModelCache {
   private entries = new Map<string, Entry>();
@@ -37,6 +38,7 @@ export class ReadModelCache {
   peek<T>(key: string): T | undefined { return this.entries.get(key)?.value as T | undefined; }
   age(key: string) { const at = this.entries.get(key)?.at; return at ? Date.now() - at : Infinity; }
   observedAt(key: string) { return this.entries.get(key)?.at ?? 0; }
+  generation() { return this.epoch; }
   private entry(key: string) {
     let e = this.entries.get(key);
     if (!e) { e = {at: 0, touched: Date.now(), due: 0, period: 5000, version: 0, listeners: new Set()}; this.entries.set(key, e); }
@@ -55,8 +57,10 @@ export class ReadModelCache {
     }
     return this.load(key, e) as Promise<T>;
   }
-  refresh<T>(key: string, loader: () => Promise<T>, period = 5000): Promise<T> {
-    const e = this.entry(key); e.loader = loader; e.period = period; this.start(); return this.load(key, e) as Promise<T>;
+  refresh<T>(key: string, loader: () => Promise<T>, period = 5000, options?:{supersede?:boolean}): Promise<T> {
+    const e = this.entry(key);
+    if(options?.supersede){e.version++;e.pending=undefined;}
+    e.loader = loader; e.period = period; this.start(); return this.load(key, e) as Promise<T>;
   }
   warm<T>(key:string, loader:()=>Promise<T>, period=30000) {
     const e=this.entry(key); if(!e.loader){e.loader=loader;e.period=period;} this.start();
@@ -104,7 +108,7 @@ export class ReadModelCache {
       const rows: {key:string;at:number;value:unknown}[] = [];
       let size = 0;
       for (const [key, e] of [...this.entries.entries()].sort((a,b) => b[1].touched - a[1].touched)) {
-        if (e.value === undefined || Date.now() - e.at >= MAX_AGE || rows.length >= 48) continue;
+        if (key.startsWith('board:') || e.value === undefined || Date.now() - e.at >= MAX_AGE || rows.length >= 48) continue;
         // Command receipts, draft/CAS records and model options are never registered here.
         const row = {key, at:e.at, value:e.value}; const length = JSON.stringify(row).length;
         if (size + length > MAX_CHARS - 1000) continue; rows.push(row); size += length;

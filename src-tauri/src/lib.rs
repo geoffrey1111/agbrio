@@ -1,10 +1,29 @@
 mod codex_quota;
+mod claude_quota;
 mod claude_code;
 mod claude_chat;
 mod claude_code_desktop;
 mod desktop_update;
 use desktop_update::{desktop_update_check,desktop_update_status,desktop_update_download,desktop_update_install,desktop_update_open_release};
 mod message_media;
+mod character_board;
+mod character_board_review;
+#[tauri::command]
+async fn character_board_review(revision:String,input:character_board_review::ReviewInput)->character_board_review::ReviewResponse{character_board_review::proxy(revision,input).await}
+
+
+#[tauri::command]
+fn board_source_read()->Option<character_board::Source>{character_board::source()}
+#[tauri::command]
+fn board_source_write(source:character_board::Source)->Result<character_board::Source,String>{character_board::set_source(source)}
+#[tauri::command]
+async fn character_board_snapshot(known_revision:Option<String>)->Result<character_board::Snapshot,String>{
+    tauri::async_runtime::spawn_blocking(move||character_board::snapshot(known_revision.as_deref())).await.map_err(|_|"BOARD_UNAVAILABLE".to_string())?
+}
+#[tauri::command]
+async fn character_board_asset(revision:String,asset_id:String,variant:Option<String>)->Result<character_board::Asset,String>{
+    tauri::async_runtime::spawn_blocking(move||character_board::display_asset(&revision,&asset_id,variant.as_deref().unwrap_or("original"))).await.map_err(|_|"BOARD_UNAVAILABLE".to_string())?
+}
 mod artifact;
 mod chatgpt;
 mod chatgpt_direct_writer;
@@ -690,6 +709,11 @@ fn confirm_rollover(
 #[tauri::command]
 fn cancel_rollover(workstream_id: String, state: State<'_, RouterState>) -> Result<(), String> {
     host_application::service_cancel_rollover(workstream_id, state.inner())
+}
+
+#[tauri::command]
+async fn claude_quota_read() -> Result<codex_quota::Quota,String> {
+ tauri::async_runtime::spawn_blocking(claude_quota::read).await.map_err(|_|"QUOTA_UNAVAILABLE".to_string())
 }
 
 #[tauri::command]
@@ -1441,7 +1465,7 @@ pub fn run() {
     let store = Arc::new(
         if probe_mode {
             RouterStore::open_at(
-                std::path::PathBuf::from(r"D:\desktop\临时处理")
+                std::env::temp_dir()
                     .join(format!("aiwr-provider-probe-{}", std::process::id()))
                     .join("fixture.db"),
             )
@@ -1457,6 +1481,18 @@ pub fn run() {
         store,
     };
     let builder = tauri::Builder::default()
+        .register_uri_scheme_protocol("character-board", |_ctx, request| {
+            let parsed=url::Url::parse(&request.uri().to_string());
+            let result=parsed.ok().filter(|u|u.path()=="/view").and_then(|u|{
+                let pairs=u.query_pairs().collect::<std::collections::HashMap<_,_>>();
+                Some(character_board::frame(pairs.get("revision")?,pairs.get("channel")?))
+            }).unwrap_or_else(||Err("BOARD_UNAVAILABLE".into()));
+            let (status,body)=match result {Ok(html)=>(200,html),Err(_)=>(404,"Board unavailable".into())};
+            tauri::http::Response::builder().status(status)
+                .header("Content-Type","text/html; charset=utf-8").header("Cache-Control","no-store")
+                .header("Content-Security-Policy",character_board::FRAME_CSP)
+                .body(body.into_bytes()).unwrap()
+        })
         .manage(core)
         .manage(desktop_update::UpdateState::default())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -1481,6 +1517,7 @@ pub fn run() {
     let builder = builder.setup(|app| configure_host(app));
     #[cfg(debug_assertions)]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
         claude_code_sessions,claude_code_connections,claude_code_setup,claude_code_connect,claude_code_revoke,
         desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
@@ -1523,7 +1560,7 @@ pub fn run() {
         verify_codex_rollover,
         confirm_rollover,
         cancel_rollover,
-        codex_status,codex_quota_read,
+        codex_status,codex_quota_read,claude_quota_read,
         host_environment_status,
         connect_codex,
         list_existing_codex_threads,
@@ -1569,6 +1606,7 @@ pub fn run() {
     ]);
     #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
         claude_code_sessions,claude_code_connections,claude_code_setup,claude_code_connect,claude_code_revoke,
         desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
@@ -1609,7 +1647,7 @@ pub fn run() {
         verify_codex_rollover,
         confirm_rollover,
         cancel_rollover,
-        codex_status,codex_quota_read,
+        codex_status,codex_quota_read,claude_quota_read,
         host_environment_status,
         connect_codex,
         list_existing_codex_threads,

@@ -35,7 +35,7 @@ it("keeps original content verbatim even when it equals an application phrase",(
 });
 it("keeps a Bridge title unchanged when it matches a translated navigation label",()=>{
  setLanguagePreference("en");render(<NativeWorkbench items={[{id:"exact-id",name:"通知",lifecycle:"ACTIVE"}]} draft={{value:""}} onDraftChange={()=>{}} onSelectWorkstream={()=>{}} selectedWorkstreamId="exact-id" surface="WORKSPACE"/>);
- expect(screen.getByRole("heading",{level:1})).toHaveTextContent("通知");expect(screen.getByRole("navigation",{name:"Desktop navigation"})).toHaveTextContent("Notifications");
+ expect(screen.getByRole("heading",{level:1})).toHaveTextContent("通知");expect(screen.getByRole("navigation",{name:"Desktop navigation"})).toHaveTextContent("To-do");
 });
 it("updates an existing failure and preserves the exact HTTPS input without retrying",async()=>{
  const configure=vi.fn().mockRejectedValue(Error("MOBILE_PROBE_FAILED"));const api:WebAccessApi={connection:async()=>({method:"NONE",configured:false,port:47114,origin:null}),configure,devices:async()=>[],url:async()=>null,issue:vi.fn(),revoke:vi.fn()};

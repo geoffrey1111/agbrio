@@ -127,14 +127,13 @@ describe("role-compatible Bridge", () => {
     fireEvent.click(await screen.findByRole("button", { name: /绑定控制端与执行端/ }));
     await waitFor(() => expect(api.threads).toHaveBeenCalledWith("work-a"));
     fireEvent.click(screen.getByRole("button",{name:"选择控制端"}));
-    fireEvent.change(screen.getByRole("combobox", { name: "控制端 Codex 对话" }), { target: { value: "thread-a" } });
+    fireEvent.click(within(screen.getByRole("region",{name:"控制端 Codex 对话"})).getByRole("button",{name:/决策对话/}));
 
-    fireEvent.click(screen.getByRole("button",{name:"使用此对话"}));
     fireEvent.click(screen.getByRole("button",{name:"选择执行端"}));
-    fireEvent.change(screen.getByRole("combobox", { name: "执行端 Codex 对话" }), { target: { value: "thread-b" } });
+    expect(within(screen.getByRole("region",{name:"执行端 Codex 对话"})).getByRole("button",{name:/决策对话/})).toBeDisabled();
+    fireEvent.click(within(screen.getByRole("region",{name:"执行端 Codex 对话"})).getByRole("button",{name:/执行对话/}));
 
     expect(api.bind).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button",{name:"使用此对话"}));
     fireEvent.click(screen.getByRole("button", { name: "保存两端" }));
     await waitFor(() => expect(api.bind).toHaveBeenCalledWith("work-a", 4, { provider: "CODEX", externalId: "thread-a", label: "决策对话" }, { provider: "CODEX", externalId: "thread-b", label: "执行对话" }));
     expect(api.send).not.toHaveBeenCalled();

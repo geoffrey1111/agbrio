@@ -262,7 +262,7 @@ mod tests {
             proof_dir.to_string_lossy().as_bytes(),
         )
         .unwrap();
-        let target = "00000000-0000-7000-8000-1f7fcc242e87";
+        let target = "01a0fb4c-6c61-7143-964b-c3ccc5a5ca81";
         let store = Arc::new(crate::RouterStore::open_at(proof_dir.join("router.db")).unwrap());
         let mut reader =
             crate::codex::adapter::CodexAdapter::start_validation(Arc::new(|_| {})).unwrap();

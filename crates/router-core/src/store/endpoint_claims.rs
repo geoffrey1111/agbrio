@@ -58,6 +58,21 @@ mod tests {
     fn binding(name: &str) -> RoleBindingInput { RoleBindingInput { provider: "CODEX".into(), external_id: name.into(), label: name.into(), cwd: Some("D:\\fixture".into()) } }
 
     #[test]
+    #[ignore = "Explicit isolated SQLite copy only; never the production DB"]
+    fn actual_endpoint_claim_migration_on_isolated_copy_only() {
+        let path = PathBuf::from(std::env::var("AGBRIO_ENDPOINT_CLAIM_CLONE").expect("Explicit isolated-copy path required"));
+        assert!(path.is_absolute());
+        assert_eq!(path.file_name().unwrap(), "endpoint-claims-isolated-copy.db");
+        assert!(!std::fs::symlink_metadata(&path).unwrap().file_type().is_symlink());
+        let mut c = Connection::open(&path).unwrap();
+        c.execute_batch("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;").unwrap();
+        migrate(&mut c, &path).unwrap();
+        assert!(!c.prepare("PRAGMA foreign_key_check").unwrap().exists([]).unwrap());
+        assert_eq!(c.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0)).unwrap(), "ok");
+        println!("ISOLATED_COPY_ENDPOINT_MIGRATION_ONLY_PASS");
+    }
+
+    #[test]
     fn endpoint_claim_migration_preserves_populated_legacy_history_and_reopens() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("router.db");

@@ -11,6 +11,8 @@ export type CodexQuotaSnapshot={status:'AVAILABLE'|'UNAVAILABLE';reason:string|n
 export type CodexQuotaApi={read:()=>Promise<CodexQuotaSnapshot>};
 export const desktopQuotaApi:CodexQuotaApi={read:()=>invoke('codex_quota_read')};
 export const mobileQuotaApi:CodexQuotaApi={read:()=>request('/codex-quota')};
+export const desktopClaudeQuotaApi:CodexQuotaApi={read:()=>invoke('claude_quota_read')};
+export const mobileClaudeQuotaApi:CodexQuotaApi={read:()=>request('/claude-quota')};
 export function quotaPeriod(minutes:number|null){
  if(minutes===10080)return t('每周');if(minutes===300)return t('5 小时');
  if(minutes===1440)return t('每日');if(minutes&&minutes%60===0)return t('{0} 小时',minutes/60);
@@ -18,7 +20,8 @@ export function quotaPeriod(minutes:number|null){
 }
 const percent=(value:number)=>new Intl.NumberFormat(getLanguage(),{maximumFractionDigits:1}).format(value);
 const timestamp=(ms:number)=>new Intl.DateTimeFormat(getLanguage(),{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(ms);
-export function CodexQuota({api,active=true}:{api:CodexQuotaApi;active?:boolean}){
+/** One provider's subscription windows. Codex reads its adapter; Claude Code reads its status line file. */
+export function CodexQuota({api,active=true,provider='Codex'}:{api:CodexQuotaApi;active?:boolean;provider?:'Codex'|'Claude Code'}){
  useLanguage();const [data,setData]=useState<CodexQuotaSnapshot|null>(null),[stale,setStale]=useState(false),[busy,setBusy]=useState(false),[open,setOpen]=useState(false);
  const pending=useRef(false),last=useRef(0),mounted=useRef(true),epoch=useRef(0);
  useEffect(()=>{if(!active)setOpen(false);},[active]);
@@ -38,16 +41,18 @@ export function CodexQuota({api,active=true}:{api:CodexQuotaApi;active?:boolean}
   const timer=setInterval(foreground,300000);
   return()=>{mounted.current=false;epoch.current++;clearInterval(timer);document.removeEventListener('visibilitychange',foreground);window.removeEventListener('pageshow',foreground);window.removeEventListener('online',foreground);window.removeEventListener('offline',offline);};
  },[refresh]);
- const first=data?.status==='AVAILABLE'?data.buckets.find(b=>b.id==='codex')??data.buckets[0]:null;
+ const first=data?.status==='AVAILABLE'?data.buckets.find(b=>b.id==='codex'||b.id==='claude')??data.buckets[0]:null;
+ const notEnabled=data?.status==='UNAVAILABLE'&&data.reason==='NOT_ENABLED';
  const firstWindow=first?.windows[0];
- const label=firstWindow?t('{0}剩余 {1}%',quotaPeriod(firstWindow.windowDurationMins),percent(firstWindow.remainingPercent)):busy?t('读取中…'):t('暂不可读取');
+ const label=firstWindow?t('{0}剩余 {1}%',quotaPeriod(firstWindow.windowDurationMins),percent(firstWindow.remainingPercent)):busy?t('读取中…'):notEnabled?t('未开启'):t('暂不可读取');
  return <Dialog.Root open={open} onOpenChange={value=>{setOpen(value);if(value)void refresh();}}>
-  <Dialog.Trigger asChild><button type="button" className="r2-quota-row" aria-label={t('查看 Codex 额度')}><span>{t('Codex 额度')}</span><span>{stale&&firstWindow?t('上次读取 · {0}',label):label}</span><ChevronRight size={18}/></button></Dialog.Trigger>
+  <Dialog.Trigger asChild><button type="button" className="r2-quota-row" aria-label={t('查看 {0} 额度',provider)}><span>{t('{0} 额度',provider)}</span><span>{stale&&firstWindow?t('上次读取 · {0}',label):label}</span><ChevronRight size={18}/></button></Dialog.Trigger>
   <Dialog.Portal><Dialog.Overlay className="r2-quota-overlay"/><Dialog.Content className="r2-quota-sheet r2-sheet" aria-describedby="quota-description">
-   <div className="r2-quota-handle" aria-hidden="true"/><header><Dialog.Title>{t('Codex 额度')}</Dialog.Title><Dialog.Close asChild><button type="button" className="r2-icon" aria-label={t('关闭')}><X size={20}/></button></Dialog.Close></header>
-   <Dialog.Description id="quota-description">{t('当前电脑连接的 Codex 账户额度。')}</Dialog.Description>
+   <div className="r2-quota-handle" aria-hidden="true"/><header><Dialog.Title>{t('{0} 额度',provider)}</Dialog.Title><Dialog.Close asChild><button type="button" className="r2-icon" aria-label={t('关闭')}><X size={20}/></button></Dialog.Close></header>
+   <Dialog.Description id="quota-description">{provider==='Codex'?t('当前电脑连接的 Codex 账户额度。'):t('Claude Code 订阅用量，来自电脑上 Claude Code 最近一次回复。')}</Dialog.Description>
+   {notEnabled&&<p role="status">{t('还没有读到用量。在终端或 IDE 里的 Claude Code 回复一次后就会出现；桌面 App 里的对话不会更新这里。')}</p>}
    {stale&&<p role="status">{t(firstWindow?'连接暂不可用，以下为上次读取结果。':'暂时无法读取，请检查电脑连接后重试。')}</p>}
-   {data?.status==='AVAILABLE'?data.buckets.map(bucket=><section key={bucket.id} aria-label={bucket.id}>{data.buckets.length>1&&<h3>{bucket.id}</h3>}{bucket.windows.map(w=><div className="r2-quota-window" key={w.slot}><div><strong>{quotaPeriod(w.windowDurationMins)}</strong><span>{t('剩余 {0}%',percent(w.remainingPercent))}</span></div><div className="r2-quota-track" role="meter" aria-label={quotaPeriod(w.windowDurationMins)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={w.remainingPercent}><i style={{width:`${w.remainingPercent}%`}}/></div><p>{w.resetsAt?t('重置于 {0}',timestamp(w.resetsAt*1000)):t('重置时间暂不可用')}</p></div>)}</section>):!busy&&<p role="status">{t('暂不可读取。部分登录方式不提供 Codex 额度。')}</p>}
+   {data?.status==='AVAILABLE'?data.buckets.map(bucket=><section key={bucket.id} aria-label={bucket.id}>{data.buckets.length>1&&<h3>{bucket.id}</h3>}{bucket.windows.map(w=><div className="r2-quota-window" key={w.slot}><div><strong>{quotaPeriod(w.windowDurationMins)}</strong><span>{t('剩余 {0}%',percent(w.remainingPercent))}</span></div><div className="r2-quota-track" role="meter" aria-label={quotaPeriod(w.windowDurationMins)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={w.remainingPercent}><i style={{width:`${w.remainingPercent}%`}}/></div><p>{w.resetsAt?t('重置于 {0}',timestamp(w.resetsAt*1000)):t('重置时间暂不可用')}</p></div>)}</section>):!busy&&!notEnabled&&<p role="status">{provider==='Codex'?t('暂不可读取。部分登录方式不提供 Codex 额度。'):t('暂不可读取。Claude Code 订阅（Pro/Max）在回复后才会提供用量。')}</p>}
    <div className="r2-quota-freshness">{data?.status==='AVAILABLE'&&<p className="r2-quota-read-at">{t('上次读取 {0}',timestamp(data.observedAt))}</p>}
    <button type="button" className="r2-quota-refresh" aria-label={t(busy?'读取中…':'刷新额度')} title={t(busy?'读取中…':'刷新额度')} disabled={busy} onClick={()=>void refresh(true)}><RefreshCw size={20} className={busy?'r2-quota-spinning':''}/></button></div>
    <p>{t('查看和刷新额度，不会打断正在执行的任务。')}</p>

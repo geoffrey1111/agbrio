@@ -10,10 +10,10 @@ export function useAppMotion(){
   void import("gsap").then(({gsap})=>{if(cancelled)return;const media=gsap.matchMedia();
   media.add('(prefers-reduced-motion: no-preference)',context=>{
    let pressed:SVGElement|null=null,lastSubmit=0;
-   const owned=(node:Element)=>Boolean(node.closest('.r2-router,.v5-role-chat,.v4-chat-page,.v4-chat-sheet,.r2-sheet,.r2-sheet-frame,.v5-relay-review'));
+   const owned=(node:Element)=>Boolean(node.closest('.r2-router,.v5-role-chat,.v4-chat-page,.v4-chat-sheet,.r2-sheet,.r2-sheet-frame,.v5-relay-review,.r2-menu,.r2-confirmation,.v5-binding-dialog,.v4-web-login,.r2-image-viewer,.v3-role-dialog'));
    const icon=(event:Event)=>{const target=event.target;if(!(target instanceof Element)||!owned(target))return null;const button=target.closest<HTMLButtonElement>('button');if(!button||button.disabled)return null;return button.querySelector<SVGElement>('svg');};
    context.add('release',()=>{if(!pressed)return;gsap.to(pressed,{scale:1,y:0,duration:.16,ease:'power3.out',overwrite:'auto',clearProps:'transform,transformOrigin'});pressed=null;});
-   context.add('press',(event:Event)=>{context.release();const node=icon(event);if(!node)return;pressed=node;gsap.to(node,{scale:.94,duration:.12,ease:'power3.out',transformOrigin:'50% 50%',overwrite:'auto'});});
+   context.add('press',(event:Event)=>{context.release();const node=icon(event);if(!node)return;pressed=node;gsap.to(node,{scale:.98,duration:.09,ease:'power3.out',transformOrigin:'50% 50%',overwrite:'auto'});});
    context.add('selected',(node:Element)=>{const svg=node.querySelector('svg');if(svg)gsap.fromTo(svg,{scale:.97,y:1},{scale:1,y:0,duration:.18,ease:'power3.out',overwrite:'auto',clearProps:'transform,transformOrigin'});});
    context.add('sent',(node:Element)=>{gsap.timeline().fromTo(node,{y:10,opacity:.8},{y:0,opacity:1,duration:.22,ease:'power3.out',clearProps:'transform,opacity'});});
    const submit=(event:Event)=>{if(event.target instanceof Element&&owned(event.target))lastSubmit=performance.now();};

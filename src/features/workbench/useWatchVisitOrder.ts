@@ -9,5 +9,5 @@ export function useWatchVisitOrder(rows:CodexWatch[],active:boolean){
   if(!active){setOrder(old=>old.length?[]:old);return;}
   setOrder(old=>{const added=rows.filter(row=>!old.includes(row.threadId)).sort(byUsage).map(row=>row.threadId);return added.length?[...old,...added]:old;});
  },[active,ids]);
- return useMemo(()=>{if(!active||!order.length)return [...rows].sort(byUsage);const rank=new Map(order.map((id,index)=>[id,index]));return [...rows].sort((a,b)=>(rank.get(a.threadId)??Infinity)-(rank.get(b.threadId)??Infinity)||byUsage(a,b));},[rows,order,active]);
+ return useMemo(()=>{if(!active||!order.length)return [...rows].sort(byUsage);const rank=new Map(order.map((id,index)=>[id,index]));return [...rows].sort((a,b)=>Number(b.enabled)-Number(a.enabled)||(rank.get(a.threadId)??Infinity)-(rank.get(b.threadId)??Infinity)||byUsage(a,b));},[rows,order,active]);
 }

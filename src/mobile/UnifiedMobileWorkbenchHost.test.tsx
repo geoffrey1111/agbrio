@@ -1137,20 +1137,20 @@ it("uses global lifecycle and human conversation labels for phone Bridges missin
  api.workstreams.mockResolvedValue([{...workstreams[0],status:"ACTIVE",projectName:"当前项目",sourceLabel:"Codex · 当前控制对话",updatedAt:10},{...workstreams[1],status:"ACTIVE",trashedAt:11,projectName:"其他项目",sourceLabel:"已删除的对话",updatedAt:11}]);
  api.workstream.mockResolvedValue({...snapshot("work-a"),workstreams:[snapshot("work-a").workstreams[0]]});
  render(<UnifiedMobileWorkbenchHost initialSurface="BRIDGES"/>);
- expect(await screen.findByText("Codex · 当前控制对话")).toBeVisible();
+ expect(await screen.findByText("Bridge · Codex · 当前控制对话")).toBeVisible();
  expect(screen.queryByText("B 工作区")).toBeNull();
 });
 
 it("opens an exact Bridge notification from the default directory and returns to the directory",async()=>{
  composition.native=true;useCompactMobileViewport();window.history.replaceState({},"","/mobile?workstream=work-b&reply=notification-qa");
  render(<UnifiedMobileWorkbenchHost/>);await waitFor(()=>expect(api.workstream).toHaveBeenCalledWith("work-b"));
- expect(await screen.findByRole("heading",{name:"B 工作区"})).toBeVisible();expect(screen.queryByRole("heading",{name:"Bridge"})).not.toBeInTheDocument();
- fireEvent.click(screen.getByRole("button",{name:"返回"}));expect(await screen.findByRole("heading",{name:"Bridge"})).toBeVisible();
+ expect(await screen.findByRole("heading",{name:"B 工作区"})).toBeVisible();expect(screen.queryByRole("heading",{name:"对话"})).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole("button",{name:"返回"}));expect(await screen.findByRole("heading",{name:"对话"})).toBeVisible();
 });
 it("handles a warm notification intent without falling back to the first Bridge",async()=>{
  composition.native=true;useCompactMobileViewport();let receive!:(event:MessageEvent)=>void;
  vi.stubGlobal("navigator",{...navigator,serviceWorker:{addEventListener:vi.fn((name,handler)=>{if(name==="message")receive=handler;}),removeEventListener:vi.fn()}});
- render(<UnifiedMobileWorkbenchHost/>);await screen.findByRole("heading",{name:"Bridge"});await waitFor(()=>expect(receive).toBeDefined());const ack=vi.fn();
+ render(<UnifiedMobileWorkbenchHost/>);await screen.findByRole("heading",{name:/^(对话|Chats)$/});await waitFor(()=>expect(receive).toBeDefined());const ack=vi.fn();
  act(()=>receive({data:{type:"AGBRIO_OPEN_BRIDGE",target:"/mobile?workstream=work-b&reply=warm-qa"},origin:window.location.origin,ports:[{postMessage:ack}]} as unknown as MessageEvent));
  await waitFor(()=>expect(api.workstream).toHaveBeenCalledWith("work-b"));expect(await screen.findByRole("heading",{name:"B 工作区"})).toBeVisible();expect(ack).toHaveBeenCalledWith({accepted:true});
 });

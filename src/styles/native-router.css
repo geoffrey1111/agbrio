@@ -290,3 +290,6 @@ html[data-agbrio-input=keyboard] :where(.r2-router,.r2-relay,.r2-sheet,.v5-role-
 
 :where(.r2-router,.v5-role-chat) .v3-role-bridge-sides>article>.r2-goal-manager{margin:0 24px 10px;min-width:0;}
 @media(max-width:760px){:where(.r2-router,.v5-role-chat) .v3-role-bridge-sides>article>.r2-goal-manager{margin-inline:20px;}}
+
+/* Listener controls preserve the existing reader and stable visit ordering. */
+.v4-watch-tools{display:flex;align-items:center;gap:10px;margin:12px 0 20px}.v4-watch-tools input{flex:1;min-width:0;min-height:44px;padding:10px 14px;border:1px solid var(--r2-divider,#ddd5cb);border-radius:12px;background:var(--r2-paper,#fffdf9);color:var(--r2-ink,#25221e);font:inherit;font-size:16px}.v4-watch-tools button{flex:none;min-height:44px}.v4-watch-group{font-size:14px;font-weight:550;color:var(--r2-muted,#776c61);margin:24px 0 8px}.v4-watch-preview{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font-size:14px;line-height:1.6;color:var(--r2-muted,#776c61);margin:8px 0 12px}.v4-watch-item>header{gap:12px;align-items:start}.v4-watch-item>header strong{min-width:0;overflow-wrap:anywhere}.v4-watch-item>header>span{flex:none;max-width:45%;font-size:13px}.v4-watch-item[data-enabled=false]{background:var(--r2-soft,#f1ece5)}

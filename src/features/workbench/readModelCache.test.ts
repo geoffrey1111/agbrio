@@ -1,6 +1,11 @@
 import {afterEach,expect,it,vi} from "vitest";
 import {ReadModelCache} from "./readModelCache";
 const caches:ReadModelCache[]=[];
+it("manual refresh can retire a stuck read without a late result replacing the new page",async()=>{
+ const c=cache();let finish!:(v:string)=>void;const old=c.read("board:character",()=>new Promise<string>(r=>finish=r));await Promise.resolve();
+ expect(await c.refresh("board:character",async()=>"fresh",2000,{supersede:true})).toBe("fresh");
+ finish("old");await expect(old).rejects.toThrow("READ_CACHE_SUPERSEDED");expect(c.peek("board:character")).toBe("fresh");
+});
 function cache(){const c=new ReadModelCache(()=>localStorage);caches.push(c);return c;}
 afterEach(()=>{for(const c of caches.splice(0))c.dispose();localStorage.clear();vi.useRealTimers();vi.restoreAllMocks();});
 it("deduplicates cold reads and returns a warm snapshot without another request",async()=>{
@@ -25,7 +30,7 @@ it("binding mutation invalidates an old pending read instead of restoring old da
  const c=cache();let done!:(v:string)=>void;const request=c.read("bridge:a",()=>new Promise<string>(r=>done=r));await Promise.resolve();c.invalidate("bridge:a",true);done("old endpoint");await expect(request).rejects.toThrow("READ_CACHE_SUPERSEDED");expect(c.peek("bridge:a")).toBeUndefined();await c.refresh("bridge:a",async()=>"new endpoint");expect(c.peek("bridge:a")).toBe("new endpoint");
 });
 it("expired, corrupt and quota-limited storage do not block fresh reads",async()=>{
- vi.useFakeTimers();localStorage.setItem("agbrio.private-read-cache.v1",JSON.stringify({scope:"a",rows:[{key:"bridge:a",at:Date.now()-86400001,value:"expired"}]}));const c=cache();c.setScope("a");expect(c.peek("bridge:a")).toBeUndefined();vi.spyOn(Storage.prototype,"setItem").mockImplementation(()=>{throw Error("quota");});expect(await c.read("bridge:a",async()=>"fresh")).toBe("fresh");await vi.advanceTimersByTimeAsync(250);expect(c.peek("bridge:a")).toBe("fresh");
+ vi.useFakeTimers();localStorage.setItem("agbrio.private-read-cache.v1",JSON.stringify({scope:"a",rows:[{key:"bridge:a",at:Date.now()-7*86400000-1,value:"expired"}]}));const c=cache();c.setScope("a");expect(c.peek("bridge:a")).toBeUndefined();vi.spyOn(Storage.prototype,"setItem").mockImplementation(()=>{throw Error("quota");});expect(await c.read("bridge:a",async()=>"fresh")).toBe("fresh");await vi.advanceTimersByTimeAsync(250);expect(c.peek("bridge:a")).toBe("fresh");
 });
 it("does not persist unscoped or oversized bodies",async()=>{
  vi.useFakeTimers();const c=cache();c.put("chat:a","unscoped");await vi.advanceTimersByTimeAsync(250);expect(localStorage.length).toBe(0);c.setScope("a");c.put("chat:b","x".repeat(1600000));c.put("bridge:a","small");await vi.advanceTimersByTimeAsync(250);const stored=localStorage.getItem("agbrio.private-read-cache.v1")!;expect(stored.length).toBeLessThan(1500000);expect(stored).toContain("small");expect(stored).not.toContain("chat:b");

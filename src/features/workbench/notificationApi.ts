@@ -7,9 +7,18 @@ import { desktopWatchChatApi, webWatchChatApi } from "./watchChatApi";
 import {readModels} from "./readModelCache";
 export function cachedNotificationApi(raw:NotificationApi):NotificationApi {
  const update=async<T>(work:()=>Promise<T>)=>{const value=await work();readModels.invalidate("notifications:");return value;};
+ const updateWatch=async<T>(id:string,enabled:boolean,work:()=>Promise<T>)=>{
+  const result=await work();const previous=readModels.peek<Awaited<ReturnType<NotificationApi['watches']>>>("notifications:watches");
+  if(previous)readModels.put("notifications:watches",previous.map(w=>w.threadId===id?{...w,enabled}:w));
+  // A failed follow-up read must not misreport an acknowledged pause/resume as
+  // failed. Keep that acknowledged state and let the read clock retry.
+  try{await readModels.refresh("notifications:watches",raw.watches,5000,{supersede:true});}catch{/* last acknowledged state remains */}
+  return result;
+ };
  return {...raw,cachedWatches:()=>readModels.peek("notifications:watches"),cachedFeed:()=>readModels.peek("notifications:feed"),subscribe:fn=>{const a=readModels.subscribe("notifications:watches",fn),b=readModels.subscribe("notifications:feed",fn);return()=>{a();b();};},
+  refreshWatches:()=>readModels.refresh("notifications:watches",raw.watches,5000,{supersede:true}),
   watches:()=>readModels.read("notifications:watches",raw.watches),feed:after=>after?raw.feed(after):readModels.read("notifications:feed",()=>raw.feed(0)),event:id=>readModels.read(`notifications:event:${id}`,()=>raw.event(id),30000),
-  enable:id=>update(()=>raw.enable(id)),pause:id=>update(()=>raw.pause(id)),remove:raw.remove?(...args)=>update(()=>raw.remove!(...args)):undefined,
+  enable:id=>updateWatch(id,true,()=>raw.enable(id)),pause:id=>updateWatch(id,false,()=>raw.pause(id)),remove:raw.remove?(...args)=>update(()=>raw.remove!(...args)):undefined,
   markSeen:raw.markSeen?id=>update(()=>raw.markSeen!(id)):undefined,markRead:raw.markRead?id=>update(()=>raw.markRead!(id)):undefined,
  };
 }

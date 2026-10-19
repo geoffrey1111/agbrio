@@ -16,7 +16,8 @@ if(mobile){
  prepareMobileSession();
 }
 // Preserve the existing desktop entry; no Host/Agent launch or transport change.
-void import("./main").catch(()=>{
+const entry=mobile?()=>import("./mainMobile"):()=>import("./main");
+void entry().catch(()=>{
  if(!mobile)return;
  const message=document.getElementById("aiwr-startup-status");
  if(message)message.textContent=t("连接暂时不可用");

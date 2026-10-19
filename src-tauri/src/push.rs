@@ -578,8 +578,8 @@ mod tests {
     #[test]
     fn configured_vapid_subject_uses_only_a_pathless_https_mobile_origin() {
         assert_eq!(
-            configured_vapid_subject_from_origin(Some("https://router.example.invalid")).unwrap(),
-            "https://router.example.invalid"
+            configured_vapid_subject_from_origin(Some("https://router.example.com")).unwrap(),
+            "https://router.example.com"
         );
         assert_eq!(
             configured_vapid_subject_from_origin(Some("https://router.example:8443/")).unwrap(),

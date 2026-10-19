@@ -9,7 +9,7 @@ let shellCommit=Promise.resolve();
 function olderRevision(next,previous){const parse=s=>s?.match(/^(\d{4})\.(\d{2})\.(\d{2})-(\d+)$/)?.slice(1).map(Number);const a=parse(next),b=parse(previous);if(!a||!b)return false;for(let i=0;i<a.length;i++){if(a[i]!==b[i])return a[i]<b[i];}return false;}
 function commitShell(cache,response,html,signal){const work=shellCommit.then(async()=>{const previous=await cache.match?.(SHELL_KEY);if(previous){const old=shellIdentity(await previous.text());if(olderRevision(shellIdentity(html).revision,old.revision))return old;}if(signal.aborted)throw Error("connection timeout");await cache.put(SHELL_KEY,response.clone());return shellIdentity(html);});shellCommit=work.catch(()=>undefined);return work;}
 function shellResponse(response) { return response.ok && !response.redirected && (response.headers.get("content-type") || "").includes("text/html"); }
-function staticAsset(url) { return url.origin === self.location.origin && (url.pathname.startsWith("/assets/") || url.pathname.startsWith("/fonts/") || ["/icon.ico","/manifest.webmanifest"].includes(url.pathname)); }
+function staticAsset(url) { return url.origin === self.location.origin && (url.pathname.startsWith("/assets/") || url.pathname.startsWith("/fonts/") || url.pathname.startsWith("/avatars/") || ["/icon.ico","/manifest.webmanifest"].includes(url.pathname)); }
 async function withDeadline(work) {
   const abort = new AbortController();let timer;
   const deadline = new Promise((_,reject) => {timer=setTimeout(()=>{abort.abort();reject(new Error("connection timeout"));},8000);});

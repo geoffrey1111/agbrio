@@ -1,5 +1,7 @@
+import {boardCache} from '../features/character-board/boardCache';
 import {readModels} from "../features/workbench/readModelCache";
 import {beginPwaMutation} from './pwaUpdates';
+import {awaitLiveSession,sessionIsLive} from './startup';
 export type MobileWorkstream = {
   id: string;
   name: string;
@@ -283,21 +285,36 @@ export async function request<T>(path:string,init?:RequestInit):Promise<T>{
  const key=path==="/workstreams"?"directory:mobile":/^\/workstreams\/[^/]+$/.test(path)?`workstream:${decodeURIComponent(path.split("/")[2])}`:null;
  if(reading&&key)return readModels.read(key,()=>liveRequest<T>(path,init),5000);
  const result=await liveRequest<T>(path,init);
+ const passive=passiveRead(path,init);
  const action=typeof init?.body==="string"?(()=>{try{return JSON.parse(init.body).action;}catch{return null;}})():null;
- const passive=path==="/bridge-activity"||(/\/role-bridge$/.test(path)&&["SYNC","READ","THREADS","BLOCKS","ATTACHMENTS"].includes(action));
  if(!reading&&!passive){readModels.invalidate("bridge-activity:");readModels.invalidate("directory:");if(/\/(trash|purge|endpoints)$/.test(path)||(/\/role-bridge$/.test(path)&&action==="BIND")){readModels.invalidate("bridge:",true);readModels.invalidate("bridge-activity:",true);}}
  return result;
 }
+function passiveRead(path:string,init?:RequestInit){
+ const action=typeof init?.body==="string"?(()=>{try{return JSON.parse(init.body).action;}catch{return null;}})():null;
+ return path==="/bridge-activity"||(/\/role-bridge$/.test(path)&&["SYNC","READ","THREADS","BLOCKS","ATTACHMENTS"].includes(action));
+}
 export async function liveRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const generation=readModels.generation(),reading=!init?.method||['GET','HEAD'].includes(init.method.toUpperCase());
+  const controller=reading?new AbortController():null;
+  const abort=()=>controller?.abort();let timedOut=false;
+  const waitValue=Number(new URLSearchParams(path.split('?')[1]??'').get('waitSeconds')??0),wait=Number.isFinite(waitValue)?waitValue:0;
+  const timeout=reading?setTimeout(()=>{timedOut=true;controller!.abort();},path.startsWith('/character-board/assets/')?45000:Math.max(15000,(Math.min(Math.max(wait,0),20)+5)*1000)):undefined;
+  if(controller){if(init?.signal?.aborted)controller.abort();else init?.signal?.addEventListener('abort',abort,{once:true});}
+  // A cache-first page may render before the live session check returns;
+  // writes (other than passive reads sent as POST) wait for that check.
   const end=init?.method&&!['GET','HEAD'].includes(init.method.toUpperCase())?beginPwaMutation():()=>{};
   try{
+  if(!reading&&!sessionIsLive()&&!passiveRead(path,init))await awaitLiveSession();
   const response = await fetch(`/v1/mobile${path}`, {
     ...init,
+      signal:controller?.signal??init?.signal,
     cache: "no-store",
     headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
   });
   if (!response.ok) {
-    if(response.status===401)window.dispatchEvent(new Event("aiwr-login-required"));
+      if(response.status===401&&generation===readModels.generation())void boardCache.clear();
+      if(response.status===401)window.dispatchEvent(new CustomEvent("aiwr-login-required",{detail:{generation}}));
     const body = await response.json().catch(() => null) as { error?: unknown } | null;
     const detail =
       typeof body?.error === "string" && body.error.trim()
@@ -307,7 +324,8 @@ export async function liveRequest<T>(path: string, init?: RequestInit): Promise<
   }
   if (response.status === 204) return undefined as T;
   return await response.json() as T;
-  }finally{end();}
+    }catch(error){if(timedOut)throw new MobileApiError(408,"ROUTER_READ_TIMEOUT");throw error;}
+    finally{clearTimeout(timeout);init?.signal?.removeEventListener('abort',abort);end();}
 }
 
 export const mobileApi = {

@@ -242,6 +242,12 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
     };
     let watch_api = Router::new()
         .route("/v1/mobile/codex-quota",get(codex_quota_read))
+        .route("/v1/mobile/claude-quota",get(claude_quota_read))
+        .route("/v1/mobile/character-board",get(character_board_snapshot).layer(tower_http::compression::CompressionLayer::new()))
+        .route("/v1/mobile/character-board/view",get(character_board_view).layer(tower_http::compression::CompressionLayer::new()))
+        .route("/v1/mobile/character-board/review",post(character_board_review))
+        .route("/v1/mobile/board-source",get(board_source_read))
+        .route("/v1/mobile/character-board/assets/{asset_id}",get(character_board_asset))
         .route("/v1/mobile/bridges",post(create_bridge))
         .route("/v1/mobile/bridges/{workstream_id}/rename",post(rename_bridge))
         .route("/v1/mobile/media",post(read_message_media))
@@ -562,6 +568,44 @@ async fn watch_no_store(mut response:axum::response::Response)->axum::response::
 #[derive(Deserialize)]
 #[serde(tag="action",rename_all="SCREAMING_SNAKE_CASE")]
 enum WatchCommand { MarkSeen {sequence:i64},MarkRead {sequence:i64}, Remove {kind:String,id:String,removed:bool}, Enable { #[serde(rename="threadId")] thread_id:String }, Pause { #[serde(rename="threadId")] thread_id:String }, Threads, Connect }
+
+#[derive(Deserialize)]
+#[serde(rename_all="camelCase")]
+struct BoardQuery { known_revision:Option<String>,#[serde(default)] metadata_only:bool }
+#[derive(Deserialize)]
+struct BoardReviewInput{revision:String,#[serde(flatten)]input:crate::character_board_review::ReviewInput}
+/// The phone may read which board source is active; only the desktop can change it.
+async fn board_source_read(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<Option<crate::character_board::Source>>{board_authenticated(&headers,&state).await?;Ok(Json(crate::character_board::source()))}
+async fn character_board_review(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<BoardReviewInput>)->Result<impl IntoResponse,ApiError>{
+    authenticated(&headers,&state,true).await?;
+    Ok(([("cache-control","private, no-store")],Json(crate::character_board_review::proxy(input.revision,input.input).await)))
+}
+#[derive(Deserialize)]
+struct BoardAssetQuery { revision:String, variant:Option<String> }
+#[derive(Deserialize)]
+struct BoardFrameQuery { revision:String,channel:String }
+async fn board_authenticated(headers:&HeaderMap,state:&MobileHttpState)->Result<(),ApiError>{
+    authenticated(headers,state,false).await?;
+    if headers.get("origin").is_some_and(|o|o.to_str().ok()!=Some(state.config.allowed_origin.as_str())){return Err(ApiError(StatusCode::FORBIDDEN,"Origin is not allowed".into()));}
+    Ok(())
+}
+async fn character_board_view(State(state):State<MobileHttpState>,headers:HeaderMap,Query(query):Query<BoardFrameQuery>)->Result<impl IntoResponse,ApiError>{
+    board_authenticated(&headers,&state).await?;
+    let html=run_core_blocking("Character board page",move||crate::character_board::frame(&query.revision,&query.channel)).await?;
+    Ok(([("content-type","text/html; charset=utf-8"),("cache-control","no-store"),("content-security-policy",crate::character_board::FRAME_CSP),("referrer-policy","no-referrer")],html))
+}
+async fn character_board_snapshot(State(state):State<MobileHttpState>,headers:HeaderMap,Query(query):Query<BoardQuery>)->Result<impl IntoResponse,ApiError>{
+    board_authenticated(&headers,&state).await?;
+    let snapshot=run_core_blocking("Character board",move||crate::character_board::snapshot(query.known_revision.as_deref())).await?;
+    // New mobile shells need the catalog/change marker, not a second copy of
+    // the entire HTML subsequently read by the authenticated sandbox frame.
+    let body=if query.metadata_only{serde_json::json!({"revision":snapshot.revision,"changed":snapshot.html.is_some(),"assets":snapshot.assets})}else{serde_json::to_value(snapshot).map_err(|_|ApiError(StatusCode::INTERNAL_SERVER_ERROR,"BOARD_ENCODING_FAILED".into()))?};
+    Ok(([("cache-control","private, no-store")],Json(body)))
+}
+async fn character_board_asset(Path(asset_id):Path<String>,State(state):State<MobileHttpState>,headers:HeaderMap,Query(query):Query<BoardAssetQuery>)->Result<impl IntoResponse,ApiError>{
+    board_authenticated(&headers,&state).await?;
+    Ok(([("cache-control","private, no-store"),("x-content-type-options","nosniff")],Json(run_core_blocking("Character board image",move||crate::character_board::display_asset(&query.revision,&asset_id,query.variant.as_deref().unwrap_or("original"))).await?)))
+}
 #[derive(Deserialize)]
 #[serde(rename_all="camelCase")]
 struct WatchFeedQuery { #[serde(default)] after:i64, #[serde(default)] wait_seconds:u64 }
@@ -574,6 +618,10 @@ async fn assistant_settings_view(State(state):State<MobileHttpState>,headers:Hea
 }
 async fn assistant_connect_instance(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<router_core::store::assistant::AssistantConnectionInput>)->ApiResult<router_core::store::assistant::AssistantGrant>{
  authenticated(&headers,&state,true).await?;state.core.store.connect_assistant_instance(input).map(Json).map_err(core_error)
+}
+async fn claude_quota_read(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<crate::codex_quota::Quota>{
+ authenticated(&headers,&state,false).await?;
+ Ok(Json(run_core_blocking("Claude quota",||Ok(crate::claude_quota::read())).await?))
 }
 async fn codex_quota_read(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<crate::codex_quota::Quota>{
  authenticated(&headers,&state,false).await?;
@@ -2541,7 +2589,7 @@ process.stdout.write(JSON.stringify({keys:[jwk],token}));
             .to_path_buf();
         let evidence = root.join("runtime/integrated-provider-router");
         fs::create_dir_all(&evidence).unwrap();
-        let scratch = PathBuf::from(r"D:\desktop\临时处理");
+        let scratch = std::env::temp_dir().join("aiwr-mobile-e2e");
         fs::create_dir_all(&scratch).unwrap();
         let directory = tempfile::Builder::new()
             .prefix("aiwr-mobile-ui-")
@@ -2731,7 +2779,7 @@ mod watch_http_tests {
   let send=|origin:&str,input:Value|client.post(format!("{base}/delivery")).header("host","router.fixture.invalid").header("origin",origin).header(ACCESS_JWT_HEADER,token).json(&input).send().unwrap();
   assert!(!send("https://wrong.invalid",json!({"action":"CHANNEL","channel":"WEB","enabled":true})).status().is_success());
   assert!(send("https://router.fixture.invalid",json!({"action":"CHANNEL","channel":"WEB","enabled":true})).status().is_success());
-  assert_eq!(send("https://router.fixture.invalid",json!({"action":"EMAIL","account":"sender@gmail.com","recipient":"agbrio.fixture@gmail.com","password":"fixture-secret"})).status(),StatusCode::FORBIDDEN);
+  assert_eq!(send("https://router.fixture.invalid",json!({"action":"EMAIL","account":"sender@gmail.com","recipient":"geoffreyzjx826@gmail.com","password":"fixture-secret"})).status(),StatusCode::FORBIDDEN);
   let removal=json!({"action":"REMOVE","kind":"EVENT","id":"1","removed":true});
   assert_eq!(client.post(&base).header("host","router.fixture.invalid").header("origin","https://router.fixture.invalid").json(&removal).send().unwrap().status(),StatusCode::UNAUTHORIZED);
   assert_eq!(client.post(&base).header("host","router.fixture.invalid").header("origin","https://wrong.invalid").header(ACCESS_JWT_HEADER,token).json(&removal).send().unwrap().status(),StatusCode::FORBIDDEN);
@@ -2770,3 +2818,26 @@ async fn rename_bridge(State(state):State<MobileHttpState>,headers:HeaderMap,Pat
 }
 
 async fn read_message_media(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<crate::message_media::MediaInput>)->ApiResult<crate::message_media::MediaFile>{authenticated(&headers,&state,true).await?;let core=state.core.clone();run_core_blocking("Message media",move||crate::message_media::read(&core,input)).await.map(Json)}
+
+#[cfg(all(test,windows))]
+mod character_board_http_tests {
+    use super::*;
+    #[test]
+    #[ignore="Explicit isolated real browser-to-Host-to-Card-service gate; no production auth or notification"]
+    fn disposable_board_review_browser_gate(){
+        if std::env::var("AGBRIO_BOARD_BROWSER_GATE").as_deref()!=Ok("1"){return;}
+        let evidence=PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("runtime/board-upgrade-20261018");fs::create_dir_all(&evidence).unwrap();
+        let directory=tempfile::Builder::new().prefix("http-fixture-").tempdir_in(&evidence).unwrap();fs::write(directory.path().join("index.html"),"isolated fixture").unwrap();
+        let store=Arc::new(crate::RouterStore::open_at(directory.path().join("router.db")).unwrap());
+        let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default()};
+        let _adapter_owner=core.chatgpt.clone();
+        let signed=tests::ephemeral_access_fixture();let keys=serde_json::json!({"keys":signed["keys"]});let runtime=tokio::runtime::Runtime::new().unwrap();
+        let (keys_url,task)=runtime.block_on(async{let listener=TcpListener::bind("127.0.0.1:0").await.unwrap();let address=listener.local_addr().unwrap();let server=Router::new().route("/certs",get(move||{let value=keys.clone();async move{Json(value)}}));let task=tokio::spawn(async move{axum::serve(listener,server).await.unwrap()});(format!("http://{address}/certs"),task)});
+        let config=MobileHttpConfig{port:0,allowed_host:"router.fixture.invalid".into(),allowed_origin:"https://router.fixture.invalid".into(),access_issuer:"https://fixture.invalid".into(),access_audience:"fixture-audience".into(),access_jwks_url:keys_url,static_dir:directory.path().into()};
+        let host=crate::HostRuntime::default();let handle=runtime.block_on(start(core,config,host.clone())).unwrap();let snapshot=crate::character_board::snapshot(None).unwrap();let stop=evidence.join("board-http.stop");
+        assert!(!stop.exists(),"Retire a previous fixture before starting another");
+        fs::write(evidence.join("board-http-private-ready.json"),serde_json::to_vec(&serde_json::json!({"origin":format!("http://{}",handle.address),"host":"router.fixture.invalid","allowedOrigin":"https://router.fixture.invalid","token":signed["token"],"revision":snapshot.revision,"stop":stop,"disposable":true})).unwrap()).unwrap();
+        println!("ISOLATED_BOARD_HTTP_BROWSER_READY");for _ in 0..180{if stop.exists(){break;}std::thread::sleep(Duration::from_secs(1));}
+        runtime.block_on(handle.shutdown());task.abort();
+    }
+}

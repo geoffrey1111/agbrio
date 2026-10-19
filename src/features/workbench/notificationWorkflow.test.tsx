@@ -13,12 +13,13 @@ it('puts paused watches below enabled watches regardless of usage and sorts each
  expect(order()).toEqual(['active-high','active-low','paused-high','paused-low']);
  expect(a.enable).not.toHaveBeenCalled();expect(a.pause).not.toHaveBeenCalled();
 });
-it('freezes pause and resume sorting changes during a visit and applies both groups after reentry',async()=>{
+it('keeps usage order frozen during a visit while a newly paused chat sinks, and re-sorts after reentry',async()=>{
  vi.useFakeTimers();const a=api([watch('first',8),{...watch('second',100),enabled:false},watch('third',2)]);
  render(<CodexNotifications api={a} standalone/>);await act(async()=>{});fireEvent.click(screen.getByRole('tab',{name:'监听对话'}));
  expect(order()).toEqual(['first','third','second']);
  vi.mocked(a.watches).mockResolvedValue([{...watch('first',8),enabled:false},watch('second',100),watch('third',2)]);
- await act(async()=>{await vi.advanceTimersByTimeAsync(5100);});expect(order()).toEqual(['first','third','second']);
+ // Usage order stays frozen during the visit, but a newly paused chat sinks below active ones at once.
+ await act(async()=>{await vi.advanceTimersByTimeAsync(5100);});expect(order()).toEqual(['third','second','first']);
  fireEvent.click(screen.getByRole('tab',{name:'最近通知'}));fireEvent.click(screen.getByRole('tab',{name:'监听对话'}));
  expect(order()).toEqual(['second','third','first']);
 });

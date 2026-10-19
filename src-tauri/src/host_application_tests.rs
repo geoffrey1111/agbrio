@@ -1010,7 +1010,7 @@ fn real_codex_existing_thread_observer_e2e() {
         Ok("1"),
         "set AIWR_REAL_CODEX_OBSERVER_E2E=1 to authorize the one disposable Codex turn"
     );
-    let scratch = std::path::PathBuf::from(r"D:\fixtures\临时处理");
+    let scratch = std::env::temp_dir().join("aiwr-observer-e2e");
     std::fs::create_dir_all(&scratch).unwrap();
     let directory = tempfile::tempdir_in(scratch).expect("temporary observer workspace");
     let store = Arc::new(
@@ -2881,7 +2881,7 @@ fn real_codex_approved_core_handoff_under_chatgpt_auth_stop() {
     );
     let directory = tempfile::Builder::new()
         .prefix("aiwr-approved-codex-")
-        .tempdir_in(r"D:\fixtures\临时处理")
+        .tempdir_in(std::env::temp_dir())
         .unwrap();
     fs::write(directory.path().join("browser-auth-required.json"), "{}").unwrap();
     let store = Arc::new(RouterStore::open_at(directory.path().join("router.db")).unwrap());

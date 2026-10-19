@@ -1,3 +1,5 @@
+import {SelectionIndicator} from "./InteractionMotion";
+import {useId} from "react";
 import {useNotificationSeen} from "./useNotificationSeen";
 import {messagePreview} from "./messagePreview";
 import {t as uiText,useLanguage,getLanguage} from "../../i18n";
@@ -23,23 +25,26 @@ export type WatchSnapshot = { state:string; turnId:string|null; itemId:string|nu
 export type CodexWatch = { threadId:string; label:string; cwd:string; enabled:boolean; generation:number; snapshot:WatchSnapshot; checkedAt:number; errorCode:string|null;sendCount?:number };
 export type WatchEvent = { sequence:number; threadId:string; label:string; cwd:string; snapshot:WatchSnapshot; observedAt:number;seenAt?:number|null };
 export type WatchFeed = { events:WatchEvent[]; nextCursor:number; hasMore:boolean; hiddenSequences?:number[] };
-export interface NotificationApi { cachedWatches?():CodexWatch[]|undefined; cachedFeed?():WatchFeed|undefined; subscribe?(listener:()=>void):()=>void; markSeen?(sequence:number):Promise<unknown>; markRead?(sequence:number):Promise<unknown>; remove?(kind:"WATCH"|"EVENT",id:string,removed:boolean):Promise<unknown>; watches():Promise<CodexWatch[]>; connect():Promise<unknown>; threads():Promise<ExistingCodexThreadCatalog>; enable(id:string):Promise<unknown>; pause(id:string):Promise<unknown>; feed(after:number):Promise<WatchFeed>; event(sequence:number):Promise<WatchEvent>; webUrl():Promise<string|null>; delivery?:DeliveryApi; chat?:WatchChatApi; onOpen?:(callback:(sequence:number)=>void)=>Promise<()=>void> }
+export interface NotificationApi { cachedWatches?():CodexWatch[]|undefined; cachedFeed?():WatchFeed|undefined; subscribe?(listener:()=>void):()=>void; markSeen?(sequence:number):Promise<unknown>; markRead?(sequence:number):Promise<unknown>; remove?(kind:"WATCH"|"EVENT",id:string,removed:boolean):Promise<unknown>; watches():Promise<CodexWatch[]>; refreshWatches?():Promise<CodexWatch[]>; connect():Promise<unknown>; threads():Promise<ExistingCodexThreadCatalog>; enable(id:string):Promise<unknown>; pause(id:string):Promise<unknown>; feed(after:number):Promise<WatchFeed>; event(sequence:number):Promise<WatchEvent>; webUrl():Promise<string|null>; delivery?:DeliveryApi; chat?:WatchChatApi; onOpen?:(callback:(sequence:number)=>void)=>Promise<()=>void> }
 
 const states:Record<string,string>={get IDLE(){return uiText("尚无任务");},get RUNNING(){return uiText("正在执行");},get ACTION_REQUIRED(){return uiText("需要你确认或回答");},get RESULT_READY(){return uiText("结果已到达");},get RESULT_PENDING(){return uiText("结果尚未读到");},get FAILED(){return uiText("执行失败");},get INTERRUPTED(){return uiText("已中断");},get INCOMPLETE(){return uiText("任务未完成（执行中或已中断）");},get UNKNOWN(){return uiText("状态未确定");}};
 const time=(value:number)=>new Date(value).toLocaleString(getLanguage());
 const watchState=(w:CodexWatch)=>!w.enabled?uiText("已暂停"):w.errorCode?uiText("暂时无法读取"):Date.now()-w.checkedAt>30_000?uiText("最近未成功检查"):states[w.snapshot.state]??w.snapshot.state;
-const notificationError=(error:unknown)=>String(error).includes("WATCH_ALREADY_IN_BRIDGE")?uiText("这条对话已在 Bridge 中，可直接从 Bridge 打开。"):String(error).includes("WATCH_EVENT_NOT_FOUND")?uiText("这条通知已清理或不可用。请查看最近通知或对话当前内容。"):String(error);
+const notificationError=(error:unknown)=>String(error).includes("ROUTER_READ_TIMEOUT")?uiText("读取超时，现有内容已保留，请稍后重试。"):String(error).includes("WATCH_ALREADY_IN_BRIDGE")?uiText("这条对话已在 Bridge 中，可直接从 Bridge 打开。"):String(error).includes("WATCH_EVENT_NOT_FOUND")?uiText("这条通知已清理或不可用。请查看最近通知或对话当前内容。"):String(error);
 type Removable={kind:"WATCH";item:CodexWatch}|{kind:"EVENT";item:WatchEvent};
 type View="RECENT"|"WATCHES"|"SETTINGS";
 export function CodexNotifications({api,standalone=false,workbenchPage,onCountChange,onDetailChange}:{api:NotificationApi;standalone?:boolean;onCountChange?:(count:number)=>void;onDetailChange?:(active:boolean)=>void;workbenchPage?:{active:boolean;open:()=>void}}) {
  useLanguage();
+ const tabGroup=useId();
  const native=useContext(NativeSurfaceContext);
- const tabs:readonly (readonly [View,string])[]=native?[["RECENT",uiText("最近")],["WATCHES",uiText("监听")]]:[["RECENT",uiText("最近通知")],["WATCHES",uiText("监听对话")],["SETTINGS",uiText("通知设置")]];
+ // The native app lists watched conversations under 对话; this page keeps recent notifications.
+ const tabs:readonly (readonly [View,string])[]=native?[["RECENT",uiText("最近")]]:[["RECENT",uiText("最近通知")],["WATCHES",uiText("监听对话")],["SETTINGS",uiText("通知设置")]];
  const pageNavigation=useRef(workbenchPage);pageNavigation.current=workbenchPage;
  const [open,setOpen]=useState(standalone),[view,setView]=useState<View>("RECENT");
  const [watches,setWatches]=useState<CodexWatch[]>(()=>api.cachedWatches?.()??[]),[events,setEvents]=useState<WatchEvent[]>(()=>api.cachedFeed?.()?.events??[]);
  const [hiddenSequences,setHiddenSequences]=useState<number[]>(()=>api.cachedFeed?.()?.hiddenSequences??[]);
  const [catalog,setCatalog]=useState<ExistingCodexThreadCatalog|null>(null),[selected,setSelected]=useState("");
+ const [watchQuery,setWatchQuery]=useState("");
  useBackLayer(Boolean(catalog),()=>setCatalog(null));
  const [error,setError]=useState<string|null>(null),[busy,setBusy]=useState(false);
  const[watchLoading,setWatchLoading]=useState(()=>!api.cachedWatches?.()),[watchError,setWatchError]=useState<string|null>(null);
@@ -55,6 +60,7 @@ export function CodexNotifications({api,standalone=false,workbenchPage,onCountCh
  const shown=removal.project([...watches.map(item=>({kind:"WATCH" as const,item})),...events.filter(e=>!hiddenSequences.includes(e.sequence)&&(!e.seenAt||keptThisVisit.has(e.sequence))).map(item=>({kind:"EVENT" as const,item}))]);
  const watchVisitActive=Boolean((workbenchPage?workbenchPage.active:open||standalone)&&view==="WATCHES");
  const visibleWatches=useWatchVisitOrder(shown.filter((row):row is {kind:"WATCH";item:CodexWatch}=>row.kind==="WATCH").map(row=>row.item),watchVisitActive);
+ const filteredWatches=visibleWatches.filter(w=>`${w.label} ${w.cwd} ${w.threadId.startsWith("claude_code:")?"Claude Code":"Codex"}`.toLocaleLowerCase().includes(watchQuery.trim().toLocaleLowerCase()));
  const seenContainer=useRef<HTMLDivElement>(null);
  const visibleEvents=shown.filter((row):row is {kind:"EVENT";item:WatchEvent}=>row.kind==="EVENT").map(row=>row.item).sort((a,b)=>a.sequence-b.sequence);
  const unread=visibleEvents.filter(e=>!e.seenAt).map(e=>e.sequence);
@@ -62,6 +68,7 @@ export function CodexNotifications({api,standalone=false,workbenchPage,onCountCh
  useNotificationSeen(seenContainer,recentActive,visibleEvents.map(e=>e.sequence),unread,api.markSeen,sequence=>{setEvents(old=>old.map(e=>e.sequence===sequence?{...e,seenAt:Date.now()}:e));},cause=>setLinkNotice(notificationError(cause)));
  const [webUrl,setWebUrl]=useState<string|null>(null);
  const returnKey=useRef<string|null>(null),returnScroll=useRef<{element:HTMLElement|null;top:number}>({element:null,top:0}),restoreList=useRef(false);
+ const actionPending=useRef(false);
  const cursor=useRef(0),epoch=useRef(0),mounted=useRef(true),detailElement=useRef<HTMLElement|null>(null),feedRevision=useRef(0);
  const eventsRef=useRef(events);eventsRef.current=events;
  function applyFeed(feed:WatchFeed,replace=false){setHiddenSequences(feed.hiddenSequences??[]);setEvents(old=>(replace?feed.events.map(e=>({...e,seenAt:e.seenAt??old.find(prior=>prior.sequence===e.sequence)?.seenAt})):[...old,...feed.events.filter(e=>!old.some(o=>o.sequence===e.sequence))]).slice(-20));cursor.current=feed.nextCursor;}
@@ -78,16 +85,16 @@ export function CodexNotifications({api,standalone=false,workbenchPage,onCountCh
   return()=>{active=false;dispose?.();};
  },[api]);
  useEffect(()=>{
-  let active=true,timer:ReturnType<typeof setTimeout>;
-  async function poll(){if(document.visibilityState==="hidden"){timer=setTimeout(()=>void poll(),5000);return;}const revision=++feedRevision.current;const results=await Promise.allSettled([
+  let active=true,polling=false,timer:ReturnType<typeof setTimeout>;
+  async function poll(){if(polling)return;if(document.visibilityState==="hidden"){timer=setTimeout(()=>void poll(),5000);return;}polling=true;const revision=++feedRevision.current;const results=await Promise.allSettled([
    api.watches().then(next=>{if(active){setWatches(next);setWatchLoading(false);setWatchError(null);}}).catch(e=>{if(active){setWatchLoading(false);setWatchError(notificationError(e));}throw e;}),
    api.feed(0).then(feed=>{if(active&&revision===feedRevision.current){applyFeed(feed,true);setError(null);}return feed;}).catch(e=>{if(active)setError(notificationError(e));throw e;})
-  ]);if(active){const feed=results[1];timer=setTimeout(()=>void poll(),feed.status==="fulfilled"?(feed.value.hasMore?100:5000):10000);}}
+  ]);polling=false;if(active){const feed=results[1];timer=setTimeout(()=>void poll(),feed.status==="fulfilled"?5000:10000);}}
   const unsubscribe=api.subscribe?.(()=>{if(!active)return;const watches=api.cachedWatches?.();if(watches){setWatches(watches);setWatchLoading(false);}const feed=api.cachedFeed?.();if(feed)applyFeed(feed,true);});
   const wake=()=>{if(document.visibilityState!=="hidden"){clearTimeout(timer);void poll();}};document.addEventListener("visibilitychange",wake);window.addEventListener("online",wake);void poll();return()=>{active=false;clearTimeout(timer);unsubscribe?.();document.removeEventListener("visibilitychange",wake);window.removeEventListener("online",wake);};
  },[api,open]);
- async function act(work:()=>Promise<void>){if(busy)return;setBusy(true);setError(null);const mark=++epoch.current;try{await work();}catch(e){if(mounted.current&&mark===epoch.current)setLinkNotice(notificationError(e));}finally{if(mounted.current&&mark===epoch.current)setBusy(false);}}
- async function refreshWatches(){setWatchLoading(true);try{const next=await api.watches();if(mounted.current){setWatches(next);setWatchError(null);}}catch(e){if(mounted.current)setWatchError(notificationError(e));throw e;}finally{if(mounted.current)setWatchLoading(false);}}
+ async function act(work:()=>Promise<void>){if(actionPending.current)return;actionPending.current=true;setBusy(true);setError(null);const mark=++epoch.current;try{await work();}catch(e){if(mounted.current&&mark===epoch.current)setLinkNotice(notificationError(e));}finally{actionPending.current=false;if(mounted.current&&mark===epoch.current)setBusy(false);}}
+ async function refreshWatches(force=false){setWatchLoading(true);try{const next=await (force&&api.refreshWatches?api.refreshWatches():api.watches());if(mounted.current){setWatches(next);setWatchError(null);}}catch(e){if(mounted.current)setWatchError(notificationError(e));throw e;}finally{if(mounted.current)setWatchLoading(false);}}
  function changeView(next:View){setView(next);setDetail(null);setCurrent(null);setLinkNotice(null);}
  function rememberList(button:HTMLButtonElement,key:string){returnKey.current=key;let element=button.closest<HTMLElement>(".v3-notifications-body");if(element&&getComputedStyle(element).overflowY==="visible")element=button.closest<HTMLElement>(".r2-content")??element;returnScroll.current={element,top:element?.scrollTop??window.scrollY};}
  useBackLayer(Boolean(detail||current),()=>{restoreList.current=true;setDetail(null);setCurrent(null);},"event");
@@ -106,8 +113,8 @@ export function CodexNotifications({api,standalone=false,workbenchPage,onCountCh
     <button type="button" onClick={closeDetail}>{uiText("关闭内容")}</button>
    </section>
   </>:<>
-   <div className="v4-notification-tabs" role="tablist" aria-label={uiText("通知中心栏目")}>
-    {tabs.map(([id,title])=><button type="button" key={id} role="tab" id={`notification-tab-${id}`} aria-controls="notification-panel" tabIndex={view===id?0:-1} aria-selected={view===id} disabled={busy} onClick={()=>changeView(id)} onKeyDown={event=>{const ids=tabs.map(([id])=>id);if(["ArrowLeft","ArrowRight","Home","End"].includes(event.key)){event.preventDefault();const index=ids.indexOf(id);const next=ids[event.key==="Home"?0:event.key==="End"?ids.length-1:(index+(event.key==="ArrowRight"?1:ids.length-1))%ids.length];changeView(next);(event.currentTarget.parentElement?.querySelector(`#notification-tab-${next}`) as HTMLButtonElement|null)?.focus();}}}>{uiText(title)}</button>)}
+   <div className="v4-notification-tabs agbrio-segmented" role="tablist" aria-label={uiText("通知中心栏目")} hidden={tabs.length<2}>
+    {tabs.map(([id,title])=><button type="button" key={id} role="tab" id={`notification-tab-${id}`} aria-controls="notification-panel" tabIndex={view===id?0:-1} aria-selected={view===id} disabled={busy} onClick={()=>changeView(id)} onKeyDown={event=>{const ids=tabs.map(([id])=>id);if(["ArrowLeft","ArrowRight","Home","End"].includes(event.key)){event.preventDefault();const index=ids.indexOf(id);const next=ids[event.key==="Home"?0:event.key==="End"?ids.length-1:(index+(event.key==="ArrowRight"?1:ids.length-1))%ids.length];changeView(next);(event.currentTarget.parentElement?.querySelector(`#notification-tab-${next}`) as HTMLButtonElement|null)?.focus();}}}><SelectionIndicator group={tabGroup} active={view===id}/>{uiText(title)}</button>)}
    </div>
    {view==="RECENT"&&<section id="notification-panel" role="tabpanel" aria-labelledby="notification-tab-RECENT" aria-label={uiText("Codex 通知列表")}>
     {!native&&<p className="v4-meta">{uiText("只保留最近 20 条，更早的自动清理。")}</p>}
@@ -119,9 +126,10 @@ export function CodexNotifications({api,standalone=false,workbenchPage,onCountCh
    </section>}
    {view==="WATCHES"&&<section id="notification-panel" role="tabpanel" aria-labelledby="notification-tab-WATCHES" aria-label={uiText("已监听对话")}>
     <div className="v4-section-heading"><h2>{uiText("已监听对话")}</h2><button type="button" className="v3-primary" aria-label={uiText("选择监听对话")} disabled={busy} onClick={()=>void act(async()=>{await api.connect();const next=await api.threads();if(mounted.current)setCatalog(next);})}>{native?<Plus size={20}/>:busy&&!catalog?uiText("正在扫描本地对话…"):uiText("选择监听对话")}</button></div>
+    {watches.length>0&&<div className="v4-watch-tools"><input type="search" aria-label={uiText("搜索监听对话")} placeholder={uiText("搜索对话或项目")} value={watchQuery} onChange={e=>setWatchQuery(e.target.value)}/><button type="button" disabled={busy||watchLoading} onClick={()=>void act(()=>refreshWatches(true))}>{watchLoading?uiText("正在读取…"):uiText("刷新监听")}</button></div>}
     {catalog&&<section aria-label={uiText("添加监听")} className="v4-watch-picker"><CodexThreadPicker threads={catalog.threads} complete={catalog.complete} value={selected} onChange={setSelected} ariaLabel={uiText("本地对话")} searchLabel={uiText("搜索对话或项目")} disabled={busy}/><div className="v3-notification-actions"><button type="button" onClick={()=>setCatalog(null)} disabled={busy}>{uiText("取消")}</button><button type="button" className="v3-primary" disabled={busy||!catalog.threads.some(t=>t.id===selected)} onClick={()=>void act(async()=>{await api.enable(selected);await refreshWatches();if(mounted.current){setSelected("");setCatalog(null);}})}>{uiText("开始监听所选对话")}</button></div></section>}
-    {watchError&&<p role="alert">{uiText(watchError)}<button type="button" disabled={busy||watchLoading} onClick={()=>void act(refreshWatches)}>{uiText("重试")}</button></p>}
-    {visibleWatches.length===0?watchLoading?<p className="r2-role-loading" role="status">{uiText("正在读取…")}</p>:watchError?null:<div className="v4-reader-empty"><p>{uiText("选择后会展示当前内容；后续变化进入最近通知。")}</p></div>:visibleWatches.map(w=><SwipeDeleteRow className="agbrio-card-row" key={w.threadId} label={uiText("监听 {0}", w.label)} disabled={!api.remove} onDelete={()=>removal.remove({kind:"WATCH",item:w})}><article className="v4-watch-item" data-watch-id={w.threadId}><header><strong>{w.label}</strong><span>{uiText(watchState(w))}</span></header><p className="v4-meta">{uiText("最后成功检查：")}{time(w.checkedAt)}</p><div className="v3-notification-actions"><button type="button" data-notification-key={`watch-${w.threadId}`} onClick={click=>{rememberList(click.currentTarget,`watch-${w.threadId}`);setDetail(null);setCurrent(w);}}>{uiText("查看当前内容")}</button><button type="button" disabled={busy} onClick={()=>void act(async()=>{if(w.enabled)await api.pause(w.threadId);else await api.enable(w.threadId);await refreshWatches();})}>{w.enabled?uiText("暂停监听"):uiText("恢复监听")}</button></div><details className="v4-secondary-details"><summary>{uiText("对话信息")}</summary><p>{w.cwd}</p><code>{w.threadId}</code></details></article></SwipeDeleteRow>)}
+    {watchError&&<p role="alert">{uiText(watchError)}<button type="button" disabled={busy||watchLoading} onClick={()=>void act(()=>refreshWatches(true))}>{uiText("重试")}</button></p>}
+    {visibleWatches.length===0?watchLoading?<p className="r2-role-loading" role="status">{uiText("正在读取…")}</p>:watchError?null:<div className="v4-reader-empty"><p>{uiText("选择后会展示当前内容；后续变化进入最近通知。")}</p></div>:filteredWatches.length===0?<p className="v4-meta" role="status">{uiText("没有匹配的监听对话")}</p>:filteredWatches.map((w,index)=><div key={w.threadId}>{(index===0||filteredWatches[index-1].enabled!==w.enabled)&&<h3 className="v4-watch-group">{w.enabled?uiText("正在监听"):uiText("已暂停")}</h3>}<SwipeDeleteRow className="agbrio-card-row" key={w.threadId} label={uiText("监听 {0}", w.label)} disabled={!api.remove} onDelete={()=>removal.remove({kind:"WATCH",item:w})}><article className="v4-watch-item" data-watch-id={w.threadId} data-enabled={w.enabled}><header><strong>{w.label}</strong><span>{uiText(watchState(w))}</span></header><p className="v4-meta">{w.threadId.startsWith("claude_code:")?"Claude Code":"Codex"}{w.cwd?` · ${w.cwd.split(/[\\/]/).filter(Boolean).at(-1)}`:""}</p>{w.snapshot.text&&<p className="v4-watch-preview">{messagePreview(w.snapshot.text)}</p>}<div className="v3-notification-actions"><button type="button" data-notification-key={`watch-${w.threadId}`} onClick={click=>{rememberList(click.currentTarget,`watch-${w.threadId}`);setDetail(null);setCurrent(w);}}>{uiText("查看当前内容")}</button><button type="button" disabled={busy} onClick={()=>void act(async()=>{if(w.enabled)await api.pause(w.threadId);else await api.enable(w.threadId);await refreshWatches();})}>{w.enabled?uiText("暂停监听"):uiText("恢复监听")}</button></div><details className="v4-secondary-details"><summary>{uiText("对话信息")}</summary><p className="v4-meta">{uiText("最后成功检查：")}{time(w.checkedAt)}</p><p>{w.cwd}</p><code>{w.threadId}</code></details></article></SwipeDeleteRow></div>)}
    </section>}
    {view==="SETTINGS"&&<section id="notification-panel" role="tabpanel" aria-labelledby="notification-tab-SETTINGS" aria-label={uiText("通知设置内容")}>
     <WebSessionLogout/>

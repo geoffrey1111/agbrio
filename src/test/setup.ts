@@ -10,3 +10,9 @@ Object.defineProperty(window, "ResizeObserver", { writable: true, value: ResizeO
 
 // Existing fixtures explicitly exercise Simplified Chinese; locale cases override it.
 Object.defineProperty(navigator,"languages",{configurable:true,value:["zh-CN"]});
+
+// Components below WebLoginGate run with a confirmed live session; the gate's
+// own cache-first and write-hold behavior is covered in WebLogin.test.tsx.
+import {beforeEach} from "vitest";
+import {markSessionLive} from "../mobile/startup";
+beforeEach(()=>markSessionLive(true));

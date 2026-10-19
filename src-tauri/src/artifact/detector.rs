@@ -356,7 +356,7 @@ mod tests {
     #[test]
     fn unicode_and_spaces_are_preserved() {
         let temp = tempfile::tempdir().unwrap();
-        let path = file(temp.path(), "临时处理/review package 01.zip", b"unicode");
+        let path = file(temp.path(), "测试目录/review package 01.zip", b"unicode");
         let candidates = detect("message-a", &format!("ARTIFACT:\n`{path}`"));
         assert_eq!(candidates[0].raw_path, path);
         assert!(candidates[0].exists);

@@ -72,7 +72,7 @@ it("queues busy external work without offering unproven stop or steer",async()=>
 it('shows shared follow-up controls without claiming a Desktop turn and steers the exact current turn',async()=>{
  const command=vi.fn(async(input)=>input.action==='HISTORY'?{messages:[],nextCursor:null}:{...response(input.id),mode:'STEER',turnId:'desktop-turn'});
  const api:WatchChatApi={state:vi.fn(async()=>({...state,externalBusy:true,controllableTurnId:'desktop-turn',watch:{...state.watch,snapshot:{...state.watch.snapshot,state:'RUNNING',turnId:'desktop-turn'}}})),command:command as WatchChatApi['command']};render(<WatchChat original={original} api={api} onBack={()=>{}}/>);
- await screen.findByRole('button',{name:'停止本次执行'});fireEvent.click(screen.getByRole('button',{name:'调整当前任务'}));fireEvent.change(screen.getByLabelText('回复这个 Codex 对话'),{target:{value:'Keep the current task bounded.'}});
+ await screen.findByRole('button',{name:'停止本次执行'});fireEvent.click(screen.getByRole('button',{name:'引导'}));fireEvent.change(screen.getByLabelText('回复这个 Codex 对话'),{target:{value:'Keep the current task bounded.'}});
  const buttons=screen.getAllByRole('button',{name:'调整当前任务'});fireEvent.click(buttons.at(-1)!);
  await waitFor(()=>expect(command.mock.calls.find(([c])=>c.action==='SEND')?.[0]).toMatchObject({mode:'STEER',expectedTurnId:'desktop-turn',threadId:'exact-original'}));
 });
@@ -82,7 +82,7 @@ it("pins newer reply media to its own turn and item rather than the notification
  try{
   const next={...state,watch:{...state.watch,snapshot:{state:"RESULT_READY",turnId:"turn-new",itemId:"item-new",text:"![新结果](result.png)"}}};
   render(<WatchChat original={original} api={{state:vi.fn(async()=>next),command:vi.fn()}} onBack={()=>{}}/>);
-  await screen.findByText("Codex · 最新公开回复");
+  await waitFor(()=>expect(media).toHaveBeenCalledWith({kind:"WATCH",threadId:"exact-original",turnId:"turn-new",itemId:"item-new"}));
   expect(media).toHaveBeenCalledWith({kind:"WATCH",threadId:"exact-original",turnId:"turn-new",itemId:"item-new"});
  }finally{media.mockRestore();}
 });
@@ -166,6 +166,6 @@ it("a known unsent attempt restores its draft without losing newer input",async(
  fireEvent.change(screen.getByLabelText('回复这个 Codex 对话'),{target:{value:'第一条回复'}});
  await waitFor(()=>expect(screen.getByRole('button',{name:'发送回复'})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:'发送回复'}));
  await screen.findByText('已确认这次没有发送。草稿保留，可检查后重新发送。');expect(screen.getByLabelText('回复这个 Codex 对话')).toHaveValue('第一条回复');
- expect(screen.getByText('你 · 未发送成功')).toBeVisible();
+ expect(screen.getByText('未发送成功')).toBeVisible();
  expect(sessionStorage.getItem('aiwr-watch-draft:exact-original:pending')).toBeNull();
 });

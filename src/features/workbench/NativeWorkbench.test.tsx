@@ -10,13 +10,13 @@ afterEach(()=>{cleanup();localStorage.clear();});
 const base:UnifiedWorkbenchProps={items:[{id:"exact-a",name:"同名 Bridge",lifecycle:"ACTIVE"},{id:"exact-b",name:"同名 Bridge",lifecycle:"ACTIVE"}],draft:{value:""},onDraftChange:()=>{},onSelectWorkstream:()=>{}};
 it('offers interface updates in mobile About without replacing desktop installer controls',()=>{
  const previous=location.pathname;history.replaceState({},'', '/mobile');
- try{render(<UnifiedWorkbench {...base} surface='SETTINGS'/>);fireEvent.click(screen.getByRole('button',{name:'关于'}));expect(screen.getByRole('button',{name:'检查界面更新'})).toBeVisible();}
+ try{render(<UnifiedWorkbench {...base} surface='SETTINGS'/>);expect(screen.queryByRole('button',{name:'检查界面更新'})).toBeNull();fireEvent.click(screen.getByRole('button',{name:'关于'}));expect(screen.getAllByRole('button',{name:'检查界面更新'})).toHaveLength(1);expect(screen.getByRole('button',{name:'检查界面更新'})).toBeVisible();}
  finally{history.replaceState({},'',previous);}
 });
-it("has three stable destinations and routes same-named Bridges by their own ID",()=>{
+it("has stable destinations including the live board and routes same-named Bridges by their own ID",()=>{
  const select=vi.fn();render(<UnifiedWorkbench {...base} onSelectWorkstream={select}/>);
  const nav=screen.getByRole("navigation",{name:"桌面导航"});
- expect(within(nav).getAllByRole("button").map(button=>button.textContent)).toEqual(["Bridge","通知","设置"]);
+ expect(within(nav).getAllByRole("button").map(button=>button.textContent)).toEqual(["对话","看板","待办","设置"]);
  expect(screen.queryByRole("button",{name:"项目"})).not.toBeInTheDocument();
  const list=screen.getByText("最近").parentElement!;fireEvent.click(within(list).getAllByRole("button",{name:/^同名 Bridge/})[1]);expect(select).toHaveBeenCalledWith("exact-b");
 });
@@ -63,7 +63,7 @@ it("browser Back returns an exact Bridge reader to the directory",async()=>{
  render(<App/>);const list=screen.getByText("最近").parentElement!;fireEvent.click(within(list).getAllByRole("button",{name:/^同名 Bridge/})[0]);
  await waitFor(()=>expect(history.state?.aiwrRoute?.surface).toBe("WORKSPACE"));
  act(()=>history.back());
- await screen.findByRole("heading",{name:/^Bridge$/});
+ await screen.findByRole("heading",{name:/^对话$/});
  expect(screen.getByText("retained reader")).not.toBeVisible();
 });
 
@@ -83,7 +83,7 @@ it("menu-to-rename waits for the old history layer without closing the new sheet
 it("shows the one current side and Bridge review hints without deriving a task from its title",async()=>{
  const bounds=vi.spyOn(Element.prototype,"getBoundingClientRect").mockReturnValue({x:20,y:100,top:100,bottom:218,left:20,right:400,width:380,height:118,toJSON:()=>({})});
  const api=vi.fn().mockResolvedValue([{workstreamId:"exact-a",bindingRevision:1,unreadCount:2,sides:[{role:"DECISION",endpointId:"d",state:"THINKING",checkedAt:Date.now()},{role:"EXECUTION",endpointId:"e",state:"ACTION_REQUIRED",checkedAt:Date.now()}]}]);
- try{render(<UnifiedWorkbench {...base} surface="BRIDGES" bridgeActivityApi={api}/>);expect(await screen.findByText("正在思考")).toBeVisible();expect(screen.queryByText("待你处理")).toBeNull();expect(screen.queryAllByLabelText("有新回复待审阅")).toHaveLength(0);expect(api).toHaveBeenCalledWith(["exact-a","exact-b"]);}finally{bounds.mockRestore();}
+ try{render(<UnifiedWorkbench {...base} surface="BRIDGES" bridgeActivityApi={api}/>);expect(await screen.findByText("控制端执行中")).toBeVisible();expect(screen.queryByText("待你处理")).toBeNull();expect(screen.queryAllByLabelText("有新回复待审阅")).toHaveLength(0);expect(api).toHaveBeenCalledWith(["exact-a","exact-b"]);}finally{bounds.mockRestore();}
 });
 
 it.each(["/","/mobile"])("%s full Bridge navigation reuses activity; only the shared clock requests again",async(path)=>{
@@ -94,19 +94,19 @@ it.each(["/","/mobile"])("%s full Bridge navigation reuses activity; only the sh
  try{
   render(<App/>);await act(async()=>{});expect(load).toHaveBeenCalledTimes(1);
   const nav=screen.getByRole("navigation",{name:path==="/mobile"?"主导航":"桌面导航"});
-  for(let n=0;n<5;n++)for(const name of ["通知","Bridge","设置","Bridge"]){await act(async()=>{fireEvent.click(within(nav).getByRole("button",{name}));});}
-  expect(load).toHaveBeenCalledTimes(1);expect(screen.getByText("正在思考")).toBeVisible();
+  for(let n=0;n<5;n++)for(const name of ["待办","对话","设置","对话"]){await act(async()=>{fireEvent.click(within(nav).getByRole("button",{name}));});}
+  expect(load).toHaveBeenCalledTimes(1);expect(screen.getByText("执行端执行中")).toBeVisible();
   await act(async()=>{await vi.advanceTimersByTimeAsync(5000);});expect(load).toHaveBeenCalledTimes(2);
-  await act(async()=>{fireEvent.click(within(nav).getByRole("button",{name:"通知"}));await vi.advanceTimersByTimeAsync(5000);});expect(load).toHaveBeenCalledTimes(3);
-  await act(async()=>{fireEvent.click(within(nav).getByRole("button",{name:"Bridge"}));});expect(load).toHaveBeenCalledTimes(3);
+  await act(async()=>{fireEvent.click(within(nav).getByRole("button",{name:"待办"}));await vi.advanceTimersByTimeAsync(5000);});expect(load).toHaveBeenCalledTimes(3);
+  await act(async()=>{fireEvent.click(within(nav).getByRole("button",{name:"对话"}));});expect(load).toHaveBeenCalledTimes(3);
  }finally{cleanup();cache.dispose();bounds.mockRestore();history.replaceState({},"",oldPath);vi.useRealTimers();}
 });
 
-it("keeps the real quota reading and Bridge directory mounted across rapid main navigation",async()=>{
+it("keeps the real quota reading mounted in Settings across rapid main navigation",async()=>{
  vi.useFakeTimers();const read=vi.fn(async()=>({status:"AVAILABLE" as const,reason:null,observedAt:Date.now(),buckets:[{id:"codex",windows:[{slot:"primary",usedPercent:36,remainingPercent:64,windowDurationMins:10080,resetsAt:null}]}]}));const quotaApi={read};
- function App(){const[surface,setSurface]=useState<WorkbenchSurface>("BRIDGES");return <UnifiedWorkbench {...base} surface={surface} onSurfaceChange={setSurface} quotaPanel={<CodexQuota api={quotaApi}/>}/>;}
- try{render(<App/>);await act(async()=>{});expect(screen.getByText("每周剩余 64%")).toBeVisible();const directory=screen.getByText("最近").parentElement;const nav=screen.getByRole("navigation",{name:"桌面导航"});
-  for(let n=0;n<4;n++)for(const name of ["通知","Bridge","设置","Bridge"]){await act(async()=>{fireEvent.click(within(nav).getByRole("button",{name}));});if(name==="Bridge"){expect(screen.getByText("每周剩余 64%")).toBeVisible();expect(screen.queryByText("读取中…")).toBeNull();expect(read).toHaveBeenCalledTimes(1);expect(screen.getByText("最近").parentElement).toBe(directory);}}
+ function App(){const[surface,setSurface]=useState<WorkbenchSurface>("SETTINGS");return <UnifiedWorkbench {...base} surface={surface} onSurfaceChange={setSurface} quotaPanel={<CodexQuota api={quotaApi}/>}/>;}
+ try{render(<App/>);await act(async()=>{});expect(screen.getByText("每周剩余 64%")).toBeVisible();const settings=screen.getByText("每周剩余 64%").closest("section");const nav=screen.getByRole("navigation",{name:"桌面导航"});
+  for(let n=0;n<4;n++)for(const name of ["待办","对话","设置","对话"]){await act(async()=>{fireEvent.click(within(nav).getByRole("button",{name}));});if(name==="设置"){expect(screen.getByText("每周剩余 64%")).toBeVisible();expect(screen.queryByText("读取中…")).toBeNull();expect(read).toHaveBeenCalledTimes(1);expect(screen.getByText("每周剩余 64%").closest("section")).toBe(settings);}}
   expect(read).toHaveBeenCalledTimes(1);
  }finally{cleanup();vi.useRealTimers();}
 });

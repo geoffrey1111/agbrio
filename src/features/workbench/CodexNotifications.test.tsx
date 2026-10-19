@@ -4,6 +4,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CodexNotifications, type NotificationApi, type WatchEvent, type CodexWatch } from "./CodexNotifications";
 afterEach(cleanup);
 const event:WatchEvent={sequence:1,threadId:"native-exact",label:"执行对话",cwd:"D:\\project",snapshot:{state:"RESULT_READY",turnId:"turn-exact",itemId:"item-exact",text:"preview"},observedAt:100};
+it("keeps usage order during a visit, moves a paused chat last and filters without another scan",async()=>{
+ const a={...event,threadId:"a",label:"高频对话",enabled:true,generation:1,checkedAt:Date.now(),errorCode:null,sendCount:9};const b={...a,threadId:"b",label:"另一个项目",sendCount:2};const api=fixture();api.watches.mockResolvedValue([b,a]);
+ render(<CodexNotifications api={api} standalone/>);fireEvent.click(screen.getByRole("tab",{name:"监听对话"}));await screen.findByText("高频对话");
+ const order=()=>Array.from(document.querySelectorAll<HTMLElement>('[data-watch-id]')).map(e=>e.dataset.watchId);expect(order()).toEqual(["a","b"]);
+ api.watches.mockResolvedValue([{...a,enabled:false},b]);fireEvent.click(screen.getAllByRole("button",{name:"暂停监听"})[0]);await waitFor(()=>expect(order()).toEqual(["b","a"]));expect(screen.getByRole("heading",{name:"已暂停"})).toBeVisible();
+ fireEvent.change(screen.getByRole("searchbox",{name:"搜索监听对话"}),{target:{value:"另一个"}});expect(order()).toEqual(["b"]);expect(api.threads).not.toHaveBeenCalled();
+});
 function fixture(){return {watches:vi.fn().mockResolvedValue([]),connect:vi.fn().mockResolvedValue({}),threads:vi.fn().mockResolvedValue({complete:true,threads:[{id:"native-exact",label:"执行对话",recencyAt:Date.now()/1000,projectProvenance:"项目"}]}),enable:vi.fn().mockResolvedValue({}),pause:vi.fn().mockResolvedValue({}),feed:vi.fn().mockResolvedValue({events:[event],nextCursor:1,hasMore:false}),event:vi.fn().mockResolvedValue({...event,snapshot:{...event.snapshot,text:"完整结果 <script>literal</script>"}}),webUrl:vi.fn().mockResolvedValue("https://router.example/mobile/notifications")} satisfies NotificationApi;}
 describe("independent Codex notifications",()=>{
  it("acknowledges a push before its list loads with one authoritative request",async()=>{

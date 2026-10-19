@@ -85,7 +85,7 @@ describe("ProjectConnectionPanel", () => {
       activeChatGptLabel: "游戏开发管理对话",
       activeChatGptId: "6ab7e39e-d0d0-83ec-87da-31d699cedfd3",
       activeCodexLabel: "游戏开发 Codex",
-      activeCodexThreadId: "00000000-0000-7000-8000-897e16603e6e",
+      activeCodexThreadId: "01a0e0ae-13f0-7f43-9982-fde9a64fbba2",
       explicitChatGptUrl: "https://chatgpt.com/g/g-game/c/6ab7e39e-d0d0-83ec-87da-31d699cedfd3",
       onPrepareOwnerConfirmedChatGptBinding: prepare,
     });
@@ -117,7 +117,7 @@ describe("ProjectConnectionPanel", () => {
       workstreamName: "PRE-FLIGHT",
       activeChatGptLabel: "旧 ChatGPT 对话",
       activeCodexLabel: "Complete Desktop Relay V0.1",
-      activeCodexThreadId: "00000000-0000-7000-8000-b196d3c6853c",
+      activeCodexThreadId: "01a0d92e-1de3-7130-96c3-f787c73c3805",
     });
     expect(screen.getByRole("heading", { name: "更换当前 ChatGPT 对话" })).toBeVisible();
     expect(screen.getByText("当前工作：PRE-FLIGHT")).toBeVisible();
