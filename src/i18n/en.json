@@ -1138,5 +1138,17 @@
   "当前 5 小时": "Current 5 hours",
   "当前没有进行中的 5 小时窗口": "No 5-hour window in progress",
   "滚动统计": "Rolling total",
-  "按这台电脑上 Claude Code 的对话记录估算（含桌面 App）。Anthropic 不公开套餐上限，所以这里显示已用量而不是剩余百分比；在终端或 IDE 用 Claude Code 后会显示精确百分比。": "Estimated from Claude Code logs on this computer (including the desktop app). Anthropic does not publish plan limits, so this shows usage rather than a remaining percentage; using Claude Code in a terminal or IDE shows exact percentages."
+  "按这台电脑上 Claude Code 的对话记录估算（含桌面 App）。Anthropic 不公开套餐上限，所以这里显示已用量而不是剩余百分比；在终端或 IDE 用 Claude Code 后会显示精确百分比。": "Estimated from Claude Code logs on this computer (including the desktop app). Anthropic does not publish plan limits, so this shows usage rather than a remaining percentage; using Claude Code in a terminal or IDE shows exact percentages.",
+  "Claude Code 转发暂只支持文字，请先取消附件。": "Relays to Claude Code are text only for now. Remove the attachments first.",
+  "Claude Code 空闲后才会收到这条消息；不会打断正在进行的回合，也不会自动重发。": "Claude Code receives this once it is idle. It never interrupts a running turn and is never resent automatically.",
+  "Bridge 转给 Claude Code 前都由你审阅；Agbrio 不会自动发起模型请求。": "You review every Bridge relay to Claude Code. Agbrio never starts model requests on its own.",
+  "Claude 订阅额度，与 Claude 桌面 App「使用情况」一致；显示剩余比例。": "Claude plan limits, matching Usage in the Claude desktop app. Shown as remaining.",
+  "Claude Code 订阅用量。": "Claude Code plan usage.",
+  "Claude 订阅额度，来自电脑上 Claude Code 的状态栏；显示剩余比例。": "Claude plan limits from the Claude Code status line on this computer. Shown as remaining.",
+  "还没有可选的 Claude Code 对话": "No Claude Code conversations to pick yet",
+  "在 Claude 桌面 App 的插件设置里开启 agbrio-bridge，然后在要绑定的对话里发一条消息，再点「刷新目录」。": "Turn on agbrio-bridge in the Claude desktop app's plugin settings, send one message in the conversation you want to bind, then tap Refresh.",
+  "暂不可选": "Not available yet",
+  "暂不可选 · 在 Claude 里打开并发一条消息后可选": "Not available yet · open it in Claude and send a message",
+  "暂时离线": "Offline for now",
+  "当前": "current"
 }

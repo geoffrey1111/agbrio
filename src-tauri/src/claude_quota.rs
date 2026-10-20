@@ -42,11 +42,36 @@ fn status_line() -> Option<Quota> {
     (quota.status == "AVAILABLE" && fresh).then_some(quota)
 }
 
-/// Exact status-line percentages when fresh; otherwise an estimate from Claude Code's own logs.
+/// Exact status-line percentages when fresh; then the percentages the Claude desktop app
+/// itself records; otherwise an estimate from Claude Code's own logs.
 pub(crate) fn read() -> Quota {
     if let Some(exact) = status_line() { return exact; }
-    let Some(root) = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(|h| PathBuf::from(h).join(".claude").join("projects")) else { return unavailable("NOT_ENABLED") };
-    estimate(&root, now())
+    let logs = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(|h| PathBuf::from(h).join(".claude").join("projects"));
+    let local = logs.as_deref().map(|root| estimate(root, now()));
+    let desktop = std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("Claude").join("plan-usage-history.json"))
+        .and_then(|path| { let meta = std::fs::metadata(&path).ok()?; (meta.is_file() && meta.len() <= MAX_HISTORY_BYTES).then_some(())?; serde_json::from_slice::<Value>(&std::fs::read(&path).ok()?).ok() })
+        .and_then(|history| desktop_history(&history, local.as_ref(), now()));
+    desktop.or(local).unwrap_or_else(|| unavailable("NOT_ENABLED"))
+}
+
+const MAX_HISTORY_BYTES: u64 = 4 * 1024 * 1024;
+const DESKTOP_FRESH_MS: i64 = 6 * HOUR_MS;
+
+/// The Claude desktop app samples plan utilization (`fh` five-hour, `sd` seven-day percent)
+/// into its own history file. Only the newest sample's two numbers are used; the
+/// organization id is never returned. The five-hour reset comes from the local log block.
+pub(crate) fn desktop_history(history: &Value, local: Option<&Quota>, now_ms: i64) -> Option<Quota> {
+    let sample = history.get("samples")?.as_array()?.iter().filter(|s| s.get("t").and_then(Value::as_i64).is_some()).max_by_key(|s| s["t"].as_i64())?;
+    let at = sample["t"].as_i64()?;
+    if at > now_ms + 60_000 || now_ms - at > DESKTOP_FRESH_MS { return None; }
+    let percent = |key: &str| sample.pointer(&format!("/u/{key}")).and_then(Value::as_f64).filter(|n| n.is_finite() && (0.0..=100.0).contains(n));
+    let reset = local.and_then(|q| q.buckets.first()).and_then(|b| b.windows.first()).and_then(|w| w.resets_at);
+    let mut windows = vec![];
+    for (key, slot, minutes, resets_at) in [("fh", "primary", 300_i64, reset), ("sd", "secondary", 10_080, None)] {
+        let Some(used) = percent(key) else { continue };
+        windows.push(Window { slot: slot.into(), used_percent: used, remaining_percent: 100.0 - used, window_duration_mins: Some(minutes), resets_at, used_tokens: None });
+    }
+    (!windows.is_empty()).then(|| Quota { status: "AVAILABLE", reason: Some("DESKTOP_APP"), observed_at: at, buckets: vec![Bucket { id: "claude".into(), windows }] })
 }
 
 const HOUR_MS: i64 = 3_600_000;
@@ -137,6 +162,17 @@ mod tests {
         assert_eq!(w[0].resets_at, Some(parse_utc_ms("2026-10-19T15:00:00Z").unwrap() / 1000));
         assert_eq!(w[1].used_tokens, Some(600));
         assert!(!serde_json::to_string(&q).unwrap().contains("secret"));
+    }
+    #[test]
+    fn uses_the_newest_desktop_sample_without_the_organization() {
+        let now = 1_792_427_500_000_i64;
+        let history = json!({"version":2,"samples":[{"t":now-7_200_000,"org":"org-secret","u":{"fh":10,"sd":20}},{"t":now-40_000,"org":"org-secret","u":{"fh":78,"sd":83}}]});
+        let q = desktop_history(&history, None, now).unwrap();
+        let w = &q.buckets[0].windows;
+        assert_eq!((w[0].used_percent, w[1].used_percent, q.observed_at), (78.0, 83.0, now - 40_000));
+        assert!(!serde_json::to_string(&q).unwrap().contains("org-secret"));
+        assert!(desktop_history(&history, None, now + DESKTOP_FRESH_MS).is_none()); // stale
+        assert!(desktop_history(&json!({"samples":[{"t":now,"u":{"fh":140}}]}), None, now).is_none());
     }
     #[test]
     fn rejects_out_of_range_or_missing_data() {

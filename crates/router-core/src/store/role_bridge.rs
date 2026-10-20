@@ -381,7 +381,12 @@ impl RouterStore {
         })
     }
     pub fn claim_role_handoff(&self, handoff: &str) -> Result<HandoffHistoryItem, String> {
-        self.claim_role_handoff_for_delivery(handoff, None)
+        self.claim_role_handoff_for_delivery(handoff, None, None)
+    }
+    /// Owner-approved relay into a Claude Code session. The claim and the plugin
+    /// command are one transaction; the plugin offer/receipt protocol delivers it.
+    pub fn claim_role_handoff_for_claude(&self, handoff: &str, session: &str, instance: &str, cwd: &str) -> Result<HandoffHistoryItem, String> {
+        self.claim_role_handoff_for_delivery(handoff, None, Some((session, instance, cwd)))
     }
     /// A preclaim failure is diagnostic evidence, never a delivery attempt or a
     /// permission to replay. A racing claim/hash change must win over this update.
@@ -397,13 +402,19 @@ impl RouterStore {
     /// claims a second execution writer or relaxes an unresolved delivery.
     pub fn claim_role_handoff_steer(&self, handoff: &str, thread: &str, turn: &str) -> Result<HandoffHistoryItem, String> {
         if thread.is_empty() || thread.len() > 256 || turn.is_empty() || turn.len() > 256 { return Err("BRIDGE_STEER_IDENTITY_INVALID".into()); }
-        self.claim_role_handoff_for_delivery(handoff, Some((thread, turn)))
+        self.claim_role_handoff_for_delivery(handoff, Some((thread, turn)), None)
     }
-    fn claim_role_handoff_for_delivery(&self, handoff: &str, steer: Option<(&str, &str)>) -> Result<HandoffHistoryItem, String> {
+    fn claim_role_handoff_for_delivery(&self, handoff: &str, steer: Option<(&str, &str)>, claude: Option<(&str, &str, &str)>) -> Result<HandoffHistoryItem, String> {
         self.with_connection(|c| {
             let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
             let h=handoff_by_id(&tx,handoff)?;validate_handoff(&tx,&h)?;
-            if h.destination_endpoint.provider=="CLAUDE_CODE" {crate::claude_code::require_write_capability()?;}
+            match (h.destination_endpoint.provider.as_str(), claude) {
+                ("CLAUDE_CODE", None) => crate::claude_code::require_write_capability()?,
+                ("CLAUDE_CODE", Some((session, _, _))) if h.destination_endpoint.external_id == session && h.attachments.is_empty() => {},
+                ("CLAUDE_CODE", Some(_)) => return Err("BRIDGE_BINDING_CHANGED".into()),
+                (_, Some(_)) => return Err("BRIDGE_BINDING_CHANGED".into()),
+                _ => {},
+            }
             if let Some((thread, _)) = steer {
                 if h.destination_endpoint.provider != "CODEX" || h.destination_endpoint.external_id != thread { return Err("BRIDGE_STEER_IDENTITY_INVALID".into()); }
             }
@@ -413,6 +424,9 @@ impl RouterStore {
             let busy:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM handoffs WHERE workstream_id=?1 AND status='SENDING') OR EXISTS(SELECT 1 FROM provider_runs WHERE workstream_id=?1 AND status IN ('STARTING','RUNNING','UNKNOWN') AND NOT COALESCE(?2 IS NOT NULL AND status='RUNNING' AND provider='CODEX' AND endpoint_id=?3 AND external_run_id=?2,0))",params![h.workstream_id,steer.map(|(_,turn)|turn),h.destination_endpoint.id],|r|r.get(0)).map_err(db_error)?;
             if busy {return Err("BRIDGE_WRITER_UNRESOLVED".into());}
             if tx.execute("UPDATE handoffs SET status='SENDING',error_code=NULL,error_message=NULL WHERE id=?1 AND status='APPROVED'",params![handoff]).map_err(db_error)?!=1 {return Err("BRIDGE_ALREADY_ATTEMPTED_OR_NOT_APPROVED".into());}
+            if let Some((session, instance, cwd)) = claude {
+                tx.execute("INSERT INTO claude_bridge_commands(handoff_id,session_id,instance_id,cwd,enqueued_at) VALUES(?1,?2,?3,?4,?5)",params![handoff,session,instance,cwd,now()]).map_err(db_error)?;
+            }
             tx.commit().map_err(db_error)?;handoff_by_id(c,handoff)
         })
     }

@@ -13,7 +13,7 @@ it("shows names before IDs, selects exact native identity and rejects stale rows
  expect(screen.getByRole("radio",{name:/旧对话/})).toBeDisabled();
  await userEvent.click(choice);
  expect(change).toHaveBeenCalledWith({provider:"CLAUDE_CODE",externalId:"live-native-id",label:"对话标题",cwd:"D:\\fictional"});
- expect(screen.getByRole("status")).toHaveTextContent("当前仅观察");
+ expect(screen.getByRole("status")).toHaveTextContent("由你审阅");
 });
 it("distinguishes identical names by root and exposes IDs only in identity details",async()=>{
  const api={claudeSessions:vi.fn().mockResolvedValue({sessions:[live("first-native-id","同名","D:\\alpha"),live("second-native-id","同名","D:\\beta")],complete:true,writesEnabled:false})};const change=vi.fn();
@@ -47,7 +47,7 @@ it("a genuine catalog arrival replaces waiting without repeating configuration",
 it("connection revoke uses actual connectionId and does not touch another connection",async()=>{
  const api={claudeSessions:vi.fn().mockResolvedValue({sessions:[],complete:true,writesEnabled:false}),claudeConnections:vi.fn().mockResolvedValue([{connectionId:"own-observer",expiresAt:Date.now()+10000,revoked:false,sessionCount:0}]),claudeRevoke:vi.fn().mockResolvedValue(undefined)};
  render(<ClaudeSessionPicker api={api} value={{provider:"CLAUDE_CODE",externalId:"",label:""}} onChange={()=>{}}/>);
- const button=await screen.findByRole("button",{name:"撤销此连接",hidden:true});await userEvent.click(screen.getByText("手动连接与连接管理"));await userEvent.click(button);
+ const button=await screen.findByRole("button",{name:"撤销此连接",hidden:true});await userEvent.click(screen.getByText("连接设置"));await userEvent.click(button);
  expect(api.claudeRevoke).toHaveBeenCalledWith("own-observer");
 });
 it("mobile has metadata selection but no local administrative connector",async()=>{

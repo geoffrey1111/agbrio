@@ -47,6 +47,8 @@ pub(crate) fn catalog(core: &RouterCore) -> Result<ExistingCodexThreadCatalog, S
     service_list_existing_codex_threads(core)
 }
 pub(crate) fn state(core: &RouterCore, workstream: &str) -> Result<BridgeState, String> {
+    // Settles Claude relays whose receipt never arrived or whose session never became idle.
+    let _ = core.store.expire_claude_manual_offers();
     let bindings = core.store.role_bridge(workstream)?;
     let handoffs = core
         .store
@@ -496,6 +498,21 @@ fn handoff_files(
     }
     Ok(files)
 }
+/// Text-only relay through the authenticated plugin's manual-input protocol.
+/// The claim and the command are one transaction; the receipt settles the Handoff.
+fn send_to_claude(core: &RouterCore, preview: &HandoffHistoryItem) -> Result<BridgeState, String> {
+    core.store.expire_claude_manual_offers()?;
+    if !preview.attachments.is_empty() { return preclaim(core, preview, "CLAUDE", Err("CLAUDE_TEXT_REPLY_ONLY".into())); }
+    let bindings = preclaim(core, preview, "BINDING", core.store.role_bridge(&preview.workstream_id))?;
+    let target = [bindings.decision, bindings.execution].into_iter().flatten().find(|s| s.endpoint.id == preview.destination_endpoint.id).ok_or_else(|| "BRIDGE_BINDING_CHANGED".to_string());
+    let target = preclaim(core, preview, "BINDING", target)?;
+    let session = preclaim(core, preview, "TARGET", crate::claude_code::verified_session(core, &preview.destination_endpoint.external_id, target.cwd.as_deref()))?;
+    if session.state == "WAITING_DECISION" { return preclaim(core, preview, "TARGET", Err("CLAUDE_NATIVE_APPROVAL_PENDING".into())); }
+    let ready = preclaim(core, preview, "PLUGIN", core.store.claude_manual_ready(&session.session_id, &session.instance_id))?;
+    if !ready { return preclaim(core, preview, "PLUGIN", Err("CLAUDE_INPUT_PLUGIN_NOT_READY".into())); }
+    preclaim(core, preview, "CLAIM", core.store.claim_role_handoff_for_claude(&preview.id, &session.session_id, &session.instance_id, &session.cwd))?;
+    state(core, &preview.workstream_id)
+}
 pub(crate) fn approve(
     core: &RouterCore,
     handoff: &str,
@@ -516,17 +533,20 @@ pub(crate) fn preclaim<T>(core: &RouterCore, h: &HandoffHistoryItem, stage: &str
         format!("BRIDGE_PRECLAIM_{stage}: {cause}")
     })
 }
-pub(crate) fn send(core: &RouterCore, handoff: &str) -> Result<BridgeState, String> {
+/// Assistant (MCP) sends: Claude Code destinations stay closed to this path.
+pub(crate) fn send(core: &RouterCore, handoff: &str) -> Result<BridgeState, String> { send_as(core, handoff, false) }
+/// Owner sends from the desktop or the authenticated phone, after the owner approved
+/// the exact payload. Only this path may deliver into a Claude Code session.
+pub(crate) fn send_owner(core: &RouterCore, handoff: &str) -> Result<BridgeState, String> { send_as(core, handoff, true) }
+fn send_as(core: &RouterCore, handoff: &str, owner: bool) -> Result<BridgeState, String> {
     let preview = core.store.role_handoff(handoff)?;
     if preview.status != "APPROVED" {
         return Err("BRIDGE_NOT_APPROVED_OR_ALREADY_ATTEMPTED".into());
     }
     let destination = preview.destination_endpoint.clone();
     if destination.provider=="CLAUDE_CODE" {
-        // Quota boundary is below both desktop/mobile and MCP. No claim, run,
-        // queued prompt, native abort or UNKNOWN write is created in this phase.
-        router_core::claude_code::require_write_capability()?;
-        return Err("CLAUDE_CONTROL_TRANSPORT_NOT_VERIFIED".into());
+        if !owner { return Err("CLAUDE_WRITES_OWNER_ONLY".into()); }
+        return send_to_claude(core, &preview);
     }
     let mut files = preclaim(core,&preview,"FILES",handoff_files(&preview))?;
     if destination.provider == "CHATGPT" {

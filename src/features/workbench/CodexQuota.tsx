@@ -50,7 +50,7 @@ export function CodexQuota({api,active=true,provider='Codex'}:{api:CodexQuotaApi
   <Dialog.Trigger asChild><button type="button" className="r2-quota-row" aria-label={t('查看 {0} 额度',provider)}><span>{t('{0} 额度',provider)}</span><span>{stale&&firstWindow?t('上次读取 · {0}',label):label}</span><ChevronRight size={18}/></button></Dialog.Trigger>
   <Dialog.Portal><Dialog.Overlay className="r2-quota-overlay"/><Dialog.Content className="r2-quota-sheet r2-sheet" aria-describedby="quota-description">
    <div className="r2-quota-handle" aria-hidden="true"/><header><Dialog.Title>{t('{0} 额度',provider)}</Dialog.Title><Dialog.Close asChild><button type="button" className="r2-icon" aria-label={t('关闭')}><X size={20}/></button></Dialog.Close></header>
-   <Dialog.Description id="quota-description">{provider==='Codex'?t('当前电脑连接的 Codex 账户额度。'):t('Claude Code 订阅用量，来自电脑上 Claude Code 最近一次回复。')}</Dialog.Description>
+   <Dialog.Description id="quota-description">{provider==='Codex'?t('当前电脑连接的 Codex 账户额度。'):data?.reason==='DESKTOP_APP'?t('Claude 订阅额度，与 Claude 桌面 App「使用情况」一致；显示剩余比例。'):data?.reason==='LOCAL_ESTIMATE'?t('Claude Code 订阅用量。'):t('Claude 订阅额度，来自电脑上 Claude Code 的状态栏；显示剩余比例。')}</Dialog.Description>
    {data?.reason==='LOCAL_ESTIMATE'&&<p role="status">{t('按这台电脑上 Claude Code 的对话记录估算（含桌面 App）。Anthropic 不公开套餐上限，所以这里显示已用量而不是剩余百分比；在终端或 IDE 用 Claude Code 后会显示精确百分比。')}</p>}
    {notEnabled&&<p role="status">{t('还没有读到用量。在终端或 IDE 里的 Claude Code 回复一次后就会出现；桌面 App 里的对话不会更新这里。')}</p>}
    {stale&&<p role="status">{firstWindow?t('连接暂不可用，以下为上次读取结果。'):offline?t('Agbrio 还没有连上 Codex（例如刚重启）。打开任意 Codex 对话或 Bridge 后会自动读取，不会为读额度单独启动 Codex。'):t('暂时无法读取，请检查电脑连接后重试。')}</p>}

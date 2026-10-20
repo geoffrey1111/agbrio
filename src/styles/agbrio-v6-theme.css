@@ -304,3 +304,27 @@ html .r2-router .r2-content{overflow-x:clip}
 :is(.r2-quota-sheet,.r2-sheet,.v4-chat-sheet,.r2-confirmation,.r2-menu,.v6-sheet,.r2-relay) :is(button,.r2-icon):focus-visible{outline:2px solid var(--awr-ink)!important;outline-offset:2px;box-shadow:none!important}
 .r2-quota-sheet .r2-quota-handle{display:none}
 @media(min-width:761px) and (hover:hover) and (pointer:fine){.r2-quota-sheet{width:min(460px,calc(100vw - 48px))!important}}
+/* Claude Code picker: same rows as the Codex list, grouped by project folder */
+.v6-sheet .v6-claude-pick{display:flex;flex-direction:column;gap:4px;min-width:0}
+.v6-sheet .v6-claude-pick>.v6-muted{margin:4px 0 8px}
+.v6-sheet .v6-claude-list{display:flex;flex-direction:column;gap:10px}
+.v6-sheet .v6-claude-group{display:flex;flex-direction:column;min-width:0}
+.v6-sheet .v6-claude-group h4{margin:8px 2px 2px;font-size:12px;font-weight:600;color:var(--awr-muted);letter-spacing:.02em}
+.v6-sheet .v6-claude-pick .v6-row{width:100%;text-align:left}
+.v6-sheet .v6-claude-pick .v6-row:disabled{opacity:.5;cursor:default}
+.v6-sheet .v6-claude-pick .v6-row-meta{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.v6-sheet .v6-claude-stale{margin-top:6px}
+.v6-sheet .v6-claude-empty{display:flex;flex-direction:column;gap:8px;padding:16px;border-radius:16px;background:var(--awr-shell)}
+.v6-sheet .v6-claude-empty p{margin:0;color:var(--awr-muted);font-size:13.5px;line-height:1.6}
+.v6-sheet .v6-claude-empty .v6-primary{align-self:flex-start;padding:10px 18px}
+.v6-sheet .v6-claude-settings{margin-top:4px;border-top:1px solid var(--awr-line);padding-top:8px}
+.v6-sheet .v6-claude-settings summary{cursor:pointer;list-style:none;font-size:13px;color:var(--awr-muted);padding:6px 2px}
+.v6-sheet .v6-claude-settings summary::-webkit-details-marker{display:none}
+.v6-sheet .v6-claude-settings summary::after{content:" ›";display:inline-block;transition:transform .2s}
+.v6-sheet .v6-claude-settings[open] summary::after{transform:rotate(90deg)}
+.v6-sheet .v6-claude-settings>*+*{margin-top:8px}
+.v6-sheet .v6-claude-settings .v6-swap{align-self:auto}
+.v6-sheet .v6-claude-setting{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px;color:var(--awr-muted)}
+.v6-sheet .v6-link-danger{border:0;background:none;color:var(--awr-danger,#b4442b);font:inherit;font-size:13px;cursor:pointer;padding:6px 0}
+.v6-sheet .v6-claude-ids p{display:grid;gap:2px;margin:0 0 8px;font-size:12px;color:var(--awr-muted)}
+.v6-sheet .v6-claude-ids code{font-size:11.5px;overflow-wrap:anywhere}

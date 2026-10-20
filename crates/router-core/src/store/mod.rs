@@ -3888,6 +3888,7 @@ mod tests {
                         "assistant_grants",
                         "assistant_oauth_refresh",
                         "assistant_sent_handoffs",
+                        "claude_bridge_commands",
                         "claude_connections", "claude_control_leases",
                         "claude_event_journal", "claude_manual_commands",
                         "claude_sessions",

@@ -48,7 +48,7 @@ fn event(root:&std::path::Path,session:&str,kind:&str,sequence:i64)->Event {
  let h=crate::role_bridge::prepare(&core,&w.id,"DECISION",&state.replies[0].id,"完整指令",&[]).unwrap();
  assert_eq!(h.direction,"CLAUDE_CODE_TO_CLAUDE_CODE");
  let approved=crate::role_bridge::approve(&core,&h.id,&h.payload_hash).unwrap();assert_eq!(approved.status,"APPROVED");
- assert_eq!(crate::role_bridge::send(&core,&h.id).err().unwrap(),"CLAUDE_WRITES_DISABLED_BY_OWNER");
+ assert_eq!(crate::role_bridge::send(&core,&h.id).err().unwrap(),"CLAUDE_WRITES_OWNER_ONLY");
  assert_eq!(store.role_handoff(&h.id).unwrap().status,"APPROVED");
  assert_eq!(store.claim_role_handoff(&h.id).unwrap_err(),"CLAUDE_WRITES_DISABLED_BY_OWNER");
  assert_eq!(store.role_handoff(&h.id).unwrap().status,"APPROVED");
@@ -62,6 +62,54 @@ fn event(root:&std::path::Path,session:&str,kind:&str,sequence:i64)->Event {
  let mut later=complete.clone();later.event_id=uuid::Uuid::new_v4().to_string();later.sequence=5;later.turn_id=running.turn_id.clone();
  ingest(&core,&pair.token,&later).unwrap();assert_eq!(store.reply_observations_for_workstream(&w.id).unwrap().len(),1);
  assert!(bindings.explicit_roles);
+}
+
+#[test] fn owner_relay_into_claude_rides_the_plugin_heartbeat_at_most_once() {
+ let temp=tempfile::tempdir().unwrap();let db=temp.path().join("router.db");
+ let store=Arc::new(crate::RouterStore::open_at(&db).unwrap());
+ let core=RouterCore{chatgpt:Arc::new(Default::default()),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::new(Mutex::new(HashMap::new())),store:store.clone()};
+ let pair=store.create_claude_connection().unwrap();
+ let a="10000000-0000-4000-8000-000000000001";let b="10000000-0000-4000-8000-000000000002";
+ for session in [a,b] {ingest(&core,&pair.token,&event(temp.path(),session,"SESSION_START",1)).unwrap();}
+ let project=store.create_project("fictional".into(),None).unwrap();let w=store.create_workstream(&project.id,"fictional".into()).unwrap();
+ let side=|session:&str|RoleBindingInput{provider:"CLAUDE_CODE".into(),external_id:session.into(),label:"fictional".into(),cwd:None};
+ crate::role_bridge::bind(&core,&w.id,w.binding_revision,side(a),side(b)).unwrap();
+ let at=||std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+ let finish=|session:&str,seq:i64,text:&str|{let turn=uuid::Uuid::new_v4().to_string();let mut r=event(temp.path(),session,"RUNNING",seq);r.turn_id=Some(turn.clone());ingest(&core,&pair.token,&r).unwrap();let mut c=event(temp.path(),session,"COMPLETE",seq+1);c.turn_id=Some(turn);c.text=Some(text.into());c.completed_at=Some(at());ingest(&core,&pair.token,&c).unwrap();};
+ finish(a,2,"指令一");
+ let relay=|text:&str|{let state=crate::role_bridge::read(&core,&w.id,"DECISION").unwrap();let reply=state.replies.last().unwrap().id.clone();let h=crate::role_bridge::prepare(&core,&w.id,"DECISION",&reply,text,&[]).unwrap();crate::role_bridge::approve(&core,&h.id,&h.payload_hash).unwrap();h};
+ let h=relay("指令一");
+ // MCP stays closed; the owner path refuses while the plugin has not checked in.
+ assert_eq!(crate::role_bridge::send(&core,&h.id).err().unwrap(),"CLAUDE_WRITES_OWNER_ONLY");
+ assert!(crate::role_bridge::send_owner(&core,&h.id).err().unwrap().contains("CLAUDE_INPUT_PLUGIN_NOT_READY"));
+ assert_eq!(store.role_handoff(&h.id).unwrap().status,"APPROVED");
+ let beat=|seq:i64|event(temp.path(),b,"HEARTBEAT",seq);
+ ingest(&core,&pair.token,&beat(2)).unwrap();store.offer_claude_manual(&pair.token,&beat(2)).unwrap();
+ crate::role_bridge::send_owner(&core,&h.id).unwrap();assert_eq!(store.role_handoff(&h.id).unwrap().status,"SENDING");
+ // Destination is not idle yet (SESSION_START): nothing is offered.
+ assert!(store.offer_claude_manual(&pair.token,&beat(3)).unwrap().is_none());
+ finish(b,3,"执行端空闲");
+ let cmd=store.offer_claude_manual(&pair.token,&beat(5)).unwrap().unwrap();
+ assert_eq!((cmd.request_id.as_str(),cmd.session_id.as_str(),cmd.text.as_str()),(h.id.as_str(),b,"指令一"));
+ assert!(store.offer_claude_manual(&pair.token,&beat(6)).unwrap().is_none()); // never offered twice
+ assert_eq!(uuid::Uuid::parse_str(&cmd.request_id).unwrap().get_version_num(),4); // plugin fence requires a native UUID
+ let receipt=|id:&str,status:&str,sha:&str|router_core::store::claude_manual::ManualReceipt{request_id:id.into(),session_id:b.into(),instance_id:format!("20000000-0000-4000-8000-{}",&b[24..]),cwd:temp.path().to_string_lossy().into(),status:status.into(),message_id:(status=="SENT").then(||uuid::Uuid::new_v4().to_string()),text_sha256:sha.into()};
+ assert!(store.accept_claude_manual_receipt(&pair.token,&receipt(&h.id,"SENT",&"0".repeat(64))).is_err());
+ let sent=receipt(&h.id,"SENT",&cmd.text_sha256);store.accept_claude_manual_receipt(&pair.token,&sent).unwrap();store.accept_claude_manual_receipt(&pair.token,&sent).unwrap();
+ assert_eq!(store.role_handoff(&h.id).unwrap().status,"SENT");
+ assert!(store.accept_claude_manual_receipt(&pair.token,&receipt(&h.id,"NOT_SENT",&cmd.text_sha256)).is_err());
+ // A plugin NOT_SENT is a proven pre-write failure.
+ finish(a,4,"指令二");let h2=relay("指令二");crate::role_bridge::send_owner(&core,&h2.id).unwrap();
+ let cmd2=store.offer_claude_manual(&pair.token,&beat(7)).unwrap().unwrap();
+ store.accept_claude_manual_receipt(&pair.token,&receipt(&h2.id,"NOT_SENT",&cmd2.text_sha256)).unwrap();
+ assert_eq!(store.role_handoff(&h2.id).unwrap().status,"FAILED");
+ // An offer without any receipt becomes UNKNOWN after 30s and is never re-offered.
+ finish(a,6,"指令三");let h3=relay("指令三");crate::role_bridge::send_owner(&core,&h3.id).unwrap();
+ store.offer_claude_manual(&pair.token,&beat(8)).unwrap().unwrap();
+ rusqlite::Connection::open(&db).unwrap().execute("UPDATE claude_bridge_commands SET offered_at=offered_at-31000 WHERE handoff_id=?1",[&h3.id]).unwrap();
+ assert_eq!(store.expire_claude_manual_offers().unwrap(),1);let unknown=store.role_handoff(&h3.id).unwrap();assert_eq!((unknown.status.as_str(),unknown.error_code.as_deref()),("SENDING",Some("CLAUDE_RECEIPT_NOT_OBSERVED")));assert_eq!(store.expire_claude_manual_offers().unwrap(),0);
+ assert!(store.offer_claude_manual(&pair.token,&beat(9)).unwrap().is_none());
+ assert!(core.session.lock().unwrap().adapter.is_none());
 }
 
 #[test]
@@ -95,8 +143,10 @@ impl crate::claude_code_desktop::PluginAdmin for FakePluginAdmin {
   assert!(!args.iter().any(|a|matches!(a.as_str(),"-p"|"--resume"|"--continue"|"--force"|"--fork-session")));
   self.calls.lock().unwrap().push(args.to_vec());
   if args==["plugin","list","--json"] {return Ok(serde_json::json!([{"id":"agbrio-bridge@agbrio-observation","scope":"user","enabled":true,"installPath":self.path}]));}
-  assert_eq!(args[2],"plugin");assert_eq!(args[3],"configure");
-  let identity=&args[4];
+  // Claude 2.1.299+: --plugin-dir hides the installed identity; only the inline one takes it.
+  let args=if args[0]=="--plugin-dir"{assert_eq!(args[4],"agbrio-bridge@inline");&args[2..]}else{assert_eq!(args[2],"agbrio-bridge@agbrio-observation");args};
+  assert_eq!(args[0],"plugin");assert_eq!(args[1],"configure");
+  let identity=&args[2];
   if let Some(input)=input {
    if self.fail_inline&&identity=="agbrio-bridge@inline" {return Err("CLAUDE_PLUGIN_ADMIN_REFUSED".into());}
    let value:serde_json::Value=serde_json::from_slice(input).unwrap();

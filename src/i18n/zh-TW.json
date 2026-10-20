@@ -1138,5 +1138,17 @@
   "当前 5 小时": "目前 5 小時",
   "当前没有进行中的 5 小时窗口": "目前沒有進行中的 5 小時視窗",
   "滚动统计": "滾動統計",
-  "按这台电脑上 Claude Code 的对话记录估算（含桌面 App）。Anthropic 不公开套餐上限，所以这里显示已用量而不是剩余百分比；在终端或 IDE 用 Claude Code 后会显示精确百分比。": "按這台電腦上 Claude Code 的對話紀錄估算（含桌面 App）。Anthropic 不公開方案上限，所以這裡顯示已用量而不是剩餘百分比；在終端或 IDE 用 Claude Code 後會顯示精確百分比。"
+  "按这台电脑上 Claude Code 的对话记录估算（含桌面 App）。Anthropic 不公开套餐上限，所以这里显示已用量而不是剩余百分比；在终端或 IDE 用 Claude Code 后会显示精确百分比。": "按這台電腦上 Claude Code 的對話紀錄估算（含桌面 App）。Anthropic 不公開方案上限，所以這裡顯示已用量而不是剩餘百分比；在終端或 IDE 用 Claude Code 後會顯示精確百分比。",
+  "Claude Code 转发暂只支持文字，请先取消附件。": "Claude Code 轉發暫只支援文字，請先取消附件。",
+  "Claude Code 空闲后才会收到这条消息；不会打断正在进行的回合，也不会自动重发。": "Claude Code 空閒後才會收到這則訊息；不會打斷進行中的回合，也不會自動重發。",
+  "Bridge 转给 Claude Code 前都由你审阅；Agbrio 不会自动发起模型请求。": "Bridge 轉給 Claude Code 前都由你審閱；Agbrio 不會自動發起模型請求。",
+  "Claude 订阅额度，与 Claude 桌面 App「使用情况」一致；显示剩余比例。": "Claude 訂閱額度，與 Claude 桌面 App「使用情況」一致；顯示剩餘比例。",
+  "Claude Code 订阅用量。": "Claude Code 訂閱用量。",
+  "Claude 订阅额度，来自电脑上 Claude Code 的状态栏；显示剩余比例。": "Claude 訂閱額度，來自電腦上 Claude Code 的狀態列；顯示剩餘比例。",
+  "还没有可选的 Claude Code 对话": "還沒有可選的 Claude Code 對話",
+  "在 Claude 桌面 App 的插件设置里开启 agbrio-bridge，然后在要绑定的对话里发一条消息，再点「刷新目录」。": "在 Claude 桌面 App 的外掛設定裡開啟 agbrio-bridge，然後在要綁定的對話裡發一則訊息，再點「重新整理目錄」。",
+  "暂不可选": "暫不可選",
+  "暂不可选 · 在 Claude 里打开并发一条消息后可选": "暫不可選 · 在 Claude 裡打開並發一則訊息後可選",
+  "暂时离线": "暫時離線",
+  "当前": "目前"
 }

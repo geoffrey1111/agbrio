@@ -57,9 +57,11 @@ fn connect_admin(core:&RouterCore,host:&crate::HostRuntime,resources:&std::path:
     if installed["enabled"]!=true {admin.run(&args(&["plugin","enable",id,"--scope","user","--json"]),None)?;}
     let path=path.to_string_lossy();
     let identities=[id,"agbrio-bridge@inline"];
+    // Claude 2.1.299+: --plugin-dir shadows the installed identity, so only the inline one uses it.
+    let scoped=|identity:&str,rest:&[&str]|{let mut v=if identity==id{vec![]}else{vec!["--plugin-dir".to_string(),path.to_string()]};v.extend(["plugin","configure",identity].iter().chain(rest).map(|s|s.to_string()));v};
     let mut missing=false;
     for identity in identities {
-        let config=admin.run(&args(&["--plugin-dir",&path,"plugin","configure",identity,"--json"]),None)?;
+        let config=admin.run(&scoped(identity,&["--json"]),None)?;
         if config["pluginId"]!=identity||!config["configured"].is_array()||!config["unconfigured"].is_array(){return Err("CLAUDE_PLUGIN_ADMIN_INVALID_RESULT".into());}
         if let Some(existing)=config["inputs"]["hostUrl"].as_str().filter(|s|!s.is_empty()) {if existing!=origin {return Err("CLAUDE_PLUGIN_DIFFERENT_HOST".into());}}
         missing|=!["hostUrl","token"].iter().all(|k|config["configured"].as_array().unwrap().iter().any(|v|v==k));
@@ -71,9 +73,9 @@ fn connect_admin(core:&RouterCore,host:&crate::HostRuntime,resources:&std::path:
     let mut input=serde_json::to_vec(&serde_json::json!({"hostUrl":origin,"token":pairing.token})).map_err(|_|"CLAUDE_CONNECTION_CONFIGURATION_FAILED")?;
     let configured=(||{
         for identity in identities {
-            let result=admin.run(&args(&["--plugin-dir",&path,"plugin","configure",identity,"--values-stdin","--json"]),Some(&input))?;
+            let result=admin.run(&scoped(identity,&["--values-stdin","--json"]),Some(&input))?;
             if result["refused"].is_object()||!result["saved"].as_array().is_some_and(|a|["hostUrl","token"].iter().all(|k|a.iter().any(|v|v==k))){return Err("CLAUDE_CONNECTION_CONFIGURATION_FAILED".to_string());}
-            let checked=admin.run(&args(&["--plugin-dir",&path,"plugin","configure",identity,"--json"]),None)?;
+            let checked=admin.run(&scoped(identity,&["--json"]),None)?;
             if checked["pluginId"]!=identity||!checked["unconfigured"].as_array().is_some_and(Vec::is_empty)||!checked["configured"].as_array().is_some_and(|a|["hostUrl","token"].iter().all(|k|a.iter().any(|v|v==k))){return Err("CLAUDE_CONNECTION_CONFIGURATION_FAILED".to_string());}
         }
         Ok(connection_result("WAITING_SESSION"))

@@ -17,6 +17,11 @@ pub(super) fn migrate(c:&mut Connection)->Result<(),String>{
         tx.execute_batch(include_str!("../../migrations/normal/018_claude_manual_commands.sql")).map_err(db_error)?;
         tx.execute("INSERT INTO router_feature_migrations(key,applied_at) VALUES('claude-manual-input-v1',?1)",[now()]).map_err(db_error)?;
     }
+    let bridge:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM router_feature_migrations WHERE key='claude-bridge-input-v1')",[],|r|r.get(0)).map_err(db_error)?;
+    if !bridge {
+        tx.execute_batch(include_str!("../../migrations/normal/020_claude_bridge_commands.sql")).map_err(db_error)?;
+        tx.execute("INSERT INTO router_feature_migrations(key,applied_at) VALUES('claude-bridge-input-v1',?1)",[now()]).map_err(db_error)?;
+    }
     tx.commit().map_err(db_error)
 }
 
@@ -57,7 +62,7 @@ impl RouterStore {
         tx.execute("INSERT INTO claude_control_leases(session_id,instance_id,checked_at) VALUES(?1,?2,?3) ON CONFLICT(session_id) DO UPDATE SET instance_id=excluded.instance_id,checked_at=excluded.checked_at",params![event.session_id,event.instance_id,now()]).map_err(db_error)?;
         if event.kind!="HEARTBEAT" {tx.commit().map_err(db_error)?;return Ok(None);}
         let candidate:Option<(String,String,String)>=tx.query_row("SELECT r.id,r.thread_id,r.text FROM claude_manual_commands m JOIN watch_replies r ON r.id=m.request_id WHERE m.session_id=?1 AND r.status='QUEUED' AND m.offered_at IS NULL ORDER BY r.created_at LIMIT 1",[&event.session_id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(db_error)?;
-        let Some((request,key,text))=candidate else{tx.commit().map_err(db_error)?;return Ok(None)};
+        let Some((request,key,text))=candidate else{let offer=bridge_offer(&tx,event)?;tx.commit().map_err(db_error)?;return Ok(offer)};
         let (instance,cwd,generation,mode,expected):(String,String,i64,String,Option<String>)=tx.query_row("SELECT m.instance_id,m.cwd,r.generation,r.mode,r.expected_turn_id FROM claude_manual_commands m JOIN watch_replies r ON r.id=m.request_id WHERE r.id=?1",[&request],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).map_err(db_error)?;
         let context=codex_watch::chat_context(&tx,&key);
         let valid=context.is_ok_and(|w|w.generation==generation&&w.cwd==cwd)&&instance==event.instance_id&&cwd==event.cwd;
@@ -87,6 +92,8 @@ impl RouterStore {
         if !matches!(input.status.as_str(),"SENT"|"NOT_SENT"|"UNKNOWN") || (input.status=="SENT"&&input.message_id.as_deref().is_none_or(|v|Uuid::parse_str(v).is_err())) {return Err("CLAUDE_RECEIPT_INVALID".into());}
         let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
         verify_publisher(&tx,token,&input.session_id,&input.instance_id,&input.cwd)?;
+        let bridge:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM claude_bridge_commands WHERE handoff_id=?1)",[&input.request_id],|r|r.get(0)).map_err(db_error)?;
+        if bridge {bridge_receipt(&tx,input)?;return tx.commit().map_err(db_error);}
         let (sid,instance,cwd,text,status,offered,message):(String,String,String,String,String,Option<i64>,Option<String>)=tx.query_row("SELECT m.session_id,m.instance_id,m.cwd,r.text,r.status,m.offered_at,m.message_id FROM claude_manual_commands m JOIN watch_replies r ON r.id=m.request_id WHERE m.request_id=?1",[&input.request_id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?))).map_err(db_error)?;
         if sid!=input.session_id||instance!=input.instance_id||cwd!=input.cwd||offered.is_none()||format!("{:x}",Sha256::digest(text.as_bytes()))!=input.text_sha256{return Err("CLAUDE_RECEIPT_TARGET_MISMATCH".into());}
         let final_status=if input.status=="NOT_SENT"{"FAILED"}else{&input.status};
@@ -96,7 +103,16 @@ impl RouterStore {
         tx.execute("UPDATE claude_manual_commands SET message_id=?2 WHERE request_id=?1",params![input.request_id,input.message_id]).map_err(db_error)?;
         tx.commit().map_err(db_error)
     })}
-    pub fn expire_claude_manual_offers(&self)->Result<usize,String>{self.with_connection(|c|c.execute("UPDATE watch_replies SET status='UNKNOWN',error_code='CLAUDE_RECEIPT_NOT_OBSERVED',updated_at=?1 WHERE status='SENDING' AND EXISTS(SELECT 1 FROM claude_manual_commands m WHERE m.request_id=watch_replies.id AND m.offered_at<?2)",params![now(),now()-30_000]).map_err(db_error))}
+    pub fn expire_claude_manual_offers(&self)->Result<usize,String>{self.with_connection(|c|{
+        let manual=c.execute("UPDATE watch_replies SET status='UNKNOWN',error_code='CLAUDE_RECEIPT_NOT_OBSERVED',updated_at=?1 WHERE status='SENDING' AND EXISTS(SELECT 1 FROM claude_manual_commands m WHERE m.request_id=watch_replies.id AND m.offered_at<?2)",params![now(),now()-30_000]).map_err(db_error)?;
+        // An offered relay without a receipt is UNKNOWN (reconcile only, never resent);
+        // one never offered because the session stayed busy is a proven pre-write failure.
+        // Handoffs have no UNKNOWN status: like a lost Codex acknowledgement, the
+        // relay stays SENDING (unresolved) with an error code; only a receipt settles it.
+        let offered=c.execute("UPDATE handoffs SET error_code='CLAUDE_RECEIPT_NOT_OBSERVED',error_message='Claude Code 是否收到尚未确认，不会自动重发。' WHERE status='SENDING' AND error_code IS NULL AND id IN (SELECT handoff_id FROM claude_bridge_commands WHERE offered_at<?1)",params![now()-30_000]).map_err(db_error)?;
+        let idle=c.execute("UPDATE handoffs SET status='FAILED',failed_at=?1,error_code='CLAUDE_TARGET_NOT_IDLE',error_message='Claude Code 对话一直没有空下来，本次没有发送，可以重新转发。' WHERE status='SENDING' AND id IN (SELECT handoff_id FROM claude_bridge_commands WHERE offered_at IS NULL AND enqueued_at<?2)",params![now(),now()-CLAUDE_BRIDGE_WAIT_MS]).map_err(db_error)?;
+        Ok(manual+offered+idle)
+    })}
 }
 
 #[cfg(test)] mod tests {
@@ -133,4 +149,36 @@ impl RouterStore {
         let beat=event(temp.path(),"HEARTBEAT",2,None);store.ingest_claude_event(&pair.token,&beat).unwrap();store.offer_claude_manual(&pair.token,&beat).unwrap();
         let mut r=intent(&store,&start,"unconfirmed");r.mode="QUEUE".into();r.expected_turn_id=None;let r=store.prepare_watch_reply(&r).unwrap();store.enqueue_claude_manual(&r,&start.instance_id).unwrap();assert!(store.offer_claude_manual(&pair.token,&beat).unwrap().is_some());assert!(store.offer_claude_manual(&pair.token,&beat).unwrap().is_none());assert_eq!(store.claude_session(&start.session_id).unwrap().state,"SESSION_START");
     }
+}
+
+/// A relay waits at most this long for the Claude Code session to become idle.
+pub const CLAUDE_BRIDGE_WAIT_MS: i64 = 15 * 60_000;
+fn fail_bridge(c:&Connection,handoff:&str,code:&str,message:&str)->Result<(),String>{
+    c.execute("UPDATE handoffs SET status='FAILED',failed_at=?2,error_code=?3,error_message=?4 WHERE id=?1 AND status='SENDING'",params![handoff,now(),code,message]).map_err(db_error)?;Ok(())
+}
+/// Owner-approved Bridge relays ride the same authenticated heartbeat as manual
+/// replies, only when the exact session is idle and no manual reply is open.
+fn bridge_offer(c:&Connection,event:&Event)->Result<Option<ManualCommand>,String>{
+    let row:Option<(String,String,String,String)>=c.query_row("SELECT b.handoff_id,h.approved_text,b.instance_id,b.cwd FROM claude_bridge_commands b JOIN handoffs h ON h.id=b.handoff_id WHERE b.session_id=?1 AND h.status='SENDING' AND b.offered_at IS NULL ORDER BY b.enqueued_at LIMIT 1",[&event.session_id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional().map_err(db_error)?;
+    let Some((handoff,text,instance,cwd))=row else {return Ok(None)};
+    if instance!=event.instance_id||cwd!=event.cwd {fail_bridge(c,&handoff,"CLAUDE_TARGET_CHANGED","Claude Code 会话已变化，本次没有发送。")?;return Ok(None);}
+    let state:String=c.query_row("SELECT state FROM claude_sessions WHERE session_id=?1",[&event.session_id],|r|r.get(0)).map_err(db_error)?;
+    if !matches!(state.as_str(),"COMPLETE"|"FAILED"|"INTERRUPTED"|"EMPTY"|"LIMITED") {return Ok(None);}
+    let manual:bool=c.query_row("SELECT EXISTS(SELECT 1 FROM claude_manual_commands m JOIN watch_replies r ON r.id=m.request_id WHERE m.session_id=?1 AND r.status IN ('SENDING','UNKNOWN'))",[&event.session_id],|r|r.get(0)).map_err(db_error)?;
+    if manual {return Ok(None);}
+    c.execute("UPDATE claude_bridge_commands SET offered_at=?2 WHERE handoff_id=?1 AND offered_at IS NULL",params![handoff,now()]).map_err(db_error)?;
+    Ok(Some(ManualCommand{request_id:handoff,session_id:event.session_id.clone(),instance_id:instance,cwd,text_sha256:format!("{:x}",Sha256::digest(text.as_bytes())),text}))
+}
+fn bridge_receipt(c:&Connection,input:&ManualReceipt)->Result<(),String>{
+    let (sid,instance,cwd,text,status,offered,message):(String,String,String,String,String,Option<i64>,Option<String>)=c.query_row("SELECT b.session_id,b.instance_id,b.cwd,h.approved_text,h.status,b.offered_at,b.message_id FROM claude_bridge_commands b JOIN handoffs h ON h.id=b.handoff_id WHERE b.handoff_id=?1",[&input.request_id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?))).map_err(db_error)?;
+    if sid!=input.session_id||instance!=input.instance_id||cwd!=input.cwd||offered.is_none()||format!("{:x}",Sha256::digest(text.as_bytes()))!=input.text_sha256{return Err("CLAUDE_RECEIPT_TARGET_MISMATCH".into());}
+    let target=match input.status.as_str(){"SENT"=>"SENT","NOT_SENT"=>"FAILED",_=>"SENDING"};
+    if status!="SENDING"{return if status==target&&message==input.message_id{Ok(())}else{Err("CLAUDE_RECEIPT_CONFLICT".into())};}
+    match target {
+        "SENT"=>{c.execute("UPDATE handoffs SET status='SENT',sent_at=?2,error_code=NULL,error_message=NULL WHERE id=?1",params![input.request_id,now()]).map_err(db_error)?;super::bridge_notifications::mark_sent_source_handled(c,&input.request_id,now())?;}
+        "FAILED"=>{c.execute("UPDATE handoffs SET status='FAILED',failed_at=?2,error_code='CLAUDE_NOT_SENT',error_message='Claude Code 没有接收这条转发，可以重新转发。' WHERE id=?1",params![input.request_id,now()]).map_err(db_error)?;}
+        _=>{c.execute("UPDATE handoffs SET error_code='CLAUDE_DELIVERY_UNCONFIRMED',error_message='Claude Code 是否收到尚未确认，不会自动重发。' WHERE id=?1",params![input.request_id]).map_err(db_error)?;}
+    }
+    c.execute("UPDATE claude_bridge_commands SET message_id=?2 WHERE handoff_id=?1",params![input.request_id,input.message_id]).map_err(db_error)?;
+    Ok(())
 }

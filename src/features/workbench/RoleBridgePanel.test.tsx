@@ -14,15 +14,15 @@ function fixture(explicit = true) {
   return { state, prepared, api };
 }
 describe("role-compatible Bridge", () => {
-  it("keeps Claude destination observation-only without prepare, approval or send calls",async()=>{
+  it("lets the owner review a relay into Claude Code and explains it waits for idle",async()=>{
     const {api,state}=fixture();
     api.state.mockResolvedValue({...state,bindings:{...state.bindings,execution:{...state.bindings.execution!,endpoint:{...state.bindings.execution!.endpoint,provider:"CLAUDE_CODE"}}}});
     render(<NativeSurfaceContext.Provider value><RoleBridgePanel workstreamId="work-a" api={api}/></NativeSurfaceContext.Provider>);
     fireEvent.click(await screen.findByRole("button",{name:"转给执行端"}));
     const dialog=await screen.findByRole("dialog",{name:"转发"});
-    expect(within(dialog).getByText(/Claude Code 当前仅观察/)).toBeVisible();
-    expect(within(dialog).getByRole("button",{name:"确认并发送给执行端"})).toBeDisabled();
-    expect(api.prepare).not.toHaveBeenCalled();expect(api.approve).not.toHaveBeenCalled();expect(api.send).not.toHaveBeenCalled();
+    expect(within(dialog).getByText(/Claude Code 空闲后才会收到/)).toBeVisible();
+    expect(within(dialog).queryByText(/仅观察/)).toBeNull();
+    expect(api.send).not.toHaveBeenCalled();
   });
   it("positions the latest message when a previously hidden Bridge becomes visible instead of restoring saved zero",async()=>{
     const{api,state}=fixture();localStorage.setItem("aiwr.role-scroll.work-a",JSON.stringify({DECISION:0,EXECUTION:0}));

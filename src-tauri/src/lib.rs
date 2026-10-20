@@ -243,7 +243,7 @@ fn role_bridge_blocks(workstream_id:String,role:String,observation_id:String,sta
 #[tauri::command]
 fn edit_role_handoff(handoff_id:String,expected_hash:String,text:String,state:State<'_,RouterState>)->Result<persistence::HandoffHistoryItem,String>{state.store.edit_role_handoff(&handoff_id,&expected_hash,&text)}
 #[tauri::command]
-fn send_role_handoff(handoff_id:String,state:State<'_,RouterState>)->Result<role_bridge::BridgeState,String>{role_bridge::send(state.inner(),&handoff_id)}
+fn send_role_handoff(handoff_id:String,state:State<'_,RouterState>)->Result<role_bridge::BridgeState,String>{role_bridge::send_owner(state.inner(),&handoff_id)}
 
 #[cfg(debug_assertions)]
 #[derive(Clone, Default, Serialize)]
