@@ -14,12 +14,12 @@ jobs:
           node-version: 24.16.0
       - name: Test dependency
         run: npm ci
-      - name: Download exact public0.1.34 bytes
+      - name: Download exact public0.1.35-rc.19 bytes
         run: |
           New-Item -ItemType Directory -Path runtime/released -Force | Out-Null
-          $path='runtime/released/Agbrio_0.1.34_x64-setup.exe'
-          Invoke-WebRequest 'https://github.com/geoffrey1111/agbrio/releases/download/v0.1.34/Agbrio_0.1.34_x64-setup.exe' -OutFile $path
-          if((Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant() -ne '91b7a71131635def036369e1e9d46f67fff3183480d44d1b152b517a2a79707d'){throw 'Released byte identity mismatch'}
+          $path='runtime/released/Agbrio_0.1.35-rc.19_x64-setup.exe'
+          Invoke-WebRequest 'https://github.com/geoffrey1111/agbrio/releases/download/v0.1.35-rc.19/Agbrio_0.1.35-rc.19_x64-setup.exe' -OutFile $path
+          if((Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant() -ne '1f3bf23f2b8e7fb68134c9add0927fe1e488c7df2d1805322b569712e4893c41'){throw 'Released byte identity mismatch'}
           pwsh -NoProfile -File scripts/windows-install-smoke.ps1 -Installer $path
       - uses: actions/upload-artifact@v4
         if: always()
