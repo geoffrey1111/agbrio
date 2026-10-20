@@ -257,10 +257,13 @@ impl RouterStore {
                 return Err("BRIDGE_CODEX_ROOT_REQUIRED".into());
             }
             if input.provider == "CLAUDE_CODE" {
-                let session=self.claude_session(&input.external_id)?;
-                if session.lease_until<=now() || session.state=="SESSION_END" { return Err("CLAUDE_SESSION_UNCONFIRMED".into()); }
-                let exact=input.cwd.as_ref().and_then(|cwd|fs::canonicalize(cwd).ok()).zip(fs::canonicalize(&session.cwd).ok()).is_some_and(|(a,b)|a==b);
-                if !exact { return Err("CLAUDE_ROOT_CHANGED".into()); }
+                // A live registered session must match its root exactly. One the plugin has
+                // not reported yet was resolved by the Host from the desktop app's own list
+                // (exact native id and root); delivery still requires live verification.
+                if let Some(session)=self.claude_session(&input.external_id).ok().filter(|s|s.lease_until>now()&&s.state!="SESSION_END") {
+                    let exact=input.cwd.as_ref().and_then(|cwd|fs::canonicalize(cwd).ok()).zip(fs::canonicalize(&session.cwd).ok()).is_some_and(|(a,b)|a==b);
+                    if !exact { return Err("CLAUDE_ROOT_CHANGED".into()); }
+                }
             }
         }
         if decision.provider == "CHATGPT" && execution.provider == "CHATGPT" {

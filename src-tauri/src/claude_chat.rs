@@ -11,17 +11,22 @@ pub(crate) fn snapshot(s:&router_core::claude_code::Session)->WatchSnapshot{
 }
 pub(crate) fn enable(core:&RouterCore,key:&str)->Result<(),String>{
     let sid=native_id(key)?;
-    let session=crate::claude_code::verified_session(core,sid,None)?;
     let title=crate::claude_code::catalog(core)?.sessions.into_iter().find(|s|s.session_id==sid).and_then(|s|s.title).unwrap_or_else(||"未命名 Claude Code 对话".into());
-    core.store.enable_codex_watch(key,&title,&session.cwd,&snapshot(&session))
+    match crate::claude_code::verified_session(core,sid,None) {
+        Ok(session)=>core.store.enable_codex_watch(key,&title,&session.cwd,&snapshot(&session)),
+        // Not reported yet: watch the exact desktop conversation; events fill it in.
+        Err(_)=>core.store.enable_codex_watch(key,&title,&crate::claude_code::selectable_cwd(core,sid)?,&WatchSnapshot{state:"UNKNOWN".into(),turn_id:None,item_id:None,text:String::new()}),
+    }
 }
 pub(crate) fn state(core:&RouterCore,key:&str)->Result<Value,String>{
     core.store.expire_claude_manual_offers()?;
     let mut watch=core.store.codex_chat_context(key)?;
-    let session=crate::claude_code::verified_session(core,native_id(key)?,Some(&watch.cwd))?;
-    watch.snapshot=snapshot(&session);watch.checked_at=session.checked_at;
-    let ready=core.store.claude_manual_ready(&session.session_id,&session.instance_id)?;
-    Ok(json!({"watch":watch,"provider":"CLAUDE_CODE","inputReady":ready,"host":std::env::var("COMPUTERNAME").unwrap_or_default(),"ownedTurnId":null,"controllableTurnId":null,"externalBusy":matches!(session.state.as_str(),"RUNNING"|"WAITING_DECISION"),"replies":core.store.watch_replies(key)?,"requests":[],"goal":null,"publicMessages":[],"activity":if session.state=="RUNNING"{Some("EXECUTING")}else{None},"checkedAt":session.checked_at}))
+    // Before the conversation reports, the watch shows what it has and input stays off.
+    let session=crate::claude_code::verified_session(core,native_id(key)?,Some(&watch.cwd)).ok();
+    if let Some(s)=&session {watch.snapshot=snapshot(s);watch.checked_at=s.checked_at;}
+    let ready=match &session {Some(s)=>core.store.claude_manual_ready(&s.session_id,&s.instance_id)?,None=>false};
+    let state=session.as_ref().map(|s|s.state.as_str()).unwrap_or("");
+    Ok(json!({"watch":watch,"provider":"CLAUDE_CODE","inputReady":ready,"host":std::env::var("COMPUTERNAME").unwrap_or_default(),"ownedTurnId":null,"controllableTurnId":null,"externalBusy":matches!(state,"RUNNING"|"WAITING_DECISION"),"replies":core.store.watch_replies(key)?,"requests":[],"goal":null,"publicMessages":[],"activity":if state=="RUNNING"{Some("EXECUTING")}else{None},"checkedAt":session.as_ref().map(|s|s.checked_at).unwrap_or(watch.checked_at)}))
 }
 pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{
     let encode=|r:WatchReply|serde_json::to_value(r).map_err(|_|"CLAUDE_RESPONSE_INVALID".to_string());

@@ -145,10 +145,10 @@ pub(crate) fn candidates(core:&RouterCore)->Result<ExistingCodexThreadCatalog,St
  let mut catalog=match crate::role_bridge::catalog(core){Ok(c)=>c,Err(_) if !claude.sessions.is_empty()=>ExistingCodexThreadCatalog{threads:vec![],complete:false},Err(e)=>return Err(e)};
  catalog.threads.retain(|t|!bound.contains(&t.id));
  for s in claude.sessions {
-   if s.lease_until<=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64{continue;}
+   if s.state!="DESKTOP"&&s.lease_until<=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64{continue;}
    let key=format!("{}{}",router_core::store::claude_manual::PREFIX,s.session_id);
    if core.store.codex_chat_context(&key).is_ok_and(|w|w.generation<0){continue;}
-   catalog.threads.push(ExistingCodexThreadCandidate{id:key,label:s.title.unwrap_or_else(||"未命名对话".into()),preview:Some("Claude Code".into()),updated_at:None,project_provenance:Some(s.cwd),recency_at:None,project_id:None,project_label:None,project_status:"PROJECTLESS".into()});
+   catalog.threads.push(ExistingCodexThreadCandidate{id:key,label:s.title.unwrap_or_else(||"未命名对话".into()),preview:Some("Claude Code".into()),updated_at:None,project_provenance:Some(s.cwd),recency_at:(s.checked_at>0).then_some(s.checked_at/1000),project_id:None,project_label:None,project_status:"PROJECTLESS".into()});
  }
  catalog.complete &= claude.complete;
  Ok(catalog)

@@ -1150,5 +1150,6 @@
   "暂不可选": "Not available yet",
   "暂不可选 · 在 Claude 里打开并发一条消息后可选": "Not available yet · open it in Claude and send a message",
   "暂时离线": "Offline for now",
-  "当前": "current"
+  "当前": "current",
+  "未同步 · 在 Claude 打开后开始同步": "Not synced · syncs once opened in Claude"
 }

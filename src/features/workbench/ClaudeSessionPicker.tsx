@@ -11,10 +11,11 @@ export type ClaudeConnection={connectionId:string;expiresAt:number;revoked:boole
 export type ClaudeConnectionResult={phase:"CONNECTED"|"WAITING_SESSION";writesEnabled:boolean};
 export type ClaudePickerApi={claudeSessions?:()=>Promise<ClaudeCatalog>;claudeConnections?:()=>Promise<ClaudeConnection[]>;claudeSetup?:()=>Promise<ClaudePairing>;claudeConnect?:()=>Promise<ClaudeConnectionResult>;claudeRevoke?:(id:string)=>Promise<void>};
 export const providerLabel=(provider:string)=>provider==="CLAUDE_CODE"?"Claude Code":provider==="CODEX"?"Codex":"ChatGPT";
-const unavailable=(s:ClaudeSession)=>s.leaseUntil<=Date.now()||s.state==="SESSION_END";
-const stateText=(s:ClaudeSession)=>unavailable(s)?t("暂时离线"):t(({RUNNING:"执行中",WAITING_DECISION:"需要决策",COMPLETE:"回复已就绪",FAILED:"执行失败",INTERRUPTED:"已中断"} as Record<string,string>)[s.state]??"已连接");
+// DESKTOP: listed by the Claude desktop app but not reported yet; selectable by exact identity.
+const unavailable=(s:ClaudeSession)=>s.state!=="DESKTOP"&&(s.leaseUntil<=Date.now()||s.state==="SESSION_END");
+const stateText=(s:ClaudeSession)=>unavailable(s)?t("暂时离线"):t(({RUNNING:"执行中",WAITING_DECISION:"需要决策",COMPLETE:"回复已就绪",FAILED:"执行失败",INTERRUPTED:"已中断",DESKTOP:"未同步 · 在 Claude 打开后开始同步"} as Record<string,string>)[s.state]??"已连接");
 const folder=(cwd:string)=>cwd.split(/[\\/]/).filter(Boolean).at(-1)??cwd;
-const clock=(at:number)=>new Date(at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+const clock=(at:number)=>{const d=new Date(at);return d.toDateString()===new Date().toDateString()?d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):d.toLocaleDateString([],{month:"numeric",day:"numeric"});};
 const title=(s:ClaudeSession)=>s.title?.trim()||t("未命名对话");
 const connectionError=(error:unknown)=>t(({
  CLAUDE_DESKTOP_ENGINE_NOT_FOUND:"未找到支持观察插件的 Claude Code，请先安装或更新 Claude 桌面应用。",
@@ -30,7 +31,7 @@ export function ClaudeSessionPicker({api,value,onChange}:{api:ClaudePickerApi;va
  const order=useRef<string[]>([]),buttons=useRef(new Map<string,HTMLButtonElement>());
  function accept(next:ClaudeCatalog){
   const ids=new Set(next.sessions.map(s=>s.sessionId));order.current=order.current.filter(id=>ids.has(id));
-  const added=next.sessions.filter(s=>!order.current.includes(s.sessionId)).sort((a,b)=>title(a).localeCompare(title(b))||a.sessionId.localeCompare(b.sessionId));
+  const added=next.sessions.filter(s=>!order.current.includes(s.sessionId)).sort((a,b)=>(b.checkedAt??0)-(a.checkedAt??0)||title(a).localeCompare(title(b))||a.sessionId.localeCompare(b.sessionId));
   order.current.push(...added.map(s=>s.sessionId));next.sessions.sort((a,b)=>order.current.indexOf(a.sessionId)-order.current.indexOf(b.sessionId));setCatalog(next);
  }
  useEffect(()=>{let alive=true;if(api.claudeConnections)void api.claudeConnections().then(v=>{if(alive)setConnections(v);}).catch(()=>{});return()=>{alive=false;};},[api.claudeConnections]);

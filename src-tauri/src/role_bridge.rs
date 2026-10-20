@@ -193,8 +193,7 @@ pub(crate) fn bind(
     for input in [&mut decision, &mut execution] {
         match input.provider.as_str() {
             "CLAUDE_CODE" => {
-                let session=crate::claude_code::verified_session(core,&input.external_id,None)?;
-                input.cwd=Some(session.cwd);
+                input.cwd=Some(crate::claude_code::selectable_cwd(core,&input.external_id)?);
             }
             "CODEX" => {
                 let mut s = core
@@ -244,7 +243,10 @@ pub(crate) fn read(core: &RouterCore, workstream: &str, role: &str) -> Result<Br
     let side = side(core, workstream, role)?;
     let (identity, text,completed) = match side.endpoint.provider.as_str() {
         "CLAUDE_CODE" => {
-            let session=crate::claude_code::verified_session(core,&side.endpoint.external_id,side.cwd.as_deref())?;
+            // A bound conversation the plugin has not reported yet has nothing new to read.
+            let Ok(session)=crate::claude_code::verified_session(core,&side.endpoint.external_id,side.cwd.as_deref()) else {
+                return read_without_new_reply(core,workstream,role,&side.endpoint.id,"EXTERNAL_STATUS_UNCONFIRMED");
+            };
             if session.state!="COMPLETE" {
                 return read_without_new_reply(core,workstream,role,&side.endpoint.id,match session.state.as_str(){"RUNNING"=>"LATEST_TURN_ACTIVE","INTERRUPTED"|"FAILED"=>"LATEST_TURN_INTERRUPTED",_=>"EXTERNAL_STATUS_UNCONFIRMED"});
             }

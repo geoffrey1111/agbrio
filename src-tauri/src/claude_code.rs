@@ -6,11 +6,37 @@ use router_core::store::role_bridge::RoleEndpoint;
 #[path="claude_code_tests.rs"]
 mod tests;
 
+/// Every unarchived Claude Code conversation on this computer, from all desktop
+/// account partitions, plus sessions the plugin registered. A conversation the plugin
+/// has not reported yet is `DESKTOP`: selectable by its exact native identity, and
+/// observed once it is opened in Claude. Delivery still needs `verified_session`.
 pub(crate) fn catalog(core:&RouterCore)->Result<router_core::store::claude_code::Catalog,String>{
     let mut catalog=router_core::claude_code::ClaudeCodeAdapter::new(core.store.as_ref()).sessions()?;
     let names=crate::claude_code_desktop::names(&catalog.sessions);
     for session in &mut catalog.sessions {session.title=names.get(&session.session_id).cloned();}
+    let now=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+    let desktop=crate::claude_code_desktop::sessions();
+    let listed=|id:&str|desktop.iter().find(|d|d.session_id==id);
+    catalog.sessions.retain(|s|s.lease_until>now||!listed(&s.session_id).is_some_and(|d|d.archived));
+    for s in catalog.sessions.iter_mut().filter(|s|s.lease_until<=now) {
+        if let Some(d)=listed(&s.session_id).filter(|d|!d.archived) {
+            s.state="DESKTOP".into();s.checked_at=s.checked_at.max(d.last_activity);
+            if s.title.is_none(){s.title=d.title.clone();}
+        }
+    }
+    for d in desktop.iter().filter(|d|!d.archived) {
+        if catalog.sessions.iter().any(|s|s.session_id==d.session_id){continue;}
+        catalog.sessions.push(Session{session_id:d.session_id.clone(),instance_id:String::new(),cwd:d.cwd.clone(),version:String::new(),state:"DESKTOP".into(),turn_id:None,checked_at:d.last_activity,lease_until:0,title:d.title.clone(),latest_reply:None});
+    }
     Ok(catalog)
+}
+/// Exact native identity for binding or watching: a live registered session, or an
+/// unarchived conversation the Claude desktop app lists.
+pub(crate) fn selectable_cwd(core:&RouterCore,external:&str)->Result<String,String>{
+    match verified_session(core,external,None) {
+        Ok(session)=>Ok(session.cwd),
+        Err(error)=>crate::claude_code_desktop::sessions().into_iter().find(|d|d.session_id==external&&!d.archived).map(|d|d.cwd).ok_or(error),
+    }
 }
 
 #[derive(serde::Serialize)]

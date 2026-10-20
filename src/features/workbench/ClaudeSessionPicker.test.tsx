@@ -66,3 +66,10 @@ it("directory failure explains Host compatibility and does not create connection
  render(<ClaudeSessionPicker api={api} value={{provider:"CLAUDE_CODE",externalId:"",label:""}} onChange={()=>{}}/>);
  await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("Host 已更新"));expect(api.claudeSetup).not.toHaveBeenCalled();
 });
+it("desktop-listed conversations that have not reported yet are selectable, newest first",async()=>{
+ const desktop=(sessionId:string,title:string,at:number)=>({sessionId,title,cwd:"D:\fictional",version:"",state:"DESKTOP",checkedAt:at,leaseUntil:0});
+ const api={claudeSessions:vi.fn().mockResolvedValue({sessions:[desktop("old-native","较早",1000),desktop("new-native","最近",5000)],complete:true,writesEnabled:false})};const change=vi.fn();
+ render(<ClaudeSessionPicker api={api} value={{provider:"CLAUDE_CODE",externalId:"",label:""}} onChange={change}/>);
+ const radios=await screen.findAllByRole("radio");expect(radios[0]).toHaveTextContent("最近");expect(radios[0]).toHaveTextContent("在 Claude 打开后开始同步");
+ await userEvent.click(radios[1]);expect(change).toHaveBeenCalledWith({provider:"CLAUDE_CODE",externalId:"old-native",label:"较早",cwd:"D:\fictional"});
+});

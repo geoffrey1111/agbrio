@@ -64,6 +64,34 @@ fn event(root:&std::path::Path,session:&str,kind:&str,sequence:i64)->Event {
  assert!(bindings.explicit_roles);
 }
 
+#[test] fn every_unarchived_desktop_conversation_is_selectable_before_it_reports() {
+ let temp=tempfile::tempdir().unwrap();
+ let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
+ let core=RouterCore{chatgpt:Arc::new(Default::default()),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::new(Mutex::new(HashMap::new())),store:store.clone()};
+ let pair=store.create_claude_connection().unwrap();
+ let live="10000000-0000-4000-8000-000000000001";let quiet="10000000-0000-4000-8000-000000000003";let archived="10000000-0000-4000-8000-000000000004";
+ ingest(&core,&pair.token,&event(temp.path(),live,"SESSION_START",1)).unwrap();
+ let cwd=serde_json::to_string(&temp.path().to_string_lossy()).unwrap();
+ let app=temp.path().join("app");
+ for (account,id,title,archived) in [("one",quiet,"没上报的对话",false),("two",archived,"已归档",true)] {
+  let d=app.join(format!("claude-code-sessions/{account}/org"));std::fs::create_dir_all(&d).unwrap();
+  std::fs::write(d.join(format!("local_{id}.json")),format!("{{\"sessionId\":\"local_{id}\",\"cliSessionId\":\"{id}\",\"cwd\":{cwd},\"lastActivityAt\":5,\"isArchived\":{archived},\"title\":\"{title}\"}}")).unwrap();
+ }
+ *crate::claude_code_desktop::TEST_ROOTS.lock().unwrap()=vec![app.clone()];
+ let catalog=catalog(&core).unwrap();
+ let ids:Vec<_>=catalog.sessions.iter().map(|s|(s.session_id.as_str(),s.state.as_str())).collect();
+ assert!(ids.contains(&(live,"SESSION_START")));assert!(ids.contains(&(quiet,"DESKTOP")));assert!(!ids.iter().any(|(id,_)|*id==archived));
+ // Bind and watch the quiet conversation by its exact native identity.
+ let project=store.create_project("fictional".into(),None).unwrap();let w=store.create_workstream(&project.id,"fictional".into()).unwrap();
+ let side=|id:&str|RoleBindingInput{provider:"CLAUDE_CODE".into(),external_id:id.into(),label:"x".into(),cwd:None};
+ let bound=crate::role_bridge::bind(&core,&w.id,w.binding_revision,side(live),side(quiet)).unwrap();
+ assert_eq!(bound.execution.unwrap().cwd.as_deref(),Some(temp.path().to_string_lossy().as_ref()));
+ assert_eq!(crate::role_bridge::read(&core,&w.id,"EXECUTION").unwrap().replies.len(),0);
+ assert!(crate::role_bridge::bind(&core,&w.id,w.binding_revision+1,side(live),side(archived)).is_err());
+ let key=format!("claude_code:{quiet}");crate::claude_chat::enable(&core,&key).unwrap();
+ let state=crate::claude_chat::state(&core,&key).unwrap();assert_eq!(state["inputReady"],false);assert!(state["watch"]["label"].is_string());
+ *crate::claude_code_desktop::TEST_ROOTS.lock().unwrap()=vec![];
+}
 #[test] fn owner_relay_into_claude_rides_the_plugin_heartbeat_at_most_once() {
  let temp=tempfile::tempdir().unwrap();let db=temp.path().join("router.db");
  let store=Arc::new(crate::RouterStore::open_at(&db).unwrap());

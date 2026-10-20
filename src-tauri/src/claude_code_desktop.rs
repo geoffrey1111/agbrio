@@ -15,46 +15,49 @@ pub(crate) fn data_roots() -> Vec<PathBuf> {
     })
 }
 
-// Stop parsing before any transcript, MCP configuration or approval data. The
-// sentinel returns the captured prefix without requiring the rest of the JSON.
-struct Metadata<'a> { wanted: &'a HashMap<String, String>, found: Option<(String, String)> }
-impl<'de> Visitor<'de> for &mut Metadata<'_> {
+// Stop parsing at the title, or earlier at any transcript, MCP configuration or
+// approval data. Other prefix values are skipped without being kept. The sentinel
+// returns the captured prefix without requiring the rest of the JSON.
+const PAYLOAD_KEYS: &[&str] = &["remoteMcpServersConfig","enabledMcpTools","messages","transcript","completedTurns","sessionPermissionUpdates","alwaysAllowedReasons","promptAppendSnapshot","spawnSeed","pendingSystemReminder"];
+#[derive(Default, Clone)]
+struct Prefix { local_id: Option<String>, id: Option<String>, cwd: Option<String>, title: Option<String>, archived: bool, last_activity: i64 }
+impl<'de> Visitor<'de> for &mut Prefix {
     type Value = ();
     fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result { f.write_str("Desktop session metadata prefix") }
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
-        let mut id = None;
-        let mut cwd = None;
         while let Some(key) = map.next_key::<String>()? {
             match key.as_str() {
-                "cliSessionId" => {
-                    let native: Option<String> = map.next_value()?;
-                    if native.as_ref().is_none_or(|s| !self.wanted.contains_key(s)) { return Err(de::Error::custom("METADATA_OUTSIDE_SCOPE")); }
-                    id = native;
-                }
-                "cwd" => { cwd = map.next_value::<Option<String>>()?; }
+                "sessionId" => { self.local_id = map.next_value::<Option<String>>()?; }
+                "cliSessionId" => { self.id = map.next_value::<Option<String>>()?; }
+                "cwd" => { self.cwd = map.next_value::<Option<String>>()?; }
+                "isArchived" => { self.archived = map.next_value::<Option<bool>>()?.unwrap_or(false); }
+                "lastActivityAt" => { self.last_activity = map.next_value::<Option<i64>>()?.unwrap_or(0); }
                 "title" => {
-                    let (Some(id), Some(cwd)) = (id.as_ref(), cwd.as_ref()) else { return Err(de::Error::custom("METADATA_IDENTITY_FIRST")); };
-                    let exact = fs::canonicalize(cwd).ok().zip(fs::canonicalize(&self.wanted[id]).ok()).is_some_and(|(a,b)| a == b);
-                    if !exact { return Err(de::Error::custom("METADATA_ROOT_MISMATCH")); }
+                    if self.id.is_none() || self.cwd.is_none() { return Err(de::Error::custom("METADATA_IDENTITY_FIRST")); }
                     let title: Option<String> = map.next_value()?;
-                    if let Some(title) = title.filter(|v| !v.trim().is_empty() && v.chars().count() <= 512 && !v.chars().any(|c| c.is_control() || matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'))) {
-                        self.found = Some((id.clone(), title));
-                    }
+                    self.title = title.filter(|v| !v.trim().is_empty() && v.chars().count() <= 512 && !v.chars().any(|c| c.is_control() || matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')));
                     return Err(de::Error::custom("METADATA_COMPLETE"));
                 }
-                "sessionId" | "originCwd" | "gitAnchorsFolderRealpath" | "lastFocusedAt" | "createdAt" | "lastActivityAt" | "model" | "effort" | "isArchived" => { map.next_value::<de::IgnoredAny>()?; }
-                _ => return Err(de::Error::custom("METADATA_PREFIX_ENDED")),
+                k if PAYLOAD_KEYS.contains(&k) => return Err(de::Error::custom("METADATA_PREFIX_ENDED")),
+                _ => { map.next_value::<de::IgnoredAny>()?; }
             }
         }
         Ok(())
     }
 }
-fn read_name(path: &Path, wanted: &HashMap<String,String>) -> Option<(String,String)> {
-    let file = fs::File::open(path).ok()?;
+fn read_prefix(path: &Path) -> Prefix {
+    let mut prefix = Prefix::default();
+    let Ok(file) = fs::File::open(path) else { return prefix; };
     let mut reader = serde_json::Deserializer::from_reader(BufReader::with_capacity(1024, file.take(64 * 1024)));
-    let mut metadata = Metadata { wanted, found: None };
-    let _ = reader.deserialize_map(&mut metadata);
-    metadata.found
+    let _ = reader.deserialize_map(&mut prefix);
+    prefix
+}
+fn read_name(path: &Path, wanted: &HashMap<String,String>) -> Option<(String,String)> {
+    let prefix = read_prefix(path);
+    let (id, cwd, title) = (prefix.id?, prefix.cwd?, prefix.title?);
+    let expected = wanted.get(&id)?;
+    let exact = fs::canonicalize(&cwd).ok().zip(fs::canonicalize(expected).ok()).is_some_and(|(a,b)| a == b);
+    exact.then_some((id, title))
 }
 fn children(path: &Path, budget: &mut usize) -> Vec<fs::DirEntry> {
     let Ok(entries) = fs::read_dir(path) else { return Vec::new(); };
@@ -66,29 +69,73 @@ fn children(path: &Path, budget: &mut usize) -> Vec<fs::DirEntry> {
     }
     result
 }
-pub(crate) fn names_at(roots: &[PathBuf], sessions: &[Session]) -> HashMap<String,String> {
-    let wanted: HashMap<_,_> = sessions.iter().map(|s| (s.session_id.clone(), s.cwd.clone())).collect();
-    if wanted.is_empty() { return HashMap::new(); }
-    let mut names = HashMap::<String, Option<String>>::new();
+/// Every desktop session metadata file under every account partition, with that
+/// partition folder's archived index.
+fn session_files(roots: &[PathBuf]) -> Vec<(PathBuf, std::collections::HashSet<String>)> {
+    let mut files = Vec::new();
     let mut budget = 4096;
     for root in roots {
         let Ok(boundary) = fs::canonicalize(root.join("claude-code-sessions")) else { continue; };
         if !fs::canonicalize(root).is_ok_and(|root| boundary.starts_with(root)) { continue; }
         for account in children(&boundary, &mut budget).into_iter().filter(|e| e.file_type().is_ok_and(|t| t.is_dir())) {
             for project in children(&account.path(), &mut budget).into_iter().filter(|e| e.file_type().is_ok_and(|t| t.is_dir())) {
+                let archived: std::collections::HashSet<String> = fs::File::open(project.path().join("archived-sessions.idx")).ok()
+                    .and_then(|f| serde_json::from_reader::<_, serde_json::Value>(f.take(256 * 1024)).ok())
+                    .and_then(|v| v.get("archived").and_then(|a| a.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect()))
+                    .unwrap_or_default();
                 for entry in children(&project.path(), &mut budget).into_iter().filter(|e| e.file_type().is_ok_and(|t| t.is_file())) {
                     let file_name = entry.file_name(); let Some(file_name) = file_name.to_str() else { continue; };
                     if !file_name.starts_with("local_") || !file_name.ends_with(".json") { continue; }
                     let Ok(path) = fs::canonicalize(entry.path()) else { continue; };
-                    if !path.starts_with(&boundary) { continue; }
-                    if let Some((id,title)) = read_name(&path, &wanted) {
-                        names.entry(id).and_modify(|old| { if old.as_ref() != Some(&title) { *old = None; } }).or_insert(Some(title));
-                    }
+                    if path.starts_with(&boundary) { files.push((path, archived.clone())); }
                 }
             }
         }
     }
+    files
+}
+pub(crate) fn names_at(roots: &[PathBuf], sessions: &[Session]) -> HashMap<String,String> {
+    let wanted: HashMap<_,_> = sessions.iter().map(|s| (s.session_id.clone(), s.cwd.clone())).collect();
+    if wanted.is_empty() { return HashMap::new(); }
+    let mut names = HashMap::<String, Option<String>>::new();
+    for (path, _) in session_files(roots) {
+        if let Some((id,title)) = read_name(&path, &wanted) {
+            names.entry(id).and_modify(|old| { if old.as_ref() != Some(&title) { *old = None; } }).or_insert(Some(title));
+        }
+    }
     names.into_iter().filter_map(|(id,title)| title.map(|title| (id,title))).collect()
+}
+/// A conversation the Claude desktop app lists, from any account partition.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct DesktopSession { pub session_id: String, pub cwd: String, pub title: Option<String>, pub archived: bool, pub last_activity: i64 }
+fn native_uuid(v: &str) -> bool { v.len() == 36 && uuid::Uuid::parse_str(v).is_ok() }
+/// One entry per native session id: the copy with the latest activity wins, so a
+/// stale copy in another partition never hides or resurrects a conversation.
+pub(crate) fn sessions_at(roots: &[PathBuf]) -> Vec<DesktopSession> {
+    let mut by_id = HashMap::<String, DesktopSession>::new();
+    for (path, archived_index) in session_files(roots) {
+        let p = read_prefix(&path);
+        let (Some(id), Some(cwd)) = (p.id, p.cwd) else { continue; };
+        if !native_uuid(&id) || cwd.trim().is_empty() { continue; }
+        let archived = p.archived || p.local_id.as_ref().is_some_and(|l| archived_index.contains(l));
+        let next = DesktopSession { session_id: id.clone(), cwd, title: p.title, archived, last_activity: p.last_activity };
+        match by_id.get(&id) { Some(old) if old.last_activity >= next.last_activity => {}, _ => { by_id.insert(id, next); } }
+    }
+    let mut list: Vec<_> = by_id.into_values().collect();
+    list.sort_by(|a, b| b.last_activity.cmp(&a.last_activity).then_with(|| a.session_id.cmp(&b.session_id)));
+    list
+}
+#[cfg(test)]
+pub(crate) static TEST_ROOTS: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+pub(crate) fn sessions() -> Vec<DesktopSession> {
+    // Tests never read the real desktop app's files.
+    #[cfg(test)] { return sessions_at(&TEST_ROOTS.lock().map(|r| r.clone()).unwrap_or_default()); }
+    #[allow(unreachable_code)]
+    static CACHE: OnceLock<Mutex<Option<(Instant, Vec<DesktopSession>)>>> = OnceLock::new();
+    let Ok(mut cache) = CACHE.get_or_init(|| Mutex::new(None)).lock() else { return Vec::new(); };
+    if let Some((at, list)) = cache.as_ref().filter(|(at, _)| at.elapsed() < Duration::from_secs(10)) { let _ = at; return list.clone(); }
+    let list = sessions_at(&data_roots());
+    *cache = Some((Instant::now(), list.clone())); list
 }
 struct NameCache { key: Vec<(String,String)>, roots: Vec<PathBuf>, at: Instant, names: HashMap<String,String> }
 pub(crate) fn names(sessions: &[Session]) -> HashMap<String,String> {
@@ -180,6 +227,23 @@ mod tests {
         fs::write(&file,format!("{{\"cliSessionId\":\"native\",\"cwd\":{},\"remoteMcpServersConfig\":INVALID,\"title\":\"not read\"}}",serde_json::to_string(&current.cwd).unwrap())).unwrap();
         assert!(read_name(&file,&wanted).is_none());
         fs::write(&file,format!("{{\"cliSessionId\":\"unregistered\",\"cwd\":{},\"title\":INVALID}}",serde_json::to_string(&current.cwd).unwrap())).unwrap(); assert!(read_name(&file,&wanted).is_none());
+    }
+    #[test] fn newer_app_keys_before_title_are_skipped_and_all_partitions_are_listed() {
+        let temp = tempfile::tempdir().unwrap(); let project = temp.path().join("project"); fs::create_dir(&project).unwrap();
+        let cwd = serde_json::to_string(&project.to_string_lossy()).unwrap();
+        let a = "10000000-0000-4000-8000-00000000000a"; let b = "10000000-0000-4000-8000-00000000000b"; let c = "10000000-0000-4000-8000-00000000000c";
+        let file = |account: &str, local: &str, body: String| { let d = temp.path().join(format!("claude-code-sessions/{account}/org")); fs::create_dir_all(&d).unwrap(); fs::write(d.join(format!("local_{local}.json")), body).unwrap(); };
+        file("one", "a", format!("{{\"sessionId\":\"local_a\",\"cliSessionId\":\"{a}\",\"cwd\":{cwd},\"gitAnchorsLookupOnly\":true,\"lastActivityAt\":5,\"isArchived\":false,\"title\":\"新标题\",\"enabledMcpTools\":NOT_JSON"));
+        file("two", "b", format!("{{\"sessionId\":\"local_b\",\"cliSessionId\":\"{b}\",\"cwd\":{cwd},\"lastActivityAt\":9,\"isArchived\":false,\"title\":\"另一个账号\"}}"));
+        file("two", "c", format!("{{\"sessionId\":\"local_c\",\"cliSessionId\":\"{c}\",\"cwd\":{cwd},\"lastActivityAt\":7,\"isArchived\":false,\"title\":\"已归档\"}}"));
+        fs::write(temp.path().join("claude-code-sessions/two/org/archived-sessions.idx"), r#"{"v":1,"archived":["local_c"]}"#).unwrap();
+        // The same native session copied into another partition: the newer copy wins.
+        file("one", "b-old", format!("{{\"sessionId\":\"local_b\",\"cliSessionId\":\"{b}\",\"cwd\":{cwd},\"lastActivityAt\":1,\"isArchived\":true,\"title\":\"旧副本\"}}"));
+        let list = sessions_at(&[temp.path().into()]);
+        assert_eq!(list.iter().map(|s| (s.session_id.as_str(), s.title.as_deref(), s.archived)).collect::<Vec<_>>(), vec![(b, Some("另一个账号"), false), (c, Some("已归档"), true), (a, Some("新标题"), false)]);
+        // A payload key before the title still stops reading without a title.
+        file("one", "d", format!("{{\"cliSessionId\":\"{a}\",\"cwd\":{cwd},\"remoteMcpServersConfig\":[],\"title\":\"不应读取\"}}"));
+        assert!(read_prefix(&temp.path().join("claude-code-sessions/one/org/local_d.json")).title.is_none());
     }
     #[test] fn engine_discovery_is_bounded_to_supported_desktop_versions() {
         let temp=tempfile::tempdir().unwrap();
