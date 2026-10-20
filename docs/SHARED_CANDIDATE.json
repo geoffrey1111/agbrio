@@ -1,8 +1,9 @@
 {
-  "installedLocally": false,
-  "sha256": "735a6b349b111d61e80e6cd3f1b5e2af06d1c1045be6ecedf3a93f422e98b405",
-  "releaseId": 412353967,
+  "installedLocally": true,
+  "sha256": "1f3bf23f2b8e7fb68134c9add0927fe1e488c7df2d1805322b569712e4893c41",
+  "releaseId": 418094572,
   "status": "PUBLIC_RELEASE_LATEST",
-  "version": "0.1.35-rc.5",
-  "sourceCommit": "f53297ab16db612488eb46bd830afe5b3f689673"
+  "version": "0.1.35-rc.19",
+  "sourceCommit": "c65f33bddcda1bc1f428fb5a1ab18601600aabdf",
+  "exactReleasedInstallRun": 39385168471
 }

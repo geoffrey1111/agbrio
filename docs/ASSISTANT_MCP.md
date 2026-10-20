@@ -6,7 +6,7 @@ Main now includes client-specific WorkBuddy/other-MCP onboarding, narrowly valid
 
 [Client setup and evidence limits](ASSISTANT_CLIENTS.md) · [Copyable development prompt](tutorials/WORKBUDDY_DEVELOPMENT_PROMPT.zh-CN.txt).
 
-This is a source update, not a claim that the current rc.5 downloadable installer contains these changes. Actual external-user WorkBuddy OAuth/tools and event-woken takeover remain unverified. On-demand tools, real event wake and optional schedules require separate evidence. Older code-only metadata statements below are historical.
+These changes are included in the rc.19 installer. Actual external-user WorkBuddy OAuth/tools and event-woken takeover remain unverified. On-demand tools, real event wake and optional schedules require separate evidence. Older code-only metadata statements below are historical.
 
 
 0.1.7 adds the manual tutorial to the existing conversation-reviewed whole-app connection. One connection covers current/future Bridges,

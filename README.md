@@ -1,6 +1,6 @@
 <img src="docs/assets/agbrio-icon.png" width="72" alt="Agbrio">
 
-Main source: [WorkBuddy / general MCP assistant setup](docs/ASSISTANT_CLIENTS.md) · [Copyable development instruction](docs/tutorials/WORKBUDDY_DEVELOPMENT_PROMPT.zh-CN.txt). This source change is not in the current rc.5 installer; real external-user WorkBuddy acceptance is pending.
+Main source: [WorkBuddy / general MCP assistant setup](docs/ASSISTANT_CLIENTS.md) · [Copyable development instruction](docs/tutorials/WORKBUDDY_DEVELOPMENT_PROMPT.zh-CN.txt). Included in rc.19; real external-user WorkBuddy acceptance is pending.
 
 # Agbrio
 
@@ -12,20 +12,20 @@ Do you already keep one agent conversation for decisions and another for impleme
 
 **Keep the reasoning in one conversation. Keep the execution in another. Carry the right work between them.**
 
-[Download Windows v0.1.35-rc.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5) · [Install and pair](docs/SETUP.md) · [Connect an assistant](docs/ASSISTANT_CONNECTION_GUIDE.en.md) · [MIT license](LICENSE)
+[Download Windows v0.1.35-rc.19](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.19) · [Install and pair](docs/SETUP.md) · [Connect an assistant](docs/ASSISTANT_CONNECTION_GUIDE.en.md) · [MIT license](LICENSE)
 
-[Latest shared Codex repair v0.1.35-rc.5](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.5): guarded startup and return-to-normal entries, verified native tools and Windows state recovery. [Checks and remaining limits](docs/RELEASE_0.1.35-rc.5.md). This is the latest recommended download; its exact rc.5 version and validation limits are retained. Private character-board work is excluded.
+[Latest shared Codex repair v0.1.35-rc.19](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.19): bounded tunnel recovery, the current desktop/PWA interface, owner-approved Claude text relays, and the existing guarded shared startup and recovery entries. [Checks and remaining limits](docs/RELEASE_0.1.35-rc.19.md). This is the latest recommended download; its exact rc.19 version and validation limits are retained. Private artwork, board content, conversations and runtime state are excluded.
 
 ## Start here
 
-**New user? Read the [complete walkthrough](docs/SETUP.md) and [FAQ](docs/FAQ.md).** Shared-connection repairs are in the **0.1.35-rc.5 release** above, now the latest recommended download; 0.1.34 is historical.
+**New user? Read the [complete walkthrough](docs/SETUP.md) and [FAQ](docs/FAQ.md).** Shared-connection repairs are in the **0.1.35-rc.19 release** above, now the latest recommended download; 0.1.34 is historical.
 
 1. Install Agbrio and complete your official Codex installation/login.
-2. With ordinary Codex exited after tasks finish, use **Codex (Agbrio shared)** (rc.5), or prepare/open from Agbrio settings. Verify Desktop-connected, not just backend-prepared.
+2. With ordinary Codex exited after tasks finish, use **Codex (Agbrio shared)** (rc.19), or prepare/open from Agbrio settings. Verify Desktop-connected, not just backend-prepared.
 3. Bind two exact conversations, select content, preview destination/text, send once and check the receipt.
 4. Optionally add a paired phone, Claude Code or a scoped AI assistant; each connection is verified separately.
 
-**Why open ordinary Codex and then close it?** Older preparation used its running backend; actual switching needed a clean exit. **rc.5 can discover the official installation while Desktop is closed.** After initial installation/login, use the shared shortcut directly on later launches/reboots. Official default/taskbar startup stays unchanged. Official updates are rechecked at idle startup, with no guarantee for every future version. [Startup and fallback](docs/SETUP.md#4-daily-startup-reboot-official-updates-and-fallback).
+**Why open ordinary Codex and then close it?** Older preparation used its running backend; actual switching needed a clean exit. **rc.19 can discover the official installation while Desktop is closed.** After initial installation/login, use the shared shortcut directly on later launches/reboots. Official default/taskbar startup stays unchanged. Official updates are rechecked at idle startup, with no guarantee for every future version. [Startup and fallback](docs/SETUP.md#4-daily-startup-reboot-official-updates-and-fallback).
 
 Development and current documentation use **main**. Release tags preserve the exact published source; historical branch links are not a second supported setup path.
 

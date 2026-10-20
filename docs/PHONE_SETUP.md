@@ -8,7 +8,7 @@ Never publish credentials, pairing codes or private screenshots.
 
 ### Optional hosted connection
 
-Public 0.1.34 and 0.1.35-rc.5 include the optional redemption flow. In
+Public 0.1.34, 0.1.35-rc.5 and 0.1.35-rc.19 include the optional redemption flow. In
 **Settings → Devices**, enter a code supplied separately by the author and
 activate once on your desktop. The packaged service is
 `https://agbrio-connect.geoffreygroup.cc`; you do not enter a domain, tunnel

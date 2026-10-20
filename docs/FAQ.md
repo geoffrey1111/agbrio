@@ -6,7 +6,7 @@
 
 ### Which version should I download? What if 0.1.34 cannot connect?
 
-Use [0.1.35-rc.5, the latest recommended release](https://github.com/geoffrey1111/agbrio/releases/latest). 0.1.34 is historical. The installer retains its exact rc.5 version/signature and bounded validation, without claiming every scenario is accepted. Distinguish shared Codex, phone and assistant failures, retaining the exact error. An upgrade cannot be promised to fix all network/account issues. Use official assets and [setup](SETUP.md), not repeated reinstall/data deletion.
+Use [0.1.35-rc.19, the latest recommended release](https://github.com/geoffrey1111/agbrio/releases/latest). 0.1.34 is historical. The installer retains its exact rc.19 version/signature and bounded validation, without claiming every scenario is accepted. Distinguish shared Codex, phone and assistant failures, retaining the exact error. An upgrade cannot be promised to fix all network/account issues. Use official assets and [setup](SETUP.md), not repeated reinstall/data deletion.
 
 ### Must I buy a code or new account? Does Agbrio reset quotas?
 
@@ -80,7 +80,7 @@ No. Verify original Goal/chat, authorization, pending decisions and uncertain se
 
 ### The phone shows old data or loads slowly. Should I delete the PWA?
 
-First check Host, computer sleep, network/HTTPS and web-shell revision. Cache can display without proving liveness. Update in About; rc.5 also has a Settings-root control. Do not clear pairing/drafts or re-pair as the first step. A web-shell update does not update Windows Host.
+First check Host, computer sleep, network/HTTPS and web-shell revision. Cache can display without proving liveness. Update in About. Do not clear pairing/drafts or re-pair as the first step. A web-shell update does not update Windows Host.
 
 ### Can phone/dot continue with the computer off?
 
