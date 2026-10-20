@@ -22,6 +22,22 @@ impl RecoveryPolicy {
  }
  fn healthy(&mut self){self.failures=0;self.attempts=0;}
 }
+/// Cloudflared reconnects by itself, and an upstream proxy or network problem is
+/// not fixed by a restart: restarting only drops the connections that still work.
+/// Restart the shared service only after the connector has had no ready
+/// connection for a sustained period, and at most once an hour.
+const TUNNEL_DOWN_SECS:u64=5*60;
+const TUNNEL_RESTART_GAP_SECS:u64=60*60;
+#[derive(Default)]
+struct TunnelPolicy {down_since:Option<u64>,last:Option<u64>}
+impl TunnelPolicy {
+ fn tick(&mut self,eligible:bool,elapsed:u64)->bool {
+  if !eligible {self.down_since=None;return false;}
+  let since=*self.down_since.get_or_insert(elapsed);
+  if elapsed.saturating_sub(since)<TUNNEL_DOWN_SECS || self.last.is_some_and(|last|elapsed.saturating_sub(last)<TUNNEL_RESTART_GAP_SECS){return false;}
+  self.last=Some(elapsed);self.down_since=None;true
+ }
+}
 impl Watchdog {
  pub(crate) fn status(&self)->Status {let mut status=self.status.lock().map(|s|s.clone()).unwrap_or_default();status.setup_pending=SETUP_PENDING.load(Ordering::Acquire);status}
  pub(crate) fn retry(&self){self.wake.store(true,Ordering::Release);}
@@ -32,7 +48,7 @@ impl Watchdog {
    let client=match reqwest::blocking::Client::builder().timeout(Duration::from_secs(5)).redirect(reqwest::redirect::Policy::none()).build(){Ok(c)=>c,Err(_)=>return};
    let local_client=match reqwest::blocking::Client::builder().no_proxy().timeout(Duration::from_secs(2)).build(){Ok(c)=>c,Err(_)=>return};
    let private_client=match reqwest::blocking::Client::builder().no_proxy().timeout(Duration::from_secs(5)).redirect(reqwest::redirect::Policy::none()).build(){Ok(c)=>c,Err(_)=>return};
-   let since=Instant::now();let mut policy=RecoveryPolicy::default();let mut local_policy=RecoveryPolicy::default();let mut count=0;
+   let since=Instant::now();let mut policy=TunnelPolicy::default();let mut local_policy=RecoveryPolicy::default();let mut count=0;
    while !guard.stop.load(Ordering::Acquire){
     let config=crate::mobile_http::managed_config(&config);
     host.ensure_mobile(core.clone(),config.clone());
@@ -44,7 +60,6 @@ impl Watchdog {
     let configured=config.allowed_origin.starts_with("https://");
     let public=configured&&external_client.get(format!("{}/v1/mobile/auth/session",config.allowed_origin.trim_end_matches('/'))).header("cache-control","no-cache").send().is_ok_and(|r|r.status().is_success()&&r.headers().get("x-aiwr-host-instance").and_then(|v|v.to_str().ok())==Some(host.instance_id()));
     let mut state=if !configured{"CONFIG_REQUIRED"}else if public{"ONLINE"}else if !local{"LOCAL_RECOVERING"}else if legacy&&!tunnel && !allowed{"ADMIN_SETUP_REQUIRED"}else if legacy&&!tunnel{"TUNNEL_RECONNECTING"}else{"PUBLIC_UNREACHABLE"}.to_string();
-    if public {policy.healthy();}
     if local {local_policy.healthy();}
     if local_policy.tick(!local,since.elapsed().as_secs()) && !guard.stop.load(Ordering::Acquire){host.restart_mobile_listener(core.clone(),config.clone());}
     // Public errors while a connector is healthy can be DNS/Access/Cloudflare
@@ -88,6 +103,20 @@ mod service {
  use super::*;
  #[test]fn loopback_bootstrap_is_local_ready_but_never_public_ready(){
   let d=tempfile::tempdir().unwrap();std::fs::write(d.path().join("index.html"),"fixture").unwrap();let core=crate::RouterCore{store:Arc::new(crate::RouterStore::open_at(d.path().join("db")).unwrap()),chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default()};let host=crate::HostRuntime::default();let mut c=crate::mobile_http::MobileHttpConfig::controlled_host_acceptance(d.path().into());c.port=0;c.access_issuer.clear();c.access_audience.clear();c.access_jwks_url.clear();host.ensure_mobile(core.clone(),c.clone());c.port=host.mobile_address().unwrap().port();c.allowed_origin=format!("http://127.0.0.1:{}",c.port);c.allowed_host=format!("127.0.0.1:{}",c.port);host.ensure_mobile(core.clone(),c.clone());host.web.start(host.clone(),core.clone(),c);let until=Instant::now()+Duration::from_secs(5);while host.web.status().checked_at==0&&Instant::now()<until{std::thread::sleep(Duration::from_millis(50));}let s=host.web.status();host.shutdown(&core);assert!(s.local_ready);assert!(!s.public_ready);assert_eq!(s.state,"CONFIG_REQUIRED");
+ }
+ #[test]fn tunnel_restart_needs_five_minutes_down_and_is_at_most_hourly(){
+  let mut p=TunnelPolicy::default();
+  for t in (0..300).step_by(15){assert!(!p.tick(true,t));}
+  assert!(p.tick(true,300));
+  // Still down: no further restart within the hour, however long it stays down.
+  for t in (315..3900).step_by(15){assert!(!p.tick(true,t),"t={t}");}
+  assert!(p.tick(true,3900));
+  // A recovery in between resets the down timer but not the hourly cap.
+  let mut q=TunnelPolicy::default();for t in (0..=300).step_by(15){q.tick(true,t);}
+  assert!(!q.tick(false,315));for t in (330..630).step_by(15){assert!(!q.tick(true,t));}
+  assert!(!q.tick(true,700),"hourly cap");
+  // Flapping below five minutes never restarts.
+  let mut r=TunnelPolicy::default();for n in 0..40{assert!(!r.tick(n%10!=0,n*15));}
  }
  #[test]fn transient_failure_and_public_only_failure_never_restart(){let mut p=RecoveryPolicy::default();assert!(!p.tick(true,0));assert!(!p.tick(true,15));assert!(!p.tick(false,30));for n in 0..20{assert!(!p.tick(false,n*15));}}
  #[test]fn recovery_is_bounded_and_healthy_connection_resets_backoff(){let mut p=RecoveryPolicy::default();assert!(!p.tick(true,0));assert!(!p.tick(true,15));assert!(p.tick(true,30));for t in [45,60,90,120]{assert!(!p.tick(true,t));}assert!(p.tick(true,150));p.healthy();assert!(!p.tick(true,165));assert!(!p.tick(true,180));assert!(!p.tick(true,195));assert!(p.tick(true,210));}
