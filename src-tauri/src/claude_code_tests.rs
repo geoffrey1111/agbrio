@@ -107,13 +107,11 @@ fn event(root:&std::path::Path,session:&str,kind:&str,sequence:i64)->Event {
  finish(a,2,"指令一");
  let relay=|text:&str|{let state=crate::role_bridge::read(&core,&w.id,"DECISION").unwrap();let reply=state.replies.last().unwrap().id.clone();let h=crate::role_bridge::prepare(&core,&w.id,"DECISION",&reply,text,&[]).unwrap();crate::role_bridge::approve(&core,&h.id,&h.payload_hash).unwrap();h};
  let h=relay("指令一");
- // MCP stays closed; the owner path refuses while the plugin has not checked in.
+ // MCP stays closed. The owner's send queues even before the plugin checks in.
  assert_eq!(crate::role_bridge::send(&core,&h.id).err().unwrap(),"CLAUDE_WRITES_OWNER_ONLY");
- assert!(crate::role_bridge::send_owner(&core,&h.id).err().unwrap().contains("CLAUDE_INPUT_PLUGIN_NOT_READY"));
- assert_eq!(store.role_handoff(&h.id).unwrap().status,"APPROVED");
- let beat=|seq:i64|event(temp.path(),b,"HEARTBEAT",seq);
- ingest(&core,&pair.token,&beat(2)).unwrap();store.offer_claude_manual(&pair.token,&beat(2)).unwrap();
  crate::role_bridge::send_owner(&core,&h.id).unwrap();assert_eq!(store.role_handoff(&h.id).unwrap().status,"SENDING");
+ let beat=|seq:i64|event(temp.path(),b,"HEARTBEAT",seq);
+ ingest(&core,&pair.token,&beat(2)).unwrap();
  // Destination is not idle yet (SESSION_START): nothing is offered.
  assert!(store.offer_claude_manual(&pair.token,&beat(3)).unwrap().is_none());
  finish(b,3,"执行端空闲");
@@ -223,4 +221,42 @@ fn connection_fixture(temp:&tempfile::TempDir)->(RouterCore,crate::HostRuntime,s
  let temp=tempfile::tempdir().unwrap();let(core,host,cache,admin)=connection_fixture(&temp);
  admin.configured.lock().unwrap().insert("agbrio-bridge@agbrio-observation".into(),("http://127.0.0.1:12345".into(),"not exported".into()));
  assert_eq!(connect_admin(&core,&host,temp.path(),&admin,&cache).err().unwrap(),"CLAUDE_PLUGIN_DIFFERENT_HOST");assert!(core.store.claude_connections().unwrap().is_empty());host.shutdown(&core);
+}
+#[test] fn a_bridge_receives_a_claude_reply_from_the_transcript_even_without_plugin_turn_events(){
+ let temp=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
+ let core=RouterCore{chatgpt:Arc::new(Default::default()),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::new(Mutex::new(HashMap::new())),store:store.clone()};
+ let pair=store.create_claude_connection().unwrap();
+ let a="10000000-0000-4000-8000-0000000000a1";let b="10000000-0000-4000-8000-0000000000b1";
+ for s in [a,b]{ingest(&core,&pair.token,&event(temp.path(),s,"SESSION_START",1)).unwrap();}
+ let projects=temp.path().join("projects");let folder=projects.join("D--p");std::fs::create_dir_all(&folder).unwrap();
+ *crate::claude_transcript::TEST_PROJECTS.lock().unwrap()=Some(projects.clone());
+ let cwd=temp.path().to_string_lossy().to_string();
+ let line=|v:serde_json::Value|v.to_string();
+ let transcript=[line(serde_json::json!({"type":"user","sessionId":a,"promptId":"p1","cwd":cwd,"message":{"role":"user","content":"出一个方案"}})),
+  line(serde_json::json!({"type":"assistant","sessionId":a,"cwd":cwd,"timestamp":"2026-10-21T08:31:33.000Z","message":{"id":"m1","stop_reason":"end_turn","content":[{"type":"text","text":"方案：先做 A 再做 B"}]}})),
+  line(serde_json::json!({"type":"system","subtype":"stop_hook_summary","sessionId":a}))].join("\n");
+ let path=folder.join(format!("{a}.jsonl"));std::fs::write(&path,transcript).unwrap();
+ let project=store.create_project("p".into(),None).unwrap();let w=store.create_workstream(&project.id,"w".into()).unwrap();
+ let side=|id:&str|RoleBindingInput{provider:"CLAUDE_CODE".into(),external_id:id.into(),label:"x".into(),cwd:None};
+ crate::role_bridge::bind(&core,&w.id,w.binding_revision,side(a),side(b)).unwrap();
+ // A plugin RUNNING event for a transcript-owned session changes liveness only.
+ let mut running=event(temp.path(),a,"RUNNING",2);running.turn_id=Some(uuid::Uuid::new_v4().to_string());ingest(&core,&pair.token,&running).unwrap();
+ assert_eq!(store.claude_session(a).unwrap().state,"SESSION_START");
+ crate::claude_watch::observe(&core,&path,a,None).unwrap();
+ let s=store.claude_session(a).unwrap();assert_eq!((s.state.as_str(),s.turn_id.as_deref()),("COMPLETE",Some("claude_turn:p1")));
+ let replies=crate::role_bridge::read(&core,&w.id,"DECISION").unwrap().replies;
+ assert_eq!(replies.iter().map(|r|r.text.as_str()).collect::<Vec<_>>(),vec!["方案：先做 A 再做 B"]);
+ // Observing the same file again records nothing new.
+ crate::claude_watch::observe(&core,&path,a,None).unwrap();assert_eq!(crate::role_bridge::read(&core,&w.id,"DECISION").unwrap().replies.len(),1);
+ // Resident recovery must not depend on a transcript file changing.
+ let mut watcher=crate::claude_watch::Watcher::default();assert_eq!(watcher.tick(&core).unwrap(),1);
+ assert_eq!(watcher.tick(&core).unwrap(),0);
+ ingest(&core,&pair.token,&event(temp.path(),a,"SESSION_END",3)).unwrap();
+ let ended=store.claude_session(a).unwrap();assert_eq!(crate::claude_chat::snapshot(&ended).state,"UNKNOWN");
+ assert_eq!(watcher.tick(&core).unwrap(),1);assert_eq!(store.claude_session(a).unwrap().state,"COMPLETE");
+ let mut next=event(temp.path(),a,"SESSION_START",1);next.instance_id=uuid::Uuid::new_v4().to_string();ingest(&core,&pair.token,&next).unwrap();
+ assert_eq!(watcher.tick(&core).unwrap(),1);assert_eq!(watcher.tick(&core).unwrap(),0);
+ assert_eq!(crate::role_bridge::read(&core,&w.id,"DECISION").unwrap().replies.len(),1);
+ let mut unknown=store.claude_session(a).unwrap();unknown.state="FUTURE_PLUGIN_STATE".into();assert_eq!(crate::claude_chat::snapshot(&unknown).state,"UNKNOWN");
+ *crate::claude_transcript::TEST_PROJECTS.lock().unwrap()=None;
 }

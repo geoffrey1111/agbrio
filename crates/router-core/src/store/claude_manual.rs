@@ -39,7 +39,10 @@ pub struct ManualReceipt {
 }
 fn verify_publisher(c:&Connection,token:&str,sid:&str,instance:&str,cwd:&str)->Result<(),String>{
     let owner=super::claude_code::auth(c,token,now())?;
-    let matched:bool=c.query_row("SELECT EXISTS(SELECT 1 FROM claude_sessions WHERE session_id=?1 AND instance_id=?2 AND connection_id=?3 AND cwd=?4 AND lease_until>?5 AND state!='SESSION_END')",params![sid,instance,owner,cwd,now()],|r|r.get(0)).map_err(db_error)?;
+    // Token, session and plugin instance prove the publisher; the working directory may
+    // differ from the session's root during a turn.
+    let _=cwd;
+    let matched:bool=c.query_row("SELECT EXISTS(SELECT 1 FROM claude_sessions WHERE session_id=?1 AND instance_id=?2 AND connection_id=?3 AND lease_until>?4 AND state!='SESSION_END')",params![sid,instance,owner,now()],|r|r.get(0)).map_err(db_error)?;
     if !matched {return Err("CLAUDE_COMMAND_PUBLISHER_CHANGED".into());} Ok(())
 }
 impl RouterStore {
@@ -65,7 +68,9 @@ impl RouterStore {
         let Some((request,key,text))=candidate else{let offer=bridge_offer(&tx,event)?;tx.commit().map_err(db_error)?;return Ok(offer)};
         let (instance,cwd,generation,mode,expected):(String,String,i64,String,Option<String>)=tx.query_row("SELECT m.instance_id,m.cwd,r.generation,r.mode,r.expected_turn_id FROM claude_manual_commands m JOIN watch_replies r ON r.id=m.request_id WHERE r.id=?1",[&request],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).map_err(db_error)?;
         let context=codex_watch::chat_context(&tx,&key);
-        let valid=context.is_ok_and(|w|w.generation==generation&&w.cwd==cwd)&&instance==event.instance_id&&cwd==event.cwd;
+        // Same exact session and root; a reloaded plugin (new instance) still delivers.
+        let _=instance;
+        let valid=context.is_ok_and(|w|w.generation==generation&&crate::claude_code::same_root(&w.cwd,&cwd))&&crate::claude_code::within_root(&cwd,&event.cwd);
         if !valid{
             tx.execute("UPDATE watch_replies SET status='FAILED',error_code='CLAUDE_TARGET_CHANGED',updated_at=?2 WHERE id=?1 AND status='QUEUED'",params![request,now()]).map_err(db_error)?;
             tx.commit().map_err(db_error)?;return Ok(None);
@@ -77,16 +82,17 @@ impl RouterStore {
         if !matches!(state.as_str(),"SESSION_START"|"COMPLETE"|"FAILED"|"INTERRUPTED"|"EMPTY"|"LIMITED") {tx.commit().map_err(db_error)?;return Ok(None);}
         if mode=="QUEUE"&&!matches!(state.as_str(),"SESSION_START"|"COMPLETE") {tx.commit().map_err(db_error)?;return Ok(None);}
         if mode=="SEND"&&state=="SESSION_START" {tx.commit().map_err(db_error)?;return Ok(None);}
-        if expected!=turn {
+        if mode=="SEND" && expected!=turn {
             tx.execute("UPDATE watch_replies SET status='FAILED',error_code='CLAUDE_TURN_CHANGED',updated_at=?2 WHERE id=?1",params![request,now()]).map_err(db_error)?;
             tx.commit().map_err(db_error)?;return Ok(None);
         }
         let busy:i64=tx.query_row("SELECT (SELECT count(*) FROM provider_runs r JOIN endpoints e ON e.id=r.endpoint_id WHERE e.provider='CLAUDE_CODE' AND e.external_id=?1 AND r.status IN ('STARTING','RUNNING','UNKNOWN'))+(SELECT count(*) FROM handoffs h JOIN endpoints e ON e.id=h.destination_endpoint_id WHERE e.provider='CLAUDE_CODE' AND e.external_id=?1 AND h.status IN ('SENDING','UNKNOWN','APPROVED'))",[&event.session_id],|r|r.get(0)).map_err(db_error)?;
         if busy>0{tx.commit().map_err(db_error)?;return Ok(None);}
         tx.execute("UPDATE watch_replies SET status='SENDING',updated_at=?2 WHERE id=?1 AND status='QUEUED'",params![request,now()]).map_err(db_error)?;
-        tx.execute("UPDATE claude_manual_commands SET offered_at=?2 WHERE request_id=?1",params![request,now()]).map_err(db_error)?;
+        // Bind the command to the plugin instance that receives it; receipts match it.
+        tx.execute("UPDATE claude_manual_commands SET offered_at=?2,instance_id=?3,cwd=?4 WHERE request_id=?1",params![request,now(),event.instance_id,event.cwd]).map_err(db_error)?;
         tx.commit().map_err(db_error)?;
-        Ok(Some(ManualCommand{request_id:request,session_id:event.session_id.clone(),instance_id:instance,cwd,text_sha256:format!("{:x}",Sha256::digest(text.as_bytes())),text}))
+        Ok(Some(ManualCommand{request_id:request,session_id:event.session_id.clone(),instance_id:event.instance_id.clone(),cwd:event.cwd.clone(),text_sha256:format!("{:x}",Sha256::digest(text.as_bytes())),text}))
     })}
     pub fn accept_claude_manual_receipt(&self,token:&str,input:&ManualReceipt)->Result<(),String>{self.with_connection(|c|{
         if !matches!(input.status.as_str(),"SENT"|"NOT_SENT"|"UNKNOWN") || (input.status=="SENT"&&input.message_id.as_deref().is_none_or(|v|Uuid::parse_str(v).is_err())) {return Err("CLAUDE_RECEIPT_INVALID".into());}
@@ -143,6 +149,25 @@ impl RouterStore {
         let beat=event(temp.path(),"HEARTBEAT",3,Some(turn.clone()));store.ingest_claude_event(&pair.token,&beat).unwrap();store.offer_claude_manual(&pair.token,&beat).unwrap();let mut r=intent(&store,&start,&turn);r.mode="QUEUE".into();let r=store.prepare_watch_reply(&r).unwrap();store.enqueue_claude_manual(&r,&start.instance_id).unwrap();assert!(store.offer_claude_manual(&pair.token,&beat).unwrap().is_none());
         let decision=event(temp.path(),"WAITING_DECISION",4,Some(turn.clone()));store.ingest_claude_event(&pair.token,&decision).unwrap();assert!(store.offer_claude_manual(&pair.token,&beat).unwrap().is_none());store.pause_codex_watch(&key).unwrap();let end=event(temp.path(),"COMPLETE",5,Some(turn));store.ingest_claude_event(&pair.token,&end).unwrap();assert!(store.offer_claude_manual(&pair.token,&beat).unwrap().is_none());assert_eq!(store.watch_reply(&r.id).unwrap().unwrap().status,"FAILED");
     }
+    #[test]fn queue_survives_a_new_turn_and_plugin_reload_but_send_keeps_turn_fence(){
+        let temp=tempfile::tempdir().unwrap();let store=RouterStore::open_at(temp.path().join("router.db")).unwrap();let pair=store.create_claude_connection().unwrap();let start=event(temp.path(),"SESSION_START",1,None);
+        store.ingest_claude_event_owned(&pair.token,&start,true).unwrap();let key=format!("{PREFIX}{}",start.session_id);
+        store.apply_claude_transcript(&start.session_id,&start.cwd,"RUNNING",Some("claude_turn:p1"),None).unwrap();
+        store.enable_codex_watch(&key,"Claude",&start.cwd,&codex_watch::WatchSnapshot{state:"RUNNING".into(),turn_id:Some("claude_turn:p1".into()),item_id:None,text:String::new()}).unwrap();
+        let mut beat=event(temp.path(),"HEARTBEAT",2,None);store.ingest_claude_event_owned(&pair.token,&beat,true).unwrap();store.offer_claude_manual(&pair.token,&beat).unwrap();
+        let mut queued=intent(&store,&start,"claude_turn:p1");queued.mode="QUEUE".into();let queued=store.prepare_watch_reply(&queued).unwrap();store.enqueue_claude_manual(&queued,&start.instance_id).unwrap();
+        assert!(store.offer_claude_manual(&pair.token,&beat).unwrap().is_none());
+        store.ingest_claude_event_owned(&pair.token,&event(temp.path(),"SESSION_END",3,None),true).unwrap();
+        let mut next=event(temp.path(),"SESSION_START",1,None);next.instance_id=id();store.ingest_claude_event_owned(&pair.token,&next,true).unwrap();
+        let reply=crate::claude_code::CompleteReply{turn_id:"claude_turn:p2".into(),text:"answer".into(),completed_at:now()};
+        store.apply_claude_transcript(&start.session_id,&start.cwd,"COMPLETE",Some(&reply.turn_id),Some(&reply)).unwrap();
+        beat.instance_id=next.instance_id.clone();beat.event_id=id();store.ingest_claude_event_owned(&pair.token,&beat,true).unwrap();
+        let offered=store.offer_claude_manual(&pair.token,&beat).unwrap().unwrap();assert_eq!(offered.request_id,queued.id);assert!(store.offer_claude_manual(&pair.token,&beat).unwrap().is_none());
+        let receipt=ManualReceipt{request_id:queued.id.clone(),session_id:start.session_id.clone(),instance_id:next.instance_id.clone(),cwd:start.cwd.clone(),status:"SENT".into(),message_id:Some(id()),text_sha256:offered.text_sha256};
+        store.accept_claude_manual_receipt(&pair.token,&receipt).unwrap();assert_eq!(store.watch_reply(&queued.id).unwrap().unwrap().status,"SENT");
+        let stale=store.prepare_watch_reply(&intent(&store,&start,"claude_turn:p1")).unwrap();store.enqueue_claude_manual(&stale,&next.instance_id).unwrap();assert!(store.offer_claude_manual(&pair.token,&beat).unwrap().is_none());
+        assert_eq!(store.watch_reply(&stale.id).unwrap().unwrap().error_code.as_deref(),Some("CLAUDE_TURN_CHANGED"));
+    }
     #[test]fn newly_reloaded_exact_session_uses_explicit_native_queue_without_claiming_idle(){
         let temp=tempfile::tempdir().unwrap();let store=RouterStore::open_at(temp.path().join("router.db")).unwrap();let pair=store.create_claude_connection().unwrap();let start=event(temp.path(),"SESSION_START",1,None);store.ingest_claude_event(&pair.token,&start).unwrap();let key=format!("{PREFIX}{}",start.session_id);
         store.enable_codex_watch(&key,"Claude",&start.cwd,&codex_watch::WatchSnapshot{state:"UNKNOWN".into(),turn_id:None,item_id:None,text:String::new()}).unwrap();
@@ -190,13 +215,14 @@ fn fail_bridge(c:&Connection,handoff:&str,code:&str,message:&str)->Result<(),Str
 fn bridge_offer(c:&Connection,event:&Event)->Result<Option<ManualCommand>,String>{
     let row:Option<(String,String,String,String)>=c.query_row("SELECT b.handoff_id,h.approved_text,b.instance_id,b.cwd FROM claude_bridge_commands b JOIN handoffs h ON h.id=b.handoff_id WHERE b.session_id=?1 AND h.status='SENDING' AND b.offered_at IS NULL ORDER BY b.enqueued_at LIMIT 1",[&event.session_id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional().map_err(db_error)?;
     let Some((handoff,text,instance,cwd))=row else {return Ok(None)};
-    if instance!=event.instance_id||cwd!=event.cwd {fail_bridge(c,&handoff,"CLAUDE_TARGET_CHANGED","Claude Code 会话已变化，本次没有发送。")?;return Ok(None);}
+    let _=&instance;
+    if !crate::claude_code::within_root(&cwd,&event.cwd) {fail_bridge(c,&handoff,"CLAUDE_TARGET_CHANGED","Claude Code 会话已变化，本次没有发送。")?;return Ok(None);}
     let state:String=c.query_row("SELECT state FROM claude_sessions WHERE session_id=?1",[&event.session_id],|r|r.get(0)).map_err(db_error)?;
     if !matches!(state.as_str(),"COMPLETE"|"FAILED"|"INTERRUPTED"|"EMPTY"|"LIMITED") {return Ok(None);}
     let manual:bool=c.query_row("SELECT EXISTS(SELECT 1 FROM claude_manual_commands m JOIN watch_replies r ON r.id=m.request_id WHERE m.session_id=?1 AND r.status IN ('SENDING','UNKNOWN'))",[&event.session_id],|r|r.get(0)).map_err(db_error)?;
     if manual {return Ok(None);}
-    c.execute("UPDATE claude_bridge_commands SET offered_at=?2 WHERE handoff_id=?1 AND offered_at IS NULL",params![handoff,now()]).map_err(db_error)?;
-    Ok(Some(ManualCommand{request_id:handoff,session_id:event.session_id.clone(),instance_id:instance,cwd,text_sha256:format!("{:x}",Sha256::digest(text.as_bytes())),text}))
+    c.execute("UPDATE claude_bridge_commands SET offered_at=?2,instance_id=?3,cwd=?4 WHERE handoff_id=?1 AND offered_at IS NULL",params![handoff,now(),event.instance_id,event.cwd]).map_err(db_error)?;
+    Ok(Some(ManualCommand{request_id:handoff,session_id:event.session_id.clone(),instance_id:event.instance_id.clone(),cwd:event.cwd.clone(),text_sha256:format!("{:x}",Sha256::digest(text.as_bytes())),text}))
 }
 fn bridge_receipt(c:&Connection,input:&ManualReceipt)->Result<(),String>{
     let (sid,instance,cwd,text,status,offered,message):(String,String,String,String,String,Option<i64>,Option<String>)=c.query_row("SELECT b.session_id,b.instance_id,b.cwd,h.approved_text,h.status,b.offered_at,b.message_id FROM claude_bridge_commands b JOIN handoffs h ON h.id=b.handoff_id WHERE b.handoff_id=?1",[&input.request_id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?))).map_err(db_error)?;

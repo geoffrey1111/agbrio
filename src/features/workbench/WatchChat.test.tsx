@@ -7,15 +7,14 @@ const original={sequence:17,threadId:"exact-original",label:"原对话",cwd:"D:\
 const state:WatchChatState={watch:{...original,enabled:true,generation:2,checkedAt:1,errorCode:null},host:"电脑A",ownedTurnId:null,externalBusy:false,replies:[],requests:[],goal:null};
 const response=(id:string,status:WatchReply["status"]="SENT"):WatchReply=>({id,threadId:original.threadId,sourceSequence:17,expectedTurnId:"turn-a",mode:"SEND",text:"第一条回复",status,turnId:"turn-b",errorCode:null,createdAt:1,options:{attachments:[]}});
 beforeEach(()=>sessionStorage.clear());afterEach(cleanup);
-it('Claude input stays unavailable until the native input protocol is actually registered',async()=>{
+it('a Claude conversation whose plugin is quiet still accepts a reply, which queues until it is active',async()=>{
  const native={...original,threadId:'claude_code:10000000-0000-4000-8000-000000000001'};
  const chat={...state,provider:'CLAUDE_CODE' as const,inputReady:false,watch:{...state.watch,threadId:native.threadId}};
  const command=vi.fn(async(_input:{action:string})=>({messages:[],nextCursor:null}));
  render(<WatchChat original={native} api={{state:async()=>chat,command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
- await screen.findByText(/发送模块尚未加载/);
+ await screen.findByText(/回复会先排队/);
  fireEvent.change(screen.getByRole('textbox'),{target:{value:'Owner approved actual reply'}});
- expect(screen.getByRole('button',{name:'发送回复'})).toBeDisabled();
- expect(command.mock.calls.every(([c])=>(c as {action?:string}).action!=='SEND')).toBe(true);
+ expect(screen.getByRole('button',{name:'发送回复'})).toBeEnabled();
 });
 it('Claude uses the exact original session and inherited settings without acknowledgement or duplicate rows',async()=>{
  const native={...original,threadId:'claude_code:10000000-0000-4000-8000-000000000001'};
@@ -27,7 +26,7 @@ it('Claude uses the exact original session and inherited settings without acknow
  });
  const api:WatchChatApi={state:async()=>({...state,provider:'CLAUDE_CODE',inputReady:true,watch:{...state.watch,threadId:native.threadId},replies:receipt?[receipt]:[]}),command:command as WatchChatApi['command']};
  const view=render(<WatchChat original={native} api={api} onBack={()=>{}}/>);
- await screen.findByText(/回复将发送到原 Claude Code 对话/);
+ await screen.findByText(/回复会在原 Claude Code 对话空闲时送达/);
  fireEvent.change(screen.getByRole('textbox'),{target:{value:'Actual requested text'}});
  fireEvent.click(screen.getByRole('button',{name:'发送回复'}));
  await waitFor(()=>expect(command.mock.calls.find(([c])=>c.action==='SEND')?.[0]).toMatchObject({threadId:native.threadId,text:'Actual requested text',mode:'SEND',options:{model:null,effort:null,attachments:[]}}));

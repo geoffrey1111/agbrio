@@ -112,7 +112,31 @@ impl RouterStore {
             c.query_row(&format!("SELECT {SESSION_FIELDS} FROM claude_sessions s JOIN claude_connections a ON a.id=s.connection_id WHERE s.session_id=?1 AND a.revoked_at IS NULL AND a.expires_at>?2"),params![session,now()],session_row).optional().map_err(db_error)?.ok_or("CLAUDE_SESSION_UNAVAILABLE".into())
         })
     }
-    pub fn ingest_claude_event(&self, token: &str, event: &Event) -> Result<bool, String> {
+    /// Applies the state the session's own transcript shows. Returns true when a new
+    /// completed reply appeared (a different turn, or the same turn newly finished).
+    /// A session the plugin has not registered yet gets a row with no instance or lease.
+    pub fn apply_claude_transcript(&self, session: &str, cwd: &str, state: &str, turn: Option<&str>, reply: Option<&CompleteReply>) -> Result<bool, String> {
+        if !matches!(state, "RUNNING"|"COMPLETE"|"INTERRUPTED"|"EMPTY"|"FAILED") || !crate::claude_code::native_id(session) { return Err("CLAUDE_TRANSCRIPT_STATE_INVALID".into()); }
+        let reply = reply.map(serde_json::to_string).transpose().map_err(|_| "CLAUDE_REPLY_INVALID")?;
+        self.with_connection(|c| {
+            let tx = c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
+            let prior: Option<(String, Option<String>)> = tx.query_row("SELECT state,turn_id FROM claude_sessions WHERE session_id=?1", [session], |r| Ok((r.get(0)?, r.get(1)?))).optional().map_err(db_error)?;
+            if prior.as_ref().is_some_and(|(s, t)| s == state && t.as_deref() == turn) { return Ok(false); }
+            match prior {
+                Some(_) => { tx.execute("UPDATE claude_sessions SET state=?2,turn_id=?3,latest_reply=CASE WHEN ?2='COMPLETE' THEN ?4 ELSE NULL END WHERE session_id=?1", params![session, state, turn, reply]).map_err(db_error)?; }
+                None => {
+                    let Some(connection): Option<String> = tx.query_row("SELECT id FROM claude_connections WHERE revoked_at IS NULL AND expires_at>?1 ORDER BY expires_at DESC LIMIT 1", [now()], |r| r.get(0)).optional().map_err(db_error)? else { return Ok(false) };
+                    tx.execute("INSERT INTO claude_sessions(session_id,connection_id,instance_id,sequence,cwd,version,state,turn_id,checked_at,lease_until,latest_reply) VALUES(?1,?2,'',0,?3,'',?4,?5,?6,0,CASE WHEN ?4='COMPLETE' THEN ?7 ELSE NULL END)", params![session, connection, cwd, state, turn, now(), reply]).map_err(db_error)?;
+                }
+            }
+            tx.commit().map_err(db_error)?;
+            Ok(state == "COMPLETE")
+        })
+    }
+    pub fn ingest_claude_event(&self, token: &str, event: &Event) -> Result<bool, String> { self.ingest_claude_event_owned(token, event, false) }
+    /// `transcript_owned`: the session's transcript is the authority for state, turn
+    /// and reply. Plugin shutdown expires its lease, not the native conversation.
+    pub fn ingest_claude_event_owned(&self, token: &str, event: &Event, transcript_owned: bool) -> Result<bool, String> {
         let at=now(); event.validate(at)?;
         // The Adapter alone resolves native roots, not Domain titles or URL guesses.
         crate::claude_code::root_key(&event.cwd).ok_or("CLAUDE_ROOT_UNAVAILABLE")?;
@@ -125,23 +149,28 @@ impl RouterStore {
             let prior:Option<(String,String,i64,String,i64)>=tx.query_row("SELECT connection_id,instance_id,sequence,cwd,lease_until FROM claude_sessions WHERE session_id=?1",[&event.session_id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).optional().map_err(db_error)?;
             if let Some((owner,instance,sequence,cwd,lease))=&prior {
                 let old_authorized=tx.query_row("SELECT revoked_at IS NULL AND expires_at>?2 FROM claude_connections WHERE id=?1",params![owner,at],|r|r.get::<_,bool>(0)).map_err(db_error)?;
-                if owner!=&connection && (old_authorized || event.kind!="SESSION_START") { return Err("CLAUDE_SESSION_ALREADY_OWNED".into()); }
+                // A row the Host created from the transcript (no instance yet) is claimed by the first plugin.
+                if owner!=&connection && !instance.is_empty() && (old_authorized || event.kind!="SESSION_START") { return Err("CLAUDE_SESSION_ALREADY_OWNED".into()); }
                 // A spare session may move into its real project; any other root change is refused.
-                if !crate::claude_code::same_root(cwd,&event.cwd) && !crate::claude_code::spare_root(cwd) { return Err("CLAUDE_ROOT_CHANGED".into()); }
+                // For a transcript-owned session the session id is the identity; its working
+                // directory may move during a turn (for example into a subfolder).
+                if !transcript_owned && !crate::claude_code::same_root(cwd,&event.cwd) && !crate::claude_code::spare_root(cwd) { return Err("CLAUDE_ROOT_CHANGED".into()); }
                 if instance!=&event.instance_id {
+                    // A delayed shutdown must never claim or terminate a newer publisher.
+                    if event.kind=="SESSION_END" { return Err("CLAUDE_SESSION_INSTANCE_CHANGED".into()); }
                     // A reloaded plugin is a new instance. It waits for the old instance's
                     // lease to lapse, then any event re-registers it (its start event may
                     // have been acknowledged as rejected while the old lease was valid).
                     if *lease>at && old_authorized { return Err("CLAUDE_SESSION_INSTANCE_CHANGED".into()); }
                 } else if event.sequence<=*sequence { return Err("CLAUDE_EVENT_OUT_OF_ORDER".into()); }
             } else if event.kind!="SESSION_START" { return Err("CLAUDE_SESSION_NOT_REGISTERED".into()); }
-            if event.kind=="COMPLETE" {
+            if event.kind=="COMPLETE" && !transcript_owned {
                 let (state,turn):(String,Option<String>)=tx.query_row("SELECT state,turn_id FROM claude_sessions WHERE session_id=?1",[&event.session_id],|r|Ok((r.get(0)?,r.get(1)?))).map_err(db_error)?;
                 if !matches!(state.as_str(),"RUNNING"|"WAITING_DECISION") || turn!=event.turn_id {return Err("CLAUDE_COMPLETE_TURN_MISMATCH".into());}
             }
             let reply=if event.kind=="COMPLETE" { Some(serde_json::to_string(&CompleteReply {turn_id:event.turn_id.clone().unwrap(),text:event.text.clone().unwrap(),completed_at:event.completed_at.unwrap()}).map_err(|_|"CLAUDE_REPLY_INVALID")?) } else { None };
-            let state=if event.kind=="HEARTBEAT" { tx.query_row("SELECT state FROM claude_sessions WHERE session_id=?1",[&event.session_id],|r|r.get::<_,String>(0)).map_err(db_error)? } else {event.kind.clone()};
-            tx.execute("INSERT INTO claude_sessions(session_id,connection_id,instance_id,sequence,cwd,version,state,turn_id,checked_at,lease_until,latest_reply) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11) ON CONFLICT(session_id) DO UPDATE SET connection_id=excluded.connection_id,cwd=excluded.cwd,instance_id=excluded.instance_id,sequence=excluded.sequence,version=excluded.version,state=excluded.state,turn_id=CASE WHEN ?12='HEARTBEAT' THEN claude_sessions.turn_id ELSE excluded.turn_id END,checked_at=excluded.checked_at,lease_until=excluded.lease_until,latest_reply=CASE WHEN ?12 IN ('RUNNING','SESSION_START','SESSION_END') THEN NULL ELSE COALESCE(excluded.latest_reply,claude_sessions.latest_reply) END",params![event.session_id,connection,event.instance_id,event.sequence,event.cwd,event.version,state,event.turn_id,at,if event.kind=="SESSION_END"{at}else{at+45_000},reply,event.kind]).map_err(db_error)?;
+            let state=if event.kind=="HEARTBEAT" { let prior=tx.query_row("SELECT state FROM claude_sessions WHERE session_id=?1",[&event.session_id],|r|r.get::<_,String>(0)).map_err(db_error)?; if prior=="SESSION_END" { "SESSION_START".into() } else { prior } } else {event.kind.clone()};
+            tx.execute("INSERT INTO claude_sessions(session_id,connection_id,instance_id,sequence,cwd,version,state,turn_id,checked_at,lease_until,latest_reply) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11) ON CONFLICT(session_id) DO UPDATE SET connection_id=excluded.connection_id,cwd=CASE WHEN ?13 AND NOT (claude_sessions.cwd LIKE '%.claude%spares%spare-%') THEN claude_sessions.cwd ELSE excluded.cwd END,instance_id=excluded.instance_id,sequence=excluded.sequence,version=excluded.version,state=CASE WHEN ?13 AND ?12!='SESSION_END' THEN CASE WHEN claude_sessions.state='SESSION_END' OR claude_sessions.instance_id!=excluded.instance_id THEN 'SESSION_START' ELSE claude_sessions.state END ELSE excluded.state END,turn_id=CASE WHEN ?13 OR ?12='HEARTBEAT' THEN claude_sessions.turn_id ELSE excluded.turn_id END,checked_at=excluded.checked_at,lease_until=excluded.lease_until,latest_reply=CASE WHEN ?13 THEN claude_sessions.latest_reply WHEN ?12 IN ('RUNNING','SESSION_START','SESSION_END') THEN NULL ELSE COALESCE(excluded.latest_reply,claude_sessions.latest_reply) END",params![event.session_id,connection,event.instance_id,event.sequence,event.cwd,event.version,state,event.turn_id,at,if event.kind=="SESSION_END"{at}else{at+45_000},reply,event.kind,transcript_owned]).map_err(db_error)?;
             tx.execute("INSERT INTO claude_event_journal(event_id,connection_id,session_id,instance_id,sequence,digest,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![event.event_id,connection,event.session_id,event.instance_id,event.sequence,digest,at]).map_err(db_error)?;
             // Bounded dedupe history; older sequence fences survive pruning/restart.
             tx.execute("DELETE FROM claude_event_journal WHERE session_id=?1 AND sequence<?2 AND instance_id=?3",params![event.session_id,event.sequence-256,event.instance_id]).map_err(db_error)?;

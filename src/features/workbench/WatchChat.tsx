@@ -82,7 +82,9 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
  useEffect(()=>{let width=window.innerWidth,baseline=window.visualViewport?.height??window.innerHeight;const update=()=>{const viewport=window.visualViewport;const height=viewport?.height??window.innerHeight;if(window.innerWidth!==width){width=window.innerWidth;baseline=height;}baseline=Math.max(baseline,height);if((width<=600||window.matchMedia?.("(hover:none) and (pointer:coarse) and (max-width:1100px)")?.matches)&&shell.current){shell.current.style.setProperty("--aiwr-chat-height",`${height}px`);shell.current.dataset.keyboard=String(baseline-height>100&&document.activeElement?.tagName==="TEXTAREA");}else if(shell.current){shell.current.style.removeProperty("--aiwr-chat-height");shell.current.dataset.keyboard="false";}};syncViewport.current=update;update();window.addEventListener("resize",update);window.visualViewport?.addEventListener("resize",update);window.visualViewport?.addEventListener("scroll",update);return()=>{window.removeEventListener("resize",update);window.visualViewport?.removeEventListener("resize",update);window.visualViewport?.removeEventListener("scroll",update);};},[]);
  useEffect(()=>{heading.current?.focus({preventScroll:true});},[]);
  const pending = state?.replies.find(r => ["QUEUED", "SENDING", "UNKNOWN"].includes(r.status));
- const blocked=Boolean(pending||unconfirmed||claude&&state?.inputReady!==true);
+ // Claude sends queue until the conversation is idle and its plugin checks in, so a
+ // quiet plugin no longer blocks typing; the status line explains the wait.
+ const blocked=Boolean(pending||unconfirmed);
  const active = Boolean(state?.ownedTurnId || state?.externalBusy || state?.watch.snapshot.state === "RUNNING");
  const waitingExternal=Boolean(state&&["INCOMPLETE","UNKNOWN","RESULT_PENDING"].includes(state.watch.snapshot.state));
  const queueNext=active||waitingExternal;
@@ -123,7 +125,22 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
   setDraft({...submitted,text:"",files:[]});
   input.current?.focus({preventScroll:true});
   let reply: WatchReply;
-  try { reply = await command<WatchReply>("SEND", request); } catch (e) { if (mounted.current) { setError(chatError(e)); setNotice(uiText("回复是否送达尚未确认。请检查发送记录；草稿已保留，不会自动重发。")); await refresh(); } return; }
+  try { reply = await command<WatchReply>("SEND", request); } catch (e) {
+   if (!mounted.current) return;
+   // A refusal usually means nothing was stored. Ask the Host for this exact id: with
+   // no record, cancel it (a delayed copy can then never be accepted), give the text
+   // back and show the real reason. Only an unanswerable check stays unconfirmed.
+   const settled=await (async()=>{try{
+    const r=await command<WatchReply|null>("RECEIPT",{id:request.id});
+    if(r)return false;
+    const v=await command<{cancelled:boolean}>("ABANDON",{id:request.id});
+    if(!v.cancelled)return false;
+    restoreAttempt(attempt);clearReceipt();return true;
+   }catch{return false;}})();
+   if (!mounted.current) return;
+   setError(chatError(e));
+   setNotice(settled?uiText("这条没有发出，原文已放回输入框。"):uiText("回复是否送达尚未确认。请检查发送记录；草稿已保留，不会自动重发。"));
+   await refresh(); return; }
   if (!mounted.current) return;
   if(reply.id!==request.id||reply.threadId!==original.threadId)throw Error("REPLY_TARGET_CHANGED_REFRESH");
   setState(current=>current?{...current,replies:[reply,...current.replies.filter(r=>r.id!==reply.id)]}:current);
@@ -164,7 +181,7 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
   <header className="v4-chat-header"><button type="button" className="v4-chat-back" aria-label={`‹ ${backLabel}`} onClick={onBack}><ChevronLeft size={24} aria-hidden="true"/><span className="v4-chat-desktop-label">{backLabel}</span></button><ConversationAvatar id={`w:${original.threadId}`} kind={claude?"claude":"codex"}/><div className="v4-chat-identity"><h2 ref={heading} tabIndex={-1}>{original.label}</h2><p className="v4-meta">{original.cwd.split(/[\\/]/).filter(Boolean).at(-1)} · {state?.host ?? uiText("这台电脑")}</p></div><button type="button" className="v4-chat-more" aria-label={uiText("对话信息")} onClick={()=>setInfoOpen(true)}><Ellipsis size={24} aria-hidden="true"/></button></header>
   <div className="v4-chat-live" role="status" aria-live="polite" data-active={active}>{active&&<LoaderCircle size={14} aria-hidden="true"/>}<span>{pendingRequests.length?uiText("等待确认"):error?uiText("连接中断"):active?(state?.activity==="THINKING"?uiText("正在思考"):uiText("正在执行")):(states[latest?.state??original.snapshot.state]??uiText("状态待确认"))}</span>{pendingRequests.some(r=>r.kind!=="USER_INPUT")&&<button type="button" onClick={()=>setPermissionsOpen(true)}>{uiText("查看")}</button>}</div>
   <div className="v4-chat-reader" ref={reader} onScroll={()=>{const scroll=reader.current;if(scroll)followLatest.current=scroll.scrollHeight-scroll.scrollTop-scroll.clientHeight<80;}}>
-   {claude&&<p className="v4-meta" role="status">{state?.inputReady===true?uiText("回复将发送到原 Claude Code 对话，模型和权限沿用原设置。这里只显示 Agbrio 已接收的消息。"):uiText("接收已连接；发送模块尚未加载。更新插件后，在原对话重新加载插件即可。")}</p>}
+   {claude&&<p className="v4-meta" role="status">{state?.inputReady===true?uiText("回复会在原 Claude Code 对话空闲时送达，模型和权限沿用原设置。"):uiText("原 Claude Code 对话暂未连上 Agbrio；回复会先排队，等它在 Claude 里重新活动后送达。")}</p>}
    {error && <p role="alert" className="v4-chat-alert">{uiText(error)}<button type="button" disabled={busy} onClick={() => void act(refresh)}>{uiText("重新连接")}</button></p>}
 
    <div className="v4-chat-history">{historyCursor&&<button type="button" disabled={busy||historyReading.current} onClick={()=>void readHistory(historyCursor)}>{uiText("加载更早消息")}</button>}{!historyLoaded&&<button type="button" disabled={busy||historyReading.current} onClick={()=>void readHistory()}>{uiText("读取对话消息")}</button>}</div>

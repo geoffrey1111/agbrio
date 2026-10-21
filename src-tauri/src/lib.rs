@@ -1,6 +1,8 @@
 mod codex_quota;
 mod claude_quota;
 mod claude_transcript;
+mod claude_event_log;
+mod claude_watch;
 mod claude_code;
 mod claude_chat;
 mod claude_code_desktop;
@@ -1398,6 +1400,7 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     host.start_shared_reconnection(core.clone(),Arc::new(TauriEventSink(app.handle().clone())));
     let observer_core = core.clone();
     std::thread::spawn(move || run_chatgpt_existing_conversation_observer(observer_core));
+    crate::claude_watch::start(core.clone());
     // Integrated startup has exactly one ChatGPT transport: Core's Executor.
     // Clearing AUTH_REQUIRED must not reactivate Connector/Native Messaging
     // registration, provisioning or its listener on the next normal startup.

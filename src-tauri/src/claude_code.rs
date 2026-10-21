@@ -38,7 +38,7 @@ pub(crate) fn catalog(core:&RouterCore)->Result<router_core::store::claude_code:
 /// Exact native identity for binding or watching: a live registered session, or an
 /// unarchived conversation the Claude desktop app lists.
 pub(crate) fn selectable_cwd(core:&RouterCore,external:&str)->Result<String,String>{
-    match verified_session(core,external,None) {
+    match observed_session(core,external,None) {
         Ok(session)=>Ok(session.cwd),
         Err(error)=>crate::claude_code_desktop::sessions().into_iter().find(|d|d.session_id==external&&!d.archived).map(|d|d.cwd).ok_or(error),
     }
@@ -119,9 +119,29 @@ fn connect_admin(core:&RouterCore,host:&crate::HostRuntime,resources:&std::path:
 pub(crate) fn verified_session(core:&RouterCore,external:&str,cwd:Option<&str>)->Result<Session,String> {
     router_core::claude_code::ClaudeCodeAdapter::new(core.store.as_ref()).verify(external,cwd)
 }
+/// Exact identity for reading and for queuing a delivery; no live plugin lease needed.
+pub(crate) fn observed_session(core:&RouterCore,external:&str,cwd:Option<&str>)->Result<Session,String> {
+    router_core::claude_code::ClaudeCodeAdapter::new(core.store.as_ref()).observe(external,cwd)
+}
+/// The session's own transcript owns state, turn and reply once it exists.
+pub(crate) fn transcript_owned(session:&str)->bool {
+    crate::claude_transcript::projects_root().and_then(|root|crate::claude_transcript::find(&root,session)).is_some()
+}
+/// Records a new completed reply for every active Bridge bound to this session.
+pub(crate) fn materialize_bound(core:&RouterCore,session:&str)->Result<(),String> {
+    for workstream in core.store.active_workstreams()?.into_iter().filter(|w|w.status=="ACTIVE"&&w.trashed_at.is_none()) {
+        let bindings=core.store.role_bridge(&workstream.id)?;
+        for side in [&bindings.decision,&bindings.execution].into_iter().flatten() {
+            if side.endpoint.provider==router_core::claude_code::PROVIDER && side.endpoint.external_id==session {
+                if let Err(code)=materialize(core,&workstream.id,side){crate::claude_event_log::record(session,"MATERIALIZE",&code);}
+            }
+        }
+    }
+    Ok(())
+}
 
 pub(crate) fn materialize(core:&RouterCore,workstream:&str,side:&RoleEndpoint)->Result<(),String> {
-    let session=verified_session(core,&side.endpoint.external_id,side.cwd.as_deref())?;
+    let session=observed_session(core,&side.endpoint.external_id,side.cwd.as_deref())?;
     if session.state!="COMPLETE" {return Err(format!("CLAUDE_REPLY_{}",session.state));}
     let reply=session.latest_reply.ok_or("CLAUDE_COMPLETE_REPLY_UNPROVEN")?;
     let identity=format!("claude_code:{}",reply.turn_id);
@@ -130,29 +150,24 @@ pub(crate) fn materialize(core:&RouterCore,workstream:&str,side:&RoleEndpoint)->
     Ok(())
 }
 pub(crate) fn activity(core:&RouterCore,side:&RoleEndpoint)->crate::role_bridge::RoleActivity {
-    let session=verified_session(core,&side.endpoint.external_id,side.cwd.as_deref()).ok();
+    let session=observed_session(core,&side.endpoint.external_id,side.cwd.as_deref()).ok();
     let reply=session.as_ref().filter(|s|s.state=="COMPLETE").and_then(|s|s.latest_reply.as_ref());
     let result_observation_id=reply.and_then(|r|core.store.reply_observations_for_workstream(&side.endpoint.workstream_id).ok().and_then(|rows|rows.into_iter().find(|o|o.endpoint_id==side.endpoint.id&&o.assistant_identity.as_deref()==Some(&format!("claude_code:{}",r.turn_id))).map(|o|o.id)));
     let state=session.as_ref().map(|s|match s.state.as_str(){"SESSION_START"=>"UNCONFIRMED","WAITING_DECISION"=>"ACTION_REQUIRED",s=>s}).unwrap_or("UNCONFIRMED");
     crate::role_bridge::RoleActivity {role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:state.into(),checked_at:session.as_ref().map(|s|s.checked_at as u64).unwrap_or(0),turn_id:session.as_ref().and_then(|s|s.turn_id.clone()),result_observation_id,goal_status:None,turn_active:session.as_ref().is_some_and(|s|matches!(s.state.as_str(),"RUNNING"|"WAITING_DECISION")),latest_turn:None,goal:None,goal_controls:None}
 }
 pub(crate) fn ingest(core:&RouterCore,token:&str,event:&Event)->Result<bool,String> {
-    let inserted=router_core::claude_code::ClaudeCodeAdapter::new(core.store.as_ref()).receive(token,event)?;
+    let adapter=router_core::claude_code::ClaudeCodeAdapter::new(core.store.as_ref());
+    // With a transcript, plugin events only prove liveness; the transcript watcher
+    // records turns and replies even when the plugin is quiet or an event is lost.
+    if transcript_owned(&event.session_id) {return adapter.receive_liveness(token,event);}
+    let inserted=adapter.receive(token,event)?;
     if event.kind=="COMPLETE" {
         // An old duplicate acknowledged after a newer turn must not re-read a
         // different current result or block the publisher's serialized queue.
         let current=core.store.claude_session(&event.session_id)?;
         if current.state!="COMPLETE" || current.turn_id!=event.turn_id {return Ok(inserted);}
-        // Lifecycle/exact role identity is rechecked before creating observations.
-        // No binding means no business notification or takeover of a new Bridge.
-        for workstream in core.store.active_workstreams()?.into_iter().filter(|w|w.status=="ACTIVE"&&w.trashed_at.is_none()) {
-            let bindings=core.store.role_bridge(&workstream.id)?;
-            for side in [&bindings.decision,&bindings.execution].into_iter().flatten() {
-                if side.endpoint.provider==router_core::claude_code::PROVIDER && side.endpoint.external_id==event.session_id {
-                    materialize(core,&workstream.id,side)?;
-                }
-            }
-        }
+        materialize_bound(core,&event.session_id)?;
     }
     Ok(inserted)
 }

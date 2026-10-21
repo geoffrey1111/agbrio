@@ -1322,10 +1322,10 @@ async fn claude_code_event(State(state):State<MobileHttpState>,headers:HeaderMap
      // event that can never be accepted would block every later event forever.
      // Acknowledge it as rejected; auth and storage errors still fail and retry.
      Err(code) if permanent_claude_rejection(&code)=>{
-       eprintln!("Claude Code event rejected: {code} ({})",event.kind);
+       crate::claude_event_log::record(&event.session_id,&event.kind,&code);
        return Ok(serde_json::json!({"accepted":false,"rejected":code,"writesEnabled":false,"manualInputProtocol":if control{Some(1)}else{None},"command":null}));
      }
-     Err(code)=>return Err(code),
+     Err(code)=>{crate::claude_event_log::record(&event.session_id,&event.kind,&code);return Err(code)},
    };
    // The event is stored; a failed watch refresh or offer must not make it retry.
    if let Err(code)=crate::claude_chat::update_watch(&core,&event.session_id){eprintln!("Claude Code watch refresh failed: {code}");}

@@ -21,6 +21,11 @@ test('while Agbrio is unreachable heartbeats never fill the queue or switch the 
  assert.equal(f.state.pending.length,0);
  const delivered=f.posts.filter((_,i)=>i>=f.posts.length-2).map(e=>e.kind);assert.deepEqual(delivered,['SESSION_START','HEARTBEAT']);
 });
+test('a normal session keeps its root when its working directory changes',async()=>{
+ const f=fixture(()=>true);f.state.identity={...f.state.identity,cwd:PROJECT};f.$.session.cwd=async()=>String.raw`D:\project\src-tauri`;
+ await emit(f.$,f.state,'SESSION_START');await refreshCwd(f.$,f.state);await emit(f.$,f.state,'HEARTBEAT');
+ assert.deepEqual(f.posts.map(e=>e.cwd),[PROJECT,PROJECT]);
+});
 test('a spare session follows its current folder for later events',async()=>{
  const f=fixture(()=>true);await emit(f.$,f.state,'SESSION_START');
  await refreshCwd(f.$,f.state);await emit(f.$,f.state,'HEARTBEAT');

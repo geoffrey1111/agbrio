@@ -23,7 +23,7 @@ pub struct Event {
     pub completed_at: Option<i64>,
 }
 
-fn native_id(value: &str) -> bool {
+pub(crate) fn native_id(value: &str) -> bool {
     uuid::Uuid::parse_str(value).is_ok_and(|id| id.to_string() == value)
 }
 impl Event {
@@ -74,6 +74,11 @@ pub fn root_key(cwd: &str) -> Option<std::path::PathBuf> {
 pub fn same_root(a: &str, b: &str) -> bool {
     match (root_key(a), root_key(b)) { (Some(a), Some(b)) => a == b || (spare_root(&a.to_string_lossy()) && a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()), _ => false }
 }
+/// The session's working directory is its root or a folder inside it (Claude may run
+/// a turn in a subfolder), or both are the same spare folder.
+pub fn within_root(root: &str, cwd: &str) -> bool {
+    same_root(root, cwd) || std::fs::canonicalize(root).ok().zip(std::fs::canonicalize(cwd).ok()).is_some_and(|(r, c)| c.starts_with(r))
+}
 pub fn require_write_capability() -> Result<(), String> {
     if !WRITES_ENABLED { return Err("CLAUDE_WRITES_DISABLED_BY_OWNER".into()); }
     Ok(())
@@ -86,6 +91,16 @@ impl<'a> ClaudeCodeAdapter<'a> {
     pub fn new(store:&'a crate::store::RouterStore)->Self {Self{store}}
     pub fn sessions(&self)->Result<crate::store::claude_code::Catalog,String>{self.store.claude_catalog()}
     pub fn receive(&self,token:&str,event:&Event)->Result<bool,String>{self.store.ingest_claude_event(token,event)}
+    /// Plugin events for a session whose own transcript the Host reads: they prove
+    /// liveness and identity only; state, turn and reply come from the transcript.
+    pub fn receive_liveness(&self,token:&str,event:&Event)->Result<bool,String>{self.store.ingest_claude_event_owned(token,event,true)}
+    /// Exact identity and root for reading (Bridge replies, watches, history). Unlike
+    /// `verify`, it does not require a live plugin lease; delivery still does.
+    pub fn observe(&self,id:&str,cwd:Option<&str>)->Result<Session,String>{
+        let session=self.store.claude_session(id)?;
+        if let Some(cwd)=cwd { if !same_root(cwd,&session.cwd) {return Err("CLAUDE_ROOT_CHANGED".into());} }
+        Ok(session)
+    }
     pub fn verify(&self,id:&str,cwd:Option<&str>)->Result<Session,String>{
         let session=self.store.claude_session(id)?;
         let at=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;

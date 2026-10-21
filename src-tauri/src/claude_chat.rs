@@ -5,14 +5,14 @@ use serde_json::{json,Value};
 use crate::watch_chat::ChatCommand;
 
 pub(crate) fn snapshot(s:&router_core::claude_code::Session)->WatchSnapshot{
-    let state=match s.state.as_str(){"COMPLETE"=>"RESULT_READY","WAITING_DECISION"=>"ACTION_REQUIRED","SESSION_START"=>"UNKNOWN","EMPTY"|"LIMITED"=>"INCOMPLETE",v=>v};
+    let state=match s.state.as_str(){"COMPLETE"=>"RESULT_READY","WAITING_DECISION"=>"ACTION_REQUIRED","SESSION_START"=>"UNKNOWN","EMPTY"|"LIMITED"=>"INCOMPLETE",v @ ("RUNNING"|"FAILED"|"INTERRUPTED")=>v,_=>"UNKNOWN"};
     let reply=s.latest_reply.as_ref().filter(|r|s.state=="COMPLETE"&&Some(&r.turn_id)==s.turn_id.as_ref());
     WatchSnapshot{state:state.into(),turn_id:s.turn_id.clone(),item_id:reply.map(|r|format!("claude_reply:{}",r.turn_id)),text:reply.map(|r|r.text.clone()).unwrap_or_default()}
 }
 pub(crate) fn enable(core:&RouterCore,key:&str)->Result<(),String>{
     let sid=native_id(key)?;
     let title=crate::claude_code::catalog(core)?.sessions.into_iter().find(|s|s.session_id==sid).and_then(|s|s.title).unwrap_or_else(||"未命名 Claude Code 对话".into());
-    match crate::claude_code::verified_session(core,sid,None) {
+    match crate::claude_code::observed_session(core,sid,None) {
         Ok(session)=>core.store.enable_codex_watch(key,&title,&session.cwd,&snapshot(&session)),
         // Not reported yet: watch the exact desktop conversation; events fill it in.
         Err(_)=>core.store.enable_codex_watch(key,&title,&crate::claude_code::selectable_cwd(core,sid)?,&WatchSnapshot{state:"UNKNOWN".into(),turn_id:None,item_id:None,text:String::new()}),
@@ -22,7 +22,7 @@ pub(crate) fn state(core:&RouterCore,key:&str)->Result<Value,String>{
     core.store.expire_claude_manual_offers()?;
     let mut watch=core.store.codex_chat_context(key)?;
     // Before the conversation reports, the watch shows what it has and input stays off.
-    let session=crate::claude_code::verified_session(core,native_id(key)?,Some(&watch.cwd)).ok();
+    let session=crate::claude_code::observed_session(core,native_id(key)?,Some(&watch.cwd)).ok();
     if let Some(s)=&session {watch.snapshot=snapshot(s);watch.checked_at=s.checked_at;}
     let ready=match &session {Some(s)=>core.store.claude_manual_ready(&s.session_id,&s.instance_id)?,None=>false};
     let state=session.as_ref().map(|s|s.state.as_str()).unwrap_or("");
@@ -33,7 +33,7 @@ pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{
     match c {
         ChatCommand::Send{thread_id,id,generation,source_sequence,expected_turn_id,mode,text,options}=>{
             let w=core.store.codex_chat_context(&thread_id)?;
-            let session=crate::claude_code::verified_session(core,native_id(&thread_id)?,Some(&w.cwd))?;
+            let session=crate::claude_code::observed_session(core,native_id(&thread_id)?,Some(&w.cwd))?;
             if generation!=w.generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}
             if !matches!(mode.as_str(),"SEND"|"QUEUE")||options.model.is_some()||options.effort.is_some()||!options.attachments.is_empty(){return Err("CLAUDE_TEXT_REPLY_ONLY".into());}
             let input=WatchReply{id,thread_id,cwd:w.cwd,generation,source_sequence,expected_turn_id,mode,text,options:serde_json::to_value(options).map_err(|_|"CLAUDE_RESPONSE_INVALID")?,payload_hash:String::new(),status:String::new(),turn_id:None,error_code:None,created_at:0,updated_at:0};
@@ -42,7 +42,6 @@ pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{
             if core.store.watch_reply(&input.id)?.is_some(){return encode(core.store.prepare_watch_reply(&input)?);}
             if session.state=="WAITING_DECISION"{return Err("CLAUDE_NATIVE_APPROVAL_PENDING".into());}
             if input.expected_turn_id!=session.turn_id{return Err("REPLY_TURN_CHANGED_REFRESH".into());}
-            if !core.store.claude_manual_ready(&session.session_id,&session.instance_id)?{return Err("CLAUDE_INPUT_PLUGIN_NOT_READY".into());}
             if input.mode=="SEND"&&!matches!(session.state.as_str(),"COMPLETE"|"FAILED"|"INTERRUPTED"|"EMPTY"|"LIMITED"){return Err("REPLY_EXTERNAL_STATE_UNCONFIRMED".into());}
             if input.mode=="QUEUE"&&!matches!(session.state.as_str(),"RUNNING"|"SESSION_START"){return Err("REPLY_TURN_CHANGED_REFRESH".into());}
             let r=core.store.prepare_watch_reply(&input)?;
@@ -95,6 +94,6 @@ pub(crate) fn update_watch(core:&RouterCore,sid:&str)->Result<(),String>{
     let key=format!("{PREFIX}{sid}");
     let Ok(w)=core.store.registered_codex_watch(&key)else{return Ok(())};
     if !w.enabled{return Ok(());}
-    let s=crate::claude_code::verified_session(core,sid,Some(&w.cwd))?;
+    let s=crate::claude_code::observed_session(core,sid,Some(&w.cwd))?;
     core.store.record_codex_watch(&key,w.generation,&snapshot(&s))?;Ok(())
 }

@@ -244,7 +244,7 @@ pub(crate) fn read(core: &RouterCore, workstream: &str, role: &str) -> Result<Br
     let (identity, text,completed) = match side.endpoint.provider.as_str() {
         "CLAUDE_CODE" => {
             // A bound conversation the plugin has not reported yet has nothing new to read.
-            let Ok(session)=crate::claude_code::verified_session(core,&side.endpoint.external_id,side.cwd.as_deref()) else {
+            let Ok(session)=crate::claude_code::observed_session(core,&side.endpoint.external_id,side.cwd.as_deref()) else {
                 return read_without_new_reply(core,workstream,role,&side.endpoint.id,"EXTERNAL_STATUS_UNCONFIRMED");
             };
             if session.state!="COMPLETE" {
@@ -508,10 +508,10 @@ fn send_to_claude(core: &RouterCore, preview: &HandoffHistoryItem) -> Result<Bri
     let bindings = preclaim(core, preview, "BINDING", core.store.role_bridge(&preview.workstream_id))?;
     let target = [bindings.decision, bindings.execution].into_iter().flatten().find(|s| s.endpoint.id == preview.destination_endpoint.id).ok_or_else(|| "BRIDGE_BINDING_CHANGED".to_string());
     let target = preclaim(core, preview, "BINDING", target)?;
-    let session = preclaim(core, preview, "TARGET", crate::claude_code::verified_session(core, &preview.destination_endpoint.external_id, target.cwd.as_deref()))?;
+    // The relay waits (bounded) until the session is idle and its plugin checks in;
+    // a quiet plugin no longer refuses the owner's approved send up front.
+    let session = preclaim(core, preview, "TARGET", crate::claude_code::observed_session(core, &preview.destination_endpoint.external_id, target.cwd.as_deref()))?;
     if session.state == "WAITING_DECISION" { return preclaim(core, preview, "TARGET", Err("CLAUDE_NATIVE_APPROVAL_PENDING".into())); }
-    let ready = preclaim(core, preview, "PLUGIN", core.store.claude_manual_ready(&session.session_id, &session.instance_id))?;
-    if !ready { return preclaim(core, preview, "PLUGIN", Err("CLAUDE_INPUT_PLUGIN_NOT_READY".into())); }
     preclaim(core, preview, "CLAIM", core.store.claim_role_handoff_for_claude(&preview.id, &session.session_id, &session.instance_id, &session.cwd))?;
     state(core, &preview.workstream_id)
 }

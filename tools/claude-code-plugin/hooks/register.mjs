@@ -7,7 +7,7 @@ export function hostOrigin(value) {
   return u.origin;
 }
 function diagnostic(state) {
-  return JSON.stringify({pluginVersion:'0.1.5',mode:'OWNER_MANUAL_INPUT',phase:state.phase,error:state.error,httpStatus:state.httpStatus,identityReady:!!state.identity,pendingEvents:state.pending.length,deliveredEvents:state.delivered,writesEnabled:false,manualInputProtocol:1});
+  return JSON.stringify({pluginVersion:'0.1.6',mode:'OWNER_MANUAL_INPUT',phase:state.phase,error:state.error,httpStatus:state.httpStatus,identityReady:!!state.identity,pendingEvents:state.pending.length,deliveredEvents:state.delivered,writesEnabled:false,manualInputProtocol:1});
 }
 function noteError(state, error) {
   const message=typeof error?.message==='string' ? error.message : '';
@@ -35,7 +35,9 @@ async function flush($, state) {
 /** A desktop "spare" session starts in a temporary folder and later moves into
  * its real project; follow the session's current folder. */
 export async function refreshCwd($, state) {
-  if (!state.identity) return;
+  // Only a spare session moves into its project. A normal session keeps its root even
+  // when its working directory changes during a turn (for example into a subfolder).
+  if (!state.identity || !/[\\/]\.claude[\\/]spares[\\/]spare-/i.test(state.identity.cwd)) return;
   try { const cwd = await $.session.cwd(); if (typeof cwd === 'string' && cwd && cwd !== state.identity.cwd) state.identity = {...state.identity, cwd}; } catch {}
 }
 export function emit($, state, kind, extra = {}) {

@@ -124,3 +124,36 @@ fn event(root:&Path,kind:&str,sequence:i64)->Event {
     assert!(store.ingest_claude_event(&pairing.token,&beat).unwrap());
     assert_eq!(store.claude_session(&start.session_id).unwrap().instance_id,reloaded.instance_id);
 }
+#[test] fn a_working_directory_inside_the_root_is_the_same_session() {
+    let temp=tempfile::tempdir().unwrap();let sub=temp.path().join("src-tauri");fs::create_dir(&sub).unwrap();
+    let (root,inner,other)=(temp.path().to_string_lossy().to_string(),sub.to_string_lossy().to_string(),std::env::temp_dir().to_string_lossy().to_string());
+    assert!(crate::claude_code::within_root(&root,&inner));assert!(crate::claude_code::within_root(&root,&root));
+    assert!(!crate::claude_code::within_root(&inner,&root));assert!(!crate::claude_code::within_root(&root,&other));
+    let store=RouterStore::open_at(temp.path().join("router.db")).unwrap();let pairing=store.create_claude_connection().unwrap();
+    let start=event(temp.path(),"SESSION_START",1);store.ingest_claude_event_owned(&pairing.token,&start,true).unwrap();
+    let mut beat=event(&sub,"HEARTBEAT",2);beat.session_id=start.session_id.clone();
+    assert!(store.ingest_claude_event_owned(&pairing.token,&beat,true).unwrap());
+    assert_eq!(store.claude_session(&start.session_id).unwrap().cwd,root);
+}
+
+#[test] fn transcript_recovers_plugin_shutdown_and_late_old_end_cannot_take_over() {
+    let temp=tempfile::tempdir().unwrap();let store=RouterStore::open_at(temp.path().join("router.db")).unwrap();let pair=store.create_claude_connection().unwrap();
+    let start=event(temp.path(),"SESSION_START",1);store.ingest_claude_event_owned(&pair.token,&start,true).unwrap();
+    store.apply_claude_transcript(&start.session_id,&start.cwd,"FAILED",Some("claude_turn:p1"),None).unwrap();
+    let end=event(temp.path(),"SESSION_END",2);store.ingest_claude_event_owned(&pair.token,&end,true).unwrap();
+    assert_eq!(store.claude_session(&start.session_id).unwrap().state,"SESSION_END");
+    // An unchanged transcript is still authoritative after plugin shutdown.
+    store.apply_claude_transcript(&start.session_id,&start.cwd,"FAILED",Some("claude_turn:p1"),None).unwrap();
+    assert_eq!(store.claude_session(&start.session_id).unwrap().state,"FAILED");
+    let mut next=event(temp.path(),"SESSION_START",1);next.instance_id=id();store.ingest_claude_event_owned(&pair.token,&next,true).unwrap();
+    assert_eq!(store.claude_session(&start.session_id).unwrap().state,"SESSION_START");
+    // Even after expiry an old publisher cannot reclaim the new owner's slot by ending.
+    store.with_connection(|c|{c.execute("UPDATE claude_sessions SET lease_until=0",[]).map_err(db_error)?;Ok(())}).unwrap();
+    let late=event(temp.path(),"SESSION_END",3);assert_eq!(store.ingest_claude_event_owned(&pair.token,&late,true).unwrap_err(),"CLAUDE_SESSION_INSTANCE_CHANGED");
+    assert_eq!(store.claude_session(&start.session_id).unwrap().instance_id,next.instance_id);
+    let mut end=next.clone();end.event_id=id();end.sequence=2;end.kind="SESSION_END".into();store.ingest_claude_event_owned(&pair.token,&end,true).unwrap();
+    let mut beat=next.clone();beat.event_id=id();beat.sequence=3;beat.kind="HEARTBEAT".into();store.ingest_claude_event_owned(&pair.token,&beat,true).unwrap();
+    assert_eq!(store.claude_session(&start.session_id).unwrap().state,"SESSION_START");
+    store.apply_claude_transcript(&start.session_id,&start.cwd,"FAILED",Some("claude_turn:p1"),None).unwrap();
+    assert_eq!(store.claude_session(&start.session_id).unwrap().state,"FAILED");
+}
