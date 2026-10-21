@@ -1,3 +1,9 @@
+## 2026-10-21 — Transcript-owned transport recovery
+
+The exact native session transcript owns turn/state/final replies and paged user/assistant history; tool output, reasoning and sidechain content are excluded. The plugin publishes liveness and submits owner-approved text. Plugin shutdown expires its lease, not the conversation. Unchanged transcripts recover after plugin reload; delayed shutdown from a foreign instance cannot replace the current publisher. Watch lifecycle states normalize to UNKNOWN. QUEUE can cross turn changes; SEND retains expected-turn validation. Existing owner-only Claude writes and at-most-once receipts remain.
+
+Validation: frontend 604, Core 242 and Host 269 tests pass. Installed signed rc30 recovered previously stuck sessions and exercised direct owner reply plus owner-approved Bridge relay into a disposable unauthenticated native CLI session; both obtained stored SENT and native message identities, with no model usage. This proves native input/receipt transport, not successful authenticated model completion or hardware phone UAT. The installer remains a local candidate.
+
 # Claude Code Desktop — quota-free engineering phase
 
 ## 2026-10-12 — Owner-authored Claude replies (released 0.1.34)
