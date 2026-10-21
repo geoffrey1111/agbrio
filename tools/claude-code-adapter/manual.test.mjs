@@ -35,3 +35,9 @@ test('lost receipt transport retries only the same receipt, never the prompt',as
 test('a native queued delivery may be meta while still storing the exact approved user-role text',async()=>{
  const f=await fixture();await acceptManual(f.$,f.state,f.command);await f.append({door:'delivery',message:{type:'user',role:'user',isMeta:true,content:[{type:'text',text:f.command.text}]}});assert.equal(f.posts.at(-1).status,'SENT');assert.equal(f.posts.at(-1).messageId,row);assert.equal(f.submits(),1);
 });
+test('the framed plain-text row newer Claude Code stores proves delivery; other framed text does not',async()=>{
+ const framed=t=>`The agbrio-bridge plugin sent a message:\n${t}\n\nThis is how Claude Code surfaces a prompt a plugin submits between turns — it starts this turn in the user's place. Address the message above.`;
+ const f=await fixture();await acceptManual(f.$,f.state,f.command);
+ await f.append({message:{type:'user',role:'user',content:framed('something else')}});assert.equal(f.posts.length,0);
+ await f.append({message:{type:'user',role:'user',content:framed(f.command.text)}});assert.equal(f.posts.at(-1).status,'SENT');assert.equal(f.state.manualActive,null);
+});

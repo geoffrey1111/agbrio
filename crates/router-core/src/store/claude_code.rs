@@ -129,7 +129,10 @@ impl RouterStore {
                 // A spare session may move into its real project; any other root change is refused.
                 if !crate::claude_code::same_root(cwd,&event.cwd) && !crate::claude_code::spare_root(cwd) { return Err("CLAUDE_ROOT_CHANGED".into()); }
                 if instance!=&event.instance_id {
-                    if event.kind!="SESSION_START" || (*lease>at && old_authorized) { return Err("CLAUDE_SESSION_INSTANCE_CHANGED".into()); }
+                    // A reloaded plugin is a new instance. It waits for the old instance's
+                    // lease to lapse, then any event re-registers it (its start event may
+                    // have been acknowledged as rejected while the old lease was valid).
+                    if *lease>at && old_authorized { return Err("CLAUDE_SESSION_INSTANCE_CHANGED".into()); }
                 } else if event.sequence<=*sequence { return Err("CLAUDE_EVENT_OUT_OF_ORDER".into()); }
             } else if event.kind!="SESSION_START" { return Err("CLAUDE_SESSION_NOT_REGISTERED".into()); }
             if event.kind=="COMPLETE" {

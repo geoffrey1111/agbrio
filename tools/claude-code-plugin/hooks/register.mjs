@@ -7,7 +7,7 @@ export function hostOrigin(value) {
   return u.origin;
 }
 function diagnostic(state) {
-  return JSON.stringify({pluginVersion:'0.1.4',mode:'OWNER_MANUAL_INPUT',phase:state.phase,error:state.error,httpStatus:state.httpStatus,identityReady:!!state.identity,pendingEvents:state.pending.length,deliveredEvents:state.delivered,writesEnabled:false,manualInputProtocol:1});
+  return JSON.stringify({pluginVersion:'0.1.5',mode:'OWNER_MANUAL_INPUT',phase:state.phase,error:state.error,httpStatus:state.httpStatus,identityReady:!!state.identity,pendingEvents:state.pending.length,deliveredEvents:state.delivered,writesEnabled:false,manualInputProtocol:1});
 }
 function noteError(state, error) {
   const message=typeof error?.message==='string' ? error.message : '';
@@ -135,15 +135,27 @@ export async function acceptManual($,state,command){
   }catch(error){if(!active.provenSent)try{await saveReceipt($,state,'UNKNOWN');}catch{}throw error;}
   finally{if(state.manualActive===active&&(active.provenSent||active.notSent))state.manualActive=null;}
 }
+/** Newer Claude Code stores a plugin-submitted prompt inside its own framing:
+ * "The agbrio-bridge plugin sent a message:\n<text>\n\nThis is how Claude Code
+ * surfaces …". Returns the exact submitted text, or the input unchanged. */
+export const PLUGIN_PROMPT_PREFIX='The agbrio-bridge plugin sent a message:\n';
+export const PLUGIN_PROMPT_SUFFIX='\n\nThis is how Claude Code surfaces a prompt a plugin submits';
+export function unwrapPluginPrompt(text){
+  if(typeof text!=='string'||!text.startsWith(PLUGIN_PROMPT_PREFIX))return text;
+  const body=text.slice(PLUGIN_PROMPT_PREFIX.length);const end=body.lastIndexOf(PLUGIN_PROMPT_SUFFIX);
+  return end<0?body:body.slice(0,end);
+}
 export function registerManual(on,state){
   on('session.append',async($,e,next)=>{
     const result=await next(e);
     const active=state.manualActive;
     if(!active||e.agentId||!['prompt','delivery'].includes(e.door)||e.origin?.kind!=='plugin'||e.origin.name!=='agbrio-bridge'||result?.message?.type!=='user'||!nativeId(result.uuid))return result;
-    const blocks=result.message.content;
-    if(!Array.isArray(blocks)||blocks.some(b=>b.type!=='text'||typeof b.text!=='string'))return result;
-    const text=blocks.map(b=>b.text).join('');
-    if(text!==active.text||await textHash(text)!==active.textSha256)return result;
+    const content=result.message.content;
+    let text;
+    if(typeof content==='string')text=content;
+    else if(Array.isArray(content)&&content.every(b=>b.type==='text'&&typeof b.text==='string'))text=content.map(b=>b.text).join('');
+    else return result;
+    if(unwrapPluginPrompt(text)!==active.text||await textHash(active.text)!==active.textSha256)return result;
     // A failed receipt transport must never abort/change the user's native row.
     active.provenSent=true;
     try{await saveReceipt($,state,'SENT',result.uuid);}catch{}

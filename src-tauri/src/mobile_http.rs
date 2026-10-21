@@ -1334,7 +1334,7 @@ async fn claude_code_event(State(state):State<MobileHttpState>,headers:HeaderMap
  }).await?;
  Ok(Json(result))
 }
-fn permanent_claude_rejection(code:&str)->bool{matches!(code,"CLAUDE_EVENT_IDENTITY_INVALID"|"CLAUDE_EVENT_KIND_UNSUPPORTED"|"CLAUDE_RUNNING_TURN_ID_REQUIRED"|"CLAUDE_COMPLETE_REPLY_UNPROVEN"|"CLAUDE_NONTERMINAL_CONTENT_REJECTED"|"CLAUDE_ROOT_UNAVAILABLE"|"CLAUDE_ROOT_CHANGED"|"CLAUDE_EVENT_OUT_OF_ORDER"|"CLAUDE_COMPLETE_TURN_MISMATCH"|"CLAUDE_EVENT_REPLAY_CONFLICT"|"CLAUDE_SESSION_NOT_REGISTERED"|"CLAUDE_SESSION_INSTANCE_CHANGED")}
+fn permanent_claude_rejection(code:&str)->bool{matches!(code,"CLAUDE_EVENT_IDENTITY_INVALID"|"CLAUDE_EVENT_KIND_UNSUPPORTED"|"CLAUDE_RUNNING_TURN_ID_REQUIRED"|"CLAUDE_COMPLETE_REPLY_UNPROVEN"|"CLAUDE_NONTERMINAL_CONTENT_REJECTED"|"CLAUDE_ROOT_UNAVAILABLE"|"CLAUDE_ROOT_CHANGED"|"CLAUDE_EVENT_OUT_OF_ORDER"|"CLAUDE_COMPLETE_TURN_MISMATCH"|"CLAUDE_EVENT_REPLAY_CONFLICT"|"CLAUDE_SESSION_NOT_REGISTERED")}
 async fn claude_code_receipt(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<router_core::store::claude_manual::ManualReceipt>)->ApiResult<serde_json::Value>{
  let token=claude_adapter_token(&headers)?;
  state.core.store.accept_claude_manual_receipt(&token,&input).map_err(core_error)?;

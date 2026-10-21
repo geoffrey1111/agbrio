@@ -35,6 +35,14 @@ pub(crate) fn find(root: &Path, session: &str) -> Option<PathBuf> {
         .find(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.is_file()))
 }
 
+/// Newer Claude Code stores an Agbrio-relayed prompt inside its own framing; show
+/// the owner's original text.
+fn unwrap_plugin_prompt(text: &str) -> String {
+    const PREFIX: &str = "The agbrio-bridge plugin sent a message:\n";
+    const SUFFIX: &str = "\n\nThis is how Claude Code surfaces a prompt a plugin submits";
+    let Some(body) = text.strip_prefix(PREFIX) else { return text.to_owned() };
+    body.rfind(SUFFIX).map_or(body, |end| &body[..end]).to_owned()
+}
 fn prompt_text(content: &Value) -> Option<String> {
     let text = match content {
         Value::String(s) => s.clone(),
@@ -48,6 +56,7 @@ fn prompt_text(content: &Value) -> Option<String> {
         }
         _ => return None,
     };
+    let text = unwrap_plugin_prompt(&text);
     let trimmed = text.trim_start();
     // Local slash commands and their output are not conversation messages.
     if trimmed.is_empty() || ["<command-", "<local-command-", "Caveat: The messages below"].iter().any(|p| trimmed.starts_with(p)) { return None; }
@@ -175,6 +184,17 @@ mod tests {
         let project = dir.path().join("D--p"); std::fs::create_dir(&project).unwrap(); std::fs::copy(&path, project.join(format!("{S}.jsonl"))).unwrap();
         assert_eq!(find(dir.path(), S), Some(project.join(format!("{S}.jsonl"))));
         assert_eq!(find(dir.path(), "../escape"), None);
+    }
+    #[test]
+    fn a_relayed_prompt_shows_the_owner_text_not_the_framing() {
+        let dir = tempfile::tempdir().unwrap(); let path = dir.path().join("t.jsonl");
+        let framed = "The agbrio-bridge plugin sent a message:
+测试发送
+
+This is how Claude Code surfaces a prompt a plugin submits between turns.";
+        std::fs::write(&path, [user("a","ua",framed), reply("ma","收到")].join("
+")).unwrap();
+        assert_eq!(page(&path, S, None).unwrap().turns[0].messages[0].text, "测试发送");
     }
     #[test]
     fn oversized_lines_are_skipped_without_losing_neighbours() {

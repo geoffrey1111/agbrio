@@ -113,3 +113,14 @@ fn event(root:&Path,kind:&str,sequence:i64)->Event {
     assert_eq!(store.ingest_claude_event(&pairing.token,&gone).unwrap_err(),"CLAUDE_ROOT_UNAVAILABLE");
     assert!(crate::claude_code::spare_root("C:/Users/x/.claude/spares/spare-q"));assert!(!crate::claude_code::spare_root(r"C:\Users\x\.claude\spares\spare-q\..\..\projects"));
 }
+#[test] fn a_reloaded_plugin_instance_reregisters_on_any_event_once_the_old_lease_lapses() {
+    let temp=tempfile::tempdir().unwrap();let store=RouterStore::open_at(temp.path().join("router.db")).unwrap();let pairing=store.create_claude_connection().unwrap();
+    let start=event(temp.path(),"SESSION_START",1);assert!(store.ingest_claude_event(&pairing.token,&start).unwrap());
+    let mut reloaded=event(temp.path(),"SESSION_START",1);reloaded.instance_id="20000000-0000-4000-8000-000000000002".into();
+    assert_eq!(store.ingest_claude_event(&pairing.token,&reloaded).unwrap_err(),"CLAUDE_SESSION_INSTANCE_CHANGED");
+    store.with_connection(|c|{c.execute("UPDATE claude_sessions SET lease_until=1",[]).map_err(db_error)?;Ok(())}).unwrap();
+    // Its start event was already dropped; a later heartbeat re-registers the instance.
+    let mut beat=reloaded.clone();beat.event_id=id();beat.sequence=2;beat.kind="HEARTBEAT".into();
+    assert!(store.ingest_claude_event(&pairing.token,&beat).unwrap());
+    assert_eq!(store.claude_session(&start.session_id).unwrap().instance_id,reloaded.instance_id);
+}
