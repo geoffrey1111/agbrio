@@ -80,7 +80,7 @@ const WEEK_MS: i64 = 7 * 24 * HOUR_MS;
 const MAX_LOG_BYTES: u64 = 256 * 1024 * 1024;
 
 /// Days-from-civil (Howard Hinnant) for "YYYY-MM-DDTHH:MM:SS(.fff)Z" timestamps.
-fn parse_utc_ms(text: &str) -> Option<i64> {
+pub(crate) fn parse_utc_ms(text: &str) -> Option<i64> {
     let b = text.as_bytes();
     if b.len() < 20 || b[4] != b'-' || b[7] != b'-' || b[10] != b'T' || b[13] != b':' || b[16] != b':' { return None; }
     let n = |r: std::ops::Range<usize>| text.get(r)?.parse::<i64>().ok();

@@ -1329,6 +1329,7 @@ async fn claude_code_event(State(state):State<MobileHttpState>,headers:HeaderMap
    };
    // The event is stored; a failed watch refresh or offer must not make it retry.
    if let Err(code)=crate::claude_chat::update_watch(&core,&event.session_id){eprintln!("Claude Code watch refresh failed: {code}");}
+   if let Err(code)=crate::claude_chat::reconcile_deliveries(&core,&event.session_id){eprintln!("Claude Code delivery reconcile failed: {code}");}
    let command=if control {core.store.offer_claude_manual(&token,&event).unwrap_or_else(|code|{eprintln!("Claude Code offer failed: {code}");None})}else{None};
    Ok(serde_json::json!({"accepted":true,"duplicate":!inserted,"writesEnabled":false,"manualInputProtocol":if control{Some(1)}else{None},"command":command}))
  }).await?;

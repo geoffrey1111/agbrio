@@ -100,13 +100,26 @@ if (!nodeLicense) {
   nodeLicense = Buffer.from(await response.arrayBuffer());
 }
 await writeFile(path.join(staging, 'NODE-LICENSE.txt'), nodeLicense);
-const puppeteerLicense = await fetch('https://www.apache.org/licenses/LICENSE-2.0.txt');
-if (!puppeteerLicense.ok) throw new Error('PUPPETEER_NOTICE_REQUIRED');
-await writeFile(path.join(staging, 'PUPPETEER-LICENSE.txt'), await puppeteerLicense.text());
+// License texts change rarely; a transient network failure must not fail a
+// release. Retry, then fall back to the last copy this machine fetched.
+const licenseCache = path.join(root, 'runtime', 'license-cache');
+async function licenseText(name, url, decode, error) {
+  const cached = path.join(licenseCache, name);
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(20000) });
+      if (response.ok) { const text = decode(await response.text()); await mkdir(licenseCache, { recursive: true }); await writeFile(cached, text); return text; }
+    } catch {}
+    await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
+  }
+  const fallback = await readFile(cached).catch(() => null);
+  if (!fallback || fallback.length < 1000) throw new Error(error);
+  console.warn(`${name}: network unavailable, using cached copy`);
+  return fallback;
+}
+await writeFile(path.join(staging, 'PUPPETEER-LICENSE.txt'), await licenseText('PUPPETEER-LICENSE.txt', 'https://www.apache.org/licenses/LICENSE-2.0.txt', text => text, 'PUPPETEER_NOTICE_REQUIRED'));
 // Chromium itself retains chrome://credits for its bundled third-party notices.
-const license = await fetch('https://chromium.googlesource.com/chromium/src/+/refs/heads/main/LICENSE?format=TEXT');
-if (!license.ok) throw new Error('CHROMIUM_NOTICE_REQUIRED');
-await writeFile(path.join(staging, 'CHROMIUM-LICENSE.txt'), Buffer.from(await license.text(), 'base64'));
+await writeFile(path.join(staging, 'CHROMIUM-LICENSE.txt'), await licenseText('CHROMIUM-LICENSE.txt', 'https://chromium.googlesource.com/chromium/src/+/refs/heads/main/LICENSE?format=TEXT', text => Buffer.from(text, 'base64'), 'CHROMIUM_NOTICE_REQUIRED'));
 console.log(JSON.stringify({ status: 'PACKAGE_STAGED', snapshot: policy.snapshot,
   executableSha256: files['chrome.exe'], runtimeFiles: Object.keys(files).length,
   dependencies: [...seen].sort(), nodeVersion: process.versions.node, nodeExecutableReused: !!nodeTargetAlreadyMatches }));

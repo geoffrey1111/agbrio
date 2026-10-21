@@ -89,6 +89,30 @@ fn classify(line: &[u8], session: &str) -> Line {
     }
 }
 
+const RECEIPT_SCAN: u64 = 16 * 1024 * 1024;
+/// The native row a plugin submission produced: this session, origin
+/// `agbrio-bridge`, written at or after the offer, unwrapped text exactly `text`.
+pub(crate) fn find_plugin_prompt(path: &Path, session: &str, text: &str, since_ms: i64) -> Option<String> {
+    let mut file = File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    let start = len.saturating_sub(RECEIPT_SCAN);
+    file.seek(SeekFrom::Start(start)).ok()?;
+    let mut bytes = Vec::new(); file.take(RECEIPT_SCAN).read_to_end(&mut bytes).ok()?;
+    for line in bytes.split(|b| *b == b'\n').rev() {
+        if line.len() > MAX_LINE { continue; }
+        let Ok(line) = std::str::from_utf8(line) else { continue };
+        if !line.contains("\"agbrio-bridge\"") || !line.contains("\"type\":\"user\"") { continue; }
+        let Ok(v) = serde_json::from_str::<Value>(line) else { continue };
+        if v["sessionId"].as_str() != Some(session) || v["origin"]["kind"] != "plugin" || v["origin"]["name"] != "agbrio-bridge" || v["isSidechain"] == true { continue; }
+        let at = v["timestamp"].as_str().and_then(crate::claude_quota::parse_utc_ms).unwrap_or(0);
+        if at + 60_000 < since_ms { continue; }
+        let content = &v["message"]["content"];
+        let raw = match content { Value::String(s) => s.clone(), Value::Array(items) => items.iter().filter(|i| i["type"] == "text").filter_map(|i| i["text"].as_str()).collect::<Vec<_>>().join(""), _ => continue };
+        if unwrap_plugin_prompt(&raw) == text { return v["uuid"].as_str().filter(|u| native(u)).map(str::to_owned); }
+    }
+    None
+}
+
 /// Reads backwards from `before` (or the end) until `PAGE_TURNS` complete turns.
 pub(crate) fn page(path: &Path, session: &str, before: Option<u64>) -> std::io::Result<Page> {
     let mut file = File::open(path)?;
@@ -184,6 +208,18 @@ mod tests {
         let project = dir.path().join("D--p"); std::fs::create_dir(&project).unwrap(); std::fs::copy(&path, project.join(format!("{S}.jsonl"))).unwrap();
         assert_eq!(find(dir.path(), S), Some(project.join(format!("{S}.jsonl"))));
         assert_eq!(find(dir.path(), "../escape"), None);
+    }
+    #[test]
+    fn finds_only_the_exact_plugin_submission_after_the_offer() {
+        let dir = tempfile::tempdir().unwrap(); let path = dir.path().join("t.jsonl");
+        let row = |uuid: &str, ts: &str, origin: Value, text: &str| json!({"type":"user","sessionId":S,"uuid":uuid,"timestamp":ts,"origin":origin,"message":{"role":"user","content":format!("The agbrio-bridge plugin sent a message:\n{text}\n\nThis is how Claude Code surfaces a prompt a plugin submits between turns.")}}).to_string();
+        let plugin = json!({"kind":"plugin","name":"agbrio-bridge"});
+        let a = "aaaaaaaa-0000-4000-8000-000000000001"; let b = "bbbbbbbb-0000-4000-8000-000000000002"; let c = "cccccccc-0000-4000-8000-000000000003";
+        std::fs::write(&path, [row(a, "2026-10-21T07:00:00.000Z", plugin.clone(), "测试发送"), row(b, "2026-10-21T07:12:57.837Z", json!({"kind":"human"}), "测试发送"), row(c, "2026-10-21T07:12:58.000Z", plugin, "测试发送")].join("\n")).unwrap();
+        let offered = crate::claude_quota::parse_utc_ms("2026-10-21T07:12:57.000Z").unwrap();
+        assert_eq!(find_plugin_prompt(&path, S, "测试发送", offered).as_deref(), Some(c));
+        assert_eq!(find_plugin_prompt(&path, S, "别的内容", offered), None);
+        assert_eq!(find_plugin_prompt(&path, S, "测试发送", offered + 3_600_000), None);
     }
     #[test]
     fn a_relayed_prompt_shows_the_owner_text_not_the_framing() {

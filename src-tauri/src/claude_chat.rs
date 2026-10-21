@@ -77,6 +77,20 @@ pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{
         _=>Err("CLAUDE_OPERATION_NOT_SUPPORTED".into()),
     }
 }
+/// A delivery whose receipt never arrived is settled as SENT only when the session's
+/// own transcript holds the exact row the plugin submitted. Never resends anything.
+pub(crate) fn reconcile_deliveries(core:&RouterCore,sid:&str)->Result<usize,String>{
+    let pending=core.store.claude_unconfirmed_deliveries(sid)?;
+    if pending.is_empty(){return Ok(0);}
+    let Some(path)=crate::claude_transcript::projects_root().and_then(|root|crate::claude_transcript::find(&root,sid)) else {return Ok(0)};
+    let mut settled=0;
+    for delivery in pending {
+        if let Some(message)=crate::claude_transcript::find_plugin_prompt(&path,sid,&delivery.text,delivery.offered_at) {
+            if core.store.settle_claude_delivery_from_transcript(&delivery,&message)?{settled+=1;}
+        }
+    }
+    Ok(settled)
+}
 pub(crate) fn update_watch(core:&RouterCore,sid:&str)->Result<(),String>{
     let key=format!("{PREFIX}{sid}");
     let Ok(w)=core.store.registered_codex_watch(&key)else{return Ok(())};

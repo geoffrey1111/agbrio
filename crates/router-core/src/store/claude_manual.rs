@@ -151,6 +151,35 @@ impl RouterStore {
     }
 }
 
+/// An offered relay or manual reply whose receipt never arrived.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnconfirmedDelivery { pub id: String, pub bridge: bool, pub text: String, pub offered_at: i64 }
+impl RouterStore {
+    /// Offered deliveries into one session that are still unconfirmed.
+    pub fn claude_unconfirmed_deliveries(&self, session: &str) -> Result<Vec<UnconfirmedDelivery>, String> { self.with_connection(|c| {
+        let mut out = Vec::new();
+        let mut q = c.prepare("SELECT r.id,r.text,m.offered_at FROM claude_manual_commands m JOIN watch_replies r ON r.id=m.request_id WHERE m.session_id=?1 AND m.offered_at IS NOT NULL AND r.status IN ('SENDING','UNKNOWN')").map_err(db_error)?;
+        for row in q.query_map([session], |r| Ok(UnconfirmedDelivery { id: r.get(0)?, bridge: false, text: r.get(1)?, offered_at: r.get(2)? })).map_err(db_error)? { out.push(row.map_err(db_error)?); }
+        let mut q = c.prepare("SELECT b.handoff_id,h.approved_text,b.offered_at FROM claude_bridge_commands b JOIN handoffs h ON h.id=b.handoff_id WHERE b.session_id=?1 AND b.offered_at IS NOT NULL AND h.status='SENDING'").map_err(db_error)?;
+        for row in q.query_map([session], |r| Ok(UnconfirmedDelivery { id: r.get(0)?, bridge: true, text: r.get(1)?, offered_at: r.get(2)? })).map_err(db_error)? { out.push(row.map_err(db_error)?); }
+        Ok(out)
+    })}
+    /// Settles an unconfirmed delivery as SENT from the native transcript row the
+    /// plugin's submission produced (exact session, plugin origin, exact text).
+    pub fn settle_claude_delivery_from_transcript(&self, delivery: &UnconfirmedDelivery, message_id: &str) -> Result<bool, String> { self.with_connection(|c| {
+        let tx = c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
+        let changed = if delivery.bridge {
+            let n = tx.execute("UPDATE handoffs SET status='SENT',sent_at=?2,error_code=NULL,error_message=NULL WHERE id=?1 AND status='SENDING'", params![delivery.id, now()]).map_err(db_error)?;
+            if n > 0 { tx.execute("UPDATE claude_bridge_commands SET message_id=?2 WHERE handoff_id=?1", params![delivery.id, message_id]).map_err(db_error)?; super::bridge_notifications::mark_sent_source_handled(&tx, &delivery.id, now())?; }
+            n
+        } else {
+            let n = tx.execute("UPDATE watch_replies SET status='SENT',error_code=NULL,updated_at=?2 WHERE id=?1 AND status IN ('SENDING','UNKNOWN')", params![delivery.id, now()]).map_err(db_error)?;
+            if n > 0 { tx.execute("UPDATE claude_manual_commands SET message_id=?2 WHERE request_id=?1", params![delivery.id, message_id]).map_err(db_error)?; }
+            n
+        };
+        tx.commit().map_err(db_error)?; Ok(changed > 0)
+    })}
+}
 /// A relay waits at most this long for the Claude Code session to become idle.
 pub const CLAUDE_BRIDGE_WAIT_MS: i64 = 15 * 60_000;
 fn fail_bridge(c:&Connection,handoff:&str,code:&str,message:&str)->Result<(),String>{
