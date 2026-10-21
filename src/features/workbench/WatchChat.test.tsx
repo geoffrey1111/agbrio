@@ -10,11 +10,19 @@ beforeEach(()=>sessionStorage.clear());afterEach(cleanup);
 it('a Claude conversation whose plugin is quiet still accepts a reply, which queues until it is active',async()=>{
  const native={...original,threadId:'claude_code:10000000-0000-4000-8000-000000000001'};
  const chat={...state,provider:'CLAUDE_CODE' as const,inputReady:false,watch:{...state.watch,threadId:native.threadId}};
- const command=vi.fn(async(_input:{action:string})=>({messages:[],nextCursor:null}));
- render(<WatchChat original={native} api={{state:async()=>chat,command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
+ let queued:WatchReply|undefined;
+ const command=vi.fn(async(input:Record<string,unknown>)=>{
+  if(input.action==='SEND'){queued={...response(input.id as string,'QUEUED'),threadId:native.threadId,text:input.text as string};return queued;}
+  return {messages:[],nextCursor:null};
+ });
+ render(<WatchChat original={native} api={{state:async()=>({...chat,replies:queued?[queued]:[]}),command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
  await screen.findByText(/回复会先排队/);
  fireEvent.change(screen.getByRole('textbox'),{target:{value:'Owner approved actual reply'}});
  expect(screen.getByRole('button',{name:'发送回复'})).toBeEnabled();
+ fireEvent.click(screen.getByRole('button',{name:'发送回复'}));
+ await screen.findByText('已排队');
+ expect(command.mock.calls.find(([c])=>c.action==='SEND')?.[0]).toMatchObject({threadId:native.threadId,text:'Owner approved actual reply'});
+ expect(screen.getByRole('textbox')).toHaveValue('');
 });
 it('Claude uses the exact original session and inherited settings without acknowledgement or duplicate rows',async()=>{
  const native={...original,threadId:'claude_code:10000000-0000-4000-8000-000000000001'};

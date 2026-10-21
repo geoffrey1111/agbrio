@@ -47,6 +47,9 @@ fn unwrap_plugin_prompt(text: &str) -> String {
     let Some(body) = text.strip_prefix(PREFIX) else { return text.to_owned() };
     body.rfind(SUFFIX).map_or(body, |end| &body[..end]).to_owned()
 }
+fn local_command(text:&str)->bool {
+    ["<command-", "<local-command-", "Caveat: The messages below"].iter().any(|p|text.trim_start().starts_with(p))
+}
 fn prompt_text(content: &Value) -> Option<String> {
     let text = match content {
         Value::String(s) => s.clone(),
@@ -63,7 +66,7 @@ fn prompt_text(content: &Value) -> Option<String> {
     let text = unwrap_plugin_prompt(&text);
     let trimmed = text.trim_start();
     // Local slash commands and their output are not conversation messages.
-    if trimmed.is_empty() || ["<command-", "<local-command-", "Caveat: The messages below"].iter().any(|p| trimmed.starts_with(p)) { return None; }
+    if trimmed.is_empty() || local_command(trimmed) { return None; }
     Some(text)
 }
 
@@ -109,8 +112,11 @@ pub(crate) fn status(path: &Path, session: &str) -> Option<Status> {
     let mut state: Option<&'static str> = None;
     let (mut reply, mut reply_id, mut completed_at): (Option<String>, Option<String>, i64) = (None, None, 0);
     let mut cwd: Option<String> = None;
+    let mut local_turn:Option<String>=None;
+    let mut skipped_large=false;
     for line in bytes.split(|b| *b == b'\n').rev() {
-        if line.len() > MAX_LINE || line.is_empty() { continue; }
+        if line.len() > MAX_LINE {skipped_large=true;continue;}
+        if line.is_empty() { continue; }
         let Ok(text) = std::str::from_utf8(line) else { continue };
         if !text.contains(session) { continue; }
         let Ok(v) = serde_json::from_str::<Value>(text) else { continue };
@@ -138,6 +144,13 @@ pub(crate) fn status(path: &Path, session: &str) -> Option<Status> {
                 let content = &v["message"]["content"];
                 let tool = content.as_array().is_some_and(|items| items.iter().any(|i| i["type"] == "tool_result"));
                 let plain = match content { Value::String(s) => s.clone(), Value::Array(items) => items.iter().filter(|i| i["type"] == "text").filter_map(|i| i["text"].as_str()).collect::<Vec<_>>().join(""), _ => String::new() };
+                // Slash-command rows are context, not model turns. Continue to
+                // the preceding real turn so a command issued during a task
+                // cannot falsely make it idle. A command-only transcript is idle.
+                if !tool && local_command(&plain) {
+                    if local_turn.is_none(){local_turn=v["promptId"].as_str().map(|p|format!("claude_turn:{p}"));}
+                    continue;
+                }
                 if state.is_none() { state = Some(if !tool && plain.starts_with("[Request interrupted by user") { "INTERRUPTED" } else { "RUNNING" }); }
                 let Some(turn) = v["promptId"].as_str().filter(|p| !p.is_empty()) else { continue };
                 let state = match state { Some("COMPLETE") if reply.is_none() => "EMPTY", Some(s) => s, None => "RUNNING" };
@@ -146,7 +159,7 @@ pub(crate) fn status(path: &Path, session: &str) -> Option<Status> {
             _ => {}
         }
     }
-    None
+    if start==0 && state.is_none() && !skipped_large {local_turn.map(|turn|Status{turn,state:"EMPTY",reply:None,completed_at:0,cwd})}else{None}
 }
 const RECEIPT_SCAN: u64 = 16 * 1024 * 1024;
 /// The native row a plugin submission produced: this session, origin
@@ -303,6 +316,22 @@ mod tests {
         assert_eq!((error.turn.as_str(), error.state, error.reply), ("claude_turn:e", "FAILED", None));
     }
     #[test]
+    fn local_commands_do_not_start_or_finish_model_turns(){
+        let dir=tempfile::tempdir().unwrap();let path=dir.path().join("t.jsonl");
+        let local=json!({"type":"user","sessionId":S,"cwd":"D:\\p","promptId":"local","message":{"role":"user","content":"<command-name>/agbrio-status</command-name>"}}).to_string();
+        let output=json!({"type":"system","subtype":"local_command","sessionId":S,"content":"<local-command-stdout>connected</local-command-stdout>"}).to_string();
+        let write=|rows:Vec<String>|{std::fs::write(&path,rows.join("\n")).unwrap();status(&path,S).unwrap()};
+        let empty=write(vec![local.clone(),output.clone()]);assert_eq!((empty.state,empty.reply), ("EMPTY",None));
+        assert!(page(&path,S,None).unwrap().turns.is_empty());
+        let prompt=json!({"type":"user","sessionId":S,"promptId":"real","message":{"role":"user","content":"real work"}}).to_string();
+        let busy=write(vec![prompt.clone(),local.clone(),output.clone()]);assert_eq!((busy.state,busy.turn.as_str()),("RUNNING","claude_turn:real"));
+        let end=json!({"type":"assistant","sessionId":S,"message":{"id":"answer","stop_reason":"end_turn","content":[{"type":"text","text":"done"}]}}).to_string();
+        let done=write(vec![prompt,end,local,output]);assert_eq!((done.state,done.reply.as_deref(),done.turn.as_str()),("COMPLETE",Some("done"),"claude_turn:real"));
+        let huge=json!({"type":"user","sessionId":S,"promptId":"huge","message":{"content":"x".repeat(MAX_LINE+1)}}).to_string();
+        let command=json!({"type":"user","sessionId":S,"promptId":"local","message":{"content":"<command-name>/status</command-name>"}}).to_string();
+        std::fs::write(&path,[huge,command].join("\n")).unwrap();assert!(status(&path,S).is_none()); // bounded scan cannot prove idle
+    }
+    #[test]
     fn a_relayed_prompt_shows_the_owner_text_not_the_framing() {
         let dir = tempfile::tempdir().unwrap(); let path = dir.path().join("t.jsonl");
         let framed = "The agbrio-bridge plugin sent a message:
@@ -322,5 +351,16 @@ This is how Claude Code surfaces a prompt a plugin submits between turns.";
         let p = page(&path, S, None).unwrap();
         assert_eq!(p.turns.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), vec!["claude_turn:b", "claude_turn:a"]);
         assert_eq!(p.turns[1].messages[1].text, "答");
+    }
+    #[test]
+    #[ignore = "owner's real transcripts, read-only; prints counts and timing only"]
+    fn real_transcripts_page_quickly() {
+        let root = projects_root().unwrap();
+        for sid in ["34c6c436-7523-4213-9153-a0ed1a3b5532", "efcaab21-eb4d-489f-8ba2-7cb15e7476ec", "50ef3274-845c-4b39-823d-9597c524d731"] {
+            let Some(path) = find(&root, sid) else { println!("{sid}: no transcript"); continue };
+            let t = std::time::Instant::now(); let p = page(&path, sid, None).unwrap();
+            let t2 = std::time::Instant::now(); let older = p.next.map(|n| page(&path, sid, Some(n)).unwrap().turns.len());
+            println!("{}: turns={} msgs={} next={:?} first={:?} second={:?} older_turns={:?}", &sid[..8], p.turns.len(), p.turns.iter().map(|t| t.messages.len()).sum::<usize>(), p.next.is_some(), t.elapsed(), t2.elapsed(), older);
+        }
     }
 }

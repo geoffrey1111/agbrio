@@ -51,8 +51,12 @@ impl RouterStore {
         let sid=native_id(&r.thread_id)?;
         self.with_connection(|c|{
             let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
-            let ready:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM claude_sessions s JOIN claude_control_leases l ON l.session_id=s.session_id AND l.instance_id=s.instance_id JOIN claude_connections a ON a.id=s.connection_id WHERE s.session_id=?1 AND s.instance_id=?2 AND s.cwd=?3 AND s.lease_until>?4 AND l.checked_at>?5 AND a.revoked_at IS NULL AND a.expires_at>?4 AND s.state!='SESSION_END')",params![sid,instance,r.cwd,now(),now()-30_000],|r|r.get(0)).map_err(db_error)?;
-            if !ready{return Err("CLAUDE_INPUT_PLUGIN_NOT_READY".into());}
+            // Accept the owner's durable intent before the plugin loads. Native
+            // transcripts are often readable several seconds before its first
+            // heartbeat. A live publisher is required at offer time, not enqueue.
+            // Never infer a destination from titles or silently change its root.
+            let cwd:Option<String>=tx.query_row("SELECT s.cwd FROM claude_sessions s JOIN claude_connections a ON a.id=s.connection_id WHERE s.session_id=?1 AND a.revoked_at IS NULL AND a.expires_at>?2",params![sid,now()],|r|r.get(0)).optional().map_err(db_error)?;
+            if !cwd.is_some_and(|cwd|crate::claude_code::same_root(&cwd,&r.cwd)){return Err("CLAUDE_TARGET_CHANGED".into());}
             tx.execute("INSERT INTO claude_manual_commands(request_id,session_id,instance_id,cwd) VALUES(?1,?2,?3,?4)",params![r.id,sid,instance,r.cwd]).map_err(db_error)?;
             tx.commit().map_err(db_error)
         })
@@ -80,7 +84,7 @@ impl RouterStore {
         // may use the native prompt queue (which never aborts a running turn).
         // It is not an idle/goal-recovery claim. Known approvals never dispatch.
         if !matches!(state.as_str(),"SESSION_START"|"COMPLETE"|"FAILED"|"INTERRUPTED"|"EMPTY"|"LIMITED") {tx.commit().map_err(db_error)?;return Ok(None);}
-        if mode=="QUEUE"&&!matches!(state.as_str(),"SESSION_START"|"COMPLETE") {tx.commit().map_err(db_error)?;return Ok(None);}
+        if mode=="QUEUE"&&!matches!(state.as_str(),"SESSION_START"|"COMPLETE"|"EMPTY") {tx.commit().map_err(db_error)?;return Ok(None);}
         if mode=="SEND"&&state=="SESSION_START" {tx.commit().map_err(db_error)?;return Ok(None);}
         if mode=="SEND" && expected!=turn {
             tx.execute("UPDATE watch_replies SET status='FAILED',error_code='CLAUDE_TURN_CHANGED',updated_at=?2 WHERE id=?1",params![request,now()]).map_err(db_error)?;

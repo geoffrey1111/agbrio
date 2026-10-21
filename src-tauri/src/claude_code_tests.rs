@@ -222,6 +222,86 @@ fn connection_fixture(temp:&tempfile::TempDir)->(RouterCore,crate::HostRuntime,s
  admin.configured.lock().unwrap().insert("agbrio-bridge@agbrio-observation".into(),("http://127.0.0.1:12345".into(),"not exported".into()));
  assert_eq!(connect_admin(&core,&host,temp.path(),&admin,&cache).err().unwrap(),"CLAUDE_PLUGIN_DIFFERENT_HOST");assert!(core.store.claude_connections().unwrap().is_empty());host.shutdown(&core);
 }
+#[test]
+#[ignore = "diagnostic: copy of the owner's real database; never touches the live one"]
+fn diagnose_real_claude_send_on_a_database_copy(){
+ let live=std::env::var("AGBRIO_DB_LIVE").unwrap();let temp=tempfile::tempdir().unwrap();let path=temp.path().join("copy.db");
+ {let src=rusqlite::Connection::open_with_flags(&live,rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();let mut dst=rusqlite::Connection::open(&path).unwrap();let backup=rusqlite::backup::Backup::new(&src,&mut dst).unwrap();backup.run_to_completion(256,std::time::Duration::from_millis(0),None).unwrap();}
+ let store=Arc::new(crate::RouterStore::open_at(&path).unwrap());
+ let core=RouterCore{chatgpt:Arc::new(Default::default()),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::new(Mutex::new(HashMap::new())),store:store.clone()};
+ let key=std::env::var("AGBRIO_KEY").unwrap();
+ let state=crate::claude_chat::state(&core,&key);
+ match &state {Ok(s)=>println!("STATE inputReady={} busy={} snapshot={}",s["inputReady"],s["externalBusy"],s["watch"]["snapshot"]),Err(e)=>println!("STATE ERR {e}")}
+ let s=state.unwrap();
+ for mode in ["SEND","QUEUE"] {
+  let cmd=crate::watch_chat::ChatCommand::Send{thread_id:key.clone(),id:uuid::Uuid::new_v4().to_string(),generation:s["watch"]["generation"].as_i64().unwrap(),source_sequence:None,expected_turn_id:s["watch"]["snapshot"]["turnId"].as_str().map(str::to_owned),mode:mode.into(),text:"diagnostic".into(),options:Default::default()};
+  println!("{mode}: {:?}",crate::claude_chat::command(&core,cmd).map(|v|v["status"].clone()));
+ }
+}
+#[test]
+fn owner_reply_before_first_plugin_registration_waits_and_delivers_once(){
+ let temp=tempfile::tempdir().unwrap();
+ let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
+ let core=RouterCore{chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default(),store:store.clone()};
+ let pair=store.create_claude_connection().unwrap();
+ let sid="10000000-0000-4000-8000-000000000001";let key=format!("claude_code:{sid}");
+ let cwd=temp.path().to_string_lossy().to_string();let turn="claude_turn:original";
+ // The native transcript is visible before this desktop session loads its plugin.
+ store.apply_claude_transcript(sid,&cwd,"RUNNING",Some(turn),None).unwrap();
+ crate::claude_chat::enable(&core,&key).unwrap();
+ let state=crate::claude_chat::state(&core,&key).unwrap();assert_eq!(state["inputReady"],false);
+ let id=uuid::Uuid::new_v4().to_string();
+ let send=||crate::watch_chat::ChatCommand::Send{thread_id:key.clone(),id:id.clone(),generation:state["watch"]["generation"].as_i64().unwrap(),source_sequence:None,expected_turn_id:Some(turn.into()),mode:"QUEUE".into(),text:"owner approved reply".into(),options:Default::default()};
+ assert_eq!(crate::claude_chat::command(&core,send()).unwrap()["status"],"QUEUED");
+ assert_eq!(crate::claude_chat::command(&core,send()).unwrap()["status"],"QUEUED");
+ let start=event(temp.path(),sid,"SESSION_START",1);store.ingest_claude_event_owned(&pair.token,&start,true).unwrap();
+ store.apply_claude_transcript(sid,&cwd,"RUNNING",Some(turn),None).unwrap(); // resident reread after START
+ let beat=event(temp.path(),sid,"HEARTBEAT",2);store.ingest_claude_event_owned(&pair.token,&beat,true).unwrap();
+ assert!(store.offer_claude_manual(&pair.token,&beat).unwrap().is_none()); // original turn still busy
+ store.apply_claude_transcript(sid,&cwd,"COMPLETE",Some("claude_turn:next"),None).unwrap();
+ let command=store.offer_claude_manual(&pair.token,&beat).unwrap().unwrap();assert_eq!(command.request_id,id);
+ assert_eq!(command.instance_id,start.instance_id);assert_eq!(command.text,"owner approved reply");
+ assert!(store.offer_claude_manual(&pair.token,&beat).unwrap().is_none());
+ let receipt=router_core::store::claude_manual::ManualReceipt{request_id:id.clone(),session_id:sid.into(),instance_id:start.instance_id,cwd,status:"SENT".into(),message_id:Some(uuid::Uuid::new_v4().to_string()),text_sha256:command.text_sha256};
+ store.accept_claude_manual_receipt(&pair.token,&receipt).unwrap();
+ assert_eq!(store.watch_reply(&id).unwrap().unwrap().status,"SENT");
+ assert!(store.offer_claude_manual(&pair.token,&beat).unwrap().is_none());
+}
+#[test]
+#[ignore = "live end-to-end: enqueues one owner text into the live database for the given Claude session"]
+fn live_owner_send_into_claude(){
+ let store=Arc::new(crate::RouterStore::open_at(std::env::var("AGBRIO_DB_LIVE").unwrap()).unwrap());
+ let core=RouterCore{chatgpt:Arc::new(Default::default()),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::new(Mutex::new(HashMap::new())),store};
+ let key=std::env::var("AGBRIO_KEY").unwrap();
+ let s=crate::claude_chat::state(&core,&key).unwrap();
+ println!("STATE inputReady={} busy={} snapshot={}",s["inputReady"],s["externalBusy"],s["watch"]["snapshot"]);
+ let busy=s["externalBusy"]==true||s["watch"]["snapshot"]["state"]=="RUNNING";
+ let cmd=crate::watch_chat::ChatCommand::Send{thread_id:key.clone(),id:uuid::Uuid::new_v4().to_string(),generation:s["watch"]["generation"].as_i64().unwrap(),source_sequence:None,expected_turn_id:s["watch"]["snapshot"]["turnId"].as_str().map(str::to_owned),mode:if busy{"QUEUE".into()}else{"SEND".into()},text:std::env::var("AGBRIO_TEXT").unwrap(),options:Default::default()};
+ println!("RESULT {:?}",crate::claude_chat::command(&core,cmd).map(|v|(v["id"].clone(),v["status"].clone())));
+}
+#[test]
+#[ignore = "live end-to-end: throwaway Bridge reading one Claude session and relaying owner-edited text into another"]
+fn live_owner_bridge_relay_into_claude(){
+ let store=Arc::new(crate::RouterStore::open_at(std::env::var("AGBRIO_DB_LIVE").unwrap()).unwrap());
+ let core=RouterCore{chatgpt:Arc::new(Default::default()),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::new(Mutex::new(HashMap::new())),store:store.clone()};
+ let w=std::env::var("AGBRIO_WORKSTREAM").unwrap();
+ match std::env::var("AGBRIO_STEP").unwrap().as_str() {
+  "bind"=>{
+   let rev=store.role_bridge(&w).map(|b|b.binding_revision).unwrap();
+   let side=|id:String,label:&str|RoleBindingInput{provider:"CLAUDE_CODE".into(),external_id:id,label:label.into(),cwd:None};
+   let b=crate::role_bridge::bind(&core,&w,rev,side(std::env::var("AGBRIO_SOURCE").unwrap(),"自检来源"),side(std::env::var("AGBRIO_TARGET").unwrap(),"自检目标"));
+   println!("BIND {:?}",b.map(|b|b.binding_revision));
+  }
+  _=>{
+   let state=crate::role_bridge::read(&core,&w,"DECISION").unwrap();println!("REPLIES {}",state.replies.len());
+   let Some(reply)=state.replies.last() else {println!("NO_REPLY");return};
+   let h=crate::role_bridge::prepare(&core,&w,"DECISION",&reply.id,&std::env::var("AGBRIO_TEXT").unwrap(),&[]).unwrap();
+   println!("APPROVED {}",crate::role_bridge::approve(&core,&h.id,&h.payload_hash).unwrap().status);
+   println!("SEND {:?}",crate::role_bridge::send_owner(&core,&h.id).map(|_|()));
+   println!("HANDOFF {} {}",h.id,store.role_handoff(&h.id).unwrap().status);
+  }
+ }
+}
 #[test] fn a_bridge_receives_a_claude_reply_from_the_transcript_even_without_plugin_turn_events(){
  let temp=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
  let core=RouterCore{chatgpt:Arc::new(Default::default()),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::new(Mutex::new(HashMap::new())),store:store.clone()};

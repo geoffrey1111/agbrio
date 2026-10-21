@@ -5,7 +5,7 @@ use serde_json::{json,Value};
 use crate::watch_chat::ChatCommand;
 
 pub(crate) fn snapshot(s:&router_core::claude_code::Session)->WatchSnapshot{
-    let state=match s.state.as_str(){"COMPLETE"=>"RESULT_READY","WAITING_DECISION"=>"ACTION_REQUIRED","SESSION_START"=>"UNKNOWN","EMPTY"|"LIMITED"=>"INCOMPLETE",v @ ("RUNNING"|"FAILED"|"INTERRUPTED")=>v,_=>"UNKNOWN"};
+    let state=match s.state.as_str(){"COMPLETE"=>"RESULT_READY","WAITING_DECISION"=>"ACTION_REQUIRED","SESSION_START"=>"UNKNOWN","EMPTY"=>"IDLE","LIMITED"=>"INCOMPLETE",v @ ("RUNNING"|"FAILED"|"INTERRUPTED")=>v,_=>"UNKNOWN"};
     let reply=s.latest_reply.as_ref().filter(|r|s.state=="COMPLETE"&&Some(&r.turn_id)==s.turn_id.as_ref());
     WatchSnapshot{state:state.into(),turn_id:s.turn_id.clone(),item_id:reply.map(|r|format!("claude_reply:{}",r.turn_id)),text:reply.map(|r|r.text.clone()).unwrap_or_default()}
 }
@@ -45,7 +45,12 @@ pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{
             if input.mode=="SEND"&&!matches!(session.state.as_str(),"COMPLETE"|"FAILED"|"INTERRUPTED"|"EMPTY"|"LIMITED"){return Err("REPLY_EXTERNAL_STATE_UNCONFIRMED".into());}
             if input.mode=="QUEUE"&&!matches!(session.state.as_str(),"RUNNING"|"SESSION_START"){return Err("REPLY_TURN_CHANGED_REFRESH".into());}
             let r=core.store.prepare_watch_reply(&input)?;
-            if let Err(error)=core.store.enqueue_claude_manual(&r,&session.instance_id){let _=core.store.finish_watch_reply(&r.id,"FAILED",None,Some("CLAUDE_PREWRITE_FAILED"));return Err(error);}
+            if let Err(error)=core.store.enqueue_claude_manual(&r,&session.instance_id){
+                let code=match error.as_str(){"CLAUDE_TARGET_CHANGED"=>"CLAUDE_TARGET_CHANGED",_=>"CLAUDE_PREWRITE_FAILED"};
+                let _=core.store.finish_watch_reply(&r.id,"FAILED",None,Some(code));
+                crate::claude_event_log::record(&session.session_id,"MANUAL_ENQUEUE",code);
+                return Err(error);
+            }
             encode(r)
         },
         ChatCommand::Receipt{thread_id,id}=>{native_id(&thread_id)?;core.store.codex_chat_context(&thread_id)?;let r=core.store.watch_reply(&id)?;if r.as_ref().is_some_and(|r|r.thread_id!=thread_id){return Err("REPLY_TARGET_CHANGED_REFRESH".into());}Ok(json!(r))},
