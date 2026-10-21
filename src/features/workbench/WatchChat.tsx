@@ -96,7 +96,17 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
  async function act(work: () => Promise<void>) { if (actionRunning.current) return; actionRunning.current = true; setBusy(true); setError(null); try { await work(); } catch (e) { if (mounted.current) setError(chatError(e)); } finally { actionRunning.current = false; if (mounted.current) setBusy(false); } }
  function command<T>(action: string, extra: object = {}) { return api.command<T>({ action, threadId: original.threadId, ...extra }); }
  function clearReceipt(){setUnconfirmed(null);try{sessionStorage.removeItem(`${key(original.threadId)}:pending`);}catch{/* no credentials stored */}}
- async function checkReceipt(){if(!unconfirmed)return;const r=await command<WatchReply|null>("RECEIPT",{id:unconfirmed.id});if(!mounted.current)return;if(r&&(r.id!==unconfirmed.id||r.threadId!==original.threadId))throw Error("REPLY_TARGET_CHANGED_REFRESH");if(r&&["SENT","QUEUED"].includes(r.status)){const sent=unconfirmed;if(!sent.composerCleared)setDraft(d=>d.text===sent.text&&JSON.stringify(d.files.map(f=>f.id))===JSON.stringify(sent.options.attachments)?{...d,text:"",files:[]}:d);clearReceipt();setNotice(null);}else if(r&&r.status==="ACKNOWLEDGED"){clearReceipt();setNotice(uiText("这条回复已结束送达检查，送达状态仍未确定，可以输入新的要求。"));}else if(r&&["FAILED","CANCELLED"].includes(r.status)){restoreAttempt(unconfirmed);clearReceipt();setNotice(uiText("已确认这次没有发送。草稿保留，可检查后重新发送。"));}else setNotice(uiText("送达尚未确认。不会自动重发；请查看原对话或取消尚未发送的尝试。"));await refresh();}
+ async function checkReceipt(){if(!unconfirmed)return;const r=await command<WatchReply|null>("RECEIPT",{id:unconfirmed.id});if(!mounted.current)return;if(r&&(r.id!==unconfirmed.id||r.threadId!==original.threadId))throw Error("REPLY_TARGET_CHANGED_REFRESH");if(r&&["SENT","QUEUED"].includes(r.status)){const sent=unconfirmed;if(!sent.composerCleared)setDraft(d=>d.text===sent.text&&JSON.stringify(d.files.map(f=>f.id))===JSON.stringify(sent.options.attachments)?{...d,text:"",files:[]}:d);clearReceipt();setNotice(null);}else if(r&&r.status==="ACKNOWLEDGED"){clearReceipt();setNotice(uiText("这条回复已结束送达检查，送达状态仍未确定，可以输入新的要求。"));}else if(r&&["FAILED","CANCELLED"].includes(r.status)){restoreAttempt(unconfirmed);clearReceipt();setNotice(uiText("已确认这次没有发送。草稿保留，可检查后重新发送。"));}else if(!r){
+  // Agbrio has no record of this attempt (for example the request was lost while
+  // Agbrio restarted). Abandoning records a block, so a delayed copy can never be
+  // accepted later; the draft comes back for an explicit resend.
+  const v=await command<{cancelled:boolean}>("ABANDON",{id:unconfirmed.id});if(!mounted.current)return;
+  if(v.cancelled){restoreAttempt(unconfirmed);clearReceipt();setNotice(uiText("Agbrio 没有收到这次发送，已取消；草稿保留，可以重新发送。"));}
+  else setNotice(uiText("这条回复已进入发送，请查看原对话，不会重复发送。"));
+ }else setNotice(uiText("送达尚未确认。不会自动重发；请查看原对话或取消尚未发送的尝试。"));await refresh();}
+ // Settle a leftover unconfirmed attempt as soon as the conversation opens.
+ const autoChecked=useRef(false);
+ useEffect(()=>{if(!unconfirmed||autoChecked.current||!state)return;autoChecked.current=true;void checkReceipt().catch(()=>{});},[unconfirmed,state]);
  async function acknowledgeUnknown(r:WatchReply){await command("ACKNOWLEDGE_UNKNOWN",{id:r.id,confirmed:true});currentAttemptIds.current.add(r.id);if(unconfirmed?.id===r.id)clearReceipt();if(!unconfirmed?.composerCleared)setDraft(d=>d.text===r.text?{...d,text:"",files:[]}:d);setNotice(uiText("已结束这条回复的送达检查，原文仍保留。可以输入新的要求。"));await refresh();input.current?.focus();}
  async function send(mode: "SEND" | "QUEUE" | "STEER") {
   const submitted=draftRef.current;

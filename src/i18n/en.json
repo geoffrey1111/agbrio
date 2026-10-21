@@ -1151,5 +1151,6 @@
   "暂不可选 · 在 Claude 里打开并发一条消息后可选": "Not available yet · open it in Claude and send a message",
   "暂时离线": "Offline for now",
   "当前": "current",
-  "未同步 · 在 Claude 打开后开始同步": "Not synced · syncs once opened in Claude"
+  "未同步 · 在 Claude 打开后开始同步": "Not synced · syncs once opened in Claude",
+  "Agbrio 没有收到这次发送，已取消；草稿保留，可以重新发送。": "Agbrio never received this send, so it was cancelled. Your draft is kept and you can send it again."
 }
