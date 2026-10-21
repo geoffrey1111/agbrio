@@ -95,3 +95,21 @@ fn event(root:&Path,kind:&str,sequence:i64)->Event {
         Ok(())
     }).unwrap();
 }
+#[test] fn a_desktop_spare_session_survives_its_deleted_folder_and_moves_once_into_its_project() {
+    let temp=tempfile::tempdir().unwrap();let store=RouterStore::open_at(temp.path().join("router.db")).unwrap();let pairing=store.create_claude_connection().unwrap();
+    let spare=temp.path().join(".claude").join("spares").join("spare-AbC123");
+    let mut start=event(temp.path(),"SESSION_START",1);start.cwd=spare.to_string_lossy().into();
+    // The app deleted the spare folder already; its exact text still identifies the root.
+    assert!(!spare.exists());assert!(store.ingest_claude_event(&pairing.token,&start).unwrap());
+    let mut beat=start.clone();beat.event_id=id();beat.sequence=2;beat.kind="HEARTBEAT".into();assert!(store.ingest_claude_event(&pairing.token,&beat).unwrap());
+    let project=temp.path().join("project");fs::create_dir(&project).unwrap();
+    let mut moved=event(&project,"HEARTBEAT",3);assert!(store.ingest_claude_event(&pairing.token,&moved).unwrap());
+    assert_eq!(store.claude_session(&start.session_id).unwrap().cwd,project.to_string_lossy());
+    // Once in a real project, any further root change is refused.
+    moved.event_id=id();moved.sequence=4;moved.cwd=temp.path().to_string_lossy().into();
+    assert_eq!(store.ingest_claude_event(&pairing.token,&moved).unwrap_err(),"CLAUDE_ROOT_CHANGED");
+    // A missing folder that is not a spare is still unavailable.
+    let mut gone=event(&temp.path().join("missing"),"SESSION_START",1);gone.session_id="10000000-0000-4000-8000-000000000009".into();
+    assert_eq!(store.ingest_claude_event(&pairing.token,&gone).unwrap_err(),"CLAUDE_ROOT_UNAVAILABLE");
+    assert!(crate::claude_code::spare_root("C:/Users/x/.claude/spares/spare-q"));assert!(!crate::claude_code::spare_root(r"C:\Users\x\.claude\spares\spare-q\..\..\projects"));
+}

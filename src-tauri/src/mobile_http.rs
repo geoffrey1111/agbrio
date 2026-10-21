@@ -1316,13 +1316,25 @@ async fn claude_code_event(State(state):State<MobileHttpState>,headers:HeaderMap
  let control=headers.get("x-agbrio-control-version").and_then(|h|h.to_str().ok())==Some("1");
  let core=state.core.clone();
  let result=run_core_blocking("Claude Code adapter",move||{
-   let inserted=crate::claude_code::ingest(&core,&token,&event)?;
-   crate::claude_chat::update_watch(&core,&event.session_id)?;
-   let command=if control {core.store.offer_claude_manual(&token,&event)?}else{None};
+   let inserted=match crate::claude_code::ingest(&core,&token,&event) {
+     Ok(inserted)=>inserted,
+     // The plugin retries the head of its queue until it is acknowledged, so an
+     // event that can never be accepted would block every later event forever.
+     // Acknowledge it as rejected; auth and storage errors still fail and retry.
+     Err(code) if permanent_claude_rejection(&code)=>{
+       eprintln!("Claude Code event rejected: {code} ({})",event.kind);
+       return Ok(serde_json::json!({"accepted":false,"rejected":code,"writesEnabled":false,"manualInputProtocol":if control{Some(1)}else{None},"command":null}));
+     }
+     Err(code)=>return Err(code),
+   };
+   // The event is stored; a failed watch refresh or offer must not make it retry.
+   if let Err(code)=crate::claude_chat::update_watch(&core,&event.session_id){eprintln!("Claude Code watch refresh failed: {code}");}
+   let command=if control {core.store.offer_claude_manual(&token,&event).unwrap_or_else(|code|{eprintln!("Claude Code offer failed: {code}");None})}else{None};
    Ok(serde_json::json!({"accepted":true,"duplicate":!inserted,"writesEnabled":false,"manualInputProtocol":if control{Some(1)}else{None},"command":command}))
  }).await?;
  Ok(Json(result))
 }
+fn permanent_claude_rejection(code:&str)->bool{matches!(code,"CLAUDE_EVENT_IDENTITY_INVALID"|"CLAUDE_EVENT_KIND_UNSUPPORTED"|"CLAUDE_RUNNING_TURN_ID_REQUIRED"|"CLAUDE_COMPLETE_REPLY_UNPROVEN"|"CLAUDE_NONTERMINAL_CONTENT_REJECTED"|"CLAUDE_ROOT_UNAVAILABLE"|"CLAUDE_ROOT_CHANGED"|"CLAUDE_EVENT_OUT_OF_ORDER"|"CLAUDE_COMPLETE_TURN_MISMATCH"|"CLAUDE_EVENT_REPLAY_CONFLICT"|"CLAUDE_SESSION_NOT_REGISTERED"|"CLAUDE_SESSION_INSTANCE_CHANGED")}
 async fn claude_code_receipt(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<router_core::store::claude_manual::ManualReceipt>)->ApiResult<serde_json::Value>{
  let token=claude_adapter_token(&headers)?;
  state.core.store.accept_claude_manual_receipt(&token,&input).map_err(core_error)?;

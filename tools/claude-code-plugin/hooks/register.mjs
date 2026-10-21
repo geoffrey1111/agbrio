@@ -7,7 +7,7 @@ export function hostOrigin(value) {
   return u.origin;
 }
 function diagnostic(state) {
-  return JSON.stringify({pluginVersion:'0.1.3',mode:'OWNER_MANUAL_INPUT',phase:state.phase,error:state.error,httpStatus:state.httpStatus,identityReady:!!state.identity,pendingEvents:state.pending.length,deliveredEvents:state.delivered,writesEnabled:false,manualInputProtocol:1});
+  return JSON.stringify({pluginVersion:'0.1.4',mode:'OWNER_MANUAL_INPUT',phase:state.phase,error:state.error,httpStatus:state.httpStatus,identityReady:!!state.identity,pendingEvents:state.pending.length,deliveredEvents:state.delivered,writesEnabled:false,manualInputProtocol:1});
 }
 function noteError(state, error) {
   const message=typeof error?.message==='string' ? error.message : '';
@@ -32,10 +32,20 @@ async function flush($, state) {
     if(envelope.command) await acceptManual($,state,envelope.command);
   }
 }
-function emit($, state, kind, extra = {}) {
+/** A desktop "spare" session starts in a temporary folder and later moves into
+ * its real project; follow the session's current folder. */
+export async function refreshCwd($, state) {
+  if (!state.identity) return;
+  try { const cwd = await $.session.cwd(); if (typeof cwd === 'string' && cwd && cwd !== state.identity.cwd) state.identity = {...state.identity, cwd}; } catch {}
+}
+export function emit($, state, kind, extra = {}) {
   if (!state.identity || state.stopped) return Promise.resolve();
+  // While Agbrio is unreachable, at most one heartbeat waits: a liveness signal
+  // must never fill the queue and switch this session's connection off.
+  if (kind === 'HEARTBEAT' && state.pending.some(item => item.kind === 'HEARTBEAT')) { state.queue = state.queue.catch(() => {}).then(() => flush($, state)); return state.queue; }
   const event = {...state.identity, eventId: crypto.randomUUID(), instanceId: state.instanceId, sequence: ++state.sequence, kind, turnId: state.turnId, text: null, completedAt: null, ...extra};
-  if (state.pending.length >= 64 || state.pending.reduce((bytes,item)=>bytes+new TextEncoder().encode(JSON.stringify(item)).length,0)+new TextEncoder().encode(JSON.stringify(event)).length>4_000_000) { state.stopped = true; return Promise.reject(new Error('AGBRIO_ADAPTER_QUEUE_FULL')); }
+  const content = state.pending.filter(item => item.kind !== 'HEARTBEAT');
+  if (content.length >= 64 || content.reduce((bytes,item)=>bytes+new TextEncoder().encode(JSON.stringify(item)).length,0)+new TextEncoder().encode(JSON.stringify(event)).length>4_000_000) { state.stopped = true; return Promise.reject(new Error('AGBRIO_ADAPTER_QUEUE_FULL')); }
   state.pending.push(event);
   state.queue = state.queue.catch(() => {}).then(() => flush($, state));
   return state.queue;
@@ -56,7 +66,7 @@ export function register(on, options) {
       if (!nativeId(sessionId) || !/^\d+\.\d+\.\d+$/.test(version)) throw new Error('AGBRIO_NATIVE_IDENTITY_UNAVAILABLE');
       state.identity={sessionId,cwd,version};
       void emit($,state,'SESSION_START').catch(async error=>{noteError(state,error);await report($,state);});
-      $.clock.every(5_000,async()=>{try {await flushReceipt($,state);await emit($,state,'HEARTBEAT');} catch(error){noteError(state,error);await report($,state);}});
+      $.clock.every(5_000,async()=>{try {await refreshCwd($,state);await flushReceipt($,state);await emit($,state,'HEARTBEAT');} catch(error){noteError(state,error);await report($,state);}});
     } catch(error) {noteError(state,error);void report($,state);}
     return next(e);
   });

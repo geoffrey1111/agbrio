@@ -56,7 +56,7 @@ fn read_name(path: &Path, wanted: &HashMap<String,String>) -> Option<(String,Str
     let prefix = read_prefix(path);
     let (id, cwd, title) = (prefix.id?, prefix.cwd?, prefix.title?);
     let expected = wanted.get(&id)?;
-    let exact = fs::canonicalize(&cwd).ok().zip(fs::canonicalize(expected).ok()).is_some_and(|(a,b)| a == b);
+    let exact = router_core::claude_code::same_root(&cwd, expected);
     exact.then_some((id, title))
 }
 fn children(path: &Path, budget: &mut usize) -> Vec<fs::DirEntry> {

@@ -53,3 +53,12 @@ it("a resource keeps the same synchronization period after its last page listene
 it("desktop keeps its read clock hidden and does not queue every entry again on focus",async()=>{
  vi.useFakeTimers();const c=new ReadModelCache(()=>undefined,true);caches.push(c);const load=vi.fn().mockResolvedValue("body");await c.read("bridge:a",load,5000);Object.defineProperty(document,"visibilityState",{configurable:true,value:"hidden"});await vi.advanceTimersByTimeAsync(15000);expect(load).toHaveBeenCalledTimes(4);Object.defineProperty(document,"visibilityState",{configurable:true,value:"visible"});window.dispatchEvent(new Event("focus"));await vi.advanceTimersByTimeAsync(0);expect(load).toHaveBeenCalledTimes(4);expect(c.age("bridge:a")).toBe(0);
 });
+
+it("a suspended mobile refresh retries on pageshow immediately and retains its snapshot",async()=>{
+ vi.useFakeTimers();const c=cache();let reject!:(e:unknown)=>void;
+ const load=vi.fn().mockResolvedValueOnce("cached").mockImplementationOnce(()=>new Promise((_r,j)=>reject=j)).mockResolvedValue("resumed");
+ await c.read("bridge:resume",load,2000);await vi.advanceTimersByTimeAsync(2000);
+ Object.defineProperty(document,"visibilityState",{configurable:true,value:"hidden"});reject(new DOMException("ROUTER_READ_SUSPENDED","AbortError"));await vi.advanceTimersByTimeAsync(0);expect(c.peek("bridge:resume")).toBe("cached");
+ Object.defineProperty(document,"visibilityState",{configurable:true,value:"visible"});window.dispatchEvent(new Event("pageshow"));await vi.advanceTimersByTimeAsync(0);
+ expect(c.peek("bridge:resume")).toBe("resumed");expect(load).toHaveBeenCalledTimes(3);
+});

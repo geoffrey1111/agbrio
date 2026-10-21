@@ -1,5 +1,6 @@
 mod codex_quota;
 mod claude_quota;
+mod claude_transcript;
 mod claude_code;
 mod claude_chat;
 mod claude_code_desktop;

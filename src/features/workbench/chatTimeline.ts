@@ -35,7 +35,12 @@ export function chatTimeline(history:ChatMessage[],observed:ObservedMessage[],re
  // and append the same receipt as a second user message.
  const add=(message:TimelineMessage)=>{const group=groups.get(message.turnId)??[];const index=group.findIndex(m=>m.id===message.id);if(index<0)group.push({...message});else group[index]={...group[index],...message};groups.set(message.turnId,group);};
  for(const message of history)add(message);
+ // A transcript page (Claude Code) has its own turn ids; a notification of the
+ // same reply is matched by its text so it is not shown twice.
+ const sameReply=(message:ChatMessage)=>loaded&&message.role==='assistant'&&!nativeTurns.has(message.turnId)?history.find(m=>m.role==='assistant'&&m.text.trim()===message.text.trim()):undefined;
  for(const message of [...observed,source]){
+  const twin=sameReply(message);
+  if(twin){if(identity(message)===identity(source)){const group=groups.get(twin.turnId);const item=group?.find(m=>m.id===twin.id);if(item)item.source=true;}continue;}
   times.set(message.turnId,Math.min(times.get(message.turnId)??Infinity,message.seenAt));
   const current=groups.get(message.turnId)?.find(m=>m.id===message.id);
   if(current)current.source=identity(message)===identity(source);
@@ -43,7 +48,7 @@ export function chatTimeline(history:ChatMessage[],observed:ObservedMessage[],re
  }
  // The current live snapshot can advance inside the same native item. Older
  // session-cache text must never overwrite a freshly read native message.
- if(current)add({...current,source:identity(current)===identity(source)});
+ if(current&&!sameReply(current))add({...current,source:identity(current)===identity(source)});
  const sorted=[...replies].sort((a,b)=>a.createdAt-b.createdAt);
  for(const receipt of sorted){
   const turn=receipt.turnId??`receipt:${receipt.id}`;

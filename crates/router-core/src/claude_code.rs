@@ -59,6 +59,21 @@ pub fn supported_version(value: &str) -> bool {
     let Some(parts) = value.split('.').map(str::parse::<u32>).collect::<Result<Vec<_>, _>>().ok() else { return false; };
     parts.len() == 3 && (parts[0], parts[1], parts[2]) >= (2, 1, 286)
 }
+/// The Claude desktop app pre-starts "spare" sessions in `~/.claude/spares/spare-*`
+/// and deletes that folder once a spare becomes a real conversation. The session
+/// keeps reporting the spare path, so it is matched by its exact text.
+pub fn spare_root(cwd: &str) -> bool {
+    let lower = cwd.replace('/', "\\").to_lowercase();
+    lower.contains("\\.claude\\spares\\spare-") && !lower.contains("..")
+}
+/// Comparable identity of a session root: the canonical folder, or for a spare
+/// folder that may already be gone, its exact path text.
+pub fn root_key(cwd: &str) -> Option<std::path::PathBuf> {
+    std::fs::canonicalize(cwd).ok().or_else(|| spare_root(cwd).then(|| std::path::PathBuf::from(cwd.replace('/', "\\").to_lowercase())))
+}
+pub fn same_root(a: &str, b: &str) -> bool {
+    match (root_key(a), root_key(b)) { (Some(a), Some(b)) => a == b || (spare_root(&a.to_string_lossy()) && a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()), _ => false }
+}
 pub fn require_write_capability() -> Result<(), String> {
     if !WRITES_ENABLED { return Err("CLAUDE_WRITES_DISABLED_BY_OWNER".into()); }
     Ok(())
@@ -76,7 +91,7 @@ impl<'a> ClaudeCodeAdapter<'a> {
         let at=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
         if session.lease_until<=at || session.state=="SESSION_END" {return Err("CLAUDE_SESSION_UNCONFIRMED".into());}
         if let Some(cwd)=cwd {
-            if std::fs::canonicalize(cwd).ok().zip(std::fs::canonicalize(&session.cwd).ok()).is_none_or(|(a,b)|a!=b) {return Err("CLAUDE_ROOT_CHANGED".into());}
+            if !same_root(cwd,&session.cwd) {return Err("CLAUDE_ROOT_CHANGED".into());}
         }
         Ok(session)
     }

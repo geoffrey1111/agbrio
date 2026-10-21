@@ -261,7 +261,7 @@ impl RouterStore {
                 // not reported yet was resolved by the Host from the desktop app's own list
                 // (exact native id and root); delivery still requires live verification.
                 if let Some(session)=self.claude_session(&input.external_id).ok().filter(|s|s.lease_until>now()&&s.state!="SESSION_END") {
-                    let exact=input.cwd.as_ref().and_then(|cwd|fs::canonicalize(cwd).ok()).zip(fs::canonicalize(&session.cwd).ok()).is_some_and(|(a,b)|a==b);
+                    let exact=input.cwd.as_deref().is_some_and(|cwd|crate::claude_code::same_root(cwd,&session.cwd));
                     if !exact { return Err("CLAUDE_ROOT_CHANGED".into()); }
                 }
             }

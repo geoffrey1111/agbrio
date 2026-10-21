@@ -47,7 +47,7 @@ export class ReadModelCache {
   private start() {
     if (this.timer) return;
     this.timer = setInterval(() => void this.tick(), 1000);
-    document.addEventListener("visibilitychange", this.wake); window.addEventListener("focus", this.wake); window.addEventListener("online", this.wake);
+    document.addEventListener("visibilitychange", this.wake); window.addEventListener("focus", this.wake); window.addEventListener("online", this.wake); window.addEventListener("pageshow",this.wake);
   }
   subscribe(key: string, listener: () => void) { const e = this.entry(key); e.listeners.add(listener); return () => { e.listeners.delete(listener); }; }
   async read<T>(key: string, loader: () => Promise<T>, period = 5000): Promise<T> {
@@ -89,7 +89,7 @@ export class ReadModelCache {
         e.value = value; e.failed=false;e.at = Date.now(); e.due = e.at + e.period; e.listeners.forEach(fn => fn()); this.save();
       } else throw new Error("READ_CACHE_SUPERSEDED");
       return value;
-    }).catch(error => { if (epoch === this.epoch && version === e.version){e.failed=true;e.due = Date.now() + Math.max(10000, e.period);} throw error; })
+    }).catch(error => { if (epoch === this.epoch && version === e.version){e.failed=true;e.due = !this.background&&error?.name==="AbortError"?0:Date.now() + Math.max(10000, e.period);} throw error; })
       .finally(() => { if (e.pending === promise) e.pending = undefined; this.running--; });
     e.pending = promise; return promise;
   }
@@ -116,7 +116,7 @@ export class ReadModelCache {
       try { this.storage()?.setItem(STORAGE, JSON.stringify({scope:this.scope, rows})); } catch { /* quota/private mode: memory cache continues */ }
     }, 250);
   }
-  dispose() { clearInterval(this.timer); clearTimeout(this.saveTimer); this.timer = undefined; document.removeEventListener("visibilitychange", this.wake); window.removeEventListener("focus", this.wake); window.removeEventListener("online", this.wake); }
+  dispose() { clearInterval(this.timer); clearTimeout(this.saveTimer); this.timer = undefined; document.removeEventListener("visibilitychange", this.wake); window.removeEventListener("focus", this.wake); window.removeEventListener("online", this.wake); window.removeEventListener("pageshow",this.wake); }
 }
 export const readModels = new ReadModelCache(()=>localStorage,isTauri());
 if (typeof location !== "undefined" && !location.pathname.startsWith("/mobile")) readModels.setScope(`desktop:${location.origin}`);

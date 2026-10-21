@@ -1,6 +1,7 @@
 //! Desktop-owned availability watchdog. Reuses one Host and the installed
 //! Cloudflared service; never reads credentials or changes tunnel routes.
 use serde::Serialize;
+use std::io::Read;
 use std::sync::{atomic::{AtomicBool,Ordering},Arc,Mutex};
 use std::time::{Duration,Instant,SystemTime,UNIX_EPOCH};
 static SETUP_PENDING:AtomicBool=AtomicBool::new(false);
@@ -24,8 +25,8 @@ impl RecoveryPolicy {
 }
 /// Cloudflared reconnects by itself, and an upstream proxy or network problem is
 /// not fixed by a restart: restarting only drops the connections that still work.
-/// Restart the shared service only after the connector has had no ready
-/// connection for a sustained period, and at most once an hour.
+/// Restart only after sustained tunnel failure, including an explicit Cloudflare
+/// 1033 when local readiness is stale, and at most once an hour.
 const TUNNEL_DOWN_SECS:u64=5*60;
 const TUNNEL_RESTART_GAP_SECS:u64=60*60;
 #[derive(Default)]
@@ -37,6 +38,22 @@ impl TunnelPolicy {
   if elapsed.saturating_sub(since)<TUNNEL_DOWN_SECS || self.last.is_some_and(|last|elapsed.saturating_sub(last)<TUNNEL_RESTART_GAP_SECS){return false;}
   self.last=Some(elapsed);self.down_since=None;true
  }
+}
+#[derive(Default)]
+struct PublicProbe {ready:bool,tunnel_missing:bool}
+fn cloudflare_tunnel_missing(status:u16,server:Option<&str>,body:&str)->bool {
+ status==530 && server.is_some_and(|s|s.eq_ignore_ascii_case("cloudflare"))
+  && (body.trim().eq_ignore_ascii_case("error code: 1033") || body.contains("Error 1033"))
+}
+fn inspect_public(response:reqwest::blocking::Response,instance:&str)->PublicProbe {
+ let ready=response.status().is_success()&&response.headers().get("x-aiwr-host-instance").and_then(|v|v.to_str().ok())==Some(instance);
+ if response.status().as_u16()!=530{return PublicProbe{ready,tunnel_missing:false};}
+ let server=response.headers().get("server").and_then(|v|v.to_str().ok()).map(str::to_owned);
+ let mut body=String::new();let read=response.take(8192).read_to_string(&mut body).is_ok();
+ PublicProbe{ready,tunnel_missing:read&&cloudflare_tunnel_missing(530,server.as_deref(),&body)}
+}
+fn tunnel_recovery_eligible(local:bool,tunnel:bool,public:&PublicProbe,allowed:bool)->bool {
+ local&&!public.ready&&(!tunnel||public.tunnel_missing)&&allowed
 }
 impl Watchdog {
  pub(crate) fn status(&self)->Status {let mut status=self.status.lock().map(|s|s.clone()).unwrap_or_default();status.setup_pending=SETUP_PENDING.load(Ordering::Acquire);status}
@@ -58,13 +75,15 @@ impl Watchdog {
     let allowed=legacy&&service::can_recover();
     let external_client=if crate::mobile_http::config_method(&config)=="TAILSCALE_SERVE"{&private_client}else{&client};
     let configured=config.allowed_origin.starts_with("https://");
-    let public=configured&&external_client.get(format!("{}/v1/mobile/auth/session",config.allowed_origin.trim_end_matches('/'))).header("cache-control","no-cache").send().is_ok_and(|r|r.status().is_success()&&r.headers().get("x-aiwr-host-instance").and_then(|v|v.to_str().ok())==Some(host.instance_id()));
-    let mut state=if !configured{"CONFIG_REQUIRED"}else if public{"ONLINE"}else if !local{"LOCAL_RECOVERING"}else if legacy&&!tunnel && !allowed{"ADMIN_SETUP_REQUIRED"}else if legacy&&!tunnel{"TUNNEL_RECONNECTING"}else{"PUBLIC_UNREACHABLE"}.to_string();
+    let public_probe=if configured {external_client.get(format!("{}/v1/mobile/auth/session",config.allowed_origin.trim_end_matches('/'))).header("cache-control","no-cache").send().map(|r|inspect_public(r,host.instance_id())).unwrap_or_default()}else{PublicProbe::default()};
+    let public=public_probe.ready;
+    let missing=!tunnel||public_probe.tunnel_missing;
+    let mut state=if !configured{"CONFIG_REQUIRED"}else if public{"ONLINE"}else if !local{"LOCAL_RECOVERING"}else if legacy&&missing && !allowed{"ADMIN_SETUP_REQUIRED"}else if legacy&&missing{"TUNNEL_RECONNECTING"}else{"PUBLIC_UNREACHABLE"}.to_string();
     if local {local_policy.healthy();}
     if local_policy.tick(!local,since.elapsed().as_secs()) && !guard.stop.load(Ordering::Acquire){host.restart_mobile_listener(core.clone(),config.clone());}
-    // Public errors while a connector is healthy can be DNS/Access/Cloudflare
-    // errors. Never restart the shared service for those or an origin failure.
-    if policy.tick(local&&!tunnel&&!public&&allowed,since.elapsed().as_secs()) && !guard.stop.load(Ordering::Acquire){
+    // A positive /ready can outlive a usable edge connection. Only explicit
+    // Cloudflare 1033 overrides it; Access/DNS/origin errors do not.
+    if policy.tick(tunnel_recovery_eligible(local,tunnel,&public_probe,allowed),since.elapsed().as_secs()) && !guard.stop.load(Ordering::Acquire){
      state="TUNNEL_RECOVERING".into();if service::recover(&guard.stop).is_ok(){count+=1;}
     }
     if let Ok(mut status)=guard.status.lock(){*status=Status{state,local_ready:local,tunnel_ready:tunnel,public_ready:public,recovery_allowed:allowed,checked_at:SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),recovery_count:count,setup_pending:SETUP_PENDING.load(Ordering::Acquire)};}
@@ -117,6 +136,20 @@ mod service {
   assert!(!q.tick(true,700),"hourly cap");
   // Flapping below five minutes never restarts.
   let mut r=TunnelPolicy::default();for n in 0..40{assert!(!r.tick(n%10!=0,n*15));}
+ }
+ #[test]fn public_1033_overrides_stale_ready_but_keeps_delay_and_hourly_cap(){
+  let listener=std::net::TcpListener::bind("127.0.0.1:0").unwrap();let address=listener.local_addr().unwrap();
+  let server=std::thread::spawn(move||{use std::io::Write;let(mut socket,_)=listener.accept().unwrap();socket.set_read_timeout(Some(Duration::from_secs(2))).unwrap();let mut request=[0;2048];let _=socket.read(&mut request).unwrap();let body="error code: 1033";write!(socket,"HTTP/1.1 530 Unknown\r\nServer: cloudflare\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();});
+  let response=reqwest::blocking::Client::builder().no_proxy().timeout(Duration::from_secs(2)).build().unwrap().get(format!("http://{address}/v1/mobile/auth/session")).send().unwrap();
+  let public=inspect_public(response,"fixture");server.join().unwrap();assert!(!public.ready);assert!(public.tunnel_missing);
+  assert!(!tunnel_recovery_eligible(false,true,&public,true));assert!(!tunnel_recovery_eligible(true,true,&public,false));
+  let mut policy=TunnelPolicy::default();for t in (0..300).step_by(15){assert!(!policy.tick(tunnel_recovery_eligible(true,true,&public,true),t));}assert!(policy.tick(tunnel_recovery_eligible(true,true,&public,true),300));
+  assert!(!policy.tick(true,600));assert!(!policy.tick(true,3899));assert!(policy.tick(true,3900));
+ }
+ #[test]fn generic_public_failures_never_override_ready_or_a_live_origin(){
+  for(status,server,body)in[(403,Some("cloudflare"),"Error 1033"),(502,Some("cloudflare"),"Bad gateway"),(530,Some("cloudflare"),"error code: 1016"),(530,Some("origin"),"error code: 1033"),(530,None,"Error 1033")]{assert!(!cloudflare_tunnel_missing(status,server,body));}
+  assert!(!tunnel_recovery_eligible(true,true,&PublicProbe::default(),true));assert!(!tunnel_recovery_eligible(true,false,&PublicProbe{ready:true,tunnel_missing:false},true));
+  assert!(cloudflare_tunnel_missing(530,Some("Cloudflare"),"<h1>Error 1033</h1>"));
  }
  #[test]fn transient_failure_and_public_only_failure_never_restart(){let mut p=RecoveryPolicy::default();assert!(!p.tick(true,0));assert!(!p.tick(true,15));assert!(!p.tick(false,30));for n in 0..20{assert!(!p.tick(false,n*15));}}
  #[test]fn recovery_is_bounded_and_healthy_connection_resets_backoff(){let mut p=RecoveryPolicy::default();assert!(!p.tick(true,0));assert!(!p.tick(true,15));assert!(p.tick(true,30));for t in [45,60,90,120]{assert!(!p.tick(true,t));}assert!(p.tick(true,150));p.healthy();assert!(!p.tick(true,165));assert!(!p.tick(true,180));assert!(!p.tick(true,195));assert!(p.tick(true,210));}

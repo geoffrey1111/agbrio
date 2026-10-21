@@ -1,12 +1,14 @@
+import {cancelReadOnSuspend} from './readLifecycle';
 export type WebSession={authenticated:boolean;method?:"DEVICE"|"CLOUDFLARE"|null;cacheScope?:string|null};
 
 async function requestSession():Promise<WebSession>{
  const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),10000);
+ const release=cancelReadOnSuspend(abort);
  try{
   const response=await fetch("/v1/mobile/auth/session",{credentials:"same-origin",cache:"no-store",signal:abort.signal});
   if(!response.ok){const body=await response.json().catch(()=>null);throw new Error(body?.error??`HTTP ${response.status}`);}
   return await response.json();
- }finally{clearTimeout(timer);}
+ }finally{clearTimeout(timer);release();}
 }
 
 // One live check starts while the application bundle downloads. No login state

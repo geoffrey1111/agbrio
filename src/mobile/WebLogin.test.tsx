@@ -71,3 +71,10 @@ it("ignores an expired or malformed hint",async()=>{
  localStorage.setItem("agbrio.session-hint.v1","{bad");expect(readSessionHint()).toBeNull();
  localStorage.setItem("agbrio.session-hint.v1",JSON.stringify({method:"DEVICE",at:Date.now()}));expect(readSessionHint()).toBeNull();
 });
+
+it("rechecks on pageshow without replacing the mounted draft or pairing again",async()=>{
+ const api=fixture();api.session.mockResolvedValue({authenticated:true,method:"DEVICE",cacheScope:"same"});render(<WebLoginGate api={api}><textarea aria-label="resume draft" defaultValue="keep on return"/></WebLoginGate>);
+ const draft=await screen.findByRole("textbox",{name:"resume draft"});
+ act(()=>window.dispatchEvent(new Event("pageshow")));
+ await waitFor(()=>expect(api.session).toHaveBeenCalledTimes(2));expect(screen.getByRole("textbox")).toBe(draft);expect(draft).toHaveValue("keep on return");expect(api.pair).not.toHaveBeenCalled();
+});

@@ -115,7 +115,7 @@ impl RouterStore {
     pub fn ingest_claude_event(&self, token: &str, event: &Event) -> Result<bool, String> {
         let at=now(); event.validate(at)?;
         // The Adapter alone resolves native roots, not Domain titles or URL guesses.
-        let root=fs::canonicalize(&event.cwd).map_err(|_|"CLAUDE_ROOT_UNAVAILABLE")?;
+        crate::claude_code::root_key(&event.cwd).ok_or("CLAUDE_ROOT_UNAVAILABLE")?;
         let digest=event.digest()?;
         self.with_connection(|c| {
             let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
@@ -126,7 +126,8 @@ impl RouterStore {
             if let Some((owner,instance,sequence,cwd,lease))=&prior {
                 let old_authorized=tx.query_row("SELECT revoked_at IS NULL AND expires_at>?2 FROM claude_connections WHERE id=?1",params![owner,at],|r|r.get::<_,bool>(0)).map_err(db_error)?;
                 if owner!=&connection && (old_authorized || event.kind!="SESSION_START") { return Err("CLAUDE_SESSION_ALREADY_OWNED".into()); }
-                if fs::canonicalize(cwd).ok().as_ref()!=Some(&root) { return Err("CLAUDE_ROOT_CHANGED".into()); }
+                // A spare session may move into its real project; any other root change is refused.
+                if !crate::claude_code::same_root(cwd,&event.cwd) && !crate::claude_code::spare_root(cwd) { return Err("CLAUDE_ROOT_CHANGED".into()); }
                 if instance!=&event.instance_id {
                     if event.kind!="SESSION_START" || (*lease>at && old_authorized) { return Err("CLAUDE_SESSION_INSTANCE_CHANGED".into()); }
                 } else if event.sequence<=*sequence { return Err("CLAUDE_EVENT_OUT_OF_ORDER".into()); }
@@ -137,7 +138,7 @@ impl RouterStore {
             }
             let reply=if event.kind=="COMPLETE" { Some(serde_json::to_string(&CompleteReply {turn_id:event.turn_id.clone().unwrap(),text:event.text.clone().unwrap(),completed_at:event.completed_at.unwrap()}).map_err(|_|"CLAUDE_REPLY_INVALID")?) } else { None };
             let state=if event.kind=="HEARTBEAT" { tx.query_row("SELECT state FROM claude_sessions WHERE session_id=?1",[&event.session_id],|r|r.get::<_,String>(0)).map_err(db_error)? } else {event.kind.clone()};
-            tx.execute("INSERT INTO claude_sessions(session_id,connection_id,instance_id,sequence,cwd,version,state,turn_id,checked_at,lease_until,latest_reply) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11) ON CONFLICT(session_id) DO UPDATE SET connection_id=excluded.connection_id,instance_id=excluded.instance_id,sequence=excluded.sequence,version=excluded.version,state=excluded.state,turn_id=CASE WHEN ?12='HEARTBEAT' THEN claude_sessions.turn_id ELSE excluded.turn_id END,checked_at=excluded.checked_at,lease_until=excluded.lease_until,latest_reply=CASE WHEN ?12 IN ('RUNNING','SESSION_START','SESSION_END') THEN NULL ELSE COALESCE(excluded.latest_reply,claude_sessions.latest_reply) END",params![event.session_id,connection,event.instance_id,event.sequence,event.cwd,event.version,state,event.turn_id,at,if event.kind=="SESSION_END"{at}else{at+45_000},reply,event.kind]).map_err(db_error)?;
+            tx.execute("INSERT INTO claude_sessions(session_id,connection_id,instance_id,sequence,cwd,version,state,turn_id,checked_at,lease_until,latest_reply) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11) ON CONFLICT(session_id) DO UPDATE SET connection_id=excluded.connection_id,cwd=excluded.cwd,instance_id=excluded.instance_id,sequence=excluded.sequence,version=excluded.version,state=excluded.state,turn_id=CASE WHEN ?12='HEARTBEAT' THEN claude_sessions.turn_id ELSE excluded.turn_id END,checked_at=excluded.checked_at,lease_until=excluded.lease_until,latest_reply=CASE WHEN ?12 IN ('RUNNING','SESSION_START','SESSION_END') THEN NULL ELSE COALESCE(excluded.latest_reply,claude_sessions.latest_reply) END",params![event.session_id,connection,event.instance_id,event.sequence,event.cwd,event.version,state,event.turn_id,at,if event.kind=="SESSION_END"{at}else{at+45_000},reply,event.kind]).map_err(db_error)?;
             tx.execute("INSERT INTO claude_event_journal(event_id,connection_id,session_id,instance_id,sequence,digest,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![event.event_id,connection,event.session_id,event.instance_id,event.sequence,digest,at]).map_err(db_error)?;
             // Bounded dedupe history; older sequence fences survive pruning/restart.
             tx.execute("DELETE FROM claude_event_journal WHERE session_id=?1 AND sequence<?2 AND instance_id=?3",params![event.session_id,event.sequence-256,event.instance_id]).map_err(db_error)?;

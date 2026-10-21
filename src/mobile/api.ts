@@ -2,6 +2,7 @@ import {boardCache} from '../features/character-board/boardCache';
 import {readModels} from "../features/workbench/readModelCache";
 import {beginPwaMutation} from './pwaUpdates';
 import {awaitLiveSession,sessionIsLive} from './startup';
+import {cancelReadOnSuspend} from './readLifecycle';
 export type MobileWorkstream = {
   id: string;
   name: string;
@@ -295,15 +296,19 @@ function passiveRead(path:string,init?:RequestInit){
  return path==="/bridge-activity"||(/\/role-bridge$/.test(path)&&["SYNC","READ","THREADS","BLOCKS","ATTACHMENTS"].includes(action));
 }
 export async function liveRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const generation=readModels.generation(),reading=!init?.method||['GET','HEAD'].includes(init.method.toUpperCase());
+  // Several observation APIs use POST for their query body. They still need
+  // the read deadline, otherwise a lost reply can occupy both refresh slots.
+  // Commands remain unbounded here: timing out a send must not invite replay.
+  const generation=readModels.generation(),reading=!init?.method||['GET','HEAD'].includes(init.method.toUpperCase())||passiveRead(path,init);
   const controller=reading?new AbortController():null;
+  const endRead=controller&&!path.startsWith('/character-board/assets/')?cancelReadOnSuspend(controller):()=>{};
   const abort=()=>controller?.abort();let timedOut=false;
   const waitValue=Number(new URLSearchParams(path.split('?')[1]??'').get('waitSeconds')??0),wait=Number.isFinite(waitValue)?waitValue:0;
   const timeout=reading?setTimeout(()=>{timedOut=true;controller!.abort();},path.startsWith('/character-board/assets/')?45000:Math.max(15000,(Math.min(Math.max(wait,0),20)+5)*1000)):undefined;
   if(controller){if(init?.signal?.aborted)controller.abort();else init?.signal?.addEventListener('abort',abort,{once:true});}
   // A cache-first page may render before the live session check returns;
   // writes (other than passive reads sent as POST) wait for that check.
-  const end=init?.method&&!['GET','HEAD'].includes(init.method.toUpperCase())?beginPwaMutation():()=>{};
+  const end=!reading?beginPwaMutation():()=>{};
   try{
   if(!reading&&!sessionIsLive()&&!passiveRead(path,init))await awaitLiveSession();
   const response = await fetch(`/v1/mobile${path}`, {
@@ -325,7 +330,7 @@ export async function liveRequest<T>(path: string, init?: RequestInit): Promise<
   if (response.status === 204) return undefined as T;
   return await response.json() as T;
     }catch(error){if(timedOut)throw new MobileApiError(408,"ROUTER_READ_TIMEOUT");throw error;}
-    finally{clearTimeout(timeout);init?.signal?.removeEventListener('abort',abort);end();}
+    finally{clearTimeout(timeout);init?.signal?.removeEventListener('abort',abort);endRead();end();}
 }
 
 export const mobileApi = {

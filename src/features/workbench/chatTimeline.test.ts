@@ -92,3 +92,10 @@ it('keeps the current send visible until its native history arrives, then merges
  const confirmedHistory=chatTimeline([source,m('next','native-user','user','current prompt')],[],[sent],source,true,undefined,false,new Set(['current']));
  expect(confirmedHistory.filter(m=>m.text==='current prompt')).toHaveLength(1);expect(confirmedHistory.find(m=>m.id==='native-user')?.receipt?.id).toBe('current');
 });
+it('a Claude transcript reply and its notification are shown once, keeping the source mark',()=>{
+ const history=[{id:'u1',turnId:'claude_turn:p1',role:'user' as const,text:'问题'},{id:'claude_msg:m1',turnId:'claude_turn:p1',role:'assistant' as const,text:'回答\n'}];
+ const note={id:'claude_reply:plugin-turn',turnId:'plugin-turn',role:'assistant' as const,text:'回答',seenAt:100};
+ const timeline=chatTimeline(history,[note],[],note,true);
+ expect(timeline.map(m=>m.id)).toEqual(['u1','claude_msg:m1']);
+ expect(timeline[1].source).toBe(true);
+});

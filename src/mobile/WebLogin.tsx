@@ -40,15 +40,15 @@ export function WebLoginGate({children,api=webLoginApi}:{children:ReactNode;api?
   if(disposed||pending.current||document.visibilityState==='hidden')return;
   if(inFlight){queued=true;return;}inFlight=true;const mark=revision.current;
   try{const next=await api.session();if(!disposed&&mark===revision.current){setSession(liveSession(next));reauthPending.current=false;setSuspended(false);setError(null);}}
-  catch(e){if(!disposed&&mark===revision.current)setError(explain(e));}
+  catch(e){if(!disposed&&mark===revision.current&&!String(e).includes("ROUTER_READ_SUSPENDED"))setError(explain(e));}
   finally{inFlight=false;if(queued&&!disposed){queued=false;void check();}}
  }
   void check();const timer=setInterval(()=>void check(),15000);
   const invalid=(event:Event)=>{if(pending.current)return;const generation=(event as CustomEvent<{generation?:number}>).detail?.generation;if(generation!==undefined&&generation!==readModels.generation())return;
    if(reauthPending.current)return;reauthPending.current=true;markSessionLive(false);revision.current++;if(!disposed)setSuspended(true);void check();
   };window.addEventListener("aiwr-login-required",invalid);
-  const online=()=>void check();window.addEventListener("online",online);window.addEventListener("focus",online);document.addEventListener("visibilitychange",online);
-  return()=>{disposed=true;alive.current=false;clearInterval(timer);window.removeEventListener("aiwr-login-required",invalid);window.removeEventListener("online",online);window.removeEventListener("focus",online);document.removeEventListener("visibilitychange",online);};
+  const online=()=>void check();window.addEventListener("online",online);window.addEventListener("focus",online);window.addEventListener("pageshow",online);document.addEventListener("visibilitychange",online);
+  return()=>{disposed=true;alive.current=false;clearInterval(timer);window.removeEventListener("aiwr-login-required",invalid);window.removeEventListener("online",online);window.removeEventListener("focus",online);window.removeEventListener("pageshow",online);document.removeEventListener("visibilitychange",online);};
  },[api]);
  async function pair(){if(pending.current)return;pending.current=true;revision.current++;setBusy(true);setError(null);try{void boardCache.clear();readModels.clear();await api.pair(code,name,remember);if(alive.current){setCode("");setSession(liveSession(await api.session()));}}catch(e){if(alive.current)setError(explain(e));}finally{pending.current=false;if(alive.current)setBusy(false);}}
  async function logout(){if(pending.current)return;pending.current=true;revision.current++;setBusy(true);try{void boardCache.clear();await api.logout();rememberSession({authenticated:false});markSessionLive(false);readModels.clear();readModels.setScope(null);clearRoleReviewCache();if(alive.current){setSession({authenticated:false});setCode("");setError(null);}}catch(e){if(alive.current)setError(explain(e));}finally{pending.current=false;if(alive.current)setBusy(false);}}

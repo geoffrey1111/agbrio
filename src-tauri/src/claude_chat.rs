@@ -54,16 +54,25 @@ pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{
         ChatCommand::Abandon{thread_id,id}=>{native_id(&thread_id)?;core.store.codex_chat_context(&thread_id)?;Ok(json!({"cancelled":core.store.abandon_watch_reply(&thread_id,&id)?}))},
         ChatCommand::Options{thread_id}=>{native_id(&thread_id)?;core.store.codex_chat_context(&thread_id)?;Ok(json!({"models":[],"permissions":"INHERITED"}))},
         ChatCommand::History{thread_id,cursor}=>{
-            if cursor.is_some(){return Err("CLAUDE_HISTORY_CURSOR_INVALID".into());}
+            let before=match cursor.as_deref(){None=>None,Some(c)=>Some(c.strip_prefix("claude:").and_then(|v|v.parse::<u64>().ok()).ok_or("CLAUDE_HISTORY_CURSOR_INVALID")?)};
             let current=state(core,&thread_id)?;let snap=&current["watch"]["snapshot"];
-            // Only content actually received by this adapter. Never reads arbitrary
-            // private transcript files, reasoning or native approvals.
+            // Owner-requested full flow: the exact session's own transcript, user
+            // prompts and assistant text only (see claude_transcript).
+            let sid=native_id(&thread_id)?;
+            let path=crate::claude_transcript::projects_root().and_then(|root|crate::claude_transcript::find(&root,sid));
+            let Some(path)=path else {
+                let mut messages=vec![];
+                if let (Some(id),Some(turn),Some(text))=(snap["itemId"].as_str(),snap["turnId"].as_str(),snap["text"].as_str()) {if !text.is_empty(){messages.push(json!({"id":id,"turnId":turn,"role":"assistant","text":text}));}}
+                return Ok(json!({"messages":messages,"nextCursor":null,"coverage":"ADAPTER_RECEIVED_ONLY"}));
+            };
+            let page=crate::claude_transcript::page(&path,sid,before).map_err(|_|"CLAUDE_HISTORY_UNAVAILABLE")?;
             let mut messages=vec![];
-            for r in core.store.watch_replies(&thread_id)?.into_iter().rev().filter(|r|r.status=="SENT"){
-                messages.push(json!({"id":format!("receipt:{}",r.id),"turnId":format!("receipt:{}",r.id),"role":"user","text":r.text}));
+            // Transcript ids are permanent; the client matches a notification of the
+            // same reply by its text, so turns never change identity between pages.
+            for turn in &page.turns {
+                for m in &turn.messages {messages.push(json!({"id":m.id,"turnId":turn.id,"role":m.role,"text":m.text}));}
             }
-            if let (Some(id),Some(turn),Some(text))=(snap["itemId"].as_str(),snap["turnId"].as_str(),snap["text"].as_str()) {if !text.is_empty(){messages.push(json!({"id":id,"turnId":turn,"role":"assistant","text":text}));}}
-            Ok(json!({"messages":messages.into_iter().rev().collect::<Vec<_>>(),"nextCursor":null,"coverage":"ADAPTER_RECEIVED_ONLY"}))
+            Ok(json!({"messages":messages,"nextCursor":page.next.map(|n|format!("claude:{n}")),"coverage":"SESSION_TRANSCRIPT"}))
         },
         _=>Err("CLAUDE_OPERATION_NOT_SUPPORTED".into()),
     }

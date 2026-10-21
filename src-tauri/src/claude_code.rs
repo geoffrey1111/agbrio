@@ -18,6 +18,11 @@ pub(crate) fn catalog(core:&RouterCore)->Result<router_core::store::claude_code:
     let desktop=crate::claude_code_desktop::sessions();
     let listed=|id:&str|desktop.iter().find(|d|d.session_id==id);
     catalog.sessions.retain(|s|s.lease_until>now||!listed(&s.session_id).is_some_and(|d|d.archived));
+    // A conversation that began as a desktop "spare" keeps reporting the spare folder;
+    // show it under its real project and title. Binding still uses the reported root.
+    for s in catalog.sessions.iter_mut().filter(|s|router_core::claude_code::spare_root(&s.cwd)) {
+        if let Some(d)=listed(&s.session_id) {s.cwd=d.cwd.clone();if s.title.is_none(){s.title=d.title.clone();}}
+    }
     for s in catalog.sessions.iter_mut().filter(|s|s.lease_until<=now) {
         if let Some(d)=listed(&s.session_id).filter(|d|!d.archived) {
             s.state="DESKTOP".into();s.checked_at=s.checked_at.max(d.last_activity);

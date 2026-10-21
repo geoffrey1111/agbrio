@@ -22,3 +22,11 @@ it("does not turn an initial network failure into a saved login and can retry li
  prepareMobileSession();await expect(readMobileSession()).rejects.toThrow("offline");
  expect(await readMobileSession()).toEqual({authenticated:false});
 });
+
+it("releases the suspended session check so returning to the page can check live again",async()=>{
+ const fetch=vi.fn().mockImplementationOnce((_url:string,init:RequestInit)=>new Promise<Response>((_resolve,reject)=>init.signal?.addEventListener("abort",()=>reject(init.signal!.reason)))).mockResolvedValue(new Response(JSON.stringify({authenticated:true,method:"DEVICE"})));
+ vi.stubGlobal("fetch",fetch);const{readMobileSession}=await import("./startup");
+ const pending=readMobileSession(),cancelled=expect(pending).rejects.toMatchObject({name:"AbortError",message:"ROUTER_READ_SUSPENDED"});
+ window.dispatchEvent(new Event("pagehide"));await cancelled;
+ expect(await readMobileSession()).toEqual({authenticated:true,method:"DEVICE"});expect(fetch).toHaveBeenCalledTimes(2);
+});
