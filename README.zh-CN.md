@@ -1,8 +1,8 @@
 <img src="docs/assets/agbrio-icon.png" width="72" alt="Agbrio">
 
-**rc.53 已包含可配置看板入口、本地／HTTPS 看板查看和受支持的手动审核、Claude 整棵子对话树、原生问题与决策卡片、消息时间顺序修复、精简的手机发送反馈与键盘缩放恢复，以及应用能力发现和本机操作 API。** 请在设置中配置自己的看板；安装包不包含私人看板内容。[版本范围](docs/RELEASE_0.1.35-rc.53.md) · [应用操作](docs/APP_CONTROL.md)。
+**rc.54 已包含可配置看板入口、本地／HTTPS 看板查看和受支持的手动审核、Claude 整棵子对话树、原生问题与决策卡片、消息时间顺序修复、精简的手机发送反馈与键盘缩放恢复，以及应用能力发现和本机操作 API。** 请在设置中配置自己的看板；安装包不包含私人看板内容。[版本范围](docs/RELEASE_0.1.35-rc.54.md) · [应用操作](docs/APP_CONTROL.md)。
 
-main 源码新增：[WorkBuddy / 通用 MCP 助手接入](docs/ASSISTANT_CLIENTS.md) · [给用户开发助手的完整指令](docs/tutorials/WORKBUDDY_DEVELOPMENT_PROMPT.zh-CN.txt)。此项已包含在 rc.53 安装包，对方用户真实 WorkBuddy 接通仍待验收。
+main 源码新增：[WorkBuddy / 通用 MCP 助手接入](docs/ASSISTANT_CLIENTS.md) · [给用户开发助手的完整指令](docs/tutorials/WORKBUDDY_DEVELOPMENT_PROMPT.zh-CN.txt)。此项已包含在 rc.54 安装包，对方用户真实 WorkBuddy 接通仍待验收。
 
 # Agbrio
 
@@ -14,20 +14,20 @@ main 源码新增：[WorkBuddy / 通用 MCP 助手接入](docs/ASSISTANT_CLIENTS
 
 **思考留在思考端，执行留在执行端，Bridge 负责准确交接。**
 
-[下载 Windows v0.1.35-rc.53](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.53) · [完整使用流程](docs/SETUP.zh-CN.md) · [连接 AI 助手](docs/ASSISTANT_CONNECTION_GUIDE.zh-CN.md) · [MIT 许可证](LICENSE)
+[下载 Windows v0.1.35-rc.54](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.54) · [完整使用流程](docs/SETUP.zh-CN.md) · [连接 AI 助手](docs/ASSISTANT_CONNECTION_GUIDE.zh-CN.md) · [MIT 许可证](LICENSE)
 
-[最新共享 Codex 修复版 v0.1.35-rc.53](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.53)：隧道恢复限频、当前桌面/手机界面、本人审阅后的 Claude 文字转发，以及既有独立共享与退回普通入口。[已完成检查与剩余限制](docs/RELEASE_0.1.35-rc.53.md)。这是当前最新推荐下载，不含私人看板内容、原画、对话或运行数据；安装器保留准确的 rc.53 版本号和既有检查范围。
+[最新共享 Codex 修复版 v0.1.35-rc.54](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.54)：隧道恢复限频、当前桌面/手机界面、本人审阅后的 Claude 文字转发，以及既有独立共享与退回普通入口。[已完成检查与剩余限制](docs/RELEASE_0.1.35-rc.54.md)。这是当前最新推荐下载，不含私人看板内容、原画、对话或运行数据；安装器保留准确的 rc.54 版本号和既有检查范围。
 
 ## 新用户从这里开始
 
-**先读 [完整使用流程](docs/SETUP.zh-CN.md) 和 [常见问题 Q&A](docs/FAQ.zh-CN.md)。** [0.1.34 升级指令：复制给自己的 Codex](docs/UPGRADE_WITH_AI.zh-CN.md)。共享连接修复在上方指定的 **0.1.35-rc.53 修复版**，最新推荐版本是 0.1.35-rc.53，请勿混淆。
+**先读 [完整使用流程](docs/SETUP.zh-CN.md) 和 [常见问题 Q&A](docs/FAQ.zh-CN.md)。** [0.1.34 升级指令：复制给自己的 Codex](docs/UPGRADE_WITH_AI.zh-CN.md)。共享连接修复在上方指定的 **0.1.35-rc.54 修复版**，最新推荐版本是 0.1.35-rc.54，请勿混淆。
 
 1. 安装 Agbrio，完成官方 Codex 的安装与本人登录。
-2. 结束任务、正常退出普通 Codex后，用 **Codex (Agbrio shared)**（rc.53），或从设置准备并打开共享连接；核对 Desktop 已接入，不能只看后台准备好。
+2. 结束任务、正常退出普通 Codex后，用 **Codex (Agbrio shared)**（rc.54），或从设置准备并打开共享连接；核对 Desktop 已接入，不能只看后台准备好。
 3. 绑定两段精确对话，选段、预览接收端与正文、发送一次并查回执。
 4. 按需加手机、Claude Code 或指定范围的 AI 助手；每条连接分别验收。
 
-**为什么以前先打开普通 Codex，又要关掉？** 旧准备流程借正在运行的后端识别安装，真正切换又必须退出，避免抢占原工作。**rc.53 已能在 Desktop 关闭时发现官方安装**；初次安装登录后，日常及重启后直接用共享快捷入口，不需要反复先开普通版。原官方/任务栏入口不自动改绑；官方更新在空闲启动时重新校验，不承诺所有未来版本兼容。[首次连接、日常启动与回退](docs/SETUP.zh-CN.md)。
+**为什么以前先打开普通 Codex，又要关掉？** 旧准备流程借正在运行的后端识别安装，真正切换又必须退出，避免抢占原工作。**rc.54 已能在 Desktop 关闭时发现官方安装**；初次安装登录后，日常及重启后直接用共享快捷入口，不需要反复先开普通版。原官方/任务栏入口不自动改绑；官方更新在空闲启动时重新校验，不承诺所有未来版本兼容。[首次连接、日常启动与回退](docs/SETUP.zh-CN.md)。
 
 当前源码与教程统一使用 **main**；发行 tag 保留当时准确源码，旧历史分支链接不是另一套推荐流程。
 

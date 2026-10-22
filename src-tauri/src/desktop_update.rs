@@ -21,6 +21,51 @@ fn release_asset_url(tag:&str,url:&url::Url)->bool{
  url.scheme()=="https"&&url.host_str()==Some("github.com")&&url.username().is_empty()&&url.password().is_none()&&url.port().is_none()&&url.query().is_none()&&url.fragment().is_none()&&url.path().starts_with(&format!("/{REPO}/releases/download/{tag}/"))
 }
 fn choose_release(rows:&[Release])->Option<&Release>{rows.iter().filter(|r|release_version(r).is_some()).max_by_key(|r|release_version(r).unwrap())}
+// GitHub's anonymous API quota is shared by an egress IP. Its exhaustion
+// must not disable the publisher's independent, fixed latest-manifest endpoint.
+const LATEST_MANIFEST:&str="https://github.com/geoffrey1111/agbrio/releases/latest/download/latest.json";
+const MAX_MANIFEST:usize=1024*1024;
+struct PublishedManifest{version:semver::Version,url:url::Url,notes:Option<String>}
+enum Discovery{Index(Vec<Release>),Manifest(PublishedManifest)}
+fn manifest_metadata(bytes:&[u8])->Result<PublishedManifest,String>{
+ if bytes.len()>MAX_MANIFEST{return Err("UPDATE_MANIFEST_INVALID".into())}
+ let v:serde_json::Value=serde_json::from_slice(bytes).map_err(|_|"UPDATE_MANIFEST_INVALID")?;
+ let version=semver::Version::parse(v["version"].as_str().ok_or("UPDATE_MANIFEST_INVALID")?).map_err(|_|"UPDATE_MANIFEST_INVALID")?;
+ let platform=&v["platforms"]["windows-x86_64"];
+ let signature=platform["signature"].as_str().ok_or("UPDATE_MANIFEST_INVALID")?;
+ if signature.trim().is_empty()||signature.len()>8192{return Err("UPDATE_MANIFEST_INVALID".into())}
+ let url=url::Url::parse(platform["url"].as_str().ok_or("UPDATE_PACKAGE_INVALID")?).map_err(|_|"UPDATE_PACKAGE_INVALID")?;
+ let expected=format!("https://github.com/{REPO}/releases/download/v{version}/Agbrio_{version}_x64-setup.exe");
+ if url.as_str()!=expected||!release_asset_url(&format!("v{version}"),&url){return Err("UPDATE_PACKAGE_INVALID".into())}
+ Ok(PublishedManifest{version,url,notes:v["notes"].as_str().map(str::to_owned)})
+}
+async fn discover(client:&reqwest::Client,index:&str,manifest:&str)->Result<Discovery,String>{
+ if let Ok(response)=client.get(index).send().await{
+  if response.status().is_success(){return response.json().await.map(Discovery::Index).map_err(|_|"UPDATE_MANIFEST_INVALID".into())}
+ }
+ let mut response=client.get(manifest).send().await.map_err(|_|"UPDATE_NETWORK")?;
+ if !response.status().is_success(){return Err("UPDATE_NETWORK".into())}
+ if response.content_length().is_some_and(|n|n>MAX_MANIFEST as u64){return Err("UPDATE_MANIFEST_INVALID".into())}
+ let mut bytes=Vec::new();
+ while let Some(chunk)=response.chunk().await.map_err(|_|"UPDATE_NETWORK")?{
+  if bytes.len()+chunk.len()>MAX_MANIFEST{return Err("UPDATE_MANIFEST_INVALID".into())}bytes.extend_from_slice(&chunk);
+ }
+ manifest_metadata(&bytes).map(Discovery::Manifest)
+}
+fn package_size(length:Option<u64>)->Result<u64,String>{length.filter(|n|*n>0&&*n<=MAX_PACKAGE).ok_or_else(||"UPDATE_PACKAGE_INVALID".into())}
+async fn check_manifest(app:&AppHandle,state:&UpdateState,client:&reqwest::Client,published:PublishedManifest)->Result<(),String>{
+ let tag=format!("v{}",published.version);
+ {let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;c.view.version=Some(published.version.to_string());c.view.release_url=Some(format!("https://github.com/{REPO}/releases/tag/{tag}"));c.view.notes=published.notes;
+  if published.version<=app.package_info().version{c.view.state="UP_TO_DATE".into();return Ok(())}}
+ // Keep the original pre-download size fence without requiring the API.
+ let head=client.head(published.url.clone()).send().await.map_err(|_|"UPDATE_NETWORK")?;
+ if !head.status().is_success(){return Err("UPDATE_PACKAGE_INVALID".into())}let size=package_size(head.headers().get(reqwest::header::CONTENT_LENGTH).and_then(|h|h.to_str().ok()).and_then(|s|s.parse().ok()))?;
+ let handle=app.clone();let builder=app.updater_builder().timeout(Duration::from_secs(15)).endpoints(vec![url::Url::parse(LATEST_MANIFEST).unwrap()]).map_err(|_|"UPDATE_MANIFEST_INVALID")?;
+ #[cfg(windows)]let builder=builder.on_before_exit(move||{let host=handle.state::<HostRuntime>();let core=handle.state::<RouterCore>();host.shutdown(&core);});
+ let mut update=builder.build().map_err(|_|"UPDATE_CONFIGURATION")?.check().await.map_err(|_|"UPDATE_MANIFEST_INVALID")?.ok_or("UPDATE_CHANGED")?;
+ if update.version!=published.version.to_string()||update.download_url!=published.url{return Err("UPDATE_CHANGED".into())}
+ update.timeout=Some(Duration::from_secs(600));let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;c.view.state="AVAILABLE".into();c.view.total=Some(size);c.candidate=Some(update);Ok(())
+}
 #[tauri::command]
 pub(crate) fn desktop_update_status(app:AppHandle,state:State<'_,UpdateState>)->Result<UpdateView,String>{let mut view=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?.view.clone();view.current_version=app.package_info().version.to_string();Ok(view)}
 #[tauri::command]
@@ -28,9 +73,10 @@ pub(crate) async fn desktop_update_check(app:AppHandle,state:State<'_,UpdateStat
  let _busy=guard(&state)?;{let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;*c=Cache::default();c.view.state="CHECKING".into();c.view.current_version=app.package_info().version.to_string();}
  let result:Result<(),String>=async{
   let client=reqwest::Client::builder().timeout(Duration::from_secs(15)).user_agent("Agbrio-update-check").build().map_err(|_|"UPDATE_NETWORK")?;
-  let response=client.get(format!("https://api.github.com/repos/{REPO}/releases?per_page=20")).send().await.map_err(|_|"UPDATE_NETWORK")?;
-  if !response.status().is_success(){return Err("UPDATE_NETWORK".into());}
-  let rows:Vec<Release>=response.json().await.map_err(|_|"UPDATE_MANIFEST_INVALID")?;
+  let rows=match discover(&client,&format!("https://api.github.com/repos/{REPO}/releases?per_page=20"),LATEST_MANIFEST).await?{
+   Discovery::Index(rows)=>rows,
+   Discovery::Manifest(published)=>return check_manifest(&app,&state,&client,published).await,
+  };
   let selected=choose_release(&rows);let current=app.package_info().version.clone();
   let Some(r)=selected else{state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?.view.state="NO_SIGNED_RELEASE".into();return Ok(());};
   let remote=release_version(r).unwrap();let signed=r.assets.iter().find(|a|a.name=="latest.json");
@@ -76,6 +122,32 @@ pub(crate) fn desktop_update_open_release(state:State<'_,UpdateState>)->Result<(
 }
 #[cfg(test)]mod tests{
  use super::*;
+ fn manifest_fixture()->serde_json::Value{serde_json::json!({"version":"0.1.35-rc.54","notes":"update","platforms":{"windows-x86_64":{"signature":"fixture-signature","url":"https://github.com/geoffrey1111/agbrio/releases/download/v0.1.35-rc.54/Agbrio_0.1.35-rc.54_x64-setup.exe"}}})}
+ #[test]fn independent_manifest_retains_exact_repository_version_filename_and_size_fences(){
+  let v=manifest_fixture();assert_eq!(manifest_metadata(&serde_json::to_vec(&v).unwrap()).unwrap().version.to_string(),"0.1.35-rc.54");
+  for bad in ["https://example.test/a.exe","https://github.com/other/repo/releases/download/v0.1.35-rc.54/a.exe","https://github.com/geoffrey1111/agbrio/releases/download/v0.1.35-rc.53/Agbrio_0.1.35-rc.54_x64-setup.exe","https://github.com/geoffrey1111/agbrio/releases/download/v0.1.35-rc.54/other.exe"]{let mut wrong=v.clone();wrong["platforms"]["windows-x86_64"]["url"]=bad.into();assert!(manifest_metadata(&serde_json::to_vec(&wrong).unwrap()).is_err())}
+  let mut no_signature=v;no_signature["platforms"]["windows-x86_64"]["signature"]=" ".into();assert!(manifest_metadata(&serde_json::to_vec(&no_signature).unwrap()).is_err());assert!(manifest_metadata(&vec![b' ';MAX_MANIFEST+1]).is_err());
+  for n in [None,Some(0),Some(MAX_PACKAGE+1)]{assert!(package_size(n).is_err())}assert_eq!(package_size(Some(MAX_PACKAGE)).unwrap(),MAX_PACKAGE);
+ }
+ #[tokio::test]async fn anonymous_api_failure_uses_only_the_fixed_manifest_transport(){
+  use axum::{Router,routing::get,http::StatusCode,Json};use std::sync::atomic::{AtomicUsize,Ordering};
+  let hits=Arc::new(AtomicUsize::new(0));let count=hits.clone();
+  let server=Router::new().route("/rate",get(||async{(StatusCode::FORBIDDEN,[("x-ratelimit-remaining","0")],"rate limit")})).route("/down",get(||async{StatusCode::SERVICE_UNAVAILABLE})).route("/invalid",get(||async{"not json"})).route("/index",get(||async{Json(serde_json::json!([]))})).route("/latest",get(move||{let count=count.clone();async move{count.fetch_add(1,Ordering::SeqCst);Json(manifest_fixture())}})).route("/oversize",get(||async{vec![b' ';MAX_MANIFEST+1]}));
+  let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();let origin=format!("http://{}",listener.local_addr().unwrap());let task=tokio::spawn(async move{axum::serve(listener,server).await.unwrap()});
+  let client=reqwest::Client::builder().no_proxy().timeout(Duration::from_secs(5)).build().unwrap();
+  for path in ["/rate","/down"]{let found=discover(&client,&format!("{origin}{path}"),&format!("{origin}/latest")).await.unwrap();assert!(matches!(found,Discovery::Manifest(p) if p.version.to_string()=="0.1.35-rc.54"));}
+  assert!(matches!(discover(&client,&format!("{origin}/index"),&format!("{origin}/latest")).await.unwrap(),Discovery::Index(_)));
+  assert!(discover(&client,&format!("{origin}/invalid"),&format!("{origin}/latest")).await.is_err());assert_eq!(hits.load(Ordering::SeqCst),2);
+  assert!(discover(&client,&format!("{origin}/rate"),&format!("{origin}/oversize")).await.is_err());task.abort();
+ }
+ #[tokio::test]#[ignore="explicit read-only public GitHub quota fallback; no app/provider/installation"]
+ async fn real_public_manifest_discovery_without_api_quota(){
+  let client=reqwest::Client::builder().timeout(Duration::from_secs(15)).user_agent("Agbrio-update-check").build().unwrap();
+  let found=discover(&client,&format!("https://api.github.com/repos/{REPO}/releases?per_page=20"),LATEST_MANIFEST).await.unwrap();
+  let Discovery::Manifest(published)=found else{panic!("This explicit counterexample requires an exhausted anonymous API quota")};
+  let response=client.head(published.url).send().await.unwrap();assert!(response.status().is_success());let size=package_size(response.headers().get(reqwest::header::CONTENT_LENGTH).and_then(|h|h.to_str().ok()).and_then(|s|s.parse().ok())).unwrap();
+  println!("apiFallback=true version={} packageBytes={} providerCalls=0 installs=0",published.version,size);
+ }
  #[test]fn active_restart_requires_confirmation_for_the_exact_verified_candidate(){
   assert_eq!(install_gate("0.1.3",Some("0.1.3"),"READY",true,true,false),Err("UPDATE_TASK_RUNNING".into()));
   assert!(install_gate("0.1.3",Some("0.1.3"),"READY",true,true,true).is_ok());
