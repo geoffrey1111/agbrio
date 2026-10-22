@@ -121,5 +121,5 @@ export class ReadModelCache {
 export const readModels = new ReadModelCache(()=>localStorage,isTauri());
 if (typeof location !== "undefined" && !location.pathname.startsWith("/mobile")) readModels.setScope(`desktop:${location.origin}`);
 export const roleCacheKey = (id:string) => `bridge:${id}`;
-export const chatCacheKey = (id:string) => `chat:${id}`;
-export const historyCacheKey = (id:string) => `history:${id}`;
+export const chatCacheKey = (id:string) => `chat:ordered-v5:${id}`;
+export const historyCacheKey = (id:string) => `history:ordered-v5:${id}`;

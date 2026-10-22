@@ -223,22 +223,6 @@ fn connection_fixture(temp:&tempfile::TempDir)->(RouterCore,crate::HostRuntime,s
  assert_eq!(connect_admin(&core,&host,temp.path(),&admin,&cache).err().unwrap(),"CLAUDE_PLUGIN_DIFFERENT_HOST");assert!(core.store.claude_connections().unwrap().is_empty());host.shutdown(&core);
 }
 #[test]
-#[ignore = "diagnostic: copy of the owner's real database; never touches the live one"]
-fn diagnose_real_claude_send_on_a_database_copy(){
- let live=std::env::var("AGBRIO_DB_LIVE").unwrap();let temp=tempfile::tempdir().unwrap();let path=temp.path().join("copy.db");
- {let src=rusqlite::Connection::open_with_flags(&live,rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();let mut dst=rusqlite::Connection::open(&path).unwrap();let backup=rusqlite::backup::Backup::new(&src,&mut dst).unwrap();backup.run_to_completion(256,std::time::Duration::from_millis(0),None).unwrap();}
- let store=Arc::new(crate::RouterStore::open_at(&path).unwrap());
- let core=RouterCore{chatgpt:Arc::new(Default::default()),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::new(Mutex::new(HashMap::new())),store:store.clone()};
- let key=std::env::var("AGBRIO_KEY").unwrap();
- let state=crate::claude_chat::state(&core,&key);
- match &state {Ok(s)=>println!("STATE inputReady={} busy={} snapshot={}",s["inputReady"],s["externalBusy"],s["watch"]["snapshot"]),Err(e)=>println!("STATE ERR {e}")}
- let s=state.unwrap();
- for mode in ["SEND","QUEUE"] {
-  let cmd=crate::watch_chat::ChatCommand::Send{thread_id:key.clone(),id:uuid::Uuid::new_v4().to_string(),generation:s["watch"]["generation"].as_i64().unwrap(),source_sequence:None,expected_turn_id:s["watch"]["snapshot"]["turnId"].as_str().map(str::to_owned),mode:mode.into(),text:"diagnostic".into(),options:Default::default()};
-  println!("{mode}: {:?}",crate::claude_chat::command(&core,cmd).map(|v|v["status"].clone()));
- }
-}
-#[test]
 fn owner_reply_before_first_plugin_registration_waits_and_delivers_once(){
  let temp=tempfile::tempdir().unwrap();
  let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
@@ -267,40 +251,41 @@ fn owner_reply_before_first_plugin_registration_waits_and_delivers_once(){
  assert_eq!(store.watch_reply(&id).unwrap().unwrap().status,"SENT");
  assert!(store.offer_claude_manual(&pair.token,&beat).unwrap().is_none());
 }
-#[test]
-#[ignore = "live end-to-end: enqueues one owner text into the live database for the given Claude session"]
-fn live_owner_send_into_claude(){
- let store=Arc::new(crate::RouterStore::open_at(std::env::var("AGBRIO_DB_LIVE").unwrap()).unwrap());
- let core=RouterCore{chatgpt:Arc::new(Default::default()),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::new(Mutex::new(HashMap::new())),store};
- let key=std::env::var("AGBRIO_KEY").unwrap();
- let s=crate::claude_chat::state(&core,&key).unwrap();
- println!("STATE inputReady={} busy={} snapshot={}",s["inputReady"],s["externalBusy"],s["watch"]["snapshot"]);
- let busy=s["externalBusy"]==true||s["watch"]["snapshot"]["state"]=="RUNNING";
- let cmd=crate::watch_chat::ChatCommand::Send{thread_id:key.clone(),id:uuid::Uuid::new_v4().to_string(),generation:s["watch"]["generation"].as_i64().unwrap(),source_sequence:None,expected_turn_id:s["watch"]["snapshot"]["turnId"].as_str().map(str::to_owned),mode:if busy{"QUEUE".into()}else{"SEND".into()},text:std::env::var("AGBRIO_TEXT").unwrap(),options:Default::default()};
- println!("RESULT {:?}",crate::claude_chat::command(&core,cmd).map(|v|(v["id"].clone(),v["status"].clone())));
-}
-#[test]
-#[ignore = "live end-to-end: throwaway Bridge reading one Claude session and relaying owner-edited text into another"]
-fn live_owner_bridge_relay_into_claude(){
- let store=Arc::new(crate::RouterStore::open_at(std::env::var("AGBRIO_DB_LIVE").unwrap()).unwrap());
- let core=RouterCore{chatgpt:Arc::new(Default::default()),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::new(Mutex::new(HashMap::new())),store:store.clone()};
- let w=std::env::var("AGBRIO_WORKSTREAM").unwrap();
- match std::env::var("AGBRIO_STEP").unwrap().as_str() {
-  "bind"=>{
-   let rev=store.role_bridge(&w).map(|b|b.binding_revision).unwrap();
-   let side=|id:String,label:&str|RoleBindingInput{provider:"CLAUDE_CODE".into(),external_id:id,label:label.into(),cwd:None};
-   let b=crate::role_bridge::bind(&core,&w,rev,side(std::env::var("AGBRIO_SOURCE").unwrap(),"自检来源"),side(std::env::var("AGBRIO_TARGET").unwrap(),"自检目标"));
-   println!("BIND {:?}",b.map(|b|b.binding_revision));
-  }
-  _=>{
-   let state=crate::role_bridge::read(&core,&w,"DECISION").unwrap();println!("REPLIES {}",state.replies.len());
-   let Some(reply)=state.replies.last() else {println!("NO_REPLY");return};
-   let h=crate::role_bridge::prepare(&core,&w,"DECISION",&reply.id,&std::env::var("AGBRIO_TEXT").unwrap(),&[]).unwrap();
-   println!("APPROVED {}",crate::role_bridge::approve(&core,&h.id,&h.payload_hash).unwrap().status);
-   println!("SEND {:?}",crate::role_bridge::send_owner(&core,&h.id).map(|_|()));
-   println!("HANDOFF {} {}",h.id,store.role_handoff(&h.id).unwrap().status);
-  }
- }
+#[test] fn opening_an_unwatched_session_projects_the_native_turn_without_rewriting_store(){
+ let temp=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
+ let core=RouterCore{chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default(),store:store.clone()};
+ let sid="10000000-0000-4000-8000-0000000000c1";let cwd=temp.path().to_string_lossy().to_string();
+ let pair=store.create_claude_connection().unwrap();ingest(&core,&pair.token,&event(temp.path(),sid,"SESSION_START",1)).unwrap();
+ store.apply_claude_transcript(sid,&cwd,"COMPLETE",Some("claude_turn:old"),None).unwrap();
+ let projects=temp.path().join("projects");let folder=projects.join("p");std::fs::create_dir_all(&folder).unwrap();
+ struct Reset;impl Drop for Reset{fn drop(&mut self){*crate::claude_transcript::TEST_PROJECTS.lock().unwrap()=None;*crate::claude_code_desktop::TEST_ROOTS.lock().unwrap()=vec![];}}
+ let _reset=Reset;*crate::claude_transcript::TEST_PROJECTS.lock().unwrap()=Some(projects);
+ let rows=[serde_json::json!({"type":"user","sessionId":sid,"uuid":"u-new","promptId":"new","cwd":cwd,"isMeta":true,"turnOrigin":"peer","origin":{"kind":"peer"},"message":{"content":"new peer prompt"}}),serde_json::json!({"type":"assistant","sessionId":sid,"message":{"id":"native-new","stop_reason":"end_turn","content":[{"type":"text","text":"fresh native result"}]}})];
+ std::fs::write(folder.join(format!("{sid}.jsonl")),rows.iter().map(|r|r.to_string()).collect::<Vec<_>>().join("\n")).unwrap();
+ let s=observed_session(&core,sid,Some(&cwd)).unwrap();assert_eq!(s.turn_id.as_deref(),Some("claude_turn:new"));
+ let snapshot=crate::claude_chat::snapshot(&s);assert_eq!(snapshot.item_id.as_deref(),Some("claude_msg:native-new"));assert_eq!(snapshot.text,"fresh native result");
+ assert_eq!(store.claude_session(sid).unwrap().turn_id.as_deref(),Some("claude_turn:old"));assert!(store.codex_watches().unwrap().is_empty());
+ let child="10000000-0000-4000-8000-0000000000c2";let desktop=temp.path().join("desktop");let partition=desktop.join("claude-code-sessions/a/b");std::fs::create_dir_all(&partition).unwrap();
+ for (name,value) in [("local_root",serde_json::json!({"sessionId":"local_root","cliSessionId":sid,"cwd":cwd,"title":"manager","spawnedFrom":null})),("local_child",serde_json::json!({"sessionId":"local_child","cliSessionId":child,"cwd":cwd,"title":"child","spawnedFrom":{"sessionId":"local_root"}}))]{std::fs::write(partition.join(format!("{name}.json")),value.to_string()).unwrap();}
+ std::fs::write(folder.join(format!("{child}.jsonl")),serde_json::json!({"type":"user","sessionId":child,"promptId":"child-running","uuid":"child-prompt","cwd":cwd,"message":{"content":"child task"}}).to_string()).unwrap();
+ *crate::claude_code_desktop::TEST_ROOTS.lock().unwrap()=vec![desktop];
+ let key=format!("claude_code:{sid}");crate::claude_chat::enable(&core,&key).unwrap();
+ let list=crate::claude_chat::list(&core).unwrap();assert_eq!(list.len(),1);assert_eq!(list[0].task_tree.as_ref().unwrap().running,1);assert_eq!(list[0].watch.snapshot.state,"RESULT_READY");
+ assert_eq!(store.claude_session(sid).unwrap().turn_id.as_deref(),Some("claude_turn:old"));
+ let generation=list[0].watch.generation;
+ let read=|id:&str,generation|crate::claude_chat::command(&core,crate::watch_chat::ChatCommand::ChildHistory{thread_id:key.clone(),generation,child_id:id.into(),cursor:None});
+ assert_eq!(read(child,generation).unwrap()["messages"][0]["text"],"child task");
+ assert!(read(sid,generation).is_err());assert!(read(child,generation+1).is_err());
+ let opened=crate::claude_chat::command(&core,crate::watch_chat::ChatCommand::ChildOpen{thread_id:key.clone(),generation,child_id:child.into()}).unwrap();let child_key=format!("claude_code:{child}");let child_generation=opened["watch"]["generation"].as_i64().unwrap();assert_eq!(opened["watch"]["threadId"],child_key);assert!(child_generation<0);assert_eq!(store.codex_watches().unwrap().len(),1);
+ ingest(&core,&pair.token,&event(temp.path(),child,"SESSION_START",1)).unwrap();
+ let request=router_core::store::claude_owner_requests::NativeRequest{id:uuid::Uuid::new_v4().to_string(),session_id:child.into(),instance_id:event(temp.path(),child,"HEARTBEAT",2).instance_id,cwd:cwd.clone(),tool_use_id:"native-choice".into(),kind:"QUESTION".into(),payload:serde_json::json!({"questions":[{"question":"Which layout?","options":[{"label":"A"},{"label":"B"}]}]})};
+ assert_eq!(crate::claude_owner_requests::capture(&core,&pair.token,&request).unwrap()["captured"],true);assert_eq!(crate::claude_chat::state(&core,&child_key).unwrap()["ownerRequests"][0]["id"],request.id);
+ let answer=serde_json::json!({"action":"ANSWER","answers":{"Which layout?":"A"}});assert!(crate::claude_owner_requests::answer(&core,&key,generation,Some("other"),&request.id,1,&answer).is_err());crate::claude_owner_requests::answer(&core,&child_key,child_generation,None,&request.id,1,&answer).unwrap();assert_eq!(store.poll_claude_owner_request(&pair.token,child,&request.instance_id,&cwd,&request.id).unwrap()["status"],"ANSWER");assert!(store.watch_replies(&child_key).unwrap().is_empty());
+ assert!(!store.child_results_enabled(&key).unwrap());
+ crate::claude_chat::command(&core,crate::watch_chat::ChatCommand::ChildNotifications{thread_id:key.clone(),generation,enabled:true}).unwrap();
+ assert!(store.child_results_enabled(&key).unwrap());
+ store.pause_codex_watch(&key).unwrap();assert!(read(child,generation).is_err());assert!(!store.child_results_enabled(&key).unwrap());
+ assert_eq!(store.codex_watches().unwrap().len(),1);
 }
 #[test] fn a_bridge_receives_a_claude_reply_from_the_transcript_even_without_plugin_turn_events(){
  let temp=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());

@@ -1,3 +1,7 @@
+## 2026-10-22 — Task trees and owner decisions
+
+Plugin0.1.7 adds native owner question/permission capture through the existing authenticated exact-session adapter. Supported held native requests remain bound to native call identity, payload revision and publisher lease; unsupported/expired requests return to the native client. The reader also projects supported native next-step cards, keeps questions usable through peer progress, and retires them after a later owner message or a newer decision. Full descendant activity and derived child readers follow exact membership/canonical roots; optional child-result notification defaults off. Manual owner sends retain existing permissions/settings, independent receipt evidence and no automatic replay. Autonomous/MCP/cross-provider Claude writes remain closed.
+
 ## 2026-10-21 — Actual desktop direct-reply correction
 
 Owner screenshot reopened acceptance: a direct reply failed before entering the plugin queue. Its prior publisher was stale; a replacement instance registered about10 seconds after the failed attempt. The UI promised queueing while disconnected but enqueue required a fresh plugin. Explicit owner intent now persists for the exact observed native session/canonical root under its authorized connection; physical dispatch still requires the live authenticated publisher, unchanged root/generation, native approval/writer fences and an at-most-once offer.

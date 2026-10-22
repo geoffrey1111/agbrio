@@ -293,7 +293,7 @@ export async function request<T>(path:string,init?:RequestInit):Promise<T>{
 }
 function passiveRead(path:string,init?:RequestInit){
  const action=typeof init?.body==="string"?(()=>{try{return JSON.parse(init.body).action;}catch{return null;}})():null;
- return path==="/bridge-activity"||(/\/role-bridge$/.test(path)&&["SYNC","READ","THREADS","BLOCKS","ATTACHMENTS"].includes(action));
+ return path==="/bridge-activity"||(["/claude-code/chat","/codex-watches/chat"].includes(path)&&["HISTORY","CHILD_HISTORY","OPTIONS","RECEIPT","GOAL_RECEIPT"].includes(action))||(/\/role-bridge$/.test(path)&&["SYNC","READ","THREADS","BLOCKS","ATTACHMENTS"].includes(action));
 }
 export async function liveRequest<T>(path: string, init?: RequestInit): Promise<T> {
   // Several observation APIs use POST for their query body. They still need

@@ -14,6 +14,9 @@ pub mod claude_code;
 pub mod claude_manual;
 pub mod codex_watch;
 pub mod watch_delivery;
+pub mod child_results;
+pub mod claude_owner_requests;
+pub mod claude_child_contexts;
 pub mod watch_reply;
 mod bridge_notifications;
 mod endpoint_claims;
@@ -70,6 +73,9 @@ const NORMAL_FEATURE_MIGRATIONS: &[(&str, &str)] = &[
     ("notification-seen-v1", include_str!("../../migrations/normal/015_notification_seen.sql")),
     ("assistant-conversation-review-v1", include_str!("../../migrations/normal/016_assistant_conversation_review.sql")),
     ("mcp-events-v1", include_str!("../../migrations/normal/017_mcp_events.sql")),
+    ("claude-child-contexts-v1", include_str!("../../migrations/normal/023_claude_child_contexts.sql")),
+    ("claude-owner-requests-v1", include_str!("../../migrations/normal/022_claude_owner_requests.sql")),
+    ("child-results-v1", include_str!("../../migrations/normal/021_child_results.sql")),
     ("assistant-oauth-refresh-v1", include_str!("../../migrations/normal/019_assistant_oauth_refresh.sql")),
 ];
 
@@ -3888,9 +3894,10 @@ mod tests {
                         "assistant_grants",
                         "assistant_oauth_refresh",
                         "assistant_sent_handoffs",
-                        "claude_bridge_commands",
+                        "child_result_baselines", "child_result_events", "child_result_preferences",
+                        "claude_bridge_commands", "claude_child_contexts",
                         "claude_connections", "claude_control_leases",
-                        "claude_event_journal", "claude_manual_commands",
+                        "claude_event_journal", "claude_manual_commands", "claude_owner_requests",
                         "claude_sessions",
                         "codex_feedback_drafts",
                         "codex_watch_events",

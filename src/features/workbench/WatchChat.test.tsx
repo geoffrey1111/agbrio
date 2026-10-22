@@ -2,11 +2,37 @@ import * as mediaModule from "../codex/messageMedia";
 import { act,cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { WatchChat } from "./WatchChat";
-import type { WatchChatApi, WatchChatState, WatchReply } from "./watchChatApi";
+import type { ChatMessage, WatchChatApi, WatchChatState, WatchReply } from "./watchChatApi";
 const original={sequence:17,threadId:"exact-original",label:"原对话",cwd:"D:\\project-a",snapshot:{state:"RESULT_READY",turnId:"turn-a",itemId:"item-a",text:"完整原文"},observedAt:1};
 const state:WatchChatState={watch:{...original,enabled:true,generation:2,checkedAt:1,errorCode:null},host:"电脑A",ownedTurnId:null,externalBusy:false,replies:[],requests:[],goal:null};
 const response=(id:string,status:WatchReply["status"]="SENT"):WatchReply=>({id,threadId:original.threadId,sourceSequence:17,expectedTurnId:"turn-a",mode:"SEND",text:"第一条回复",status,turnId:"turn-b",errorCode:null,createdAt:1,options:{attachments:[]}});
-beforeEach(()=>sessionStorage.clear());afterEach(cleanup);
+it('shows child execution and collapses coordination without exposing it as an owner bubble',async()=>{
+ const native={...original,threadId:'claude_code:10000000-0000-4000-8000-000000000001'};
+ const taskTree={nodes:[{sessionId:'child',parentSessionId:'root',title:'执行子对话',depth:1,state:'RUNNING',updatedAt:1},{sessionId:'grandchild',parentSessionId:'child',title:'孙对话',depth:2,state:'TURN_ENDED',updatedAt:1}],running:1,attention:0,unknown:0,limited:false};
+ const messages=[{id:'human',turnId:'turn-a',role:'user',text:'真实用户输入',order:1},{id:'coord',turnId:'internal',role:'user',text:'internal payload',kind:'COLLABORATION',order:2},{id:'item-a',turnId:'turn-a',role:'assistant',text:'完整原文',order:3}];
+ const command=vi.fn(async()=>({messages,nextCursor:null,coverage:'SESSION_TRANSCRIPT'}));
+ const view=render(<WatchChat original={native} api={{state:async()=>({...state,watch:{...state.watch,threadId:native.threadId},taskTree}),command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
+ await screen.findByText('真实用户输入');expect(screen.getAllByText(/子对话执行中/).length).toBeGreaterThan(0);
+ const internal=view.container.querySelector('.v4-chat-collaboration')!;expect(internal.tagName).toBe('DETAILS');expect(internal).not.toHaveAttribute('open');expect(internal.closest('[data-role="user"]')).toBeNull();
+ fireEvent.click(screen.getByText(/查看任务树/));expect(screen.getByText('执行子对话')).toBeVisible();
+ expect(command.mock.calls.every(c=>(c as unknown as [{action:string}])[0]?.action==='HISTORY')).toBe(true);
+});
+beforeEach(()=>sessionStorage.clear());afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+it('does not turn pinch zoom into keyboard height and keeps the draft on dismissal',async()=>{
+ const viewport=Object.assign(new EventTarget(),{width:390,height:844,offsetTop:0,offsetLeft:0,scale:1});
+ vi.stubGlobal('visualViewport',viewport);vi.stubGlobal('innerWidth',390);
+ const api:WatchChatApi={state:async()=>state,command:vi.fn(async()=>({messages:[],nextCursor:null})) as WatchChatApi['command']};
+ const view=render(<WatchChat original={original} api={api} onBack={()=>{}}/>);
+ const input=await screen.findByRole('textbox');act(()=>input.focus());fireEvent.change(input,{target:{value:'保留草稿'}});
+ const shell=view.container.querySelector<HTMLElement>('.v4-watch-chat')!;
+ act(()=>{viewport.height=440;viewport.dispatchEvent(new Event('resize'));});
+ expect(shell.style.getPropertyValue('--aiwr-chat-height')).toBe('440px');expect(shell.dataset.keyboard).toBe('true');
+ act(()=>{viewport.scale=1.5;viewport.height=300;viewport.dispatchEvent(new Event('resize'));});
+ expect(shell.style.getPropertyValue('--aiwr-chat-height')).toBe('');expect(shell.dataset.keyboard).toBe('false');
+ act(()=>{viewport.scale=1;viewport.height=844;viewport.dispatchEvent(new Event('resize'));});
+ expect(shell.style.getPropertyValue('--aiwr-chat-height')).toBe('844px');expect(input).toHaveValue('保留草稿');
+ expect(shell.dataset.keyboard).toBe('false');
+});
 it('a Claude conversation whose plugin is quiet still accepts a reply, which queues until it is active',async()=>{
  const native={...original,threadId:'claude_code:10000000-0000-4000-8000-000000000001'};
  const chat={...state,provider:'CLAUDE_CODE' as const,inputReady:false,watch:{...state.watch,threadId:native.threadId}};
@@ -16,11 +42,11 @@ it('a Claude conversation whose plugin is quiet still accepts a reply, which que
   return {messages:[],nextCursor:null};
  });
  render(<WatchChat original={native} api={{state:async()=>({...chat,replies:queued?[queued]:[]}),command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
- await screen.findByText(/回复会先排队/);
+ expect(screen.queryByText(/回复会先排队/)).toBeNull();
  fireEvent.change(screen.getByRole('textbox'),{target:{value:'Owner approved actual reply'}});
- expect(screen.getByRole('button',{name:'发送回复'})).toBeEnabled();
+ await waitFor(()=>expect(screen.getByRole('button',{name:'发送回复'})).toBeEnabled());
  fireEvent.click(screen.getByRole('button',{name:'发送回复'}));
- await screen.findByText('已排队');
+ await screen.findByText('已排队');expect(screen.getAllByText('已排队')).toHaveLength(1);expect(screen.queryByText(/请先处理这条回复/)).toBeNull();
  expect(command.mock.calls.find(([c])=>c.action==='SEND')?.[0]).toMatchObject({threadId:native.threadId,text:'Owner approved actual reply'});
  expect(screen.getByRole('textbox')).toHaveValue('');
 });
@@ -34,8 +60,9 @@ it('Claude uses the exact original session and inherited settings without acknow
  });
  const api:WatchChatApi={state:async()=>({...state,provider:'CLAUDE_CODE',inputReady:true,watch:{...state.watch,threadId:native.threadId},replies:receipt?[receipt]:[]}),command:command as WatchChatApi['command']};
  const view=render(<WatchChat original={native} api={api} onBack={()=>{}}/>);
- await screen.findByText(/回复会在原 Claude Code 对话空闲时送达/);
+ expect(screen.queryByText(/回复会在原 Claude Code 对话空闲时送达/)).toBeNull();
  fireEvent.change(screen.getByRole('textbox'),{target:{value:'Actual requested text'}});
+ await waitFor(()=>expect(screen.getByRole('button',{name:'发送回复'})).toBeEnabled());
  fireEvent.click(screen.getByRole('button',{name:'发送回复'}));
  await waitFor(()=>expect(command.mock.calls.find(([c])=>c.action==='SEND')?.[0]).toMatchObject({threadId:native.threadId,text:'Actual requested text',mode:'SEND',options:{model:null,effort:null,attachments:[]}}));
  expect(screen.queryByRole('button',{name:'知道了'})).not.toBeInTheDocument();
@@ -159,6 +186,7 @@ it('unknown receipt recovery requires the owner click, preserves uncertainty and
  const command=vi.fn(async(input)=>{if(input.action==='HISTORY')return {messages:[],nextCursor:null};if(input.action==='ACKNOWLEDGE_UNKNOWN'){status='ACKNOWLEDGED';return {ok:true};}throw Error('unexpected write');});
  const api={state:vi.fn(async()=>({...state,replies:[{...unknown,status,errorCode:status==='UNKNOWN'?'REPLY_ACK_UNOBSERVED':'OWNER_CHECKED_DELIVERY_STILL_UNKNOWN'}]})),command:command as WatchChatApi['command']};
  render(<WatchChat original={original} api={api} onBack={()=>{}}/>);
+ await screen.findByText('发送详情');fireEvent.click(screen.getByText('发送详情'));
  const check=await screen.findByRole('button',{name:'我已检查原对话，继续输入新回复'});
  expect(command.mock.calls.every(([input])=>input.action==='HISTORY')).toBe(true);
  fireEvent.click(check);
@@ -178,3 +206,100 @@ it("a known unsent attempt restores its draft without losing newer input",async(
  expect(sessionStorage.getItem('aiwr-watch-draft:exact-original:pending')).toBeNull();
 });
 it("an attempt the Host never received is cancelled and its draft comes back for an explicit resend",async()=>{let id="";const command=vi.fn(async(input)=>{if(input.action==="SEND"){id=input.id as string;throw Error("network lost");}if(input.action==="RECEIPT")return null;if(input.action==="ABANDON")return{cancelled:true};throw Error("unexpected");});const api:WatchChatApi={state:vi.fn(async()=>({...state,replies:[]})),command:command as WatchChatApi["command"]};render(<WatchChat original={original} api={api} onBack={()=>{}}/>);fireEvent.change(screen.getByLabelText("回复这个 Codex 对话"),{target:{value:"没收到的回复"}});await waitFor(()=>expect(screen.getByRole("button",{name:"发送回复"})).toBeEnabled());fireEvent.click(screen.getByRole("button",{name:"发送回复"}));await waitFor(()=>expect(command.mock.calls.find(([x])=>x.action==="ABANDON")?.[0].id).toBe(id));await waitFor(()=>expect(screen.getByLabelText("回复这个 Codex 对话")).toHaveValue("没收到的回复"));expect(command.mock.calls.filter(([x])=>x.action==="SEND")).toHaveLength(1);});
+
+it('retries a failed initial history read on reconnect and replaces the obsolete directory summary',async()=>{
+ const native={threadId:'claude_code:10000000-0000-4000-8000-000000000001',label:'manager',cwd:original.cwd,enabled:true,generation:2,checkedAt:1,errorCode:null,snapshot:{state:'RESULT_READY',turnId:'obsolete',itemId:'claude_reply:obsolete',text:'old directory summary'}};
+ const message={id:'claude_msg:latest',turnId:'latest',role:'assistant' as const,text:'latest native conclusion',order:10};
+ let attempts=0;
+ const api:WatchChatApi={state:async()=>({...state,watch:{...native,snapshot:{state:'RESULT_READY',turnId:'latest',itemId:message.id,text:message.text}},publicMessages:[message]}),command:vi.fn(async()=>{if(++attempts===1)throw Error('Failed to fetch');return {messages:[message],nextCursor:null}}) as WatchChatApi['command']};
+ render(<WatchChat original={native} api={api} onBack={()=>{}}/>);
+ await screen.findByRole('alert');fireEvent.click(screen.getByRole('button',{name:'检查状态'}));
+ await waitFor(()=>expect(attempts).toBeGreaterThan(1));await waitFor(()=>expect(screen.queryByRole('alert')).toBeNull());
+ expect(screen.getAllByText('latest native conclusion')).toHaveLength(1);expect(screen.queryByText('old directory summary')).toBeNull();
+});
+
+it('opens an opted-in child result separately without inserting it into the parent transcript',async()=>{
+ const native={...original,threadId:'claude_code:10000000-0000-4000-8000-000000000001',label:'manager · 子对话：child',snapshot:{state:'RESULT_READY',turnId:'child-turn',itemId:'child_result:child:result',text:'child result original'}};
+ const message={id:'claude_msg:parent',turnId:'parent',role:'assistant' as const,text:'parent conclusion',order:10};
+ const api:WatchChatApi={state:async()=>({...state,watch:{...state.watch,threadId:native.threadId,snapshot:{state:'RESULT_READY',turnId:'parent',itemId:message.id,text:message.text}},publicMessages:[message]}),command:vi.fn(async()=>({messages:[message],nextCursor:null})) as WatchChatApi['command']};
+ const view=render(<WatchChat original={native} api={api} onBack={()=>{}}/>);await screen.findByText('parent conclusion');
+ expect(screen.getByText('child result original').closest('details')).not.toBeNull();expect(view.container.querySelectorAll('.v4-chat-message')).toHaveLength(1);
+});
+
+it('the persistent child entry opens the exact child conversation and restores the parent draft',async()=>{
+ const native={...original,threadId:'claude_code:10000000-0000-4000-8000-000000000001'};
+ const tree={nodes:[{sessionId:'child',parentSessionId:'root',title:'需要处理的子对话',depth:1,state:'FAILED',updatedAt:1}],running:0,attention:1,unknown:0,limited:false};
+ const parent={...state,provider:'CLAUDE_CODE' as const,watch:{...state.watch,threadId:native.threadId},taskTree:tree};
+ const child={...state,provider:'CLAUDE_CODE' as const,inputReady:true,watch:{...state.watch,threadId:'claude_code:child',label:'需要处理的子对话',generation:-12}};
+ const command=vi.fn(async(input:Record<string,unknown>)=>input.action==='CHILD_OPEN'?child:({messages:input.threadId===child.watch.threadId?[{id:'child-message',turnId:'child-turn',role:'assistant',text:'子对话的实际结果',order:1}]:[],nextCursor:null}));
+ render(<WatchChat original={native} api={{state:async id=>id===child.watch.threadId?child:parent,command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
+ await screen.findByRole('button',{name:'查看子对话'});fireEvent.change(screen.getByRole('textbox'),{target:{value:'保留主对话草稿'}});
+ fireEvent.click(screen.getByRole('button',{name:'查看子对话'}));expect(await screen.findByRole('dialog')).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:/需要处理的子对话/}));await screen.findByText('子对话的实际结果');
+ expect(command.mock.calls.some(([c])=>c.action==='CHILD_OPEN'&&c.childId==='child'&&c.threadId===native.threadId)).toBe(true);
+ expect(screen.queryByRole('dialog')).toBeNull();expect(screen.getByRole('textbox')).toHaveValue('');
+ fireEvent.change(screen.getByRole('textbox'),{target:{value:'子对话草稿'}});
+ fireEvent.click(screen.getByRole('button',{name:/返回主对话/}));expect(await screen.findByRole('textbox')).toHaveValue('保留主对话草稿');
+ expect(command.mock.calls.every(([c])=>['HISTORY','CHILD_OPEN'].includes(String(c.action)))).toBe(true);
+});
+
+it('async native Codex questions are interactive in the reader with an exact persistent answer identity',async()=>{
+ const card={requestId:'call-original',answerId:'answer-original',revision:1,method:'request_user_input_async',kind:'USER_INPUT',isBlocking:false,responseSent:false,questions:[{id:'["request_user_input_async","call-original",0]',label:'Choose route',required:true,options:[{label:'A',description:'Bounded'},{label:'B',description:'Broad'}]}]};
+ const command=vi.fn(async(input:Record<string,unknown>)=>input.action==='ASYNC_RESPOND'?{accepted:true}:{messages:[],nextCursor:null});
+ const view=render(<WatchChat original={original} api={{state:async()=>({...state,asyncQuestions:[card]}),command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
+ const radio=await screen.findByRole('radio',{name:'A Bounded'});expect(radio.closest('.v4-chat-reader')).not.toBeNull();fireEvent.click(radio);fireEvent.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(command.mock.calls.some(([c])=>c.action==='ASYNC_RESPOND'&&c.id==='answer-original'&&c.requestId==='call-original')).toBe(true));expect(view.container.querySelector('.v4-chat-dock .v4-question-card')).toBeNull();
+});
+it('native Claude turn actions send the original selected message and preserve the existing composer draft',async()=>{
+ const native={...original,threadId:'claude_code:10000000-0000-4000-8000-000000000001'};
+ const message={id:'claude_msg:wrap',turnId:'turn-a',role:'assistant' as const,text:'阶段总结',order:1,card:{id:'native-wrap',question:'下一步？',actions:[{label:'选择 A',message:'原生选项 A 的完整消息'}]}};
+ const command=vi.fn(async(input:Record<string,unknown>)=>input.action==='SEND'?{...response(String(input.id)),threadId:native.threadId,text:String(input.text)}:{messages:[message],nextCursor:null});
+ render(<WatchChat original={native} api={{state:async()=>({...state,provider:'CLAUDE_CODE',watch:{...state.watch,threadId:native.threadId},publicMessages:[message]}),command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
+ await screen.findByText('阶段总结');fireEvent.change(screen.getByRole('textbox'),{target:{value:'原有草稿'}});fireEvent.click(screen.getByRole('radio',{name:'选择 A'}));fireEvent.click(screen.getByRole('button',{name:'发送选择'}));await waitFor(()=>expect(command.mock.calls.some(([c])=>c.action==='SEND'&&c.text==='原生选项 A 的完整消息')).toBe(true));expect(screen.getByRole('textbox')).toHaveValue('原有草稿');
+});
+it('keeps an unanswered native card interactive after a peer turn and explains a later owner answer',async()=>{
+ const native={...original,threadId:'claude_code:10000000-0000-4000-8000-000000000001'};
+ const question={id:'claude_msg:question',turnId:'asked',role:'assistant' as const,text:'需要决策',order:1,card:{id:'card-call',question:'怎么处理？',actions:[{label:'方案 A',message:'执行方案 A'}]}};
+ const peer={id:'peer',turnId:'peer-turn',role:'user' as const,text:'子对话回报',kind:'COLLABORATION' as const,order:2};
+ const update={id:'update',turnId:'peer-turn',role:'assistant' as const,text:'已收到进展',order:3};
+ let messages:ChatMessage[]=[question,peer,update];const snapshot={state:'RESULT_READY',turnId:'peer-turn',itemId:'update',text:'已收到进展'};
+ const current=()=>({...state,provider:'CLAUDE_CODE' as const,watch:{...state.watch,threadId:native.threadId,snapshot},publicMessages:messages});
+ const command=vi.fn(async(input:Record<string,unknown>)=>input.action==='SEND'?{...response(String(input.id)),threadId:native.threadId,text:String(input.text)}:{messages,nextCursor:null});
+ const view=render(<WatchChat original={native} api={{state:async()=>current(),command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
+ const radio=await screen.findByRole('radio',{name:'方案 A'});expect(radio).toBeEnabled();fireEvent.click(radio);fireEvent.click(screen.getByRole('button',{name:'发送选择'}));
+ await waitFor(()=>expect(command.mock.calls.some(([c])=>c.action==='SEND'&&c.expectedTurnId==='peer-turn'&&c.text==='执行方案 A')).toBe(true));view.unmount();
+ messages=[question,peer,update,{id:'owner',turnId:'owner-next',role:'user',text:'选择已在原对话处理',order:4}];
+ render(<WatchChat original={native} api={{state:async()=>current(),command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
+ await screen.findByText('此问题之后已有你的新消息。');expect(screen.getByRole('radio',{name:'方案 A'})).toBeDisabled();expect(screen.queryByRole('button',{name:'发送选择'})).toBeNull();
+});
+
+it('resolved historical async questions leave no trailing confirmation prompts',async()=>{
+ const card:NonNullable<WatchChatState['asyncQuestions']>[number]={requestId:'old-question',answerId:'old-answer',revision:1,method:'request_user_input_async',kind:'USER_INPUT',isBlocking:false,responseSent:true,questions:[{id:'q',label:'Already answered',options:[{label:'A',description:''}]}]};
+ const api:WatchChatApi={state:async()=>({...state,asyncQuestions:[card,{...card,requestId:'older-question'}]}),command:vi.fn(async()=>({messages:[],nextCursor:null})) as WatchChatApi['command']};
+ const view=render(<WatchChat original={original} api={api} onBack={()=>{}}/>);
+ await screen.findByText('完整原文');await waitFor(()=>expect(view.container.querySelectorAll('.v4-question-receipt,.v4-question-card')).toHaveLength(0));
+});
+it('a later exact SENT observation clears a previously uncertain attempt without another send or recovery panel',async()=>{
+ const attempt={id:'late-proof',text:'第一条回复',options:{attachments:[]},files:[],composerCleared:true};
+ sessionStorage.setItem('aiwr-watch-draft:exact-original:pending',JSON.stringify(attempt));
+ let current={...state,replies:[response(attempt.id,'UNKNOWN')]};let notify=()=>{};
+ const command=vi.fn(async(c)=>c.action==='RECEIPT'?response(attempt.id,'UNKNOWN'):{messages:[],nextCursor:null});
+ const api:WatchChatApi={state:async()=>current,cachedState:()=>current,subscribe:(_id,fn)=>{notify=fn;return()=>{};},command:command as WatchChatApi['command']};
+ const view=render(<WatchChat original={original} api={api} onBack={()=>{}}/>);
+ await screen.findByRole('button',{name:'检查发送记录'});
+ expect(screen.getByRole('button',{name:'检查发送记录'}).closest('.v4-chat-message')).not.toBeNull();
+ expect(screen.queryByText('上一次回复仍需确认，草稿已保留。')).toBeNull();
+ current={...current,replies:[response(attempt.id,'SENT')]};act(()=>notify());
+ await waitFor(()=>expect(sessionStorage.getItem('aiwr-watch-draft:exact-original:pending')).toBeNull());
+ expect(screen.queryByRole('button',{name:'检查发送记录'})).toBeNull();expect(view.container.querySelectorAll('.v4-question-receipt')).toHaveLength(0);
+ expect(command.mock.calls.every(([c])=>['HISTORY','RECEIPT'].includes(c.action))).toBe(true);
+});
+it('a running Codex turn refreshes its native public tail when the native item changes',async()=>{
+ let snap={state:'RUNNING',turnId:'turn-a',itemId:'one',text:'first progress'};let notify=()=>{};
+ const current=()=>({...state,watch:{...state.watch,snapshot:snap}});
+ const command=vi.fn(async()=>({messages:[{id:'native-user',turnId:'turn-a',role:'user',text:'owner request'},{id:snap.itemId,turnId:'turn-a',role:'assistant',text:snap.text}],nextCursor:null}));
+ const api:WatchChatApi={state:async()=>current(),cachedState:current,subscribe:(_id,fn)=>{notify=fn;return()=>{};},command:command as WatchChatApi['command']};
+ render(<WatchChat original={original} api={api} onBack={()=>{}}/>);
+ await screen.findByText('owner request');const calls=command.mock.calls.length;
+ snap={...snap,itemId:'two',text:'second progress'};act(()=>notify());
+ await waitFor(()=>expect(command.mock.calls.length).toBeGreaterThan(calls));await screen.findByText('second progress');
+});

@@ -282,6 +282,8 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         // that still checks its original, unversioned script URL.
         .route("/service-worker.js", get(service_worker))
         .route("/v1/mobile/health", get(health))
+        .route("/v1/mobile/app/capabilities", get(app_capabilities))
+        .route("/v1/mobile/app/diagnostics", get(app_diagnostics))
         .route("/v1/mobile/push/config", get(push_config))
         .route("/v1/mobile/push/status", get(push_status))
         .route(
@@ -297,6 +299,10 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         .route("/v1/claude-code/receipts", post(claude_code_receipt))
         .route("/v1/mobile/claude-code/chat/{thread_id}", get(claude_chat_state))
         .route("/v1/mobile/claude-code/chat", post(claude_chat_command))
+        .route("/v1/claude-code/owner-requests", post(claude_owner_request_capture))
+        .route("/v1/claude-code/owner-requests/poll", post(claude_owner_request_poll))
+        .route("/v1/claude-code/owner-requests/receipt", post(claude_owner_request_receipt))
+        .route("/v1/claude-code/owner-requests/native", post(claude_owner_request_native))
         .route("/v1/mobile/bridge-activity", post(bridge_activity))
         .route("/v1/mobile/workstreams/{workstream_id}", get(workstream))
         .route("/v1/mobile/workstreams/{workstream_id}/role-bridge", get(role_bridge_state).post(role_bridge_command))
@@ -609,9 +615,9 @@ async fn character_board_asset(Path(asset_id):Path<String>,State(state):State<Mo
 #[derive(Deserialize)]
 #[serde(rename_all="camelCase")]
 struct WatchFeedQuery { #[serde(default)] after:i64, #[serde(default)] wait_seconds:u64 }
-async fn codex_watches(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<Vec<router_core::store::codex_watch::CodexWatch>> {
+async fn codex_watches(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<Vec<crate::claude_chat::WatchView>> {
     authenticated(&headers,&state,false).await?;
-    Ok(Json(state.core.store.codex_watches().map_err(|e|ApiError(StatusCode::BAD_REQUEST,e))?))
+    Ok(Json(crate::claude_chat::list(&state.core).map_err(|e|ApiError(StatusCode::BAD_REQUEST,e))?))
 }
 async fn assistant_settings_view(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<serde_json::Value>{
  authenticated(&headers,&state,false).await?;crate::assistant_settings_view(&state.core).map(Json).map_err(core_error)
@@ -1330,6 +1336,7 @@ async fn claude_code_event(State(state):State<MobileHttpState>,headers:HeaderMap
    // The event is stored; a failed watch refresh or offer must not make it retry.
    if let Err(code)=crate::claude_chat::update_watch(&core,&event.session_id){eprintln!("Claude Code watch refresh failed: {code}");}
    if let Err(code)=crate::claude_chat::reconcile_deliveries(&core,&event.session_id){eprintln!("Claude Code delivery reconcile failed: {code}");}
+   crate::claude_child_contexts::renew(&core);
    let command=if control {core.store.offer_claude_manual(&token,&event).unwrap_or_else(|code|{eprintln!("Claude Code offer failed: {code}");None})}else{None};
    Ok(serde_json::json!({"accepted":true,"duplicate":!inserted,"writesEnabled":false,"manualInputProtocol":if control{Some(1)}else{None},"command":command}))
  }).await?;
@@ -1341,6 +1348,19 @@ async fn claude_code_receipt(State(state):State<MobileHttpState>,headers:HeaderM
  state.core.store.accept_claude_manual_receipt(&token,&input).map_err(core_error)?;
  Ok(Json(serde_json::json!({"accepted":true})))
 }
+async fn claude_owner_request_capture(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<router_core::store::claude_owner_requests::NativeRequest>)->ApiResult<serde_json::Value>{let token=claude_adapter_token(&headers)?;crate::claude_owner_requests::capture(&state.core,&token,&input).map(Json).map_err(core_error)}
+async fn claude_owner_request_poll(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<crate::claude_owner_requests::Poll>)->ApiResult<serde_json::Value>{
+ let token=claude_adapter_token(&headers)?;
+ for attempt in 0..30 {let value=state.core.store.poll_claude_owner_request(&token,&input.session_id,&input.instance_id,&input.cwd,&input.id).map_err(core_error)?;if value["status"]!="PENDING"||attempt==29{return Ok(Json(value))}tokio::time::sleep(std::time::Duration::from_millis(500)).await;}
+ unreachable!()
+}
+async fn claude_owner_request_receipt(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<crate::claude_owner_requests::Poll>)->ApiResult<serde_json::Value>{
+ let token=claude_adapter_token(&headers)?;state.core.store.authorize_claude_owner_publisher(&token,&input.session_id,&input.instance_id,&input.cwd).map_err(core_error)?;
+ crate::claude_owner_requests::reconcile(&state.core,&input.session_id);
+ Ok(Json(serde_json::json!({"confirmed":state.core.store.claude_owner_request_confirmed(&input.id,&input.session_id,&input.instance_id).map_err(core_error)?})))
+}
+async fn claude_owner_request_native(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<crate::claude_owner_requests::Poll>)->ApiResult<serde_json::Value>{let token=claude_adapter_token(&headers)?;state.core.store.release_claude_owner_request(&token,&input.session_id,&input.instance_id,&input.cwd,&input.id).map_err(core_error)?;Ok(Json(serde_json::json!({"accepted":true})))}
+
 async fn claude_chat_state(State(state):State<MobileHttpState>,headers:HeaderMap,Path(thread_id):Path<String>)->ApiResult<serde_json::Value>{authenticated(&headers,&state,false).await?;crate::claude_chat::state(&state.core,&thread_id).map(Json).map_err(core_error)}
 async fn claude_chat_command(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<crate::watch_chat::ChatCommand>)->ApiResult<serde_json::Value>{authenticated(&headers,&state,true).await?;crate::claude_chat::command(&state.core,input).map(Json).map_err(core_error)}
 async fn role_bridge_command(Path(workstream_id):Path<String>,State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<RoleBridgeCommand>)->ApiResult<serde_json::Value>{
@@ -2853,4 +2873,13 @@ mod character_board_http_tests {
         println!("ISOLATED_BOARD_HTTP_BROWSER_READY");for _ in 0..180{if stop.exists(){break;}std::thread::sleep(Duration::from_secs(1));}
         runtime.block_on(handle.shutdown());task.abort();
     }
+}
+
+async fn app_capabilities(State(state):State<MobileHttpState>,headers:HeaderMap)->Result<axum::response::Response,ApiError>{
+ authenticated(&headers,&state,false).await?;Ok(([(axum::http::header::CACHE_CONTROL,"no-store")],Json(crate::app_control::capabilities("OWNER"))).into_response())
+}
+async fn app_diagnostics(State(state):State<MobileHttpState>,headers:HeaderMap)->Result<axum::response::Response,ApiError>{
+ authenticated(&headers,&state,false).await?;
+ let core=state.core.clone();let host=state.host.clone();
+ Ok(([(axum::http::header::CACHE_CONTROL,"no-store")],Json(run_core_blocking("App diagnostics",move||crate::app_control::diagnostics(&core,Some(&host))).await?)).into_response())
 }

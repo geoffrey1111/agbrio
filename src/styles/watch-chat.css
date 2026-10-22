@@ -117,7 +117,7 @@
  .v4-chat-message-tools { margin: 8px 0; }
  .v4-chat-message-tools button { min-height: 44px; width: 44px; padding: 0; background: transparent; }
  .v4-chat-history summary { background: transparent; padding: 12px 0; font-size: 13px; line-height: 20px; color: var(--awr-muted); }
- .v4-chat-reader > .v4-chat-request { display: none; }
+ .v4-chat-reader > .v4-chat-request:not(.v4-question-card) { display: none; }
  .v4-chat-dock { padding: 12px 12px max(12px,env(safe-area-inset-bottom)); background: var(--awr-white); }
  .v4-chat-composer { padding: var(--awr-ios-inset); border: 1px solid var(--awr-line); border-radius: var(--awr-ios-composer-radius); gap: 8px; }
  .v4-chat-composer > label { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -154,3 +154,9 @@
 @media(prefers-reduced-motion:reduce){.v4-chat-live[data-active="true"]>svg{animation:none}}
 
 .v4-chat-feedback{margin:0 0 8px;padding:0 4px;color:var(--r2-muted,var(--awr-ink));font-size:13px;line-height:1.5;overflow-wrap:anywhere;}
+
+/* Delivery recovery belongs to its message; advanced actions stay disclosed. */
+.v4-chat-delivery { margin-top: 8px; color: var(--awr-muted); }
+.v4-chat-delivery summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-size: 14px; }
+.v4-chat-delivery details p { margin: 8px 0; }
+.v4-chat-delivery details button { display: block; margin: 8px 0; max-width: 100%; }

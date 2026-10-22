@@ -1,3 +1,4 @@
+import {claudeTaskSummary} from "./ClaudeTaskStatus";
 import {SelectionIndicator} from "./InteractionMotion";
 import {useId} from "react";
 import {useNotificationSeen} from "./useNotificationSeen";
@@ -22,14 +23,18 @@ import type {WatchChatApi} from "./watchChatApi";
 import {useWatchVisitOrder} from "./useWatchVisitOrder";
 
 export type WatchSnapshot = { state:string; turnId:string|null; itemId:string|null; text:string };
-export type CodexWatch = { threadId:string; label:string; cwd:string; enabled:boolean; generation:number; snapshot:WatchSnapshot; checkedAt:number; errorCode:string|null;sendCount?:number };
+export type CodexWatch = { taskTree?:import("./watchChatApi").ClaudeTaskTree; threadId:string; label:string; cwd:string; enabled:boolean; generation:number; snapshot:WatchSnapshot; checkedAt:number; errorCode:string|null;sendCount?:number };
 export type WatchEvent = { sequence:number; threadId:string; label:string; cwd:string; snapshot:WatchSnapshot; observedAt:number;seenAt?:number|null };
 export type WatchFeed = { events:WatchEvent[]; nextCursor:number; hasMore:boolean; hiddenSequences?:number[] };
 export interface NotificationApi { cachedWatches?():CodexWatch[]|undefined; cachedFeed?():WatchFeed|undefined; subscribe?(listener:()=>void):()=>void; markSeen?(sequence:number):Promise<unknown>; markRead?(sequence:number):Promise<unknown>; remove?(kind:"WATCH"|"EVENT",id:string,removed:boolean):Promise<unknown>; watches():Promise<CodexWatch[]>; refreshWatches?():Promise<CodexWatch[]>; connect():Promise<unknown>; threads():Promise<ExistingCodexThreadCatalog>; enable(id:string):Promise<unknown>; pause(id:string):Promise<unknown>; feed(after:number):Promise<WatchFeed>; event(sequence:number):Promise<WatchEvent>; webUrl():Promise<string|null>; delivery?:DeliveryApi; chat?:WatchChatApi; onOpen?:(callback:(sequence:number)=>void)=>Promise<()=>void> }
 
 const states:Record<string,string>={get IDLE(){return uiText("尚无任务");},get RUNNING(){return uiText("正在执行");},get ACTION_REQUIRED(){return uiText("需要你确认或回答");},get RESULT_READY(){return uiText("结果已到达");},get RESULT_PENDING(){return uiText("结果尚未读到");},get FAILED(){return uiText("执行失败");},get INTERRUPTED(){return uiText("已中断");},get INCOMPLETE(){return uiText("任务未完成（执行中或已中断）");},get UNKNOWN(){return uiText("状态未确定");}};
 const time=(value:number)=>new Date(value).toLocaleString(getLanguage());
-const watchState=(w:CodexWatch)=>!w.enabled?uiText("已暂停"):w.errorCode?uiText("暂时无法读取"):Date.now()-w.checkedAt>30_000?uiText("最近未成功检查"):states[w.snapshot.state]??w.snapshot.state;
+const watchState=(w:CodexWatch)=>{
+ if(!w.enabled)return uiText("已暂停");if(w.errorCode)return uiText("暂时无法读取");if(Date.now()-w.checkedAt>30_000)return uiText("最近未成功检查");
+ if(w.taskTree&&!['RUNNING','ACTION_REQUIRED','FAILED'].includes(w.snapshot.state)){const summary=claudeTaskSummary(w.taskTree);if(summary)return summary;}
+ return w.threadId.startsWith("claude_code:")&&w.snapshot.state==="RESULT_READY"?uiText("本轮已结束"):states[w.snapshot.state]??w.snapshot.state;
+};
 const notificationError=(error:unknown)=>String(error).includes("ROUTER_READ_TIMEOUT")?uiText("读取超时，现有内容已保留，请稍后重试。"):String(error).includes("WATCH_ALREADY_IN_BRIDGE")?uiText("这条对话已在 Bridge 中，可直接从 Bridge 打开。"):String(error).includes("WATCH_EVENT_NOT_FOUND")?uiText("这条通知已清理或不可用。请查看最近通知或对话当前内容。"):String(error);
 type Removable={kind:"WATCH";item:CodexWatch}|{kind:"EVENT";item:WatchEvent};
 type View="RECENT"|"WATCHES"|"SETTINGS";

@@ -23,7 +23,7 @@ pub(crate) struct BridgeState {
     pub(crate) snapshot_at:Option<u64>,
 }
 #[derive(Clone,Serialize)]#[serde(rename_all="camelCase")]
-pub(crate) struct RoleActivity{pub role:String,pub endpoint_id:String,pub state:String,pub checked_at:u64,pub turn_id:Option<String>,pub result_observation_id:Option<String>,pub goal_status:Option<String>,pub turn_active:bool,pub latest_turn:Option<router_core::codex::adapter::NativeTurnDiagnostic>,pub goal:Option<MobileCodexGoal>,pub goal_controls:Option<crate::goal_control::GoalControls>}
+pub(crate) struct RoleActivity{pub role:String,pub endpoint_id:String,pub state:String,pub checked_at:u64,pub turn_id:Option<String>,pub result_observation_id:Option<String>,pub goal_status:Option<String>,pub turn_active:bool,pub latest_turn:Option<router_core::codex::adapter::NativeTurnDiagnostic>,pub goal:Option<MobileCodexGoal>,pub goal_controls:Option<crate::goal_control::GoalControls>,pub task_tree:Option<crate::claude_task_tree::TaskTree>}
 #[derive(Serialize)]#[serde(rename_all="camelCase")]
 pub(crate) struct BridgeReadOutcome{role:String,endpoint_id:String,state:String,retained_reply:bool}
 #[derive(Serialize)]#[serde(rename_all="camelCase")]
@@ -85,7 +85,7 @@ pub(crate) fn sync(core:&RouterCore,workstream:&str)->Result<BridgeState,String>
     {
         let mut session=core.session.try_lock().ok();
         for side in [&initial.bindings.decision,&initial.bindings.execution].into_iter().flatten(){
-            let mut activity=RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:activity_now(),turn_id:None,result_observation_id:None,goal_status:None,turn_active:false,latest_turn:None,goal:None,goal_controls:None};
+            let mut activity=RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:activity_now(),turn_id:None,result_observation_id:None,goal_status:None,turn_active:false,latest_turn:None,goal:None,goal_controls:None,task_tree:None};
             if side.endpoint.provider=="CODEX"{
                 if let Some(adapter)=session.as_mut().and_then(|s|s.adapter.as_mut()).filter(|a|!a.is_closed()){
                     if let Ok(native)=adapter.read_thread_activity(&side.endpoint.external_id){
@@ -723,7 +723,7 @@ pub(crate) fn poll_directory_activity(store:&RouterStore,session_handle:&Mutex<S
   let b=store.role_bridge(id)?;let mut sides=Vec::new();
   for side in [&b.decision,&b.execution].into_iter().flatten(){
    let pending=session.as_ref().is_some_and(|s|s.pending_codex_requests.values().any(|r|r.thread_id==side.endpoint.external_id&&!r.responded));
-   let mut a=RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:0,turn_id:None,result_observation_id:None,goal_status:None,turn_active:false,latest_turn:None,goal:None,goal_controls:None};
+   let mut a=RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:0,turn_id:None,result_observation_id:None,goal_status:None,turn_active:false,latest_turn:None,goal:None,goal_controls:None,task_tree:None};
    if side.endpoint.provider=="CODEX"&&started.elapsed()<std::time::Duration::from_secs(4){
     if let Some(adapter)=session.as_mut().and_then(|s|s.adapter.as_mut()).filter(|a|!a.is_closed()){
      if let Ok(native)=adapter.read_thread_activity(&side.endpoint.external_id){
@@ -811,7 +811,7 @@ pub(crate) fn directory_activity(core:&RouterCore,ids:&[String])->Result<Vec<Dir
  if ids.len()>20||ids.iter().any(|id|id.is_empty()||id.len()>128){return Err("BRIDGE_ACTIVITY_REQUEST_INVALID".into());}
  let mut rows=Vec::new();for id in ids{let initial=state(core,id)?;let w=core.store.snapshot_for_workstream(id)?.workstreams.into_iter().find(|w|w.id==*id).ok_or("BRIDGE_UNAVAILABLE")?;if w.trashed_at.is_some()||w.archived_at.is_some(){continue;}
   let bindings=&initial.bindings;let epoch=core.session.try_lock().ok().map(|s|s.codex_observer_epoch);let cache=activity_cache(&core.store);let cached=cache.lock().ok().and_then(|c|c.rows.get(id).filter(|row|epoch.is_none_or(|e|e==c.epoch)&&row.binding_revision==bindings.binding_revision).cloned());
-  let sides=[&bindings.decision,&bindings.execution].into_iter().flatten().map(|side|if side.endpoint.provider=="CLAUDE_CODE"{crate::claude_code::activity(core,side)}else{cached.as_ref().and_then(|r|r.sides.iter().find(|a|a.endpoint_id==side.endpoint.id&&a.role==side.role&&a.checked_at>0&&activity_now().saturating_sub(a.checked_at)<15000)).cloned().unwrap_or(RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:0,turn_id:None,result_observation_id:None,goal_status:None,turn_active:false,latest_turn:None,goal:None,goal_controls:None})}).collect();
+  let sides=[&bindings.decision,&bindings.execution].into_iter().flatten().map(|side|if side.endpoint.provider=="CLAUDE_CODE"{crate::claude_code::activity(core,side)}else{cached.as_ref().and_then(|r|r.sides.iter().find(|a|a.endpoint_id==side.endpoint.id&&a.role==side.role&&a.checked_at>0&&activity_now().saturating_sub(a.checked_at)<15000)).cloned().unwrap_or(RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:0,turn_id:None,result_observation_id:None,goal_status:None,turn_active:false,latest_turn:None,goal:None,goal_controls:None,task_tree:None})}).collect();
   let latest_role=initial.replies.iter().filter(|r|[&bindings.decision,&bindings.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).max_by_key(|r|r.completed_at.unwrap_or(r.observed_at)).and_then(|r|[&bindings.decision,&bindings.execution].into_iter().flatten().find(|side|side.endpoint.id==r.endpoint_id).map(|side|side.role.clone()));
   let unread_count=initial.replies.iter().filter(|r|r.read_at.is_none()&&r.handled_at.is_none()&&[&bindings.decision,&bindings.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).count();rows.push(DirectoryActivity{workstream_id:id.clone(),binding_revision:bindings.binding_revision,unread_count,latest_role,sides,assistant_processed:initial.assistant_processed});
  }Ok(rows)

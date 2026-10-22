@@ -35,8 +35,15 @@ export function useVisibleViewport(){
   probe.style.cssText="position:fixed;inset:0;visibility:hidden;pointer-events:none;margin:0;padding:0;border:0;z-index:-1;";
   document.body.append(probe);
   const update=()=>{
-   if(viewport&&Math.abs(viewport.scale-1)>.05)return;
    const root=document.documentElement, style=root.style;
+   if(viewport&&Math.abs(viewport.scale-1)>.05){
+    // A zoomed visual viewport is a magnified window, not a smaller app. Drop
+    // stale keyboard measurements and let the CSS dvh/safe-area fallbacks own
+    // layout until scale returns to normal. Never reset the owner's zoom.
+    for(const key of ['height','width','top','left','bottom'])style.removeProperty(`--aiwr-shell-${key}`);
+    for(const edge of ['top','right','bottom','left'])style.removeProperty(`--aiwr-inset-${edge}`);
+    root.dataset.aiwrCompact='false';return;
+   }
    const measured=probe.getBoundingClientRect();
    const frame={top:measured.top,left:measured.left,width:measured.width||innerWidth,height:measured.height||innerHeight};
    const reported={height:viewport?.height??innerHeight,width:viewport?.width??innerWidth,top:viewport?.offsetTop??0,left:viewport?.offsetLeft??0};
@@ -55,7 +62,10 @@ export function useVisibleViewport(){
    for(const edge of ["top","right","bottom","left"] as const)style.setProperty(`--aiwr-inset-${edge}`,`${edges.safe[edge]}px`);
    root.dataset.aiwrCompact=String(visible.height<400);
   };
+  let settleTimer:ReturnType<typeof setTimeout>|undefined;
+  const settle=()=>{update();clearTimeout(settleTimer);settleTimer=setTimeout(update,350);};
   update();window.addEventListener("resize",update);viewport?.addEventListener("resize",update);viewport?.addEventListener("scroll",update);
-  return()=>{probe.remove();window.removeEventListener("resize",update);viewport?.removeEventListener("resize",update);viewport?.removeEventListener("scroll",update);};
+  document.addEventListener('focusout',settle);window.addEventListener('pageshow',settle);
+  return()=>{clearTimeout(settleTimer);probe.remove();window.removeEventListener("resize",update);viewport?.removeEventListener("resize",update);viewport?.removeEventListener("scroll",update);document.removeEventListener('focusout',settle);window.removeEventListener('pageshow',settle);};
  },[]);
 }

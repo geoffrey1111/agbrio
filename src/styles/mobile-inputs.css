@@ -1,0 +1,7 @@
+/* Prevent focus auto-zoom without disabling the owner's pinch zoom. This must
+   win over the theme's 15px form shorthand, including sheets and embedded boards. */
+@media (max-width:760px), (any-pointer:coarse) {
+ html :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),textarea,select,[contenteditable=true]) {
+  font-size:max(16px,1rem)!important;
+ }
+}

@@ -1,6 +1,14 @@
 name: Exact released Windows installer
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: Exact version built from main
+        required: true
+        default: 0.1.35-rc.53
+      installer_sha256:
+        description: SHA256 of the updater-signed installer
+        required: true
 permissions:
   contents: read
 jobs:
@@ -14,13 +22,23 @@ jobs:
           node-version: 24.16.0
       - name: Test dependency
         run: npm ci
-      - name: Download exact public0.1.35-rc.19 bytes
+      - name: Download and install the exact main release
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
         run: |
+          $ErrorActionPreference='Stop'
+          if($env:RELEASE_VERSION -notmatch '^0\.1\.[0-9]+(?:-rc\.[0-9]+)?$' -or $env:INSTALLER_SHA256 -notmatch '^[a-f0-9]{64}$'){throw 'Invalid exact release identity'}
+          $declared=(Get-Content docs/RELEASE_BUILD.json -Raw | ConvertFrom-Json).version
+          if($declared -cne $env:RELEASE_VERSION){throw 'Version differs from main build declaration'}
           New-Item -ItemType Directory -Path runtime/released -Force | Out-Null
-          $path='runtime/released/Agbrio_0.1.35-rc.19_x64-setup.exe'
-          Invoke-WebRequest 'https://github.com/geoffrey1111/agbrio/releases/download/v0.1.35-rc.19/Agbrio_0.1.35-rc.19_x64-setup.exe' -OutFile $path
-          if((Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant() -ne '1f3bf23f2b8e7fb68134c9add0927fe1e488c7df2d1805322b569712e4893c41'){throw 'Released byte identity mismatch'}
+          $name='Agbrio_'+$env:RELEASE_VERSION+'_x64-setup.exe'
+          $path=Join-Path runtime/released $name
+          $url='https://github.com/geoffrey1111/agbrio/releases/download/v'+$env:RELEASE_VERSION+'/'+$name
+          Invoke-WebRequest $url -OutFile $path
+          if((Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant() -cne $env:INSTALLER_SHA256){throw 'Released byte identity mismatch'}
           pwsh -NoProfile -File scripts/windows-install-smoke.ps1 -Installer $path
+          if($LASTEXITCODE -ne 0){throw 'Exact installer smoke failed'}
       - uses: actions/upload-artifact@v4
         if: always()
         with:

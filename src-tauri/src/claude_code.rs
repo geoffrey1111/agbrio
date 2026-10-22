@@ -121,7 +121,19 @@ pub(crate) fn verified_session(core:&RouterCore,external:&str,cwd:Option<&str>)-
 }
 /// Exact identity for reading and for queuing a delivery; no live plugin lease needed.
 pub(crate) fn observed_session(core:&RouterCore,external:&str,cwd:Option<&str>)->Result<Session,String> {
-    router_core::claude_code::ClaudeCodeAdapter::new(core.store.as_ref()).observe(external,cwd)
+    let mut session=router_core::claude_code::ClaudeCodeAdapter::new(core.store.as_ref()).observe(external,cwd)?;
+    // A reader may open a bound conversation outside the resident watch set.
+    // Always project its exact native turn, rather than putting an old stored
+    // notification below a freshly read transcript. No provider/store write.
+    if let Some(status)=crate::claude_transcript::projects_root().and_then(|root|crate::claude_transcript::find(&root,external)).and_then(|path|crate::claude_transcript::status(&path,external)).filter(|s|s.cwd.as_ref().is_some_and(|root|router_core::claude_code::same_root(root,&session.cwd))) {
+        let approval=session.state=="WAITING_DECISION"&&session.turn_id.as_deref()==Some(&status.turn);
+        session.state=if approval{"WAITING_DECISION".into()}else{status.state.into()};
+        session.turn_id=Some(status.turn.clone());
+        session.checked_at=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+        session.latest_reply=status.reply.map(|text|router_core::claude_code::CompleteReply{turn_id:status.turn,text,completed_at:status.completed_at.max(1)});
+    }
+    if core.store.claude_owner_request_pending(external,&session.cwd).unwrap_or(false){session.state="WAITING_DECISION".into();}
+    Ok(session)
 }
 /// The session's own transcript owns state, turn and reply once it exists.
 pub(crate) fn transcript_owned(session:&str)->bool {
@@ -154,7 +166,9 @@ pub(crate) fn activity(core:&RouterCore,side:&RoleEndpoint)->crate::role_bridge:
     let reply=session.as_ref().filter(|s|s.state=="COMPLETE").and_then(|s|s.latest_reply.as_ref());
     let result_observation_id=reply.and_then(|r|core.store.reply_observations_for_workstream(&side.endpoint.workstream_id).ok().and_then(|rows|rows.into_iter().find(|o|o.endpoint_id==side.endpoint.id&&o.assistant_identity.as_deref()==Some(&format!("claude_code:{}",r.turn_id))).map(|o|o.id)));
     let state=session.as_ref().map(|s|match s.state.as_str(){"SESSION_START"=>"UNCONFIRMED","WAITING_DECISION"=>"ACTION_REQUIRED",s=>s}).unwrap_or("UNCONFIRMED");
-    crate::role_bridge::RoleActivity {role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:state.into(),checked_at:session.as_ref().map(|s|s.checked_at as u64).unwrap_or(0),turn_id:session.as_ref().and_then(|s|s.turn_id.clone()),result_observation_id,goal_status:None,turn_active:session.as_ref().is_some_and(|s|matches!(s.state.as_str(),"RUNNING"|"WAITING_DECISION")),latest_turn:None,goal:None,goal_controls:None}
+    let tree=crate::claude_task_tree::read(core,&side.endpoint.external_id,side.cwd.as_deref().unwrap_or_default());
+    let state=tree.phase(state);
+    crate::role_bridge::RoleActivity {role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:state.into(),checked_at:if tree.nodes.is_empty(){session.as_ref().map(|s|s.checked_at as u64).unwrap_or(0)}else{std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64},turn_id:session.as_ref().and_then(|s|s.turn_id.clone()),result_observation_id,goal_status:None,turn_active:session.as_ref().is_some_and(|s|matches!(s.state.as_str(),"RUNNING"|"WAITING_DECISION")),latest_turn:None,goal:None,goal_controls:None,task_tree:Some(tree)}
 }
 pub(crate) fn ingest(core:&RouterCore,token:&str,event:&Event)->Result<bool,String> {
     let adapter=router_core::claude_code::ClaudeCodeAdapter::new(core.store.as_ref());

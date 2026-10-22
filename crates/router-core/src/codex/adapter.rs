@@ -11,6 +11,13 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
+#[derive(serde::Serialize,serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PublicChatCursor{thread:String,turn:String,item:Option<String>,older:Option<String>}
+impl PublicChatCursor{
+ fn decode(thread:&str,cursor:Option<&str>)->Result<Self,String>{let value=if let Some(raw)=cursor.and_then(|s|s.strip_prefix("agbrio-items-v1:")){serde_json::from_str::<Self>(raw).map_err(|_|"CHAT_HISTORY_CURSOR_INVALID")?}else{Self{thread:thread.into(),turn:String::new(),item:None,older:cursor.map(str::to_owned)}};if value.thread!=thread||(value.turn.is_empty()&&value.item.is_some())||value.turn.len()>256||value.item.as_ref().is_some_and(|s|s.len()>2048)||value.older.as_ref().is_some_and(|s|s.len()>2048){return Err("CHAT_HISTORY_CURSOR_INVALID".into())}Ok(value)}
+ fn encode(&self)->Result<Option<String>,String>{if self.item.is_none()&&self.older.is_none(){return Ok(None)}let raw=serde_json::to_string(self).map_err(|_|"CHAT_HISTORY_CURSOR_INVALID")?;Ok(Some(format!("agbrio-items-v1:{raw}")))}
+}
 fn project_public_chat_turn(turn:&str,head:&[Value],tail:&[Value])->Result<Vec<Value>,String>{
     if head.len()>1||tail.len()>20{return Err("CHAT_HISTORY_INVALID".into());}
     let mut messages=Vec::new();let mut seen=HashSet::new();
@@ -25,7 +32,7 @@ fn project_public_chat_turn(turn:&str,head:&[Value],tail:&[Value])->Result<Vec<V
             _=>None,
         };
         if let Some(text)=text.filter(|text|!text.trim().is_empty()&&text.len()<=1_000_000){
-            messages.push(json!({"id":id,"turnId":turn,"role":if item["type"]=="userMessage"{"user"}else{"assistant"},"text":text}));
+            messages.push(json!({"id":id,"clientId":if item["type"]=="userMessage"{item["clientId"].as_str()}else{None},"turnId":turn,"role":if item["type"]=="userMessage"{"user"}else{"assistant"},"text":text}));
         }
     }
     Ok(messages)
@@ -43,6 +50,18 @@ mod public_chat_projection_tests {
         assert_eq!(rows.len(),2);assert_eq!(rows[0]["id"],"u");assert_eq!(rows[1]["id"],"a");
         assert_eq!(project_public_chat_turn("exact",&[prompt.clone()],&[answer,prompt]).unwrap().len(),2);
     }
+    #[test]#[ignore="explicit existing native shared backend, read-only exact owner history; no resume/model/write"]
+    fn real_public_item_pagination_read_only(){
+      let thread=std::env::var("AGBRIO_READONLY_THREAD").unwrap();let expected=std::env::var("AGBRIO_READONLY_CLIENT_ID").unwrap();let url=std::env::var("AGBRIO_READONLY_SHARED_URL").unwrap();assert!(url.starts_with("ws://127.0.0.1:"));
+      let mut command=std::process::Command::new("node");command.arg(std::env::var("AGBRIO_READONLY_TRANSPORT").unwrap()).arg(url);
+      #[cfg(windows)]{use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}
+      let mut adapter=CodexAdapter::start_shared_transport(Arc::new(crate::events::NullEventSink),Arc::new(|_|{}),command).unwrap();adapter.initialize().unwrap();
+      let mut cursor=None;let mut ids=std::collections::HashSet::new();let mut matches=0;let mut pages=0;
+      for _ in 0..30{let page=adapter.read_public_chat_page(&thread,cursor.as_deref()).unwrap();pages+=1;for row in page["messages"].as_array().unwrap(){let id=row["id"].as_str().unwrap();assert!(ids.insert((row["turnId"].as_str().unwrap().to_owned(),id.to_owned())),"duplicate native item across pages");if row["clientId"].as_str()==Some(&expected){matches+=1;}}cursor=page["nextCursor"].as_str().map(str::to_owned);if matches>0||cursor.is_none(){break}}
+      assert_eq!(matches,1,"middle owner attachment prompt must be reachable");assert!(!adapter.has_owned_turns());assert!(adapter.request_counts().keys().all(|m|matches!(m.as_str(),"initialize"|"thread/turns/list"|"thread/items/list")));println!("pages={pages} uniquePublicItems={} exactMiddleOwnerPrompt={matches} modelCalls=0",ids.len());
+    }
+    #[test]fn item_pagination_cursors_stay_in_the_exact_native_thread(){let cursor=PublicChatCursor{thread:"exact".into(),turn:"middle-turn".into(),item:Some("native-item-page".into()),older:Some("older-turn-page".into())};let raw=cursor.encode().unwrap().unwrap();let parsed=PublicChatCursor::decode("exact",Some(&raw)).unwrap();assert_eq!(parsed.item.as_deref(),Some("native-item-page"));assert_eq!(parsed.older.as_deref(),Some("older-turn-page"));assert!(PublicChatCursor::decode("other",Some(&raw)).is_err());assert!(PublicChatCursor{item:None,older:None,..parsed}.encode().unwrap().is_none());}
+    #[test]fn client_identity_survives_attachment_prompt_projection(){let row=json!({"turnId":"t","item":{"id":"native","clientId":"owner-request","type":"userMessage","content":[{"type":"text","text":"reply with native material manifest"}]}});let result=project_public_chat_turn("t",&[row],&[]).unwrap();assert_eq!(result[0]["clientId"],"owner-request");}
     #[test]
     fn rejects_other_turns_and_does_not_invent_user_messages(){
         assert!(project_public_chat_turn("exact",&[json!({"turnId":"other"})],&[]).is_err());
@@ -665,29 +684,39 @@ impl CodexAdapter {
     /// Explicit conversation-reader action, bounded to four turns (tail20 +
     /// first item). Never used
     /// by passive observers; expose only public messages in the Host projection.
-    pub fn read_public_chat_page(&mut self, thread: &str, cursor: Option<&str>) -> Result<Value, String> {
-        if self.guard.is_some() || thread.is_empty() || thread.len()>256 || cursor.is_some_and(|c|c.len()>2048) {
-            return Err("PUBLIC_CHAT_READ_UNAVAILABLE".into());
+    /// Native async questions are omitted from thread/items/list by the current
+    /// Desktop serializer. Read only their allowlisted public rollout records.
+    pub fn async_answer_id(thread:&str,request:&str)->String{super::async_questions::answer_id(thread,request)}
+    pub fn read_async_owner_questions(&self,thread:&str,path:Option<&str>)->Vec<Value>{
+      if self.guard.is_some()||thread.is_empty()||thread.len()>256{return vec![]}
+      let Some(path)=path else{return vec![]};
+      let root=std::env::var_os("CODEX_HOME").map(std::path::PathBuf::from).or_else(||std::env::var_os("USERPROFILE").map(|p|std::path::PathBuf::from(p).join(".codex")));
+      root.map(|r|super::async_questions::read(std::path::Path::new(path),&r.join("sessions"),thread)).unwrap_or_default()
+    }
+    pub fn read_public_chat_page(&mut self,thread:&str,cursor:Option<&str>)->Result<Value,String>{
+      if self.guard.is_some()||thread.is_empty()||thread.len()>256||cursor.is_some_and(|c|c.len()>8192){return Err("PUBLIC_CHAT_READ_UNAVAILABLE".into())}
+      let mut position=PublicChatCursor::decode(thread,cursor)?;
+      self.public_chat_read=Some((thread.into(),4));
+      let result=(||{
+        if position.turn.is_empty(){
+          let turns=self.request_with_timeout("thread/turns/list",json!({"threadId":thread,"cursor":position.older,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"}),Duration::from_secs(12))?;
+          let rows=turns["data"].as_array().filter(|r|r.len()<=1).ok_or("CHAT_HISTORY_INVALID")?;
+          let Some(turn)=rows.first()else{return Ok(json!({"messages":[],"nextCursor":null}))};
+          position.turn=turn["id"].as_str().filter(|s|!s.is_empty()&&s.len()<=256).ok_or("CHAT_HISTORY_INVALID")?.into();position.older=turns["nextCursor"].as_str().map(str::to_owned);
         }
-        self.public_chat_read=Some((thread.into(),9));
-        let result=(|| {
-            let turns=self.request_with_timeout("thread/turns/list",json!({"threadId":thread,"cursor":cursor,"limit":4,"sortDirection":"desc","itemsView":"notLoaded"}),Duration::from_secs(12))?;
-            let rows=turns["data"].as_array().filter(|r|r.len()<=4).ok_or("CHAT_HISTORY_INVALID")?;
-            let mut messages=Vec::new();
-            for turn in rows {
-                let id=turn["id"].as_str().filter(|s|!s.is_empty()&&s.len()<=256).ok_or("CHAT_HISTORY_INVALID")?;
-                let items=self.request_with_timeout("thread/items/list",json!({"threadId":thread,"turnId":id,"cursor":null,"limit":20,"sortDirection":"desc"}),Duration::from_secs(12))?;
-                let rows=items["data"].as_array().filter(|r|r.len()<=20).ok_or("CHAT_HISTORY_INVALID")?;
-                // A long tool-heavy turn may omit its initiating user message
-                // from the tail. Read its real first item, never invent a prompt.
-                let first=self.request_with_timeout("thread/items/list",json!({"threadId":thread,"turnId":id,"cursor":null,"limit":1,"sortDirection":"asc"}),Duration::from_secs(12))?;
-                let first_rows=first["data"].as_array().filter(|r|r.len()<=1).ok_or("CHAT_HISTORY_INVALID")?;
-                messages.extend(project_public_chat_turn(id,first_rows,rows)?);
-            }
-            Ok(json!({"messages":messages,"nextCursor":turns["nextCursor"]}))
-        })();
-        self.public_chat_read=None;
-        result
+        let mut messages=Vec::new();
+        // Keep every native item cursor. A long tool-heavy turn must not drop
+        // middle owner messages by jumping from the tail to an older turn.
+        for _ in 0..3{
+          let items=self.request_with_timeout("thread/items/list",json!({"threadId":thread,"turnId":position.turn,"cursor":position.item,"limit":20,"sortDirection":"desc"}),Duration::from_secs(12))?;
+          let rows=items["data"].as_array().filter(|r|r.len()<=20).ok_or("CHAT_HISTORY_INVALID")?;
+          messages=project_public_chat_turn(&position.turn,&[],rows)?;
+          position.item=items["nextCursor"].as_str().map(str::to_owned);
+          if !messages.is_empty()||position.item.is_none(){break}
+        }
+        if position.item.is_none(){position.turn.clear()}
+        Ok(json!({"messages":messages,"nextCursor":position.encode()?,"coverage":"NATIVE_ITEM_PAGES"}))
+      })();self.public_chat_read=None;result
     }
 
     /// Read one public message by native identity for a displayed media reference.
@@ -779,7 +808,7 @@ impl CodexAdapter {
                 *remaining-=1;
             } else if let Some((thread,remaining))=self.public_chat_read.as_mut() {
                 let head_item=method=="thread/items/list"&&params["sortDirection"].as_str()==Some("asc")&&params["limit"].as_u64()==Some(1)&&params.get("cursor").is_some_and(Value::is_null);
-                if params.get("threadId").and_then(Value::as_str)!=Some(thread.as_str())||*remaining==0||(!head_item&&(params["sortDirection"].as_str()!=Some("desc")||params["limit"].as_u64()!=Some(if method=="thread/turns/list"{4}else{20}))){return Err("NORMAL_HISTORY_RPC_FORBIDDEN".into());}
+                if params.get("threadId").and_then(Value::as_str)!=Some(thread.as_str())||*remaining==0||(!head_item&&(params["sortDirection"].as_str()!=Some("desc")||params["limit"].as_u64()!=Some(if method=="thread/turns/list"{1}else{20}))){return Err("NORMAL_HISTORY_RPC_FORBIDDEN".into());}
                 *remaining-=1;
             } else if let Some(permit) = self.latest_turn_observation.as_mut() {
                 let same_thread = params.get("threadId").and_then(Value::as_str)

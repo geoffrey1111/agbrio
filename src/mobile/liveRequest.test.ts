@@ -13,6 +13,9 @@ it("does not timeout, retry or duplicate a write",async()=>{
 });
 it.each([
  ["/bridge-activity",{workstreamIds:["fixture"]}],
+ ["/claude-code/chat",{action:"HISTORY"}],
+ ["/claude-code/chat",{action:"CHILD_HISTORY"}],
+ ["/codex-watches/chat",{action:"HISTORY"}],
  ["/workstreams/fixture/role-bridge",{action:"SYNC"}],
  ["/workstreams/fixture/role-bridge",{action:"READ",role:"DECISION"}],
  ["/workstreams/fixture/role-bridge",{action:"THREADS"}],

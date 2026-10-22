@@ -274,7 +274,8 @@ fn smtp_outcome(
         Err(_) => ("UNKNOWN", Some("SMTP_ACCEPTANCE_UNKNOWN")),
     }
 }
-pub fn start(store: Arc<RouterStore>) {
+pub fn start(core: crate::host_application::RouterCore) {
+    let store=core.store.clone();
     std::thread::spawn(move || {
         #[cfg(windows)]
         unsafe {
@@ -288,6 +289,10 @@ pub fn start(store: Arc<RouterStore>) {
             let _ = repair_legacy_toasts(&store);
             let _ = store.enqueue_watch_deliveries();
             if let Ok(Some((channel, event))) = store.claim_watch_delivery() {
+                if let Ok(Some((root,child)))=store.child_result_event_target(event.sequence){
+                    let valid=store.codex_chat_context(&root).ok().filter(|w|w.enabled).is_some_and(|w|router_core::store::claude_manual::native_id(&root).ok().is_some_and(|sid|crate::claude_task_tree::read(&core,sid,&w.cwd).nodes.iter().any(|n|n.session_id==child)));
+                    if !valid{let _=store.finish_watch_delivery(event.sequence,&channel,"SKIPPED",Some("CHILD_RELATION_CHANGED"));continue;}
+                }
                 if let Ok(s) = store.watch_delivery_settings() {
                     let id = format!("aiwr-{}-{}", s.host_id, event.sequence);
                     let _=deliver_claimed_event_with(&store,&channel,&event,||deliver(&channel,&s,&id,Some(&event)));
@@ -307,7 +312,7 @@ pub fn start(store: Arc<RouterStore>) {
 }
 
 fn deliver_claimed_event_with(store:&RouterStore,channel:&str,event:&WatchEvent,send:impl FnOnce()->(&'static str,Option<&'static str>))->Result<(),String>{
-    if !store.watch_event_delivery_enabled(&event.thread_id)?{return store.finish_watch_delivery(event.sequence,channel,"SKIPPED",Some("WATCH_DISABLED_OR_BOUND"));}
+    if !store.watch_sequence_delivery_enabled(event.sequence,&event.thread_id)?{return store.finish_watch_delivery(event.sequence,channel,"SKIPPED",Some("WATCH_DISABLED_OR_BOUND"));}
     let(status,code)=send();store.finish_watch_delivery(event.sequence,channel,status,code)
 }
 
@@ -547,7 +552,7 @@ pub fn repair_legacy_toasts(store: &RouterStore) -> Result<usize, String> {
         if legacy && !foreground {
             continue;
         }
-        if event.as_ref().is_some_and(|e|!store.watch_event_delivery_enabled(&e.thread_id).unwrap_or(false)){continue;}
+        if event.as_ref().is_some_and(|e|!store.watch_sequence_delivery_enabled(e.sequence,&e.thread_id).unwrap_or(false)){continue;}
         show_windows_inner(event.as_ref(), true)?;
         repaired += 1;
     }

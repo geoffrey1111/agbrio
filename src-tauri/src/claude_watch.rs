@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime};
 pub(crate) struct Watcher { seen: HashMap<String, (u64, SystemTime)>, paths: HashMap<String, PathBuf> }
 
 /// Sessions whose state matters: bound in an active Bridge, or watched.
-fn targets(core: &RouterCore) -> Result<HashMap<String, Option<String>>, String> {
+pub(crate) fn targets(core: &RouterCore) -> Result<HashMap<String, Option<String>>, String> {
     let mut out = HashMap::new();
     for w in core.store.active_workstreams()?.into_iter().filter(|w| w.status == "ACTIVE" && w.trashed_at.is_none()) {
         let Ok(bindings) = core.store.role_bridge(&w.id) else { continue };
@@ -22,6 +22,7 @@ fn targets(core: &RouterCore) -> Result<HashMap<String, Option<String>>, String>
     for watch in core.store.codex_watches()?.into_iter().filter(|w| w.enabled) {
         if let Some(id) = watch.thread_id.strip_prefix(router_core::store::claude_manual::PREFIX) { out.entry(id.to_owned()).or_insert(Some(watch.cwd)); }
     }
+    for (key,_,_,cwd) in core.store.claude_child_contexts()? {if core.store.codex_chat_context(&key).is_ok(){if let Ok(id)=router_core::store::claude_manual::native_id(&key){out.entry(id.into()).or_insert(Some(cwd));}}}
     Ok(out)
 }
 
@@ -29,6 +30,8 @@ impl Watcher {
     /// One pass. Returns how many sessions changed.
     pub(crate) fn tick(&mut self, core: &RouterCore) -> Result<usize, String> {
         let Some(root) = crate::claude_transcript::projects_root() else { return Ok(0) };
+        crate::claude_child_contexts::renew(core);
+        crate::claude_owner_requests::tick(core);
         let targets = targets(core)?;
         let live: HashSet<&String> = targets.keys().collect();
         self.seen.retain(|k, _| live.contains(k));
@@ -44,6 +47,7 @@ impl Watcher {
             if self.seen.get(session) == Some(&stamp) && !recovering { continue; }
             if let Err(code) = observe(core, &path, session, cwd.as_deref()) { crate::claude_event_log::record(session, "TRANSCRIPT", &code); } else { self.seen.insert(session.clone(), stamp); changed += 1; }
         }
+        for session in targets.keys(){let _=crate::claude_chat::observe_children(core,&format!("claude_code:{session}"));}
         Ok(changed)
     }
 }
@@ -55,6 +59,7 @@ pub(crate) fn observe(core: &RouterCore, path: &std::path::Path, session: &str, 
     let completed = core.store.apply_claude_transcript(session, root, status.state, Some(&status.turn), reply.as_ref())?;
     if completed { crate::claude_code::materialize_bound(core, session)?; }
     crate::claude_chat::update_watch(core, session)?;
+    crate::claude_owner_requests::reconcile(core,session);
     crate::claude_chat::reconcile_deliveries(core, session)?;
     Ok(())
 }

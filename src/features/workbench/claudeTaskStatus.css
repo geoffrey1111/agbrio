@@ -1,0 +1,20 @@
+.claude-task-tree,.v4-chat-collaboration{margin:12px 0;padding:10px 14px;border:1px solid var(--line,#d8d5d0);border-radius:12px;min-width:0;overflow-wrap:anywhere;font-size:14px}
+.claude-task-tree summary,.v4-chat-collaboration summary{cursor:pointer;min-height:24px;line-height:1.6}
+.claude-task-tree summary:focus-visible,.v4-chat-collaboration summary:focus-visible{outline:2px solid currentColor;outline-offset:4px}
+.claude-task-tree p{font-size:13px;line-height:1.6;margin:8px 0}
+.claude-task-tree ul{list-style:none;padding:0;margin:12px 0;max-height:40dvh;overflow:auto}
+.claude-task-tree li{display:flex;gap:12px;align-items:baseline;justify-content:space-between;padding-block:7px}
+.claude-task-title{min-width:0;overflow-wrap:anywhere}
+.claude-task-tree li>span:last-child{flex-shrink:0;font-size:13px}
+.claude-task-tree [data-state=FAILED],.claude-task-tree [data-state=WAITING_DECISION]{font-weight:600}
+.v4-chat-collaboration{align-self:stretch;max-width:100%;background:transparent}
+
+.claude-child-result{min-width:0;width:100%}.claude-child-result>summary{display:flex;justify-content:space-between;gap:12px}.claude-child-result>summary>span:last-child{flex-shrink:0;font-size:13px}.claude-child-messages{padding:8px 0;max-height:55dvh;overflow:auto}.claude-child-messages article{margin:12px 0}.claude-child-messages article>span{font-size:12px;color:var(--text-muted,#777)}.claude-child-toggle{display:flex;align-items:center;gap:8px;min-height:44px}.claude-child-toggle input{width:18px;height:18px}.claude-child-messages button{min-height:44px}.claude-child-user{padding:8px 12px;background:var(--surface-muted,#f3f1ee);border-radius:12px}
+
+.claude-task-tree ul:has(.claude-child-result[open]){max-height:none;overflow:visible}.claude-child-messages{max-height:none;overflow:visible}
+
+.claude-child-result>summary::before{content:"▸";flex-shrink:0}.claude-child-result[open]>summary::before{content:"▾"}.claude-child-result>summary>.claude-task-title{flex:1}
+
+.claude-child-open{display:flex;align-items:baseline;justify-content:space-between;gap:12px;width:100%;min-height:44px;text-align:start;background:transparent;border:0;color:inherit}.claude-child-open>span:last-child{flex-shrink:0;font-size:13px}.claude-child-reader{min-width:0}.claude-child-reader .claude-child-messages{max-height:none;overflow:visible}
+
+.claude-permission-input{max-height:40dvh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}.claude-child-reader fieldset{min-width:0}.claude-child-reader .v4-question-card{margin-bottom:20px}

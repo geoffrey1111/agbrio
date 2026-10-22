@@ -21,13 +21,18 @@ pub(crate) enum ChatCommand {
  Receipt { #[serde(rename="threadId")]thread_id:String,id:String },
  AcknowledgeUnknown { #[serde(rename="threadId")]thread_id:String,id:String,confirmed:bool },
  Stop { #[serde(rename="threadId")]thread_id:String,#[serde(rename="turnId")]turn_id:String },
+ AsyncRespond { #[serde(rename="threadId")]thread_id:String,id:String,#[serde(rename="requestId")]request_id:String,revision:i64,answers:std::collections::HashMap<String,String> },
  Respond { #[serde(rename="threadId")]thread_id:String,#[serde(rename="requestId")]request_id:String,input:MobileCodexResponseInput },
  Options { #[serde(rename="threadId")]thread_id:String },
+ ChildOpen { #[serde(rename="threadId")]thread_id:String,generation:i64,#[serde(rename="childId")]child_id:String },
+ ClaudeDecision { #[serde(rename="threadId")]thread_id:String,generation:i64,#[serde(rename="childId")]child_id:Option<String>,id:String,revision:i64,answer:Value },
+ ChildHistory { #[serde(rename="threadId")]thread_id:String,generation:i64,#[serde(rename="childId")]child_id:String,cursor:Option<String> },
+ ChildNotifications { #[serde(rename="threadId")]thread_id:String,generation:i64,enabled:bool },
  History { #[serde(rename="threadId")]thread_id:String,cursor:Option<String> },
  Upload { #[serde(rename="threadId")]thread_id:String,name:String,data:String },
 }
 #[derive(Serialize)]#[serde(rename_all="camelCase")]
-pub(crate) struct ChatState {latest_turn:Option<router_core::codex::adapter::NativeTurnDiagnostic>, pub(crate) watch:CodexWatch,host:String,owned_turn_id:Option<String>,controllable_turn_id:Option<String>,external_busy:bool,replies:Vec<WatchReply>,requests:Vec<MobileCodexRequest>,goal:Option<MobileCodexGoal>,goal_controls:Option<crate::goal_control::GoalControls>,public_messages:Vec<Value>,activity:Option<String>,checked_at:i64 }
+pub(crate) struct ChatState {latest_turn:Option<router_core::codex::adapter::NativeTurnDiagnostic>, pub(crate) watch:CodexWatch,host:String,owned_turn_id:Option<String>,controllable_turn_id:Option<String>,external_busy:bool,replies:Vec<WatchReply>,requests:Vec<MobileCodexRequest>,async_questions:Vec<Value>,goal:Option<MobileCodexGoal>,goal_controls:Option<crate::goal_control::GoalControls>,public_messages:Vec<Value>,activity:Option<String>,checked_at:i64 }
 fn watch(core:&RouterCore,id:&str)->Result<CodexWatch,String>{core.store.codex_chat_context(id)}
 pub(crate) fn metadata(a:&mut crate::codex::adapter::CodexAdapter,w:&CodexWatch)->Result<Value,String>{
  let v=a.request_with_timeout("thread/read",json!({"threadId":w.thread_id,"includeTurns":false}),CODEX_OBSERVER_REQUEST_TIMEOUT)?;
@@ -41,10 +46,11 @@ pub(crate) fn state(core:&RouterCore,id:&str)->Result<ChatState,String>{
  if owned.is_some()&&activity.is_none(){activity=Some("EXECUTING".into());}
  let controllable=owned.clone().or_else(||(a.is_shared_subscribed(id)&&busy).then(||a.observed_turn_id(id)).flatten());
  let shared=a.is_shared_subscribed(id);
+ let async_questions=a.read_async_owner_questions(id,m.pointer("/thread/path").and_then(Value::as_str));
  let latest_turn=a.latest_turn_diagnostic(id).filter(|d|w.snapshot.turn_id.as_deref()==Some(&d.turn_id));
  let goal=read_codex_goal_from_session(&mut s,id)?;let requests:Vec<MobileCodexRequest>=s.pending_codex_requests.values().filter(|r|r.thread_id==id&&(shared||owned.as_deref()==Some(&r.turn_id))).filter_map(mobile_codex_request_projection).collect();
  let goal_controls=goal.as_ref().map(|g|crate::goal_control::controls(core,g,busy,!requests.is_empty())).transpose()?;
- Ok(ChatState{latest_turn,watch:w,host:std::env::var("COMPUTERNAME").unwrap_or_else(|_|"这台电脑".into()),owned_turn_id:owned,controllable_turn_id:controllable,external_busy:busy,replies:core.store.watch_replies(id)?,requests,goal,goal_controls,public_messages,activity,checked_at:std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64})
+ Ok(ChatState{latest_turn,watch:w,host:std::env::var("COMPUTERNAME").unwrap_or_else(|_|"这台电脑".into()),owned_turn_id:owned,controllable_turn_id:controllable,external_busy:busy,replies:core.store.watch_replies(id)?,requests,async_questions,goal,goal_controls,public_messages,activity,checked_at:std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64})
 }
 fn safe_dir(root:&str,parts:&[&str])->Result<PathBuf,String>{
  let root=std::fs::canonicalize(root).map_err(|_|"REPLY_PROJECT_UNAVAILABLE")?;let mut p=root.clone();
@@ -126,7 +132,14 @@ mod ack_tests{
   assert_eq!(reply_ack_turn(&r,&json!({"turnId":"expected"})),Some("expected"));assert!(reply_ack_turn(&r,&json!({"turnId":"other"})).is_none());assert!(reply_ack_turn(&r,&json!({"turn":{"id":"expected"}})).is_none());assert!(reply_ack_turn(&r,&json!({})).is_none());
  }
 }
+fn async_answer_text(card:&Value,answers:&std::collections::HashMap<String,String>)->Result<String,String>{
+ if card["responseSent"]!=false{return Err("REPLY_REQUEST_EXPIRED".into())}
+  let questions=card["questions"].as_array().ok_or("REPLY_REQUEST_EXPIRED")?;if questions.len()!=answers.len(){return Err("REPLY_ANSWER_INVALID".into())}
+  let rows=questions.iter().map(|q|{let key=q["id"].as_str().ok_or("REPLY_REQUEST_EXPIRED")?;let answer=answers.get(key).filter(|s|!s.trim().is_empty()&&s.len()<=16000).ok_or("REPLY_ANSWER_INVALID")?;Ok(json!({"questionItemId":key,"question":q["label"],"answer":answer}))}).collect::<Result<Vec<Value>,&str>>()?;
+  Ok(format!("<send_user_message_question_reply>\n{}\n</send_user_message_question_reply>",serde_json::to_string(&rows).map_err(|_|"REPLY_ANSWER_INVALID")?))
+}
 pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{match c{
+ ChatCommand::ChildOpen{..}|ChatCommand::ClaudeDecision{..}|ChatCommand::ChildHistory{..}|ChatCommand::ChildNotifications{..}=>Err("CLAUDE_OPERATION_NOT_SUPPORTED".into()),
  ChatCommand::GoalControl{thread_id,id,operation,input,confirmed}=>{require_goal_confirmation(confirmed)?;if input.target.thread_id!=thread_id{return Err("GOAL_TARGET_CHANGED".into());}serde_json::to_value(crate::goal_control::apply(core,&id,input,&operation,true)?).map_err(|_|"GOAL_RESPONSE_INVALID".into())},
  ChatCommand::GoalReceipt{thread_id,id}=>{watch(core,&thread_id)?;serde_json::to_value(core.store.goal_control_receipt(&thread_id,&id)?).map_err(|_|"GOAL_RESPONSE_INVALID".into())},
  ChatCommand::Upload{thread_id,name,data}=>upload(core,&thread_id,&name,&data),
@@ -137,6 +150,14 @@ pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{matc
  ChatCommand::Options{thread_id}=>{let w=watch(core,&thread_id)?;let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;let a=s.adapter.as_mut().ok_or("Codex backend disconnected")?;metadata(a,&w)?;let models=a.request("model/list",json!({"limit":100,"cursor":null}))?;Ok(json!({"models":models["data"],"permissions":"INHERITED"}))},
  ChatCommand::History{thread_id,cursor}=>{let w=watch(core,&thread_id)?;let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;let a=s.adapter.as_mut().ok_or("Codex backend disconnected")?;metadata(a,&w)?;a.read_public_chat_page(&thread_id,cursor.as_deref())},
  ChatCommand::Stop{thread_id,turn_id}=>{let w=watch(core,&thread_id)?;let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;let a=s.adapter.as_mut().ok_or("Codex backend disconnected")?;metadata(a,&w)?;let (_,_,current)=crate::codex_watch::inspect(a,&thread_id)?;let m=metadata(a,&w)?;if !(a.is_exact_turn_active(&thread_id,&turn_id)||a.is_shared_subscribed(&thread_id)&&m.pointer("/thread/status/type").and_then(Value::as_str)==Some("active")&&current.state=="RUNNING"&&a.observed_turn_id(&thread_id).as_deref()==Some(turn_id.as_str())){return Err("REPLY_TURN_CHANGED_REFRESH".into());}a.interrupt_turn(&thread_id,&turn_id)?;Ok(json!({"ok":true}))},
+ ChatCommand::AsyncRespond{thread_id,id,request_id,revision,answers}=>{
+  watch(core,&thread_id)?;if id!=router_core::codex::adapter::CodexAdapter::async_answer_id(&thread_id,&request_id){return Err("REPLY_ANSWER_INVALID".into())}
+  if let Some(prior)=core.store.watch_reply(&id)?{if prior.thread_id!=thread_id{return Err("REPLY_TARGET_CHANGED_REFRESH".into())}return serde_json::to_value(prior).map_err(|_|"REPLY_RESPONSE_INVALID".into())}
+  let view=state(core,&thread_id)?;let card=view.async_questions.iter().find(|q|q["requestId"]==request_id&&q["responseSent"]==false).ok_or("REPLY_REQUEST_EXPIRED")?;if revision!=1{return Err("REPLY_REQUEST_EXPIRED".into())}
+  let text=async_answer_text(card,&answers)?;
+  let mode=if view.external_busy&&view.controllable_turn_id.is_some(){"STEER"}else if view.external_busy{"QUEUE"}else{"SEND"};let expected=if mode=="STEER"{view.controllable_turn_id}else{view.watch.snapshot.turn_id};
+  command(core,ChatCommand::Send{thread_id,id,generation:view.watch.generation,source_sequence:None,expected_turn_id:expected,mode:mode.into(),text,options:Default::default()})
+ },
  ChatCommand::Respond{thread_id,request_id,input}=>{let w=watch(core,&thread_id)?;let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;let a=s.adapter.as_mut().ok_or("Codex backend disconnected")?;metadata(a,&w)?;let owned=a.active_turn_id(&thread_id);let shared=a.is_shared_subscribed(&thread_id);let r=s.pending_codex_requests.get(&request_id).ok_or("REPLY_REQUEST_EXPIRED")?.clone();if r.thread_id!=thread_id||(!shared&&owned.as_deref()!=Some(&r.turn_id))||r.responded||r.revision!=input.revision{return Err("REPLY_REQUEST_EXPIRED".into());}let payload=server_request_response_result(&r,input)?;s.adapter.as_mut().unwrap().respond_to_server_request(&r.raw_request_id,payload)?;let r=s.pending_codex_requests.get_mut(&request_id).unwrap();r.responded=true;r.revision+=1;Ok(json!({"ok":true}))},
  ChatCommand::Send{thread_id,id,generation,source_sequence,expected_turn_id,mode,text,options}=>{
   let w=watch(core,&thread_id)?;if generation!=w.generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}if mode=="STEER"&&(options.model.is_some()||options.effort.is_some()){return Err("REPLY_STEER_INHERITS_OPTIONS".into());}
@@ -156,6 +177,9 @@ pub(crate) fn start_queue(core:RouterCore){let _=core.store.recover_watch_replie
 #[cfg(test)]mod tests{
  use super::*;use std::sync::{Arc,Mutex};use router_core::store::codex_watch::WatchSnapshot;
  fn fixture()->(tempfile::TempDir,RouterCore){let d=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap());store.enable_codex_watch("exact","public fixture",&d.path().to_string_lossy(),&WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()}).unwrap();(d,RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()})}
+ #[test]fn asynchronous_owner_answers_preserve_native_question_ids_and_reject_stale_or_incomplete_choices(){
+ let card=json!({"responseSent":false,"questions":[{"id":"[\"request_user_input_async\",\"call-one\",0]","label":"Choose"}]});let key=card["questions"][0]["id"].as_str().unwrap();let mut answers=std::collections::HashMap::new();assert!(async_answer_text(&card,&answers).is_err());answers.insert(key.into(),"A".into());let text=async_answer_text(&card,&answers).unwrap();let rows:Vec<Value>=serde_json::from_str(text.trim_start_matches("<send_user_message_question_reply>\n").trim_end_matches("\n</send_user_message_question_reply>")).unwrap();assert_eq!(rows[0]["questionItemId"],key);assert_eq!(rows[0]["answer"],"A");let mut stale=card;stale["responseSent"]=json!(true);assert!(async_answer_text(&stale,&answers).is_err());
+ }
  #[test]#[ignore="explicit isolated official native WS + loopback model only"]
  fn shared_desktop_question_and_steer_through_watch_service(){
   assert_eq!(std::env::var("AIWR_LOCAL_MODEL_ONLY").unwrap(),"1");

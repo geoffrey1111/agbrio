@@ -4,6 +4,7 @@ import {ExternalLink,FolderOpen,Globe} from 'lucide-react';
 import {liveRequest} from '../../mobile/api';
 import {t as uiText,useLanguage} from '../../i18n';
 import {CharacterBoard} from './CharacterBoard';
+import {sizeBoardInputs} from './mobileInputSizing';
 
 /** Where the board comes from. Only the desktop may change it. */
 export type BoardSource={kind:'LOCAL';root:string;extraRoots?:string[]}|{kind:'URL';url:string;desktopUrl?:string|null};
@@ -23,7 +24,7 @@ function useBoardSource(enabled=true){
 /** A web board is embedded as-is; a local folder uses the existing isolated projection. */
 export function BoardView({active}:{active:boolean}){
  useLanguage();const source=useBoardSource(active);
- if(source?.kind==='URL'){const src=isTauri()&&source.desktopUrl?source.desktopUrl:source.url;return <div className="board-web"><iframe src={src} title={uiText('看板')} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads" referrerPolicy="no-referrer"/><a className="board-web-open" href={src} target="_blank" rel="noreferrer noopener"><ExternalLink size={16}/>{uiText('在浏览器打开')}</a></div>;}
+ if(source?.kind==='URL'){const src=isTauri()&&source.desktopUrl?source.desktopUrl:source.url;return <div className="board-web"><iframe src={src} title={uiText('看板')} onLoad={e=>sizeBoardInputs(e.currentTarget)} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads" referrerPolicy="no-referrer"/><a className="board-web-open" href={src} target="_blank" rel="noreferrer noopener"><ExternalLink size={16}/>{uiText('在浏览器打开')}</a></div>;}
  if(source===null)return <div className="v6-empty board-unset"><h2>{uiText('还没有选择看板')}</h2><p>{isTauri()?uiText('在 设置 → 看板来源 里选择一个本地文件夹或网页地址。'):uiText('在电脑上的 Agbrio：设置 → 看板来源 里选择。')}</p></div>;
  if(source===undefined)return <p className="board-source-muted" role="status">{uiText('正在读取…')}</p>;
  return <CharacterBoard active={active}/>;

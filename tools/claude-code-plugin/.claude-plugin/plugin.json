@@ -1,6 +1,6 @@
 {
   "name": "agbrio-bridge",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Observe exact local Claude Code sessions for Agbrio. Explicit owner text replies use the original session; no automatic model calls or handoffs.",
   "author": {
     "name": "Agbrio"

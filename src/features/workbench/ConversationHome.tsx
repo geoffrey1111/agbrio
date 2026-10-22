@@ -1,3 +1,4 @@
+import {claudeTaskSummary} from "./ClaudeTaskStatus";
 import {t as uiText,tc,useLanguage,getLanguage} from "../../i18n";
 import {useEffect,useMemo,useRef,useState,type ReactNode} from "react";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -32,11 +33,16 @@ const when=(value:number)=>{if(!value)return"";const minutes=(Date.now()-value)/
 export function watchTone(w:CodexWatch):[Tone,string]{
  if(!w.enabled)return["done",uiText("已暂停")];
  if(w.errorCode)return["done",uiText("暂时无法读取")];
+ if(w.snapshot.state==="ACTION_REQUIRED")return ["wait",uiText("等你确认")];
+ if(w.snapshot.state==="FAILED")return ["wait",uiText("执行失败")];
+ if(w.taskTree?.attention)return ["wait",claudeTaskSummary(w.taskTree)!];
+ if(w.taskTree?.running)return ["run",claudeTaskSummary(w.taskTree)!];
+ if(w.taskTree&&(w.taskTree.unknown||w.taskTree.limited)&&w.snapshot.state!=="RUNNING")return ["done",claudeTaskSummary(w.taskTree)!];
  switch(w.snapshot.state){
   case"RUNNING":return["run",uiText("执行中")];
   case"ACTION_REQUIRED":return["wait",uiText("等你确认")];
   case"FAILED":return["wait",uiText("执行失败")];
-  case"RESULT_READY":return["done",uiText("结果已到达")];
+  case"RESULT_READY":return["done",uiText(isClaude(w.threadId)?"本轮已结束":"结果已到达")];
   case"INTERRUPTED":return["done",uiText("已停止")];
   default:return["done",""];
  }

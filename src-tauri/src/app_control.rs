@@ -1,0 +1,48 @@
+//! Application commands shared by authenticated HTTP, MCP and local maintenance.
+//! This surface never calls a provider, changes approval policy or returns chat data.
+use crate::{host_application::RouterCore, HostRuntime};
+use serde_json::{json, Value};
+
+pub(crate) const API_VERSION: u32 = 1;
+pub(crate) fn version() -> &'static str {
+    option_env!("VITE_AGBRIO_APP_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
+}
+
+pub(crate) fn capabilities(scope: &str) -> Value {
+    let instance = matches!(scope,"INSTANCE"|"OWNER");
+    json!({
+        "apiVersion":API_VERSION,"appVersion":version(),"scope":scope,
+        "tools":crate::assistant_mcp::tools_for_scope(scope)["tools"],
+        "discoveryOnly":true,"delegationRequired":true,
+        "applicationReads":instance,
+        "http":if scope=="OWNER" {json!({"capabilities":"GET /v1/mobile/app/capabilities","diagnostics":"GET /v1/mobile/app/diagnostics","authentication":"existing owner authentication"})}else{Value::Null},
+        "providers":{
+            "CODEX":{"read":true,"writes":"EXISTING_REVIEWED_ACTIONS","runtimeVerificationRequired":true},
+            "CHATGPT":{"read":true,"writes":"EXISTING_REVIEWED_HANDOFF","accountSecurityStop":true},
+            "CLAUDE_CODE":{"read":true,"writes":"OWNER_TEXT_ONLY","mcpWrite":false,"attachments":false,"goalControl":false}
+        },
+        "localMaintenance":{"transport":"WINDOWS_CURRENT_USER_NAMED_PIPE","commands":["STATUS","CAPABILITIES","DIAGNOSTICS","SHUTDOWN"],"start":"external local CLI","shutdownRequiresExactInstance":true,"remoteShutdown":false},
+        "rules":["Discovery is not delegation or runtime readiness","Use stable native identities and existing review/receipt commands","After uncertain writes inspect the original receipt; never resend automatically","No shell, credentials, provider restart or permission changes"]
+    })
+}
+
+pub(crate) fn diagnostics(core: &RouterCore, host: Option<&HostRuntime>) -> Result<Value, String> {
+    let watches=core.store.codex_watches().map_err(|_|"APP_DIAGNOSTICS_STORE_UNAVAILABLE")?;
+    let catalog=core.store.claude_catalog().map_err(|_|"APP_DIAGNOSTICS_STORE_UNAVAILABLE")?;
+    let now=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+    let codex=match core.session.try_lock() {
+        Ok(s)=>json!({"observation":"AVAILABLE","connecting":s.connecting,"borrowed":s.codex_adapter_borrowed,"connected":s.adapter.as_ref().is_some_and(|a|!a.is_closed())}),
+        Err(_)=>json!({"observation":"BUSY","connected":null})
+    };
+    let runtime=host.map(|h| {
+        let web=h.web.status();
+        json!({"instanceId":h.instance_id(),"pid":std::process::id(),"mobileListening":h.mobile_address().is_some(),
+            "web":{"localReady":web.local_ready,"tunnelReady":web.tunnel_ready,"publicReady":web.public_ready,"checkedAt":web.checked_at}})
+    });
+    Ok(json!({"apiVersion":API_VERSION,"appVersion":version(),"checkedAt":now,"host":runtime,
+        "store":{"readable":true},"codex":codex,
+        "claude":{"registeredSessions":catalog.sessions.len(),"livePublishers":catalog.sessions.iter().filter(|s|s.lease_until>now&&s.state!="SESSION_END").count(),"mcpWrite":false},
+        "watches":{"total":watches.len(),"enabled":watches.iter().filter(|w|w.enabled).count()},
+        "coverage":"LOCAL_OBSERVATION_ONLY","providerProbePerformed":false,
+        "notice":"Counts and liveness do not prove end-to-end delivery, provider account readiness or user acceptance"}))
+}

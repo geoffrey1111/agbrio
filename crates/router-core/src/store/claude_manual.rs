@@ -37,7 +37,7 @@ pub struct ManualReceipt {
     pub request_id:String,pub session_id:String,pub instance_id:String,pub cwd:String,
     pub status:String,pub message_id:Option<String>,pub text_sha256:String,
 }
-fn verify_publisher(c:&Connection,token:&str,sid:&str,instance:&str,cwd:&str)->Result<(),String>{
+pub(super) fn verify_publisher(c:&Connection,token:&str,sid:&str,instance:&str,cwd:&str)->Result<(),String>{
     let owner=super::claude_code::auth(c,token,now())?;
     // Token, session and plugin instance prove the publisher; the working directory may
     // differ from the session's root during a turn.
@@ -46,6 +46,8 @@ fn verify_publisher(c:&Connection,token:&str,sid:&str,instance:&str,cwd:&str)->R
     if !matched {return Err("CLAUDE_COMMAND_PUBLISHER_CHANGED".into());} Ok(())
 }
 impl RouterStore {
+    /// Only independently acknowledged native rows identify a rendered owner prompt.
+    pub fn claude_manual_message_ids(&self,key:&str)->Result<std::collections::HashMap<String,String>,String>{self.with_connection(|c|{let mut q=c.prepare("SELECT r.id,m.message_id FROM claude_manual_commands m JOIN watch_replies r ON r.id=m.request_id WHERE r.thread_id=?1 AND r.status='SENT' AND m.message_id IS NOT NULL ORDER BY r.created_at DESC LIMIT 100").map_err(db_error)?;let rows=q.query_map([key],|r|Ok((r.get(0)?,r.get(1)?))).map_err(db_error)?.collect::<Result<std::collections::HashMap<_,_>,_>>().map_err(db_error)?;Ok(rows)})}
     pub fn claude_manual_ready(&self,sid:&str,instance:&str)->Result<bool,String>{self.with_connection(|c|c.query_row("SELECT EXISTS(SELECT 1 FROM claude_control_leases WHERE session_id=?1 AND instance_id=?2 AND checked_at>?3)",params![sid,instance,now()-30_000],|r|r.get(0)).map_err(db_error))}
     pub fn enqueue_claude_manual(&self,r:&WatchReply,instance:&str)->Result<(),String>{
         let sid=native_id(&r.thread_id)?;

@@ -1,3 +1,4 @@
+import {claudeTaskSummary} from "./ClaudeTaskStatus";
 import {useEffect,useRef} from "react";
 import {LoaderCircle,Check,Bot,MessageCircle,Pause,TriangleAlert,Clock3} from "lucide-react";
 import {t} from "../../i18n";
@@ -31,7 +32,7 @@ export function BridgeActivityStrip({activity,age}:{activity:BridgeActivity;age:
  if(!focus)return null;
  const {side,concurrent}=focus,phase=side.phase;
  const Icon=phase==="COMPLETE"?Check:phase==="ACTION_REQUIRED"?MessageCircle:phase==="PAUSED"?Pause:phase==="FAILED"?TriangleAlert:phase==="RESULT_PENDING"?Clock3:LoaderCircle;
- const text=concurrent?t("两端同时执行"):side.goalStatus&&!["RUNNING","THINKING"].includes(phase)&&!(side.goalStatus==="active"&&phase==="ACTION_REQUIRED")?goalStatusText(side.goalStatus):t(copy[phase]);
+ const text=side.taskTree&&claudeTaskSummary(side.taskTree)?claudeTaskSummary(side.taskTree):concurrent?t("两端同时执行"):side.goalStatus&&!["RUNNING","THINKING"].includes(phase)&&!(side.goalStatus==="active"&&phase==="ACTION_REQUIRED")?goalStatusText(side.goalStatus):t(copy[phase]);
  return <span ref={root} className="r2-bridge-statuses" aria-label={t("当前状态")}><span className="r2-agent-state" data-phase={phase} data-role={side.role}>
  <span className="r2-agent-symbol"><Icon size={13}/><i className="r2-agent-signal" aria-hidden/></span>{!concurrent&&<span>{t(side.role==="DECISION"?"控制":"执行")}</span>}<strong>{text}</strong>
  </span></span>;

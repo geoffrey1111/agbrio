@@ -172,8 +172,8 @@ async fn mcp_response(state:&MobileHttpState,headers:HeaderMap,input:serde_json:
  }
  if input["method"].as_str().is_some_and(|m|m.starts_with("events/")){if !mcp2{return Err(ApiError(StatusCode::BAD_REQUEST,"MCP Events requires protocol2026-07-28".into()));}let result=crate::assistant_events::rpc(&state.core,&grant.id,input).await;state.assistant_discovery.rpc(trace,&result);let mut response=Json(result).into_response();response.headers_mut().insert("cache-control",HeaderValue::from_static("no-store"));return Ok(response);}
  let read_app=input["method"]=="tools/call"&&input.pointer("/params/name").and_then(serde_json::Value::as_str)==Some("agbrio_read_app");
- let core=state.core.clone();let gid=grant.id;
- let mut result=run_core_blocking("Assistant MCP",move||Ok(crate::assistant_mcp::rpc(&core,&gid,input))).await?;
+ let core=state.core.clone();let host=state.host.clone();let gid=grant.id;
+ let mut result=run_core_blocking("Assistant MCP",move||Ok(crate::assistant_mcp::rpc_with_host(&core,Some(&host),&gid,input))).await?;
  if read_app&&result.pointer("/result/isError")==Some(&serde_json::Value::Bool(false)){
     if let Some(data)=result.pointer_mut("/result/structuredContent"){
         data["mcpDiscovery"]=state.assistant_discovery.snapshot();let text=data.to_string();

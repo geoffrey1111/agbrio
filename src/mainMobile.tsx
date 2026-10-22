@@ -1,6 +1,5 @@
 import {registerCurrentServiceWorker} from "./mobile/push";
 import {startPwaUpdates} from './mobile/pwaUpdates';
-import {PwaUpdateNotice} from './mobile/PwaUpdateNotice';
 import { WebLoginGate } from "./mobile/WebLogin";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -14,7 +13,7 @@ if(window.isSecureContext&&"serviceWorker" in navigator){void registerCurrentSer
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <WebLoginGate><UnifiedMobileWorkbenchHost initialSurface={location.pathname==="/mobile/notifications"?"NOTIFICATIONS":"BRIDGES"}/></WebLoginGate><PwaUpdateNotice/>
+    <WebLoginGate><UnifiedMobileWorkbenchHost initialSurface={location.pathname==="/mobile/notifications"?"NOTIFICATIONS":"BRIDGES"}/></WebLoginGate>
   </StrictMode>,
 );
 
@@ -24,3 +23,4 @@ import "./styles/native-router.css";
 import "./styles/interaction-motion.css";
 import "./styles/conversation-v6.css";
 import "./styles/agbrio-v6-theme.css";
+import "./styles/mobile-inputs.css";

@@ -1,6 +1,11 @@
+mod app_control;
+mod local_control;
 mod codex_quota;
 mod claude_quota;
 mod claude_transcript;
+mod claude_task_tree;
+mod claude_owner_requests;
+mod claude_child_contexts;
 mod claude_event_log;
 mod claude_watch;
 mod claude_code;
@@ -151,13 +156,18 @@ async fn codex_delivery_command(input:watch_notifications::DeliveryCommand,state
 fn codex_notification_navigation(state:State<'_,watch_notifications::NotificationNavigation>)->Option<i64>{state.0.lock().ok()?.take()}
 
 #[tauri::command]
+fn app_capabilities()->serde_json::Value{app_control::capabilities("OWNER")}
+#[tauri::command]
+fn app_diagnostics(core:State<'_,RouterCore>,host:State<'_,HostRuntime>)->Result<serde_json::Value,String>{app_control::diagnostics(&core,Some(&host))}
+
+#[tauri::command]
 fn claude_watch_chat(thread_id:String,state:State<'_,RouterState>)->Result<serde_json::Value,String>{claude_chat::state(state.inner(),&thread_id)}
 #[tauri::command]
 fn claude_watch_chat_command(input:watch_chat::ChatCommand,state:State<'_,RouterState>)->Result<serde_json::Value,String>{claude_chat::command(state.inner(),input)}
 #[tauri::command]
 fn codex_watch_candidates(state:State<'_,RouterState>)->Result<ExistingCodexThreadCatalog,String>{codex_watch::candidates(state.inner())}
 #[tauri::command]
-fn codex_watch_list(state:State<'_,RouterState>)->Result<Vec<router_core::store::codex_watch::CodexWatch>,String>{state.store.codex_watches()}
+fn codex_watch_list(state:State<'_,RouterState>)->Result<Vec<crate::claude_chat::WatchView>,String>{crate::claude_chat::list(&state)}
 #[tauri::command]
 fn codex_watch_enable(thread_id:String,state:State<'_,RouterState>)->Result<(),String>{codex_watch::enable(state.inner(),&thread_id)}
 #[tauri::command]
@@ -1348,7 +1358,7 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let _ = notification_activation::register(app.handle());
     #[cfg(windows)]
     let _ = watch_notifications::repair_legacy_toasts(&core.store);
-    watch_notifications::start(core.store.clone());
+    watch_notifications::start(core.clone());
     watch_chat::start_queue(core.clone());
     watch_notifications::navigate(app.handle(),std::env::args());
     let host = app.state::<HostRuntime>();
@@ -1401,6 +1411,7 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let observer_core = core.clone();
     std::thread::spawn(move || run_chatgpt_existing_conversation_observer(observer_core));
     crate::claude_watch::start(core.clone());
+    local_control::start(app.handle().clone(),core.clone(),host.inner().clone());
     // Integrated startup has exactly one ChatGPT transport: Core's Executor.
     // Clearing AUTH_REQUIRED must not reactivate Connector/Native Messaging
     // registration, provisioning or its listener on the next normal startup.
@@ -1521,7 +1532,7 @@ pub fn run() {
     let builder = builder.setup(|app| configure_host(app));
     #[cfg(debug_assertions)]
     let builder = builder.invoke_handler(tauri::generate_handler![
-        character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
+        app_capabilities,app_diagnostics,character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
         claude_code_sessions,claude_code_connections,claude_code_setup,claude_code_connect,claude_code_revoke,
         desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
@@ -1610,7 +1621,7 @@ pub fn run() {
     ]);
     #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(tauri::generate_handler![
-        character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
+        app_capabilities,app_diagnostics,character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
         claude_code_sessions,claude_code_connections,claude_code_setup,claude_code_connect,claude_code_revoke,
         desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,

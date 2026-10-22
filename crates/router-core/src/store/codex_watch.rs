@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 pub const NOTIFICATION_RETENTION_LIMIT: i64 = 20;
 
-fn prune_events(tx: &rusqlite::Transaction<'_>) -> Result<usize, String> {
+pub(super) fn prune_events(tx: &rusqlite::Transaction<'_>) -> Result<usize, String> {
     let cutoff: Option<i64> = tx
         .query_row(
             "SELECT sequence FROM codex_watch_events ORDER BY sequence DESC LIMIT 1 OFFSET ?1",
@@ -108,7 +108,7 @@ fn watch_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CodexWatch> {
 /// Negative generation fingerprints pin Bridge/revision/endpoint/cwd; they cannot
 /// collide with standalone watch generations, which are positive. Keep the
 /// fingerprint within 52 bits so desktop/PWA JSON numbers remain exact.
-pub(super) fn chat_context(c:&Connection,id:&str)->Result<CodexWatch,String>{
+pub(super) fn primary_chat_context(c:&Connection,id:&str)->Result<CodexWatch,String>{
  let (provider,external)=if id.starts_with(super::claude_manual::PREFIX){("CLAUDE_CODE",super::claude_manual::native_id(id)?)}else{("CODEX",id)};
  let binding:Option<(String,String,String,String,i64)>=c.query_row("SELECT e.id,e.label,d.cwd,w.id,w.binding_revision FROM endpoints e JOIN workstreams w ON w.id=e.workstream_id JOIN endpoint_role_details d ON d.endpoint_id=e.id WHERE e.provider=?2 AND e.external_id=?1 AND e.status='ACTIVE' AND w.trashed_at IS NULL AND w.archived_at IS NULL AND d.cwd IS NOT NULL ORDER BY w.id,e.id LIMIT 1",params![external,provider],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).optional().map_err(db_error)?;
  if let Some((endpoint,label,cwd,bridge,revision))=binding{
@@ -119,6 +119,8 @@ pub(super) fn chat_context(c:&Connection,id:&str)->Result<CodexWatch,String>{
  }
  c.query_row("SELECT thread_id,label,cwd,enabled,generation,snapshot_json,checked_at,error_code,retry_after FROM codex_watches WHERE thread_id=?1 AND NOT EXISTS(SELECT 1 FROM watch_removed_items WHERE kind='WATCH' AND id=codex_watches.thread_id)",[id],watch_row).optional().map_err(db_error)?.ok_or("WATCH_NOT_FOUND".into())
 }
+pub(super) fn chat_context(c:&Connection,id:&str)->Result<CodexWatch,String>{match primary_chat_context(c,id){Ok(w)=>Ok(w),Err(e) if e=="WATCH_NOT_FOUND"&&id.starts_with(super::claude_manual::PREFIX)=>super::claude_child_contexts::context(c,id),Err(e)=>Err(e)}}
+
 impl RouterStore {
     /// Reading a notification acknowledges this exact chat through the selected
     /// sequence, including older retained events not loaded on the client yet.

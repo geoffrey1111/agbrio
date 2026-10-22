@@ -71,7 +71,7 @@ fn children(path: &Path, budget: &mut usize) -> Vec<fs::DirEntry> {
 }
 /// Every desktop session metadata file under every account partition, with that
 /// partition folder's archived index.
-fn session_files(roots: &[PathBuf]) -> Vec<(PathBuf, std::collections::HashSet<String>)> {
+pub(crate) fn session_files(roots: &[PathBuf]) -> Vec<(PathBuf, std::collections::HashSet<String>)> {
     let mut files = Vec::new();
     let mut budget = 4096;
     for root in roots {

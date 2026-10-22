@@ -10,7 +10,7 @@ await mkdir(path.join(fixture,'.claude-plugin'));await mkdir(path.join(fixture,'
 const manifest=JSON.parse(await readFile(path.join(plugin,'.claude-plugin/plugin.json'),'utf8'));
 manifest.userConfig.hostUrl.default='http://127.0.0.1:12345';manifest.userConfig.token.default='a'.repeat(64);
 await writeFile(path.join(fixture,'.claude-plugin/plugin.json'),JSON.stringify(manifest));
-for(const file of ['register.mjs','hooks.json'])await copyFile(path.join(plugin,'hooks',file),path.join(fixture,'hooks',file));
+for(const file of ['register.mjs','owner-requests.mjs','hooks.json'])await copyFile(path.join(plugin,'hooks',file),path.join(fixture,'hooks',file));
 await copyFile(path.join(import.meta.dirname,'native-compat.test.ts'),path.join(fixture,'native.test.ts'));
 const result=spawnSync(path.resolve(engine),['plugin','test',fixture],{windowsHide:true,encoding:'utf8'});
 process.stdout.write(result.stdout??'');process.stderr.write(result.stderr??'');
