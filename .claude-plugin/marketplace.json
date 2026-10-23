@@ -7,8 +7,8 @@
     {
       "name": "agbrio-bridge",
       "source": "./tools/claude-code-plugin",
-      "description": "Exact-session local observation only; no model calls or sends."
+      "description": "Claude conversation observation and on-demand Codex messaging through Agbrio."
     }
   ],
-  "description": "Observation-only Agbrio Bridge plugin for local Claude Code sessions."
+  "description": "Agbrio for Claude Code: follow conversations and communicate with selected Codex threads."
 }
