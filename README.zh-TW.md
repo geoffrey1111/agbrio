@@ -1,6 +1,6 @@
 <img src="docs/assets/agbrio-icon.png" width="72" alt="Agbrio">
 
-**rc.54 包含可設定看板、Claude 子對話樹、原生問題與決策卡片、訊息排序修正、精簡手機傳送提示，以及應用能力探索和本機操作 API。** 請在設定中配置自己的看板；不包含私人看板內容。[版本範圍](docs/RELEASE_0.1.35-rc.54.md)。
+**rc.55 包含可設定看板、Claude 子對話樹、原生問題與決策卡片、訊息排序修正、精簡手機傳送提示，以及應用能力探索和本機操作 API。** 請在設定中配置自己的看板；不包含私人看板內容。[版本範圍](docs/RELEASE_0.1.35-rc.55.md)。
 
 # Agbrio
 
@@ -12,17 +12,17 @@
 
 **思考留在思考端，執行留在執行端，Bridge 負責準確交接。**
 
-[下載 Windows v0.1.35-rc.54](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.54) · [安裝與配對](docs/SETUP.md) · [連接 AI 助手](docs/ASSISTANT_CONNECTION_GUIDE.zh-TW.md) · [MIT 授權](LICENSE)
+[下載 Windows v0.1.35-rc.55](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.55) · [安裝與配對](docs/SETUP.md) · [連接 AI 助手](docs/ASSISTANT_CONNECTION_GUIDE.zh-TW.md) · [MIT 授權](LICENSE)
 
-[最新共享 Codex 修復版 v0.1.35-rc.54](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.54)：獨立共享與返回普通入口、本機工具元件驗證及 Windows 狀態恢復。[已完成檢查與剩餘限制](docs/RELEASE_0.1.35-rc.54.md)。這是目前最新推薦下載，不含私人角色看板；保留準確 rc.54 版本號及檢查範圍。
+[最新共享 Codex 修復版 v0.1.35-rc.55](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.55)：獨立共享與返回普通入口、本機工具元件驗證及 Windows 狀態恢復。[已完成檢查與剩餘限制](docs/RELEASE_0.1.35-rc.55.md)。這是目前最新推薦下載，不含私人角色看板；保留準確 rc.55 版本號及檢查範圍。
 
 ## 新使用者從這裡開始
 
 [完整流程（簡體中文）](docs/SETUP.zh-CN.md) · [Q&A（簡體中文）](docs/FAQ.zh-CN.md) · [English guide](docs/SETUP.md)
 
-共享連線修復請明確選擇 **0.1.35-rc.54 修復版**；它就是目前的 latest，0.1.34 僅為歷史版本。先安裝及登入官方 Codex，完成任務並正常退出普通 Desktop，再用 **Codex (Agbrio shared)** 或從設定準備/開啟；核對 Desktop 已接入，之後才綁定兩端、預覽及傳送。手機和助手是選用且獨立驗證的連線。
+共享連線修復請明確選擇 **0.1.35-rc.55 修復版**；它就是目前的 latest，0.1.34 僅為歷史版本。先安裝及登入官方 Codex，完成任務並正常退出普通 Desktop，再用 **Codex (Agbrio shared)** 或從設定準備/開啟；核對 Desktop 已接入，之後才綁定兩端、預覽及傳送。手機和助手是選用且獨立驗證的連線。
 
-舊流程先開普通版是為了發現後端。**rc.54 在 Desktop 關閉時也能辨識官方安裝**；日常與重開機後直接用共享入口，不需每次先開普通版。官方入口不改綁，未來官方更新不保證全數相容；回退用 **Codex (return to normal)**，勿批次結束 Node。當前原始碼與文件統一在 **main**，發行 tag 保留原版本。
+舊流程先開普通版是為了發現後端。**rc.55 在 Desktop 關閉時也能辨識官方安裝**；日常與重開機後直接用共享入口，不需每次先開普通版。官方入口不改綁，未來官方更新不保證全數相容；回退用 **Codex (return to normal)**，勿批次結束 Node。當前原始碼與文件統一在 **main**，發行 tag 保留原版本。
 
 可選日報：真實唯讀驗收後，選擇時間（建議本地22:00）、時區、接收位置與委託Bridge，再明確提交給助手。它核對真實定時工具與既有任務；不支援就說明未啟用。修改或停用沿用原任務，不重複建立；Bridge刪除或MCP離線也可請求停用。唯讀連續計窗及部分核實規則：[日報教學](docs/DAILY_REPORTS.md)。
 

@@ -1,9 +1,10 @@
 import {t as uiText,useLanguage} from "../../i18n";
 import ReactMarkdown, {defaultUrlTransform,type Components} from "react-markdown";
 import remarkGfm from "remark-gfm";
-import {memo,useContext,useEffect,useState,useMemo,useRef,type ReactNode} from "react";
+import {Children,createElement,isValidElement,memo,useContext,useEffect,useState,useMemo,useRef,type ReactNode} from "react";
 import {Check,Copy} from "lucide-react";
 import {MediaPreviewBoundary,MediaPreviewContext} from "./MediaPreview";
+import {FilePreview} from "./FilePreview";
 import type {MediaResolver} from "./messageMedia";
 
 interface Props {
@@ -11,6 +12,8 @@ interface Props {
   media?:MediaResolver;
 }
 
+function nodeText(node:ReactNode):string{return Children.toArray(node).map(value=>typeof value==='string'||typeof value==='number'?String(value):isValidElement<{children?:ReactNode}>(value)?nodeText(value.props.children):'').join('');}
+function headingId(node:ReactNode){return nodeText(node).trim().toLowerCase().replace(/[^\p{L}\p{N} _-]/gu,'').replace(/\s/g,'-');}
 function imageSource(source:string){if(/^https:\/\//i.test(source))return source;if(/^data:image\/(png|jpeg|gif|webp);base64,/i.test(source)&&source.length<=12*1024*1024)return source;return null;}
 function isLocal(source:string){return !/^(https?:|mailto:|#)/i.test(source);}
 function MediaImage({source,alt,media}:{source:string;alt:string;media?:MediaResolver}){
@@ -39,14 +42,18 @@ function CodeBlock({children}:{children:ReactNode}){
 export const MarkdownMessage = memo(function MarkdownMessage({ text,media }: Props) {
  useLanguage();
   const[fileError,setFileError]=useState("");
+  const[previewSource,setPreviewSource]=useState<string|null>(null);
+  const content=useRef<HTMLDivElement>(null);
   const components=useMemo<Components>(()=>({
+          ...Object.fromEntries([1,2,3,4,5,6].map(level=>[`h${level}`,({children}:{children?:ReactNode})=>createElement(`h${level}`,{id:headingId(children)},children)])),
+          code:({children,className})=>{const path=nodeText(children);return !className&&!path.includes('\n')&&/^(?:[a-z]:[\\/]|\.{0,2}\/)?[^<>]+\.(?:md|txt|csv|json|png|jpg|jpeg|gif|webp|rs|ts|tsx|js|jsx|py|cs|css|html|yaml|yml|toml|log|xml|sql|pdf|xlsx)(?:#L\d+|:\d+(?::\d+)?)?$/i.test(path)&&media?<code><a href="#" onClick={e=>{e.preventDefault();setPreviewSource(path);}}>{children}</a></code>:<code className={className}>{children}</code>;},
           table:({children})=><div className="r2-table-scroll" role="region" tabIndex={0} aria-label={uiText("表格，可左右滚动")}><table>{children}</table></div>,
           pre:({children})=><CodeBlock>{children}</CodeBlock>,
-          a: ({ href, children }) => href&&isLocal(href)?<a href="#" onClick={e=>{e.preventDefault();if(media)void download(href,media).catch(()=>setFileError(uiText("附件暂不可用。")));else setFileError(uiText("附件预览暂不可用。"));}}>{children}</a>:<a href={href} target="_blank" rel="noreferrer noopener">{children}</a>,
+          a: ({ href, children }) => href?.startsWith("#")?<a href={href} onClick={e=>{e.preventDefault();let id=href.slice(1);try{id=decodeURIComponent(id);}catch{}Array.from(content.current?.querySelectorAll("[id]")??[]).find(node=>node.id===id)?.scrollIntoView?.({block:"start"});}}>{children}</a>:href&&isLocal(href)?<a href="#" onClick={e=>{e.preventDefault();if(media)setPreviewSource(href);else setFileError(uiText("附件预览暂不可用。"));}}>{children}</a>:<a href={href} target="_blank" rel="noreferrer noopener">{children}</a>,
           img: ({ alt, src }) => <MediaImage source={typeof src==="string"?src:""} alt={alt??""} media={media}/>,
   }),[media?.scopeKey??media]);
   return (
-    <MediaPreviewBoundary><div className="markdown-message">
+    <MediaPreviewBoundary><div className="markdown-message" ref={content}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         urlTransform={(url,key)=>key==="src"||isLocal(url)?url:defaultUrlTransform(url)}
@@ -54,6 +61,7 @@ export const MarkdownMessage = memo(function MarkdownMessage({ text,media }: Pro
       >
         {text}
       </ReactMarkdown>
+      {previewSource&&media&&<FilePreview source={previewSource} media={media} close={()=>setPreviewSource(null)}/>}
       {fileError&&<p role="status">{uiText(fileError)}</p>}
     </div></MediaPreviewBoundary>
   );

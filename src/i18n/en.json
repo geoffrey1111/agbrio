@@ -1196,5 +1196,12 @@
   "附件 · {0} 项": "Attachments · {0}",
   "附件已随这条消息发送。": "Attachments were sent with this message.",
   "此问题之后已有你的新消息。": "You have sent a newer message since this question.",
-  "已有更新的问题，请查看最新卡片。": "A newer question is available. See the latest card."
+  "已有更新的问题，请查看最新卡片。": "A newer question is available. See the latest card.",
+  "文件预览": "File preview",
+  "下载文件": "Download file",
+  "关闭预览": "Close preview",
+  "正在读取文件…": "Reading file…",
+  "文件暂不可用，请确认文件仍存在且未超过大小限制。": "File unavailable. Check that it still exists and is within the size limit.",
+  "表格较大或格式不完整，显示原文。": "The table is too large or incomplete. Showing the original text.",
+  "此文件暂不支持内置预览，可下载后查看。": "Preview is unavailable for this file. Download it to view."
 }
