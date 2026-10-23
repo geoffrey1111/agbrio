@@ -91,6 +91,7 @@ pub(crate) fn sync(core:&RouterCore,workstream:&str)->Result<BridgeState,String>
                     if let Ok(native)=adapter.read_thread_activity(&side.endpoint.external_id){
                         let root_matches=side.cwd.as_ref().is_some_and(|cwd|std::fs::canonicalize(cwd).ok().zip(std::fs::canonicalize(&native.cwd).ok()).is_some_and(|(a,b)|a==b));
                         if root_matches&&native.thread_id==side.endpoint.external_id{
+                            crate::conversation_message_time::codex(&core.store,adapter,&native.thread_id,&native.cwd);
                             activity.state=native.state.into();activity.turn_id=native.turn_id;activity.goal_status=native.goal_status;activity.turn_active=native.turn_active;
                             if activity.state=="COMPLETE"{
                                 let prefix=activity.turn_id.as_ref().map(|t|format!("codex:{t}:"));
@@ -711,7 +712,7 @@ fn send_as(core: &RouterCore, handoff: &str, owner: bool) -> Result<BridgeState,
 mod tests;
 
 #[derive(Clone,Serialize)]#[serde(rename_all="camelCase")]
-pub(crate) struct DirectoryActivity { pub workstream_id:String,pub binding_revision:i64,pub unread_count:usize,pub latest_role:Option<String>,pub sides:Vec<RoleActivity>,pub assistant_processed:Option<router_core::store::assistant_processed::AssistantProcessed> }
+pub(crate) struct DirectoryActivity { pub last_message_at:Option<i64>,pub workstream_id:String,pub binding_revision:i64,pub unread_count:usize,pub latest_role:Option<String>,pub sides:Vec<RoleActivity>,pub assistant_processed:Option<router_core::store::assistant_processed::AssistantProcessed> }
 /// Bounded read-only status projection. Does not read transcript bodies, start a
 /// watch, load cold conversations, or navigate an authenticated browser.
 pub(crate) fn poll_directory_activity(store:&RouterStore,session_handle:&Mutex<Session>,ids:&[String])->Result<Vec<DirectoryActivity>,String>{
@@ -728,6 +729,7 @@ pub(crate) fn poll_directory_activity(store:&RouterStore,session_handle:&Mutex<S
     if let Some(adapter)=session.as_mut().and_then(|s|s.adapter.as_mut()).filter(|a|!a.is_closed()){
      if let Ok(native)=adapter.read_thread_activity(&side.endpoint.external_id){
       let exact=side.cwd.as_ref().is_some_and(|cwd|std::fs::canonicalize(cwd).ok().zip(std::fs::canonicalize(&native.cwd).ok()).is_some_and(|(a,b)|a==b));
+      if exact&&native.thread_id==side.endpoint.external_id{crate::conversation_message_time::codex(store,adapter,&native.thread_id,&native.cwd);}
       if exact&&native.thread_id==side.endpoint.external_id&&native.authoritative{
        a.state=native.state.into();a.turn_id=native.turn_id;a.goal_status=native.goal_status;a.turn_active=native.turn_active;a.checked_at=activity_now();
        a.latest_turn=adapter.latest_turn_diagnostic(&side.endpoint.external_id).filter(|d|a.turn_id.as_deref()==Some(&d.turn_id));
@@ -758,7 +760,7 @@ pub(crate) fn poll_directory_activity(store:&RouterStore,session_handle:&Mutex<S
   // an old role's activity under a new recipient.
   let replies=store.reply_observations_for_workstream(id)?;
   let latest_role=replies.iter().filter(|r|[&b.decision,&b.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).max_by_key(|r|r.completed_at.unwrap_or(r.observed_at)).and_then(|r|[&b.decision,&b.execution].into_iter().flatten().find(|side|side.endpoint.id==r.endpoint_id).map(|side|side.role.clone()));
-  if store.role_bridge(id)?.binding_revision==b.binding_revision{result.push(DirectoryActivity{workstream_id:id.clone(),binding_revision:b.binding_revision,latest_role,assistant_processed:store.assistant_processed(id,activity_now() as i64)?,unread_count:replies.iter().filter(|r|r.read_at.is_none()&&r.handled_at.is_none()&&[&b.decision,&b.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).count(),sides});}
+  if store.role_bridge(id)?.binding_revision==b.binding_revision{result.push(DirectoryActivity{last_message_at:last_message_time(store,&b),workstream_id:id.clone(),binding_revision:b.binding_revision,latest_role,assistant_processed:store.assistant_processed(id,activity_now() as i64)?,unread_count:replies.iter().filter(|r|r.read_at.is_none()&&r.handled_at.is_none()&&[&b.decision,&b.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).count(),sides});}
  }
  Ok(result)
 }
@@ -806,6 +808,11 @@ fn materialize_requested_reply_with(store:&RouterStore,session:&Arc<Mutex<Sessio
 
  let identity=format!("codex:{}:{}",r.completed_turn_id,r.agent_item_id);store.record_reply_observation(id,endpoint,Some(&identity),&r.text,None)?;store.note_reply_completion(id,endpoint,&identity,r.completed_at)?;Ok(())
 }
+fn last_message_time(store:&RouterStore,bindings:&router_core::store::role_bridge::RoleBridge)->Option<i64>{
+ [&bindings.decision,&bindings.execution].into_iter().flatten().filter_map(|side|{
+  let cwd=side.cwd.as_deref()?;let id=if side.endpoint.provider=="CLAUDE_CODE"{format!("claude_code:{}",side.endpoint.external_id)}else{side.endpoint.external_id.clone()};store.conversation_message_at(&id,cwd).ok().flatten()
+ }).max()
+}
 /// Fast local-store projection; opening a page never queues native metadata reads.
 pub(crate) fn directory_activity(core:&RouterCore,ids:&[String])->Result<Vec<DirectoryActivity>,String>{
  if ids.len()>20||ids.iter().any(|id|id.is_empty()||id.len()>128){return Err("BRIDGE_ACTIVITY_REQUEST_INVALID".into());}
@@ -813,7 +820,7 @@ pub(crate) fn directory_activity(core:&RouterCore,ids:&[String])->Result<Vec<Dir
   let bindings=&initial.bindings;let epoch=core.session.try_lock().ok().map(|s|s.codex_observer_epoch);let cache=activity_cache(&core.store);let cached=cache.lock().ok().and_then(|c|c.rows.get(id).filter(|row|epoch.is_none_or(|e|e==c.epoch)&&row.binding_revision==bindings.binding_revision).cloned());
   let sides=[&bindings.decision,&bindings.execution].into_iter().flatten().map(|side|if side.endpoint.provider=="CLAUDE_CODE"{crate::claude_code::activity(core,side)}else{cached.as_ref().and_then(|r|r.sides.iter().find(|a|a.endpoint_id==side.endpoint.id&&a.role==side.role&&a.checked_at>0&&activity_now().saturating_sub(a.checked_at)<15000)).cloned().unwrap_or(RoleActivity{role:side.role.clone(),endpoint_id:side.endpoint.id.clone(),state:"UNCONFIRMED".into(),checked_at:0,turn_id:None,result_observation_id:None,goal_status:None,turn_active:false,latest_turn:None,goal:None,goal_controls:None,task_tree:None})}).collect();
   let latest_role=initial.replies.iter().filter(|r|[&bindings.decision,&bindings.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).max_by_key(|r|r.completed_at.unwrap_or(r.observed_at)).and_then(|r|[&bindings.decision,&bindings.execution].into_iter().flatten().find(|side|side.endpoint.id==r.endpoint_id).map(|side|side.role.clone()));
-  let unread_count=initial.replies.iter().filter(|r|r.read_at.is_none()&&r.handled_at.is_none()&&[&bindings.decision,&bindings.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).count();rows.push(DirectoryActivity{workstream_id:id.clone(),binding_revision:bindings.binding_revision,unread_count,latest_role,sides,assistant_processed:initial.assistant_processed});
+  let unread_count=initial.replies.iter().filter(|r|r.read_at.is_none()&&r.handled_at.is_none()&&[&bindings.decision,&bindings.execution].into_iter().flatten().any(|side|side.endpoint.id==r.endpoint_id)).count();rows.push(DirectoryActivity{last_message_at:last_message_time(&core.store,bindings),workstream_id:id.clone(),binding_revision:bindings.binding_revision,unread_count,latest_role,sides,assistant_processed:initial.assistant_processed});
  }Ok(rows)
 }
 pub(crate) fn sync_cached(core:&RouterCore,id:&str)->Result<BridgeState,String>{

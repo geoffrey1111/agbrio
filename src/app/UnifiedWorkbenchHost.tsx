@@ -1029,6 +1029,7 @@ export function UnifiedWorkbenchHost({initialSurface="BRIDGES"}:{initialSurface?
       lifecycle: lifecycleOf(workstream),
       pinned: Boolean(workstream.pinnedAt),
       updatedAt: workstream.updatedAt,
+      lastMessageAt: dashboardItem?.lastMessageAt,
       attentionCount,
       attentionItems,
       sourceLabel,

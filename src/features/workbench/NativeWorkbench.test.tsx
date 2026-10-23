@@ -18,7 +18,7 @@ it("has stable destinations including the live board and routes same-named Bridg
  const nav=screen.getByRole("navigation",{name:"桌面导航"});
  expect(within(nav).getAllByRole("button").map(button=>button.textContent)).toEqual(["对话","看板","待办","设置"]);
  expect(screen.queryByRole("button",{name:"项目"})).not.toBeInTheDocument();
- const list=screen.getByText("最近").parentElement!;fireEvent.click(within(list).getAllByRole("button",{name:/^同名 Bridge/})[1]);expect(select).toHaveBeenCalledWith("exact-b");
+ const list=document.querySelector(".v6-list") as HTMLElement;fireEvent.click(within(list).getAllByRole("button",{name:/^同名 Bridge/})[1]);expect(select).toHaveBeenCalledWith("exact-b");
 });
 it("keeps the role reader mounted but hidden while navigating utilities",()=>{
  const {rerender}=render(<UnifiedWorkbench {...base} selectedWorkstreamId="exact-a" surface="WORKSPACE" bridgePanel={<div>exact role content</div>}/>);
@@ -60,7 +60,7 @@ it("renames the exact Bridge once without changing its binding or sending",async
 it("browser Back returns an exact Bridge reader to the directory",async()=>{
  history.replaceState({},"","/mobile");
  function App(){const[surface,setSurface]=useState<WorkbenchSurface>("BRIDGES");const[selected,setSelected]=useState<string>();return <UnifiedWorkbench {...base} surface={surface} onSurfaceChange={setSurface} selectedWorkstreamId={selected} onSelectWorkstream={setSelected} bridgePanel={<div>retained reader</div>}/>;}
- render(<App/>);const list=screen.getByText("最近").parentElement!;fireEvent.click(within(list).getAllByRole("button",{name:/^同名 Bridge/})[0]);
+ render(<App/>);const list=document.querySelector(".v6-list") as HTMLElement;fireEvent.click(within(list).getAllByRole("button",{name:/^同名 Bridge/})[0]);
  await waitFor(()=>expect(history.state?.aiwrRoute?.surface).toBe("WORKSPACE"));
  act(()=>history.back());
  await screen.findByRole("heading",{name:/^对话$/});

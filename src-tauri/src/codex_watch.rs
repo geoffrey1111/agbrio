@@ -30,6 +30,7 @@ pub(crate) fn inspect_live(
         .filter(|p| std::path::Path::new(p).is_absolute())
         .ok_or("WATCH_PROJECT_UNAVAILABLE")?
         .to_owned();
+    adapter.observe_message_time(thread_id,&cwd,thread["path"].as_str());
     // Subscribe only to an already loaded native conversation. Loading a cold
     // thread (potentially with a persisted Goal) is a separate write-readiness
     // action; a passive watch must not cause that lifecycle transition.
@@ -194,6 +195,7 @@ pub(crate) fn poll(
         if cwd != watch.cwd {
             return Err("WATCH_PROJECT_CHANGED".into());
         }
+        if let Some(a)=s.adapter.as_ref(){crate::conversation_message_time::codex(store,a,&watch.thread_id,&cwd);}
         store.record_codex_watch(&watch.thread_id, watch.generation, &snapshot)
     })();
     if outcome.is_err() {

@@ -14,6 +14,7 @@ export type MobileWorkstream = {
   pinnedAt?: number | null;
   updatedAt?: number;
   lastActivityAt?:number|null;
+  lastMessageAt?:number|null;
   chatgptStatus?: string;
   codexStatus?: string;
   attentionCount: number;

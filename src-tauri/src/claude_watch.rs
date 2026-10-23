@@ -57,6 +57,7 @@ pub(crate) fn observe(core: &RouterCore, path: &std::path::Path, session: &str, 
     let root = status.cwd.as_deref().or(cwd).unwrap_or_default();
     let reply = status.reply.as_ref().map(|text| router_core::claude_code::CompleteReply { turn_id: status.turn.clone(), text: text.clone(), completed_at: status.completed_at.max(1) });
     let completed = core.store.apply_claude_transcript(session, root, status.state, Some(&status.turn), reply.as_ref())?;
+    if let Some(at)=crate::conversation_message_time::claude(session,root){let _=core.store.note_conversation_message_at(&format!("claude_code:{session}"),root,at);}
     if completed { crate::claude_code::materialize_bound(core, session)?; }
     crate::claude_chat::update_watch(core, session)?;
     crate::claude_owner_requests::reconcile(core,session);

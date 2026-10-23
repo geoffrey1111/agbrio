@@ -9,6 +9,7 @@ use crate::watch_chat::ChatCommand;
 pub(crate) struct WatchView {
     #[serde(flatten)] pub watch:router_core::store::codex_watch::CodexWatch,
     #[serde(skip_serializing_if="Option::is_none")] pub task_tree:Option<crate::claude_task_tree::TaskTree>,
+    pub last_message_at:Option<i64>,
 }
 /// Directory projection; a child's activity is not a parent sending state.
 pub(crate) fn list(core:&RouterCore)->Result<Vec<WatchView>,String>{
@@ -18,7 +19,8 @@ pub(crate) fn list(core:&RouterCore)->Result<Vec<WatchView>,String>{
             if let Ok(s)=crate::claude_code::observed_session(core,sid,Some(&watch.cwd)){watch.snapshot=snapshot(&s);watch.checked_at=s.checked_at;}
             tree=Some(crate::claude_task_tree::read(core,sid,&watch.cwd));
         }}
-        WatchView{watch,task_tree:tree}
+        let last_message_at=core.store.conversation_message_at(&watch.thread_id,&watch.cwd).ok().flatten();
+        WatchView{watch,task_tree:tree,last_message_at}
     }).collect())
 }
 

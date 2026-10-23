@@ -7,38 +7,32 @@ afterEach(()=>{cleanup();vi.useRealTimers();localStorage.clear();});
 const watch=(id:string,count:number):CodexWatch=>({threadId:id,label:id,cwd:'D:\\fictional',enabled:true,generation:1,snapshot:{state:'IDLE',turnId:null,itemId:null,text:'fictional current message'},checkedAt:Date.now(),errorCode:null,sendCount:count});
 function api(rows:CodexWatch[]):NotificationApi{return{watches:vi.fn().mockResolvedValue(rows),connect:vi.fn(),threads:vi.fn(),enable:vi.fn(),pause:vi.fn(),feed:vi.fn().mockResolvedValue({events:[],nextCursor:0,hasMore:false}),event:vi.fn(),webUrl:vi.fn().mockResolvedValue(null)};}
 const order=()=>[...document.querySelectorAll<HTMLElement>('[data-watch-id]')].map(n=>n.dataset.watchId);
-it('puts paused watches below enabled watches regardless of usage and sorts each group by cumulative sends',async()=>{
- const a=api([{...watch('paused-high',100),enabled:false},watch('active-low',0),{...watch('paused-low',3),enabled:false},watch('active-high',8)]);
+it('sorts paused and active watches together by last native message, not cumulative sends',async()=>{
+ const a=api([{...watch('latest-paused',0),enabled:false,lastMessageAt:300},{...watch('old-active',100),lastMessageAt:100},{...watch('middle-active',1),lastMessageAt:200}]);
  render(<CodexNotifications api={a} standalone/>);await act(async()=>{});fireEvent.click(screen.getByRole('tab',{name:'监听对话'}));
- expect(order()).toEqual(['active-high','active-low','paused-high','paused-low']);
- expect(a.enable).not.toHaveBeenCalled();expect(a.pause).not.toHaveBeenCalled();
+ expect(order()).toEqual(['latest-paused','middle-active','old-active']);expect(a.enable).not.toHaveBeenCalled();expect(a.pause).not.toHaveBeenCalled();
 });
-it('keeps usage order frozen during a visit while a newly paused chat sinks, and re-sorts after reentry',async()=>{
- vi.useFakeTimers();const a=api([watch('first',8),{...watch('second',100),enabled:false},watch('third',2)]);
+it('reorders on new messages during a visit and retains the same order after reentry',async()=>{
+ vi.useFakeTimers();const first={...watch('first',8),lastMessageAt:200},second={...watch('second',1),lastMessageAt:100};const a=api([first,second]);
+ render(<CodexNotifications api={a} standalone/>);await act(async()=>{});fireEvent.click(screen.getByRole('tab',{name:'监听对话'}));expect(order()).toEqual(['first','second']);
+ vi.mocked(a.watches).mockResolvedValue([first,{...second,lastMessageAt:300}]);await act(async()=>{await vi.advanceTimersByTimeAsync(5100);});expect(order()).toEqual(['second','first']);
+ fireEvent.click(screen.getByRole('tab',{name:'最近通知'}));fireEvent.click(screen.getByRole('tab',{name:'监听对话'}));expect(order()).toEqual(['second','first']);
+});
+it('ignores send counts and polling clocks while preserving new-message order after reader return',async()=>{
+ vi.useFakeTimers();const first={...watch('first',2),lastMessageAt:200},second={...watch('second',8),lastMessageAt:100};const a=api([first,second]);
  render(<CodexNotifications api={a} standalone/>);await act(async()=>{});fireEvent.click(screen.getByRole('tab',{name:'监听对话'}));
- expect(order()).toEqual(['first','third','second']);
- vi.mocked(a.watches).mockResolvedValue([{...watch('first',8),enabled:false},watch('second',100),watch('third',2)]);
- // Usage order stays frozen during the visit, but a newly paused chat sinks below active ones at once.
- await act(async()=>{await vi.advanceTimersByTimeAsync(5100);});expect(order()).toEqual(['third','second','first']);
- fireEvent.click(screen.getByRole('tab',{name:'最近通知'}));fireEvent.click(screen.getByRole('tab',{name:'监听对话'}));
- expect(order()).toEqual(['second','third','first']);
-});
-it('freezes usage order across polls and an opened chat; leaving WATCHES recalculates cumulative counts',async()=>{
- vi.useFakeTimers();const a=api([watch('less-used',2),watch('most-used',8)]);
- render(<CodexNotifications api={a} standalone/>);await act(async()=>{});fireEvent.click(screen.getByRole('tab',{name:'监听对话'}));expect(order()).toEqual(['most-used','less-used']);
- const open=within(document.querySelector('[data-watch-id="less-used"]') as HTMLElement).getByRole('button',{name:'查看当前内容'});fireEvent.click(open);
- vi.mocked(a.watches).mockResolvedValue([watch('less-used',40),watch('most-used',8)]);await act(async()=>{await vi.advanceTimersByTimeAsync(5100);});fireEvent.click(screen.getByRole('button',{name:'关闭内容'}));expect(order()).toEqual(['most-used','less-used']);
- fireEvent.click(screen.getByRole('tab',{name:'最近通知'}));fireEvent.click(screen.getByRole('tab',{name:'监听对话'}));expect(order()).toEqual(['less-used','most-used']);
+ fireEvent.click(within(document.querySelector('[data-watch-id="second"]') as HTMLElement).getByRole('button',{name:'查看当前内容'}));
+ vi.mocked(a.watches).mockResolvedValue([{...first,sendCount:999,checkedAt:Date.now()+10000},{...second,lastMessageAt:300}]);await act(async()=>{await vi.advanceTimersByTimeAsync(5100);});fireEvent.click(screen.getByRole('button',{name:'关闭内容'}));expect(order()).toEqual(['second','first']);
 });
 it('loads watched rows independently of a stalled recent feed and distinguishes pending reads from an empty list',async()=>{
  const a=api([]);let ready!:(rows:CodexWatch[])=>void;vi.mocked(a.watches).mockImplementation(()=>new Promise(resolve=>{ready=resolve;}));vi.mocked(a.feed).mockImplementation(()=>new Promise(()=>{}));
  render(<CodexNotifications api={a} standalone/>);fireEvent.click(screen.getByRole('tab',{name:'监听对话'}));expect(screen.getByText('正在读取…')).toBeVisible();expect(screen.queryByText('选择后会展示当前内容；后续变化进入最近通知。')).toBeNull();
  await act(async()=>ready([watch('loaded-watch',3)]));expect(document.querySelector('[data-watch-id="loaded-watch"]')).toBeVisible();expect(order()).toEqual(['loaded-watch']);expect(screen.queryByText('正在读取…')).toBeNull();
 });
-it('keeps list order within the whole page visit and refreshes only after leaving the notifications page',async()=>{
+it('does not change message order on page reentry after count-only refresh',async()=>{
  vi.useFakeTimers();const a=api([watch('b',1),watch('a',1)]);const view=(active:boolean)=><div className='v3-workbench-main'><CodexNotifications api={a} workbenchPage={{active,open:vi.fn()}}/></div>;
  const{rerender}=render(view(true));await act(async()=>{});fireEvent.click(screen.getByRole('tab',{name:'监听对话'}));expect(order()).toEqual(['a','b']);
- vi.mocked(a.watches).mockResolvedValue([watch('b',30),watch('a',1)]);await act(async()=>{await vi.advanceTimersByTimeAsync(5100);});expect(order()).toEqual(['a','b']);rerender(view(false));rerender(view(true));expect(order()).toEqual(['b','a']);
+ vi.mocked(a.watches).mockResolvedValue([watch('b',30),watch('a',1)]);await act(async()=>{await vi.advanceTimersByTimeAsync(5100);});expect(order()).toEqual(['a','b']);rerender(view(false));rerender(view(true));expect(order()).toEqual(['a','b']);
 });
 it('replaces source latest attention with a visible receiver execution signal while preserving the source text',async()=>{
  const now=Date.now();const state:RoleState={bindings:{workstreamId:'fictional',bindingRevision:1,explicitRoles:true,decision:{role:'DECISION',endpoint:{id:'d',provider:'CODEX',externalId:'decision-thread',label:'control'}},execution:{role:'EXECUTION',endpoint:{id:'e',provider:'CODEX',externalId:'execution-thread',label:'executor'}}},replies:[{id:'source',endpointId:'d',text:'retained result',observedAt:now-1000,completedAt:now-1000,handledAt:now-500}],handoffs:[],activities:[{role:'DECISION',endpointId:'d',state:'COMPLETE',resultObservationId:'source',checkedAt:now},{role:'EXECUTION',endpointId:'e',state:'RUNNING',turnActive:true,checkedAt:now}],snapshotAt:now};

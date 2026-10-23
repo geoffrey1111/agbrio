@@ -511,6 +511,7 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
       lifecycle: item.status ? lifecycleOf({status:item.status,trashedAt:item.trashedAt}) : detailed ? lifecycleOf(detailed) : "ACTIVE",
       pinned: Boolean(item.pinnedAt ?? detailed?.pinnedAt),
       updatedAt: item.updatedAt ?? detailed?.updatedAt ?? item.lastActivityAt ?? null,
+      lastMessageAt: item.lastMessageAt,
       attentionCount: item.attentionCount,
       attentionItems: item.attentionItems,
       sourceLabel: item.sourceLabel || (item.sourceLabel===undefined?item.bindingSummary:undefined),

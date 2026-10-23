@@ -14,6 +14,7 @@ pub mod claude_code;
 pub mod claude_manual;
 pub mod claude_codex_wait;
 pub mod codex_watch;
+pub mod conversation_message_time;
 pub mod watch_delivery;
 pub mod child_results;
 pub mod claude_owner_requests;
@@ -39,6 +40,7 @@ const MAX_REPLY_OBSERVATION_BYTES: usize = 1_000_000;
 const MAX_WORKSTREAM_DRAFT_BYTES: usize = 100_000;
 
 const NORMAL_FEATURE_MIGRATIONS: &[(&str, &str)] = &[
+    ("conversation-message-time-v1", include_str!("../../migrations/normal/024_conversation_message_time.sql")),
     ("assistant-delegation-v1", include_str!("../../migrations/normal/012_assistant_delegation.sql")),
     ("reply-completion-v1", include_str!("../../migrations/normal/013_reply_completion.sql")),
     ("watch-removal-v1", include_str!("../../migrations/normal/011_watch_removal.sql")),
@@ -449,6 +451,7 @@ pub struct WorkstreamDashboardItem {
     pub codex_run: Option<ProviderRun>,
     pub attention_items: Vec<AttentionItem>,
     pub last_activity_at: i64,
+    pub last_message_at: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -2924,6 +2927,7 @@ impl RouterStore {
                     .max()
                     .unwrap_or(workstream.updated_at);
                     attention.extend(items.clone());
+                    let last_message_at:Option<i64>=connection.query_row("SELECT MAX(t.message_at) FROM endpoints e JOIN endpoint_role_details d ON d.endpoint_id=e.id JOIN conversation_message_times t ON t.thread_id=CASE WHEN e.provider='CLAUDE_CODE' THEN 'claude_code:'||e.external_id ELSE e.external_id END AND t.cwd=d.cwd WHERE e.workstream_id=?1 AND e.status='ACTIVE'",[&workstream.id],|r|r.get(0)).map_err(db_error)?;
                     cards.push(WorkstreamDashboardItem {
                         project_id: project.id.clone(),
                         project_name: project.name.clone(),
@@ -2934,6 +2938,7 @@ impl RouterStore {
                         codex_run,
                         attention_items: items,
                         last_activity_at,
+                        last_message_at,
                     });
                 }
             }
@@ -3903,6 +3908,7 @@ mod tests {
                         "codex_feedback_drafts",
                         "codex_watch_events",
                         "codex_watches",
+                        "conversation_message_times",
                         "endpoint_canonical_urls",
                         "endpoint_role_details",
                         "endpoints",

@@ -232,6 +232,7 @@ pub struct CodexAdapter {
     history_recovery: Option<ExactHistoryRecovery>,
     latest_turn_observation: Option<LatestTurnObservation>,
     public_chat_read: Option<(String, u8)>,
+    message_times: HashMap<(String,String),String>,
     exact_turn_status_read: Option<(String, u8)>,
     stdin: Option<ChildStdin>,
     next_id: AtomicU64,
@@ -469,6 +470,7 @@ impl CodexAdapter {
             history_recovery: None,
             latest_turn_observation: None,
             public_chat_read: None,
+            message_times: HashMap::new(),
             exact_turn_status_read: None,
             stdin: Some(stdin),
             next_id: AtomicU64::new(1),
@@ -557,6 +559,7 @@ impl CodexAdapter {
         let metadata=self.request_with_timeout("thread/read",json!({"threadId":thread_id,"includeTurns":false}),budget)?;
         let thread=&metadata["thread"];if thread["id"].as_str()!=Some(thread_id){return Err("ACTIVITY_IDENTITY_MISMATCH".into());}
         let cwd=thread["cwd"].as_str().filter(|p|std::path::Path::new(p).is_absolute()).ok_or("ACTIVITY_PROJECT_UNAVAILABLE")?.to_string();
+        self.observe_message_time(thread_id,&cwd,thread["path"].as_str());
         let kind=thread.pointer("/status/type").and_then(Value::as_str);
         if kind==Some("active"){return Ok(NativeThreadActivity{thread_id:thread_id.into(),cwd,state:"RUNNING",turn_id:self.turns.lock().ok().and_then(|r|r.observed.get(thread_id).cloned()),authoritative:true,goal_status:None,turn_active:true});}
         self.begin_latest_turn_observation(thread_id)?;
@@ -693,6 +696,12 @@ impl CodexAdapter {
       let root=std::env::var_os("CODEX_HOME").map(std::path::PathBuf::from).or_else(||std::env::var_os("USERPROFILE").map(|p|std::path::PathBuf::from(p).join(".codex")));
       root.map(|r|super::async_questions::read(std::path::Path::new(path),&r.join("sessions"),thread)).unwrap_or_default()
     }
+    pub fn observe_message_time(&mut self,thread:&str,cwd:&str,path:Option<&str>){
+      if self.guard.is_some(){return;}let Some(path)=path else{return;};
+      let root=std::env::var_os("CODEX_HOME").map(std::path::PathBuf::from).or_else(||std::env::var_os("USERPROFILE").or_else(||std::env::var_os("HOME")).map(|p|std::path::PathBuf::from(p).join(".codex")));
+      if let Some(at)=root.and_then(|r|super::message_time::read(std::path::Path::new(path),&r.join("sessions"),thread,cwd)){if self.message_times.len()>128{self.message_times.clear();}self.message_times.insert((thread.into(),cwd.into()),at);}
+    }
+    pub fn public_message_timestamp(&self,thread:&str,cwd:&str)->Option<&str>{self.message_times.get(&(thread.into(),cwd.into())).map(String::as_str)}
     pub fn read_public_chat_page(&mut self,thread:&str,cursor:Option<&str>)->Result<Value,String>{
       if self.guard.is_some()||thread.is_empty()||thread.len()>256||cursor.is_some_and(|c|c.len()>8192){return Err("PUBLIC_CHAT_READ_UNAVAILABLE".into())}
       let mut position=PublicChatCursor::decode(thread,cursor)?;

@@ -27,6 +27,7 @@ export interface WorkbenchItem {
   projectName?: string | null;
   sourceLabel?: string | null;
   updatedAt?: number | null;
+  lastMessageAt?: number | null;
   lifecycle: WorkbenchLifecycle;
   pinned?: boolean;
   attentionCount?: number;

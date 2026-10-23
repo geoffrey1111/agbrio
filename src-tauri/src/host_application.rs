@@ -495,6 +495,7 @@ pub(crate) struct MobileWorkstreamItem {
     pub(crate) attention_count: usize,
     pub(crate) attention_items: Vec<MobileAttentionItem>,
     pub(crate) last_activity_at: i64,
+    pub(crate) last_message_at: Option<i64>,
 }
 
 #[derive(Clone, Serialize)]
@@ -884,6 +885,7 @@ impl RouterCore {
                     attention_count: attention_items.len(),
                     attention_items,
                     last_activity_at: item.last_activity_at,
+                    last_message_at: item.last_message_at,
                 }
             })
             .collect())

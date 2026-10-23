@@ -28,6 +28,7 @@ export function ConversationAvatar({id,kind}:{id:string;kind:"bridge"|"codex"|"c
  return <motion.span className="v6-avatar" aria-hidden initial={{scale:.6,rotate:-8}} animate={{scale:1,rotate:0}} transition={{type:"spring",stiffness:420,damping:16}}><img src={avatarFor(id)} alt="" draggable={false}/><i className={`v6-badge v6-${kind}`}>{kind==="bridge"?<Link2 size={10} strokeWidth={2.6}/>:kind==="claude"?"✳":"C"}</i></motion.span>;
 }
 const folder=(path:string)=>path.split(/[\\/]/).filter(Boolean).at(-1)??"";
+const messageTime=(value:number|null|undefined)=>typeof value==="number"&&Number.isFinite(value)&&value>0?value:0;
 const when=(value:number)=>{if(!value)return"";const minutes=(Date.now()-value)/60000;if(minutes<1)return uiText("刚刚");if(minutes<60)return tc("{0} 分钟",Math.floor(minutes));const date=new Date(value);return minutes<1440?new Intl.DateTimeFormat(getLanguage(),{hour:"2-digit",minute:"2-digit"}).format(date):new Intl.DateTimeFormat(getLanguage(),{month:"numeric",day:"numeric"}).format(date);};
 
 export function watchTone(w:CodexWatch):[Tone,string]{
@@ -77,17 +78,15 @@ export function ConversationHome({onOpenBoard,mode="ALL",bridges,activity,activi
 
  const rows=useMemo<Row[]>(()=>{
   const b=bridges.map<Row>(item=>{const entry=activity[item.id];const [tone,state]=bridgeTone(entry?.row,entry?Math.max(0,activityClock-entry.receivedAt):Infinity,item);
-   return{key:`b:${item.id}`,kind:"BRIDGE",title:item.name,meta:`Bridge · ${item.sourceLabel||item.projectName||uiText("待绑定")}`,preview:"",at:item.updatedAt??0,tone,state,unread:tone==="wait",bridge:item};});
+   return{key:`b:${item.id}`,kind:"BRIDGE",title:item.name,meta:`Bridge · ${item.sourceLabel||item.projectName||uiText("待绑定")}`,preview:"",at:messageTime(entry?.row.lastMessageAt??item.lastMessageAt),tone,state,unread:tone==="wait",bridge:item};});
   const w=watches.map<Row>(watch=>{const [tone,state]=watchTone(watch);
-   return{key:`w:${watch.threadId}`,kind:"WATCH",title:watch.label,meta:`${isClaude(watch.threadId)?"Claude Code":"Codex"}${watch.cwd?` · ${folder(watch.cwd)}`:""}`,preview:messagePreview(watch.snapshot.text),at:0,tone,state,unread:false,watch};});
-  const rank={wait:0,run:1,done:2};
-  return[...b,...w].sort((x,y)=>rank[x.tone]-rank[y.tone]||y.at-x.at);
+   return{key:`w:${watch.threadId}`,kind:"WATCH",title:watch.label,meta:`${isClaude(watch.threadId)?"Claude Code":"Codex"}${watch.cwd?` · ${folder(watch.cwd)}`:""}`,preview:messagePreview(watch.snapshot.text),at:messageTime(watch.lastMessageAt),tone,state,unread:false,watch};});
+  return[...b,...w].sort((x,y)=>y.at-x.at||(x.key<y.key?-1:x.key>y.key?1:0));
  },[bridges,activity,activityClock,watches]);
  const counts={run:rows.filter(r=>r.tone==="run").length,wait:rows.filter(r=>r.tone==="wait").length};
  const q=query.trim().toLocaleLowerCase();
  const todo=mode==="TODO";
  const visible=rows.filter(r=>(!todo||r.tone==="wait")&&(filter==="ALL"||filter==="RUN"&&r.tone==="run"||filter==="WAIT"&&r.tone==="wait"||filter===r.kind)&&(!q||`${r.title} ${r.meta}`.toLocaleLowerCase().includes(q)));
- const active=visible.filter(r=>r.tone!=="done"),rest=visible.filter(r=>r.tone==="done");
  const open=(r:Row)=>r.bridge?onOpenBridge(r.bridge.id):r.watch&&onOpenWatch(r.watch);
  // data-bridge-id lets useBridgeActivity read status only for rows on screen.
  const item=(r:Row,index:number)=>{const body=<motion.button type="button" whileTap={{scale:.97}} transition={spring} className="v6-row" data-tone={r.tone} data-bridge-id={r.bridge?.id} onClick={()=>open(r)}>
@@ -108,7 +107,7 @@ export function ConversationHome({onOpenBoard,mode="ALL",bridges,activity,activi
     <span className="v6-todo-detail">{r.preview||r.meta}</span>
    </motion.button>;})}</div>}
   {todo&&onOpenBoard&&<motion.button type="button" className="v6-todo-card v6-todo-board" onClick={onOpenBoard} whileTap={{scale:.97}} initial={{opacity:.35,y:16}} animate={{opacity:1,y:0}} transition={{...spring,delay:.12}}><span className="v6-todo-kind" data-tone="wait">{uiText("看板")}</span><span className="v6-todo-title"><strong>{uiText("打开看板审批")}</strong></span><span className="v6-todo-detail">{uiText("角色例会和立绘批复在看板里处理。")}</span></motion.button>}
-  {!todo&&visible.length>0&&<div className="v6-list"><AnimatePresence>{[...active.map(item),...(rest.length?[<motion.small layout="position" key="section" className="v6-section">{active.length?uiText("其他"):uiText("最近")}</motion.small>]:[]),...rest.map((r,i)=>item(r,i+active.length))]}</AnimatePresence></div>}
+  {!todo&&visible.length>0&&<div className="v6-list"><AnimatePresence>{visible.map(item)}</AnimatePresence></div>}
   {todo&&!visible.length&&<motion.div className="v6-empty v6-all-clear" initial={{scale:.9,opacity:.4}} animate={{scale:1,opacity:1}} transition={{type:"spring",stiffness:300,damping:18}}><CircleCheck size={30} aria-hidden/><h2>{uiText("没有等你处理的事")}</h2><p>{uiText("有新回复、需要确认或执行失败时，会出现在这里。")}</p></motion.div>}
   {!todo&&!visible.length&&<div className="v6-empty">{rows.length?<p>{uiText("没有符合条件的对话")}</p>:<><MessageSquare size={30} aria-hidden/><h2>{uiText("还没有关注的对话")}</h2><p>{uiText("监听电脑上的 Codex 或 Claude Code 对话，或者把两个对话连成 Bridge。")}</p><button type="button" className="v6-primary" onClick={()=>setSheet("CHOOSE")}>{uiText("开始")}</button></>}</div>}
   <AnimatePresence>{undo&&<motion.div className="v6-toast" role="status" initial={{y:24,opacity:0}} animate={{y:0,opacity:1}} exit={{y:24,opacity:0}} transition={spring}>{uiText("已停止监听")}<button type="button" onClick={()=>void restoreWatch(undo)}>{uiText("撤销")}</button></motion.div>}</AnimatePresence>

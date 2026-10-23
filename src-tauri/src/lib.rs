@@ -19,6 +19,7 @@ mod claude_event_log;
 mod claude_watch;
 mod claude_code;
 mod claude_chat;
+mod conversation_message_time;
 mod claude_code_desktop;
 mod desktop_update;
 use desktop_update::{desktop_update_check,desktop_update_status,desktop_update_download,desktop_update_install,desktop_update_open_release};
