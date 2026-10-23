@@ -6,6 +6,15 @@ use tauri::{AppHandle,Emitter,Manager,State};
 use tauri_plugin_updater::{Update,UpdaterExt};
 const REPO:&str="geoffrey1111/agbrio";
 const MAX_PACKAGE:u64=600*1024*1024;
+// Registry/product-name migrations must never redirect an in-app update to a
+// different copy. NSIS requires /D= to be the final argument, without quotes.
+#[cfg(windows)]
+fn pin_install_directory(builder:tauri_plugin_updater::UpdaterBuilder)->Result<tauri_plugin_updater::UpdaterBuilder,String>{
+ let exe=std::env::current_exe().map_err(|_|"UPDATE_INSTALL_DIRECTORY")?;
+ let directory=exe.parent().ok_or("UPDATE_INSTALL_DIRECTORY")?;
+ let mut argument=std::ffi::OsString::from("/D=");argument.push(directory);
+ Ok(builder.installer_arg(argument))
+}
 #[derive(Clone,Serialize)]#[serde(rename_all="camelCase")]
 pub(crate) struct UpdateView{pub state:String,pub current_version:String,pub version:Option<String>,pub notes:Option<String>,pub release_url:Option<String>,pub downloaded:u64,pub total:Option<u64>,pub error:Option<String>}
 impl Default for UpdateView{fn default()->Self{Self{state:"IDLE".into(),current_version:env!("CARGO_PKG_VERSION").into(),version:None,notes:None,release_url:None,downloaded:0,total:None,error:None}}}
@@ -62,6 +71,7 @@ async fn check_manifest(app:&AppHandle,state:&UpdateState,client:&reqwest::Clien
  if !head.status().is_success(){return Err("UPDATE_PACKAGE_INVALID".into())}let size=package_size(head.headers().get(reqwest::header::CONTENT_LENGTH).and_then(|h|h.to_str().ok()).and_then(|s|s.parse().ok()))?;
  let handle=app.clone();let builder=app.updater_builder().timeout(Duration::from_secs(15)).endpoints(vec![url::Url::parse(LATEST_MANIFEST).unwrap()]).map_err(|_|"UPDATE_MANIFEST_INVALID")?;
  #[cfg(windows)]let builder=builder.on_before_exit(move||{let host=handle.state::<HostRuntime>();let core=handle.state::<RouterCore>();host.shutdown(&core);});
+ #[cfg(windows)]let builder=pin_install_directory(builder)?;
  let mut update=builder.build().map_err(|_|"UPDATE_CONFIGURATION")?.check().await.map_err(|_|"UPDATE_MANIFEST_INVALID")?.ok_or("UPDATE_CHANGED")?;
  if update.version!=published.version.to_string()||update.download_url!=published.url{return Err("UPDATE_CHANGED".into())}
  update.timeout=Some(Duration::from_secs(600));let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;c.view.state="AVAILABLE".into();c.view.total=Some(size);c.candidate=Some(update);Ok(())
@@ -87,6 +97,7 @@ pub(crate) async fn desktop_update_check(app:AppHandle,state:State<'_,UpdateStat
   if !release_asset_url(&r.tag_name,&url)||signed.unwrap().size>1024*1024{return Err("UPDATE_MANIFEST_INVALID".into());}
   let handle=app.clone();let builder=app.updater_builder().timeout(Duration::from_secs(15)).endpoints(vec![url]).map_err(|_|"UPDATE_MANIFEST_INVALID")?;
   #[cfg(windows)]let builder=builder.on_before_exit(move||{let host=handle.state::<HostRuntime>();let core=handle.state::<RouterCore>();host.shutdown(&core);});
+  #[cfg(windows)]let builder=pin_install_directory(builder)?;
   let mut update=builder.build().map_err(|_|"UPDATE_CONFIGURATION")?.check().await.map_err(|_|"UPDATE_MANIFEST_INVALID")?.ok_or("UPDATE_MANIFEST_INVALID")?;
   let asset=r.assets.iter().find(|a|a.browser_download_url==update.download_url.as_str()).ok_or("UPDATE_PACKAGE_INVALID")?;
   if update.version!=remote.to_string()||!release_asset_url(&r.tag_name,&update.download_url)||!asset.name.ends_with(".exe")||asset.size==0||asset.size>MAX_PACKAGE{return Err("UPDATE_PACKAGE_INVALID".into());}

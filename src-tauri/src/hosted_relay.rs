@@ -25,11 +25,22 @@ pub(crate) fn status(host:&HostRuntime)->Status{
  };Status{available:control().is_ok(),enabled,state:state.into(),origin:l.map(|l|l.origin.clone()),expires_at:l.map(|l|l.expires_at)}
 }
 fn now_ms()->u64{std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64}
+fn connector_binding_matches(bytes:&[u8],lease:&Lease,port:u16)->bool{
+ serde_json::from_slice::<serde_json::Value>(bytes).is_ok_and(|v|
+  v["port"].as_u64()==Some(port as u64)&&v["origin"]==lease.origin&&v["tenantId"]==lease.tenant_id&&v["hostToken"]==lease.host_token)
+}
 pub(crate) fn stop(host:&HostRuntime){if let Ok(mut p)=host.hosted_child.lock(){if let Some(mut p)=p.take(){let _=p.kill();let _=p.wait();}}}
 fn spawn(host:&HostRuntime,s:&Saved)->Result<(),String>{
  let l=s.lease.as_ref().ok_or("HOSTED_LEASE_MISSING")?;validate_lease(l)?;let (source,node)=ASSETS.get().ok_or("HOSTED_RUNTIME_UNAVAILABLE")?;let address=host.mobile_address().ok_or("MOBILE_LISTENER_UNAVAILABLE")?;
- let mut p=host.hosted_child.lock().map_err(|_|"HOSTED_BUSY")?;if p.as_mut().is_some_and(|p|p.try_wait().ok().flatten().is_none()){return Ok(());}
- let config=path()?.with_file_name("hosted-connector.json");let status=path()?.with_file_name("hosted-status.json");let _=fs::remove_file(&status);
+ let config=path()?.with_file_name("hosted-connector.json");let status=path()?.with_file_name("hosted-status.json");
+ let mut p=host.hosted_child.lock().map_err(|_|"HOSTED_BUSY")?;
+ if p.as_mut().is_some_and(|p|p.try_wait().is_ok_and(|state|state.is_none())){
+  if fs::read(&config).is_ok_and(|bytes|connector_binding_matches(&bytes,l,address.port())){return Ok(());}
+  // A recovered listener can get another port. Rebind only our owned relay;
+  // never leave a live WebSocket forwarding forever to the previous listener.
+  if let Some(mut previous)=p.take(){let _=previous.kill();let _=previous.wait();}
+ }
+ let _=fs::remove_file(&status);
  fs::write(&config,serde_json::to_vec(&serde_json::json!({"origin":l.origin,"hostToken":l.host_token,"tenantId":l.tenant_id,"port":address.port(),"statusPath":status})).unwrap()).map_err(|_|"HOSTED_STORAGE_UNAVAILABLE")?;
  let mut command=Command::new(node);command.arg(source.join("connector.mjs")).arg(config).env("NODE_USE_SYSTEM_CA","1").stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
  #[cfg(windows)]{use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}
@@ -54,7 +65,7 @@ pub(crate) fn redeem(core:&RouterCore,host:&HostRuntime,input:RedeemInput)->Resu
  Ok(status(host))
 }
 fn ensure_after_failure(host:&HostRuntime,s:&Saved){if s.enabled{let _=spawn(host,s);}}
-#[cfg(test)]mod tests{use super::*;#[test]fn lease_identity_never_accepts_path_credentials_or_foreign_tenant(){let l=Lease{tenant_id:"a".repeat(32),origin:format!("https://ag-{}.example.invalid","a".repeat(32)),expires_at:u64::MAX,host_token:"b".repeat(64)};assert!(validate_lease(&l).is_ok());for origin in ["https://other.example.invalid","https://user@ag-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.invalid","https://ag-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.invalid/path","http://ag-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.invalid"]{assert!(validate_lease(&Lease{origin:origin.into(),..l.clone()}).is_err());}}}
+#[cfg(test)]mod tests{use super::*;#[test]fn listener_recovery_invalidates_only_the_changed_connector_binding(){let l=Lease{tenant_id:"a".repeat(32),origin:format!("https://ag-{}.example.invalid","a".repeat(32)),expires_at:u64::MAX,host_token:"b".repeat(64)};let bytes=serde_json::to_vec(&serde_json::json!({"port":47114,"origin":l.origin,"tenantId":l.tenant_id,"hostToken":l.host_token})).unwrap();assert!(connector_binding_matches(&bytes,&l,47114));assert!(!connector_binding_matches(&bytes,&l,47115));assert!(!connector_binding_matches(&bytes,&Lease{host_token:"c".repeat(64),..l.clone()},47114));assert!(!connector_binding_matches(b"{}",&l,47114));}#[test]fn lease_identity_never_accepts_path_credentials_or_foreign_tenant(){let l=Lease{tenant_id:"a".repeat(32),origin:format!("https://ag-{}.example.invalid","a".repeat(32)),expires_at:u64::MAX,host_token:"b".repeat(64)};assert!(validate_lease(&l).is_ok());for origin in ["https://other.example.invalid","https://user@ag-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.invalid","https://ag-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.invalid/path","http://ag-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.invalid"]{assert!(validate_lease(&Lease{origin:origin.into(),..l.clone()}).is_err());}}}
 
 #[cfg(test)]
 #[test]

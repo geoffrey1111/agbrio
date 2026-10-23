@@ -9,6 +9,31 @@ if($Installer){
  $agbrioInstaller=(Resolve-Path -LiteralPath $Installer).Path
  $agbrioSetup=Start-Process -FilePath $agbrioInstaller -ArgumentList @('/S',('/D='+$agbrioInstall)) -WindowStyle Hidden -Wait -PassThru
  if($agbrioSetup.ExitCode -ne 0){throw ('Installer failed '+$agbrioSetup.ExitCode)}
+ # Reproduce upgrade mode without /D: registry must keep the existing directory,
+ # missing branded entries must be recreated and legacy/pinned links retargeted.
+ $qaDesktop=[Environment]::GetFolderPath('DesktopDirectory')
+ $qaPrograms=[Environment]::GetFolderPath('Programs')
+ $qaShortcut=Join-Path $qaDesktop 'Agbrio.lnk'
+ $qaMenu=Join-Path $qaPrograms 'Agbrio/Agbrio.lnk'
+ $qaOld=Join-Path $agbrioRoot 'Legacy App With Spaces'
+ New-Item -ItemType Directory -Path $qaOld -Force|Out-Null
+ [IO.File]::WriteAllText((Join-Path $qaOld 'ai-work-router.exe'),'fictional old install; never executed')
+ $qaLegacyKey='HKCU:\Software\geoffrey\AI Work Router'
+ New-Item -Path $qaLegacyKey -Force|Out-Null
+ Set-Item -LiteralPath $qaLegacyKey -Value $qaOld
+ $qaShell=New-Object -ComObject WScript.Shell
+ $qaStale=Join-Path $qaDesktop 'AI Work Router.lnk'
+ $qaLink=$qaShell.CreateShortcut($qaStale);$qaLink.TargetPath=Join-Path $qaOld 'ai-work-router.exe';$qaLink.Arguments='--fixture-preserve';$qaLink.Save()
+ foreach($qaPath in @($qaShortcut,$qaMenu)){if(Test-Path -LiteralPath $qaPath){Remove-Item -LiteralPath $qaPath}}
+ $qaUpgrade=Start-Process -FilePath $agbrioInstaller -ArgumentList @('/S','/UPDATE') -WindowStyle Hidden -Wait -PassThru
+ if($qaUpgrade.ExitCode -ne 0){throw 'UPDATE_MODE_INSTALL_FAILED'}
+ foreach($qaPath in @($qaShortcut,$qaMenu,$qaStale)){
+  if(!(Test-Path -LiteralPath $qaPath)){throw 'UPDATE_MISSING_LAUNCH_ENTRY'}
+  $qaLink=$qaShell.CreateShortcut($qaPath)
+  if($qaLink.TargetPath -ine (Join-Path $agbrioInstall 'ai-work-router.exe')){throw 'UPDATE_LAUNCHES_WRONG_COPY'}
+ }
+ if($qaShell.CreateShortcut($qaStale).Arguments -cne '--fixture-preserve'){throw 'UPDATE_DROPPED_ARGUMENTS'}
+
 }elseif($InstalledImage){
  # Diagnostic-only reuse of a proven runner-owned installed image. Final release
  # still runs the actual installer on a separate clean Windows runner.
@@ -80,4 +105,31 @@ public static class AgbrioSmokeWindow{[DllImport("user32.dll")]public static ext
 }finally{
  # Only this isolated runner-owned process, never an existing user installation.
  if(!$agbrioProcess.HasExited){Stop-Process -Id $agbrioProcess.Id -Force}
+}
+
+if($Installer){
+ # Actual shell entry -> application -> exact version, after the initial app
+ # has exited. No provider credentials or model activity on this fresh runner.
+ Start-Process -FilePath $qaShortcut | Out-Null
+ $qaDeadline=(Get-Date).AddSeconds(45)
+ $qaRelaunched=$null
+ do{
+  Start-Sleep -Milliseconds 500
+  $qaRelaunched=Get-Process -Name ai-work-router -ErrorAction SilentlyContinue | Where-Object {$_.Path -ieq $agbrioExecutable} | Select-Object -First 1
+ }while(!$qaRelaunched -and (Get-Date) -lt $qaDeadline)
+ if(!$qaRelaunched){throw 'DESKTOP_SHORTCUT_RELAUNCH_FAILED'}
+ try{
+  $qaControl=Join-Path $agbrioInstall 'app-control/control.ps1'
+  $qaStatus=$null
+  do{
+   try{$qaStatus=(& $qaControl -Command Status | ConvertFrom-Json);if($qaStatus.state -eq 'RUNNING'){break}}catch{}
+   Start-Sleep -Milliseconds 500
+  }while((Get-Date) -lt $qaDeadline)
+  $qaExpected=(Get-Content docs/RELEASE_BUILD.json -Raw | ConvertFrom-Json).version
+  if($qaStatus.appVersion -cne $qaExpected -or $qaStatus.state -cne 'RUNNING'){throw 'SHORTCUT_RELAUNCHED_OLD_OR_UNHEALTHY_VERSION'}
+  @{upgradeWithoutExplicitDirectory=$true;desktopRecreated=$true;startMenuRecreated=$true;legacyRetargeted=$true;actualDesktopRelaunch=$true;version=$qaStatus.appVersion} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $agbrioRoot 'entrypoints-proof.json')
+  & $qaControl -Command Stop -Executable $agbrioExecutable -ExpectedInstance $qaStatus.instanceId | Out-Null
+ }finally{
+  $qaRelaunched.Refresh();if(!$qaRelaunched.HasExited){Stop-Process -Id $qaRelaunched.Id}
+ }
 }

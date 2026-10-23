@@ -26,7 +26,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 55
     env:
-      VITE_AGBRIO_APP_VERSION: 0.1.35-rc.60
+      VITE_AGBRIO_APP_VERSION: 0.1.35-rc.61
       AGBRIO_HOSTED_CONTROL_ORIGIN: https://agbrio-connect.geoffreygroup.cc
     steps:
       - uses: actions/checkout@v4
@@ -69,6 +69,8 @@ jobs:
         run: pwsh -NoProfile -File scripts/check-published-board-native.ps1
       - name: Build Windows installer
         run: npm run build:windows -- --config docs/RELEASE_BUILD.json
+      - name: Native entrypoint repair fixture
+        run: pwsh -NoProfile -File scripts/installer-entrypoints-smoke.ps1
       - name: Checksums
         run: |
           $installer=Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
@@ -116,4 +118,5 @@ jobs:
           name: agbrio-windows-install-validation
           path: |
             runtime/clean-windows/proof.json
+            runtime/clean-windows/entrypoints-proof.json
             runtime/clean-windows/*.png

@@ -8,6 +8,46 @@
 !endif
 Var AgbrioLegacyDirectory
 Var AgbrioLegacyMigration
+Var AgbrioPreviousDirectory
+
+; Repair only links whose exact executable target belongs to a registered
+; installation. Keep filenames, arguments and unrelated application links.
+!macro AGBRIO_REPAIR_LINKS directory previousDirectory installDirectory
+  Push $0
+  Push $1
+  Push $2
+  Push $3
+  Push $R6
+  Push $R7
+  ${If} "${previousDirectory}" != ""
+    FindFirst $R6 $R7 "${directory}\*.lnk"
+    ${DoWhile} $R7 != ""
+      !insertmacro IsShortcutTarget "${directory}\$R7" "${previousDirectory}\${MAINBINARYNAME}.exe"
+      Pop $0
+      ${If} $0 == 1
+        !insertmacro SetShortcutTarget "${directory}\$R7" "${installDirectory}\${MAINBINARYNAME}.exe"
+      ${EndIf}
+      FindNext $R6 $R7
+    ${Loop}
+    FindClose $R6
+  ${EndIf}
+  Pop $R7
+  Pop $R6
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+  ClearErrors
+!macroend
+
+!macro AGBRIO_REPAIR_REGISTERED_ENTRIES previousDirectory
+  !insertmacro AGBRIO_REPAIR_LINKS "$DESKTOP" "${previousDirectory}" "$INSTDIR"
+  !insertmacro AGBRIO_REPAIR_LINKS "$SMPROGRAMS" "${previousDirectory}" "$INSTDIR"
+  !insertmacro AGBRIO_REPAIR_LINKS "$SMPROGRAMS\Agbrio" "${previousDirectory}" "$INSTDIR"
+  !insertmacro AGBRIO_REPAIR_LINKS "$SMPROGRAMS\AI Work Router" "${previousDirectory}" "$INSTDIR"
+  !insertmacro AGBRIO_REPAIR_LINKS "$SMSTARTUP" "${previousDirectory}" "$INSTDIR"
+  !insertmacro AGBRIO_REPAIR_LINKS "$APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar" "${previousDirectory}" "$INSTDIR"
+!macroend
 
 ; Parameterized directory keeps shortcut operations shared by the real hooks
 ; and isolated installation validation; it introduces no installer test switch.
@@ -56,6 +96,7 @@ Var AgbrioLegacyMigration
   StrCpy $AgbrioLegacyMigration 0
   ReadRegStr $AgbrioLegacyDirectory SHCTX "${AGBRIO_LEGACY_PRODUCT}" ""
   ReadRegStr $R0 SHCTX "${MANUPRODUCTKEY}" ""
+  StrCpy $AgbrioPreviousDirectory $R0
   ${If} $R0 == ""
   ${AndIf} $AgbrioLegacyDirectory != ""
     IfFileExists "$AgbrioLegacyDirectory\${MAINBINARYNAME}.exe" 0 agbrio_pre_done
@@ -74,6 +115,17 @@ Var AgbrioLegacyMigration
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
+  ; Tauri deliberately skips these in /UPDATE mode. A branded upgrade must
+  ; still leave a discoverable current entry after its one-time relaunch.
+  !insertmacro AGBRIO_REPAIR_REGISTERED_ENTRIES "$AgbrioPreviousDirectory"
+  !insertmacro AGBRIO_REPAIR_REGISTERED_ENTRIES "$AgbrioLegacyDirectory"
+  ${If} $NoShortcutMode != 1
+    Push $UpdateMode
+    StrCpy $UpdateMode 0
+    Call CreateOrUpdateStartMenuShortcut
+    Call CreateOrUpdateDesktopShortcut
+    Pop $UpdateMode
+  ${EndIf}
   ; Separate opt-in entry. Never replace the official Codex shortcut/defaults.
   !insertmacro AGBRIO_INSTALL_SHARED_ENTRY "$SMPROGRAMS\Agbrio" "$INSTDIR"
   ${If} $AgbrioLegacyMigration == 1
