@@ -12,13 +12,15 @@ For example:
 
 The command reuses the existing Agbrio MCP tools. If they are missing, connect Agbrio under **Settings → AI assistant**, add its exact HTTPS MCP address in Claude Code and complete the owner OAuth login/consent in `/mcp`. The observation connection alone does not supply these tools. Keep existing MCP servers and permissions.
 
-Read first, send once, check the original receipt. Queued means waiting; sent means delivered, not finished. Unknown delivery is never resent automatically. Waiting is bounded while the assistant is active; it is not a background subscription and does not keep a closed conversation running.
+Read first, send once, check the original receipt. Queued means waiting; sent means delivered, not finished. Unknown delivery is never resent automatically.
+
+With a compatible Agbrio Host and plugin 0.1.9, ask “notify this conversation when that Codex turn finishes.” Claude registers a one-shot wait for the exact selected turn. A finished result, decision request or failure returns a short notice to the same open Claude conversation; Claude then reads the full result through your existing MCP authorization. Ask to check or cancel that wait at any time. Cancelling a wait does not stop Codex. Waits expire after one hour by default, at most 24 hours, and require the plugin/session to remain open. An unavailable source or uncertain notification is reported honestly and never automatically resent. Updating this source alone does not update a running installation.
 
 ## Follow Claude conversations in Agbrio
 
 Use Agbrio's **Connect Claude Code** setup. Its local observation connection announces exact native session identity and project root; select that conversation in Agbrio. Original model settings, native tasks and permissions remain in place. Owner-authored replies and native decision handling retain Agbrio's existing authorization controls.
 
-Observation credentials and MCP authorization are separate. Never paste tokens, pairing codes or activation codes into a conversation or source file. The plugin does not turn on autonomous Claude writes or a cross-agent loop.
+Observation credentials and MCP authorization are separate. Never paste tokens, pairing codes or activation codes into a conversation or source file. The narrow local wait probe returns only exact Codex turn identity and state, never reply bodies. The plugin only wakes the same session for an explicitly requested wait; it does not turn on arbitrary Claude writes or a cross-agent loop.
 
 ## Install or update
 

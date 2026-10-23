@@ -299,6 +299,7 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         .route("/v1/mobile/workstreams", get(workstreams))
         .route("/v1/mobile/claude-code/sessions", get(claude_code_sessions))
         .route("/v1/claude-code/events", post(claude_code_event))
+        .route("/v1/claude-code/codex-wait", post(claude_codex_wait))
         .route("/v1/claude-code/receipts", post(claude_code_receipt))
         .route("/v1/mobile/claude-code/chat/{thread_id}", get(claude_chat_state))
         .route("/v1/mobile/claude-code/chat", post(claude_chat_command))
@@ -1357,6 +1358,11 @@ async fn claude_code_event(State(state):State<MobileHttpState>,headers:HeaderMap
  Ok(Json(result))
 }
 fn permanent_claude_rejection(code:&str)->bool{matches!(code,"CLAUDE_EVENT_IDENTITY_INVALID"|"CLAUDE_EVENT_KIND_UNSUPPORTED"|"CLAUDE_RUNNING_TURN_ID_REQUIRED"|"CLAUDE_COMPLETE_REPLY_UNPROVEN"|"CLAUDE_NONTERMINAL_CONTENT_REJECTED"|"CLAUDE_ROOT_UNAVAILABLE"|"CLAUDE_ROOT_CHANGED"|"CLAUDE_EVENT_OUT_OF_ORDER"|"CLAUDE_COMPLETE_TURN_MISMATCH"|"CLAUDE_EVENT_REPLAY_CONFLICT"|"CLAUDE_SESSION_NOT_REGISTERED")}
+async fn claude_codex_wait(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<router_core::store::claude_codex_wait::WaitProbe>)->Result<axum::response::Response,ApiError>{
+ let token=claude_adapter_token(&headers)?;
+ let value=state.core.store.claude_codex_wait_probe(&token,&input).map_err(core_error)?;
+ let mut response=Json(value).into_response();response.headers_mut().insert("cache-control",HeaderValue::from_static("no-store"));Ok(response)
+}
 async fn claude_code_receipt(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<router_core::store::claude_manual::ManualReceipt>)->ApiResult<serde_json::Value>{
  let token=claude_adapter_token(&headers)?;
  state.core.store.accept_claude_manual_receipt(&token,&input).map_err(core_error)?;

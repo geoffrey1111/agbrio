@@ -12,6 +12,7 @@ pub mod relay;
 pub mod role_bridge;
 pub mod claude_code;
 pub mod claude_manual;
+pub mod claude_codex_wait;
 pub mod codex_watch;
 pub mod watch_delivery;
 pub mod child_results;

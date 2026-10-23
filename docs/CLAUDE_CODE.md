@@ -1,3 +1,9 @@
+## Codex result reminders
+
+Update both Agbrio and its Claude plugin (0.1.9), then reload the plugin when the current task is idle. Ask Claude to notify this conversation when a selected Codex turn finishes. The native `codex_wait` tool registers one exact turn; it also supports checking and cancelling the reminder. Keep the requesting session open. The default expiry is one hour, with an explicit maximum of 24 hours. Result, attention or failure ends the one-shot wait. Cancelling does not stop Codex.
+
+The notice contains only identity and status. Claude reads the actual result through your existing authorized MCP connection and follows only your existing instructions. Unknown delivery is not resent automatically. Updating does not create reminders for old requests.
+
 ## 2026-10-22 — Task trees and owner decisions
 
 Plugin0.1.7 adds native owner question/permission capture through the existing authenticated exact-session adapter. Supported held native requests remain bound to native call identity, payload revision and publisher lease; unsupported/expired requests return to the native client. The reader also projects supported native next-step cards, keeps questions usable through peer progress, and retires them after a later owner message or a newer decision. Full descendant activity and derived child readers follow exact membership/canonical roots; optional child-result notification defaults off. Manual owner sends retain existing permissions/settings, independent receipt evidence and no automatic replay. Autonomous/MCP/cross-provider Claude writes remain closed.

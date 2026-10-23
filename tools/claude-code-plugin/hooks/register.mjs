@@ -1,4 +1,5 @@
 import {registerOwnerRequests,flushOwnerReceipts,releaseOwnerRequests} from './owner-requests.mjs';
+import {registerCodexWait,initCodexWait,tickCodexWaits,appendCodexWait} from './codex-wait.mjs';
 // Official Claude Code Mods API. This module imports no Node/process/model APIs.
 // It is NOT installed or enabled by building Agbrio.
 const nativeId = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value);
@@ -8,7 +9,7 @@ export function hostOrigin(value) {
   return u.origin;
 }
 function diagnostic(state) {
-  return JSON.stringify({pluginVersion:'0.1.7',mode:'OWNER_MANUAL_INPUT',phase:state.phase,error:state.error,httpStatus:state.httpStatus,identityReady:!!state.identity,pendingEvents:state.pending.length,deliveredEvents:state.delivered,writesEnabled:false,manualInputProtocol:1});
+  return JSON.stringify({pluginVersion:'0.1.9',mode:'OWNER_MANUAL_INPUT',phase:state.phase,error:state.error,httpStatus:state.httpStatus,identityReady:!!state.identity,pendingEvents:state.pending.length,deliveredEvents:state.delivered,writesEnabled:false,manualInputProtocol:1,codexWaitProtocol:state.codexWaitReady?1:null});
 }
 function noteError(state, error) {
   const message=typeof error?.message==='string' ? error.message : '';
@@ -59,6 +60,7 @@ export function register(on, options) {
   const state = {origin, token: options.token, instanceId: crypto.randomUUID(), identity: null, sequence: 0, turnId: null, stopped: false, queue: Promise.resolve(), pending: [],phase:'REGISTERED',error:null,httpStatus:null,delivered:0,reported:null};
   registerManual(on,state);
   registerOwnerRequests(on,state);
+  registerCodexWait(on,state);
   on('command.run', {command:'agbrio-status'}, async () => ({text:diagnostic(state)}));
   on('session.start', async ($, e, next) => {
     // This is a native immediate command, not a prompt/model/tool registration.
@@ -69,8 +71,9 @@ export function register(on, options) {
       state.phase='VERSION';const build=await $.session.version();const version=build.version;
       if (!nativeId(sessionId) || !/^\d+\.\d+\.\d+$/.test(version)) throw new Error('AGBRIO_NATIVE_IDENTITY_UNAVAILABLE');
       state.identity={sessionId,cwd,version};
+      await initCodexWait($,state);
       void emit($,state,'SESSION_START').catch(async error=>{noteError(state,error);await report($,state);});
-      $.clock.every(5_000,async()=>{try {await refreshCwd($,state);await flushOwnerReceipts($,state);await flushReceipt($,state);await emit($,state,'HEARTBEAT');} catch(error){noteError(state,error);await report($,state);}});
+      $.clock.every(5_000,async()=>{try {await refreshCwd($,state);await flushOwnerReceipts($,state);await flushReceipt($,state);await emit($,state,'HEARTBEAT');} catch(error){noteError(state,error);await report($,state);}try{await tickCodexWaits($,state);}catch{/* wait failure cannot disable observation or a manual receipt */}});
     } catch(error) {noteError(state,error);void report($,state);}
     return next(e);
   });
@@ -153,6 +156,7 @@ export function unwrapPluginPrompt(text){
 export function registerManual(on,state){
   on('session.append',async($,e,next)=>{
     const result=await next(e);
+    await appendCodexWait($,state,e,result);
     const active=state.manualActive;
     if(!active||e.agentId||!['prompt','delivery'].includes(e.door)||e.origin?.kind!=='plugin'||e.origin.name!=='agbrio-bridge'||result?.message?.type!=='user'||!nativeId(result.uuid))return result;
     const content=result.message.content;

@@ -6,6 +6,20 @@ use std::{collections::HashMap,sync::{Arc,Mutex}};
 fn event(root:&std::path::Path,session:&str,kind:&str,sequence:i64)->Event {
  Event{event_id:uuid::Uuid::new_v4().to_string(),session_id:session.into(),instance_id:format!("20000000-0000-4000-8000-{}",&session[24..]),sequence,cwd:root.to_string_lossy().into(),version:"2.1.286".into(),kind:kind.into(),turn_id:None,text:None,completed_at:None}
 }
+#[test]fn codex_wait_http_is_local_metadata_only_and_never_opens_a_provider(){
+ let temp=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
+ let core=RouterCore{chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default(),store:store.clone()};let host=crate::HostRuntime::default();
+ *host.test_web_auth.lock().unwrap()=Some(Arc::new(crate::web_auth::WebAuth::open(None).unwrap()));
+ let config=crate::mobile_http::MobileHttpConfig{port:0,allowed_host:"127.0.0.1:0".into(),allowed_origin:"http://127.0.0.1:0".into(),access_issuer:String::new(),access_audience:String::new(),access_jwks_url:String::new(),static_dir:temp.path().into()};
+ host.ensure_mobile(core.clone(),config);let address=host.mobile_address().unwrap();let pair=store.create_claude_connection().unwrap();let sid="10000000-0000-4000-8000-000000000001";let e=event(temp.path(),sid,"SESSION_START",1);store.ingest_claude_event(&pair.token,&e).unwrap();
+ let tid=uuid::Uuid::new_v4().to_string();let turn=uuid::Uuid::new_v4().to_string();let snapshot=router_core::store::codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some(turn.clone()),item_id:None,text:"private source body".into()};store.enable_codex_watch(&tid,"private label",&e.cwd,&snapshot).unwrap();
+ let input=serde_json::json!({"sessionId":sid,"instanceId":e.instance_id,"cwd":e.cwd,"threadId":tid,"generation":1,"turnId":turn});let client=reqwest::blocking::Client::new();let url=format!("http://{address}/v1/claude-code/codex-wait");
+ assert!(!client.post(&url).json(&input).send().unwrap().status().is_success());
+ let response=client.post(&url).bearer_auth(&pair.token).json(&input).send().unwrap();assert!(response.status().is_success());assert_eq!(response.headers()["cache-control"],"no-store");let value:serde_json::Value=response.json().unwrap();assert_eq!(value["state"],"RESULT_READY");assert_eq!(value.as_object().unwrap().len(),4);
+ for name in ["origin","cf-connecting-ip","x-forwarded-for"]{assert!(!client.post(&url).bearer_auth(&pair.token).header(name,"fictional").json(&input).send().unwrap().status().is_success());}
+ store.revoke_claude_connection(&pair.connection_id).unwrap();assert!(!client.post(&url).bearer_auth(&pair.token).json(&input).send().unwrap().status().is_success());
+ assert!(core.session.lock().unwrap().adapter.is_none());assert_eq!(store.registered_codex_watch(&tid).unwrap().send_count,0);host.shutdown(&core);
+}
 #[test]fn manual_claude_chat_uses_current_bridge_generation_and_never_enables_mcp_writes(){
  let temp=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
  let core=RouterCore{chatgpt:Arc::new(Default::default()),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::new(Mutex::new(HashMap::new())),store:store.clone()};
