@@ -7,7 +7,7 @@
     {
       "name": "agbrio-bridge",
       "source": "./",
-      "description": "Exact-session observation and explicit owner text replies; no automatic sends."
+      "description": "Claude session observation and on-demand Codex conversation messaging through Agbrio."
     }
   ],
   "description": "Agbrio Bridge plugin for exact local Claude Code sessions."
