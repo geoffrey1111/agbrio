@@ -1,5 +1,5 @@
 import {useId,useState} from 'react';
-import {ArrowRight,Check,ChevronDown,Monitor,Smartphone,Share,Ellipsis,Plus,House,Cloud,MessageSquare} from 'lucide-react';
+import {ArrowRight,Check,ChevronDown,Monitor,Smartphone,Share,EllipsisVertical,Plus,House,Cloud,MessageSquare} from 'lucide-react';
 import {t,useLanguage} from '../../i18n';
 import './connectionGuides.css';
 import {BrandMark} from './BrandMark';
@@ -33,7 +33,7 @@ export function PwaInstallGuide({expanded=false}:{expanded?:boolean}){
   {Icon:Plus,title:'添加到主屏幕',body:'在分享菜单向下找“添加到主屏幕”。如果显示“作为 Web App 打开”，保持开启，再点“添加”。'},
   {Icon:House,title:'从新图标打开',body:'回到主屏幕，点 Agbrio 图标打开。若提示登录，用电脑生成的新配对码登录。'},
  ]:[
-  {Icon:Ellipsis,title:'打开浏览器菜单',body:'在 Chrome 中打开你的 Agbrio 网址，点右上角 ⋮ 菜单。'},
+  {Icon:EllipsisVertical,title:'打开浏览器菜单',body:'在 Chrome 中打开你的 Agbrio 网址，点右上角 ⋮ 菜单。'},
   {Icon:Plus,title:'安装或添加',body:'选择“添加到主屏幕”，再选择“安装”。部分版本直接显示“安装应用”；按浏览器提示确认即可。'},
   {Icon:House,title:'从新图标打开',body:'在主屏幕或应用列表找到 Agbrio，点击打开。若提示登录，用电脑生成的新配对码登录。'},
  ];
