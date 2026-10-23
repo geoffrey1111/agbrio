@@ -1,0 +1,39 @@
+.connection-guide{--guide-muted:color-mix(in srgb,var(--awr-ink) 70%,var(--awr-paper));font:inherit;color:var(--awr-ink);border-top:1px solid var(--awr-line);margin-block:20px;padding-block:14px;max-width:680px;}
+.connection-guide>summary{display:flex;align-items:center;gap:9px;cursor:pointer;list-style:none;font-weight:600;min-height:44px;}
+.connection-guide>summary::-webkit-details-marker{display:none}
+.connection-guide>summary>svg:last-child{margin-left:auto;flex-shrink:0;transition:transform .18s ease-out}
+.connection-guide[open]>summary>svg:last-child{transform:rotate(180deg)}
+.connection-guide-content>p{font-size:14px;line-height:1.65;margin:8px 0 20px!important;color:var(--guide-muted)}
+.connection-map{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--awr-shell);border-radius:12px;padding:18px 12px;margin-bottom:24px;}
+.connection-map>span{display:flex;flex:1;min-width:0;align-items:center;gap:9px;flex-direction:column;text-align:center;font-size:13px}
+.connection-map>span svg{width:25px;height:25px;color:var(--awr-accent)}
+.connection-map>svg{width:16px;color:var(--guide-muted);flex-shrink:0}
+.connection-steps{list-style:none;padding:0;margin:0;display:grid;gap:20px;}
+.connection-steps li{display:flex;gap:12px;align-items:flex-start;min-width:0}
+.connection-step-number{width:25px;height:25px;border-radius:50%;background:var(--awr-shell);display:grid;place-items:center;flex-shrink:0;font-size:12px;font-weight:600;}
+.connection-steps li[aria-current=step] .connection-step-number{background:var(--awr-accent);color:white}
+.connection-steps li[data-done=true] .connection-step-number{background:var(--awr-success-soft);color:var(--awr-success)}
+.connection-steps strong{font-size:14px;line-height:1.5}.connection-steps li p{font-size:14px;line-height:1.65;margin:5px 0 0!important;color:var(--guide-muted);overflow-wrap:anywhere}
+.connection-help{margin-top:18px;font-size:14px}.connection-help summary{cursor:pointer;min-height:44px;align-content:center;color:var(--awr-accent)}
+.connection-help p{font-size:14px;line-height:1.65;color:var(--guide-muted);margin-bottom:0!important}
+.install-platforms{display:flex;padding:4px;background:var(--awr-shell);border-radius:12px;gap:4px;margin:16px 0;}
+.install-platforms button{flex:1;min-width:0!important;min-height:44px;border:0;background:transparent;border-radius:9px;padding:9px 8px;color:var(--guide-muted);font:inherit;font-size:14px;}
+.install-platforms button[aria-selected=true]{color:var(--awr-ink);background:var(--awr-paper);font-weight:600;}
+.install-browser{font-size:13px;color:var(--guide-muted);margin:16px 0;}
+.install-illustration{position:relative;display:flex;flex-shrink:0;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:68px;height:78px;border:1px solid var(--awr-line);border-radius:10px;background:var(--awr-paper);color:var(--awr-accent);padding-top:10px;box-sizing:border-box}
+.install-window-bar{position:absolute;top:0;left:0;right:0;display:flex;gap:3px;align-items:center;height:16px;padding-inline:7px;border-bottom:1px solid var(--awr-line)}
+.install-window-bar i{width:3px;height:3px;background:var(--guide-muted);border-radius:50%}
+.install-illustration>span:last-child{font-size:10px;color:var(--guide-muted)}
+.install-source{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--awr-accent);min-height:44px}
+.install-note{font-size:13px!important;margin-top:20px!important}
+@media(prefers-reduced-motion:reduce){.connection-guide>summary>svg:last-child{transition:none}}
+/* These are inline instructions inside existing settings, not another panel. */
+.r2-router :is(.r2-settings,.v4-shared-codex,.v5-access-body) .connection-guide{background:none;box-shadow:none;border:0;border-top:1px solid var(--awr-line);border-radius:0;padding:10px 0;margin:20px 0;}
+.r2-router .connection-guide summary::after{content:none!important}
+.r2-router .connection-guide>summary{padding:0;}
+.r2-router .connection-guide .connection-help{background:none;box-shadow:none;border:0;border-radius:0;padding:0;margin:16px 0 0;}
+.r2-router .connection-guide .connection-guide-content{padding:0;}
+.r2-router .connection-map strong{white-space:nowrap}
+@media(max-width:480px){.r2-router .v4-shared-codex{padding:20px;margin-top:16px;}.connection-map{gap:6px;padding-inline:10px;}.connection-map>span{font-size:12px;}.connection-steps{gap:18px;}}
+
+.r2-router .connection-guide :is(p,.install-note,.install-browser){color:var(--guide-muted);font-size:14px;line-height:1.65}
