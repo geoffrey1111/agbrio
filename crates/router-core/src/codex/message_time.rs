@@ -1,9 +1,11 @@
 //! Bounded metadata projection of the last visible native message. No body escapes.
 use serde_json::Value;
 use std::{fs::File,io::{BufRead,BufReader,Read,Seek,SeekFrom},path::Path};
-pub(super) fn read(path:&Path,root:&Path,thread:&str,cwd:&str)->Option<String>{
- let path=path.canonicalize().ok()?;let root=root.canonicalize().ok()?;
- if !path.starts_with(root)||path.extension().is_none_or(|e|e!="jsonl"){return None;}
+pub(super) fn read(path:&Path,thread:&str,cwd:&str)->Option<String>{
+ // Only the exact native thread/read metadata supplies this path. Histories
+ // can legitimately live outside the current default CODEX_HOME after moves.
+ if !path.is_absolute()||path.extension().is_none_or(|e|e!="jsonl"){return None;}
+ let path=path.canonicalize().ok()?;
  type Cache=std::collections::HashMap<(std::path::PathBuf,String,String),((u64,std::time::SystemTime),Option<String>)>;
  static CACHE:std::sync::OnceLock<std::sync::Mutex<Cache>>=std::sync::OnceLock::new();
  let meta=std::fs::metadata(&path).ok()?;let stamp=(meta.len(),meta.modified().ok()?);let key=(path.clone(),thread.to_owned(),cwd.to_owned());
@@ -41,8 +43,8 @@ fn project(bytes:&[u8])->Option<String>{
   let row=|name|json!({"type":"response_item","timestamp":"2026-10-23T00:05:00Z","payload":{"type":"function_call","name":name,"arguments":"{\"questions\":[{\"title\":\"Choose a direction\"}]}"}}).to_string()+"\n";
   assert!(project(row("exec_command").as_bytes()).is_none());assert_eq!(project(row("request_user_input_async").as_bytes()).as_deref(),Some("2026-10-23T00:05:00Z"));
  }
- #[test]fn exact_identity_root_and_file_change_are_checked(){
-  let d=tempfile::tempdir().unwrap();let p=d.path().join("session.jsonl");let header=json!({"type":"session_meta","payload":{"id":"exact","cwd":d.path()}}).to_string()+"\n";std::fs::write(&p,&header).unwrap();assert_eq!(read(&p,d.path(),"wrong",d.path().to_str().unwrap()),None);
-  let row=json!({"type":"response_item","timestamp":"2026-10-23T00:03:00Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"fixture"}]}}).to_string()+"\n";std::fs::write(&p,header+&row).unwrap();assert_eq!(read(&p,d.path(),"exact",d.path().to_str().unwrap()).as_deref(),Some("2026-10-23T00:03:00Z"));assert!(read(&p,&d.path().join("missing"),"exact",d.path().to_str().unwrap()).is_none());
+ #[test]fn native_metadata_path_identity_project_and_file_change_are_checked(){
+  let d=tempfile::tempdir().unwrap();let p=d.path().join("session.jsonl");let header=json!({"type":"session_meta","payload":{"id":"exact","cwd":d.path()}}).to_string()+"\n";std::fs::write(&p,&header).unwrap();assert_eq!(read(&p,"wrong",d.path().to_str().unwrap()),None);
+  let row=json!({"type":"response_item","timestamp":"2026-10-23T00:03:00Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"fixture"}]}}).to_string()+"\n";std::fs::write(&p,header+&row).unwrap();assert_eq!(read(&p,"exact",d.path().to_str().unwrap()).as_deref(),Some("2026-10-23T00:03:00Z"));assert!(read(&p,"exact",d.path().join("missing").to_str().unwrap()).is_none());
  }
 }

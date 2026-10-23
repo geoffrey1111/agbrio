@@ -698,8 +698,7 @@ impl CodexAdapter {
     }
     pub fn observe_message_time(&mut self,thread:&str,cwd:&str,path:Option<&str>){
       if self.guard.is_some(){return;}let Some(path)=path else{return;};
-      let root=std::env::var_os("CODEX_HOME").map(std::path::PathBuf::from).or_else(||std::env::var_os("USERPROFILE").or_else(||std::env::var_os("HOME")).map(|p|std::path::PathBuf::from(p).join(".codex")));
-      if let Some(at)=root.and_then(|r|super::message_time::read(std::path::Path::new(path),&r.join("sessions"),thread,cwd)){if self.message_times.len()>128{self.message_times.clear();}self.message_times.insert((thread.into(),cwd.into()),at);}
+      if let Some(at)=super::message_time::read(std::path::Path::new(path),thread,cwd){if self.message_times.len()>128{self.message_times.clear();}self.message_times.insert((thread.into(),cwd.into()),at);}
     }
     pub fn public_message_timestamp(&self,thread:&str,cwd:&str)->Option<&str>{self.message_times.get(&(thread.into(),cwd.into())).map(String::as_str)}
     pub fn read_public_chat_page(&mut self,thread:&str,cursor:Option<&str>)->Result<Value,String>{
