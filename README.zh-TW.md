@@ -1,6 +1,6 @@
 # Agbrio
 
-**電腦上的 Agent 在推進，手機上的你隨時跟進。**
+**電腦上的 Agent 繼續工作，你在手機上掌握進展。**
 
 [![Download](https://img.shields.io/github/v/release/geoffrey1111/agbrio?label=download)](https://github.com/geoffrey1111/agbrio/releases/latest)
 [![Build](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml/badge.svg?branch=main)](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml)
@@ -9,31 +9,53 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
-把 Codex、Claude Code 的對話和項目看板放在一起。查看進展、閱讀成果、回覆消息，需要你決定時及時處理。
+查看 Codex、Claude Code 對話，傳送訊息跟進，接收新回覆與待處理通知。讓管理與執行分工，也能由一個管理對話協調多個執行對話。
 
-![Agbrio 項目看板](docs/assets/boards-project-current.png)
+![桌面對話總覽與執行狀態](docs/assets/zh-CN/conversations-current.png)
 
-## 離開電腦，也能接着工作
+## 離開電腦，也能看進度、回訊息
 
-- **跟進對話**：查看執行状態和最新回覆，在手機上回覆原對話。
-- **處理問题**：回答支持的提問與選項，查看子對話的工作状態。
-- **轉交成果**：選擇有用的内容，確认目标後轉給另一条對話。
-- **直接讀文件**：在對話里打開 Markdown、圖片、代碼、JSON 和 CSV。
+一眼看到執行中、等待確認與子對話狀態。進入原對話查看成果、補充要求、回答支援的提問，不用遠端控制整個桌面。
 
-<p align="center"><img src="docs/assets/mobile-chat-current.png" width="300" alt="在手機上回覆并回答問题"> &nbsp; <img src="docs/assets/mobile-file-current.png" width="300" alt="直接閱讀項目文檔"></p>
+<p align="center"><img src="docs/assets/zh-CN/mobile-conversations-current.png" width="300" alt="手機對話列表與子對話狀態"> &nbsp; <img src="docs/assets/zh-CN/mobile-reply-current.png" width="300" alt="在手機回覆原對話"></p>
 
-## 讓 Agent 把成果整理成看板
+## 選擇對話，開始監聽或綁定協作
 
-項目進展、方案對比、資料報告，都可以變成手機上的一個頁面。打開 **看板**（已有看板時點 **創建看板**），選一個示例，把指令發給電腦上的 Agent。創建完成後，看板會出現在 Agbrio，跟隨項目文件更新。
+從電腦上已有的對話中選擇。監聽單一對話，隨時跟進；把規劃與執行連成 Bridge，選擇轉交內容並確認對象，由你批准傳送。
 
-![看板示例與 Agent 創建入口](docs/assets/boards-guide-current.png)
+<p align="center"><img src="docs/assets/zh-CN/select-conversation-current.png" width="300" alt="選擇電腦上的既有對話進行監聽"> &nbsp; <img src="docs/assets/zh-CN/review-current.png" width="300" alt="傳送前審閱內容與對象"></p>
+
+![選擇 Bridge 的管理端與執行端](docs/assets/zh-CN/binding-current.png)
+
+## 把日常跟進交給管理對話
+
+授權一個管理對話協調多個 Codex 執行對話：讀取進展、傳遞任務、彙整結果；需要你決定時，再交回給你。管理對話可來自 Claude Code 或 Codex。
+
+```mermaid
+flowchart TD
+  U["你 · 方向與關鍵決策"] <--> M["管理對話 · Claude Code / Codex"]
+  M <--> A["Codex · 介面實作"]
+  M <--> B["Codex · 介接開發"]
+  M <--> C["Codex · 測試驗收"]
+```
+
+管理委派支援向 Codex 傳送；Claude Code 對話支援你本人從手機回覆。關鍵決策與授權範圍始終由你掌握。
 
 ## 開始使用
 
-1. **[下载 Windows 版](https://github.com/geoffrey1111/agbrio/releases/latest)**，連接正在使用的 Agent。
-2. **選擇對話，或創建看板**，從手頭的項目開始。
-3. **在 設置 → 設備 配對手機**，使用托管兌換碼或自己的 HTTPS 連接。
+1. 下載 Windows 版，連接你正在使用的 Agent。
+2. 選擇對話開始監聽，或綁定管理端與執行端。
+3. 在「設定 → 裝置」配對手機，開啟你的 Agbrio 網址。
 
-手機访問時，電腦和 Agbrio 需要保持在線。
+手機存取時，電腦與 Agbrio 需要保持上線；請在接收裝置啟用通知。
 
-[使用幫助](docs/START_HERE.md) · [看板指南](docs/BOARDS.md) · [源碼構建](docs/BUILD.md)
+[Download](https://github.com/geoffrey1111/agbrio/releases/latest) · [使用說明](docs/START_HERE.md)
+
+<details>
+<summary>也有這些實用功能</summary>
+
+直接閱讀對話中的文件、圖片與專案看板。需要自訂整合時，再使用 API / MCP。
+
+</details>
+
+<sub>截圖為目前介面，使用虛構示例資料。</sub>

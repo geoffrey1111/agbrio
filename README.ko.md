@@ -1,6 +1,6 @@
 # Agbrio
 
-**컴퓨터와 휴대폰에서 AI 에이전트의 작업을 이어서 확인하세요.**
+**Agent는 PC에서 계속 일하고, 진행 상황은 휴대폰에서 확인하세요.**
 
 [![Download](https://img.shields.io/github/v/release/geoffrey1111/agbrio?label=download)](https://github.com/geoffrey1111/agbrio/releases/latest)
 [![Build](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml/badge.svg?branch=main)](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml)
@@ -9,25 +9,53 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
-Codex와 Claude Code 대화를 한곳에서 확인하고, 결과를 읽고, 답장하거나 필요한 질문에 응답하세요. 선택한 내용을 다른 대화로 전달할 수도 있습니다.
+Codex와 Claude Code 대화를 확인하고, 메시지를 보내 후속 작업을 진행하세요. 새 결과나 결정이 필요할 때 알림을 받습니다. 계획과 실행을 나누거나 하나의 관리 대화에 여러 실행 대화를 맡길 수 있습니다.
 
-![프로젝트 보드](docs/assets/en/boards-project.png)
+![Desktop conversation overview](docs/assets/en/conversations-current.png)
 
-## 할 수 있는 일
+## 자리를 비워도 진행 상황을 보고 답장하기
 
-- 작업 상태와 최신 답변을 확인합니다.
-- 휴대폰으로 답장하고 지원되는 질문과 선택지에 응답합니다.
-- 대화 속 Markdown, 이미지, 코드, JSON, CSV를 바로 읽습니다.
-- 프로젝트 진행 상황, 비교안, 보고서를 보드로 정리합니다.
+실행 중, 확인 대기, 하위 대화 상태를 한눈에 확인하세요. 원래 대화에서 결과를 읽고 추가 지시를 보내거나 지원되는 질문에 답할 수 있습니다.
 
-<p align="center"><img src="docs/assets/en/mobile-chat.png" width="300" alt="휴대폰 대화"> &nbsp; <img src="docs/assets/en/mobile-file.png" width="300" alt="프로젝트 문서 읽기"></p>
+<p align="center"><img src="docs/assets/en/mobile-conversations-current.png" width="300" alt="Phone conversation list and activity"> &nbsp; <img src="docs/assets/en/mobile-reply-current.png" width="300" alt="Reply to the original conversation from your phone"></p>
+
+## 대화를 선택하고 지켜보거나 연결하기
+
+PC의 기존 대화를 선택하세요. 하나를 모니터링하거나 관리자와 실행자를 Bridge로 연결할 수 있습니다. 전달할 내용과 대상을 확인한 뒤 직접 승인합니다.
+
+<p align="center"><img src="docs/assets/en/select-conversation-current.png" width="300" alt="Choose a conversation to watch"> &nbsp; <img src="docs/assets/en/review-current.png" width="300" alt="Review content and recipient before sending"></p>
+
+![Choose a planning conversation and executor](docs/assets/en/binding-current.png)
+
+## 관리 대화에 일상적인 후속 작업 맡기기
+
+하나의 관리 대화가 여러 Codex 대화의 진행 상황을 읽고, 작업을 전달하며, 결과를 정리합니다. 판단이 필요한 일은 사용자에게 돌아옵니다. Claude Code나 Codex를 관리 대화로 사용할 수 있습니다.
+
+```mermaid
+flowchart TD
+  U["사용자 · 방향과 주요 결정"] <--> M["관리 대화 · Claude Code / Codex"]
+  M <--> A["Codex · 화면 구현"]
+  M <--> B["Codex · API 개발"]
+  M <--> C["Codex · 검증"]
+```
+
+위임한 메시지는 Codex로 전송됩니다. Claude Code에는 휴대폰에서 직접 답장할 수 있습니다. 결정과 위임 범위는 사용자가 관리합니다.
 
 ## 시작하기
 
-1. [Windows 앱을 다운로드](https://github.com/geoffrey1111/agbrio/releases/latest)하고 사용 중인 에이전트를 연결하세요.
-2. 대화를 선택하거나 Board에서 예시를 고른 뒤, 안내를 컴퓨터의 에이전트에게 전달하세요.
-3. Settings → Devices에서 휴대폰을 연결하세요. 제공받은 코드 또는 자신의 HTTPS 연결을 사용할 수 있습니다.
+1. Windows 앱을 내려받고 사용 중인 Agent를 연결하세요.
+2. 모니터링할 대화를 선택하거나 관리자와 실행자를 연결하세요.
+3. 설정 → 기기에서 휴대폰을 페어링하고 Agbrio 주소를 여세요.
 
-휴대폰으로 사용할 때는 컴퓨터와 Agbrio가 온라인 상태여야 합니다.
+PC와 Agbrio는 온라인 상태여야 합니다. 알림을 받을 기기에서 알림을 켜세요.
 
-[사용 안내](docs/START_HERE.md) · [보드 안내](docs/BOARDS.md) · [소스 빌드](docs/BUILD.md)
+[Download](https://github.com/geoffrey1111/agbrio/releases/latest) · [설정 안내](docs/START_HERE.md)
+
+<details>
+<summary>함께 쓰기 좋은 기능</summary>
+
+대화에 연결된 문서, 이미지, 프로젝트 보드도 볼 수 있습니다. 맞춤 연동에는 API / MCP를 사용할 수 있습니다.
+
+</details>
+
+<sub>현재 인터페이스에 가상의 예시 데이터를 사용한 화면입니다.</sub>
