@@ -61,7 +61,7 @@ export const MarkdownMessage = memo(function MarkdownMessage({ text,media }: Pro
       >
         {text}
       </ReactMarkdown>
-      {previewSource&&media&&<FilePreview source={previewSource} media={media} close={()=>setPreviewSource(null)}/>}
+      {media&&<FilePreview source={previewSource} media={media} close={()=>setPreviewSource(null)}/>}
       {fileError&&<p role="status">{uiText(fileError)}</p>}
     </div></MediaPreviewBoundary>
   );

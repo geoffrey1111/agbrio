@@ -6,15 +6,15 @@ Public Windows releases, checked 2026-10-22. Complete desktop setup first; phone
 
 ## 1. Choose a version and install
 
-Use [0.1.35-rc.55, the latest recommended release](https://github.com/geoffrey1111/agbrio/releases/latest). 0.1.34 remains historical; existing users upgrade instead of choosing between two recommended channels.
+Use [0.1.35-rc.56, the latest recommended release](https://github.com/geoffrey1111/agbrio/releases/latest). 0.1.34 remains historical; existing users upgrade instead of choosing between two recommended channels.
 
-The exact **0.1.35-rc.55** installer version, signature and verified bytes are retained. Latest promotion does not certify every future Codex version, history or crash case. [Package identity and validation limits](RELEASE_0.1.35-rc.55.md). The installer includes a generic board viewer, without private board content, artwork or runtime data.
+The exact **0.1.35-rc.56** installer version, signature and verified bytes are retained. Latest promotion does not certify every future Codex version, history or crash case. [Package identity and validation limits](RELEASE_0.1.35-rc.56.md). The installer includes a generic board viewer, without private board content, artwork or runtime data.
 
 1. Use Windows x64 with your own official Windows Store Codex Desktop. Complete official installation/login first if needed. Agbrio does not bundle Desktop or provide an account/quota.
 2. Download the installer from the selected release. Compare `Get-FileHash -Algorithm SHA256 -LiteralPath 'full installer path'` with its `SHA256SUMS.txt`; stop on mismatch.
 3. Save work. Quit Agbrio through its tray menu before updating; do not run two instances. If switching Codex modes, finish tasks and exit Desktop normally at that point. Never force-stop a working task.
 4. Install while retaining data, login, Bridges, drafts and pairing. Personally review Windows confirmations. The updater `.sig` is not a Windows Authenticode signature and does not promise no SmartScreen warning.
-5. Open Agbrio and check Settings/About. rc.55 installs **Codex (Agbrio shared)** and **Codex (return to normal)** in the Start Menu.
+5. Open Agbrio and check Settings/About. rc.56 installs **Codex (Agbrio shared)** and **Codex (return to normal)** in the Start Menu.
 
 Closing the Agbrio window normally leaves the Host in the tray; quitting there stops it. Remote access needs the computer awake and online. Settings → Language offers English, 简体中文, 繁體中文 or system default. Desktop and phone retain their own choice; messages are not translated. Japanese/Korean currently have README introductions only.
 
@@ -24,11 +24,11 @@ Official Codex Desktop is your existing application. Agbrio Host provides local 
 
 Older discovery used a running native backend. Preparation and switching were separate: an ordinary Desktop already owns its backend, which cannot safely be replaced underneath active work. It had to exit before shared startup.
 
-**rc.55 discovers and verifies the registered official installation while Desktop is closed. After official installation/login, an ordinary-open → prepare → close loop is no longer required on each use.** This is an alpha compatibility integration, not an official OpenAI remote-control feature or an ordinary MCP connection. Interface changes may make it fail closed.
+**rc.56 discovers and verifies the registered official installation while Desktop is closed. After official installation/login, an ordinary-open → prepare → close loop is no longer required on each use.** This is an alpha compatibility integration, not an official OpenAI remote-control feature or an ordinary MCP connection. Interface changes may make it fail closed.
 
 Prepared backend, connected Desktop, paired phone and authorized assistant are four different checks.
 
-## 3. First shared startup (rc.55)
+## 3. First shared startup (rc.56)
 
 ### Independent Start Menu route
 
@@ -117,4 +117,4 @@ Authenticated owner text replies require plugin 0.1.3 actually advertising manua
 - **Provider security challenge:** stop automated navigation/refresh/submit. The owner clears it; no cookie copying, identity rotation or retry loop.
 - **Feedback:** include Agbrio/Codex/Windows versions, entry, connection type, failing step, exact error/time and active-work status. Redact private text, username paths, full callback URLs, tokens, codes and keys. [Report a bug](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml).
 
-Bounded Windows/package/native/live-connection checks do not certify every history, Desktop Code Mode, future update, crash case or physical-phone experience. macOS is not an accepted release target. [FAQ](FAQ.md) · [Release evidence](RELEASE_0.1.35-rc.55.md) · [Build](BUILD.md).
+Bounded Windows/package/native/live-connection checks do not certify every history, Desktop Code Mode, future update, crash case or physical-phone experience. macOS is not an accepted release target. [FAQ](FAQ.md) · [Release evidence](RELEASE_0.1.35-rc.56.md) · [Build](BUILD.md).
