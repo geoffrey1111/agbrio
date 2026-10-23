@@ -24,6 +24,7 @@ jobs:
         run: npm ci
       - name: Download and install the exact main release
         env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ inputs.version }}
           INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
         run: |
@@ -35,7 +36,10 @@ jobs:
           $name='Agbrio_'+$env:RELEASE_VERSION+'_x64-setup.exe'
           $path=Join-Path runtime/released $name
           $url='https://github.com/geoffrey1111/agbrio/releases/download/v'+$env:RELEASE_VERSION+'/'+$name
-          Invoke-WebRequest $url -OutFile $path
+          # Authenticated same-repository download also validates a draft before
+          # updater discovery exposes it to users. Public bytes are read back after promotion.
+          gh release download ('v'+$env:RELEASE_VERSION) --repo $env:GITHUB_REPOSITORY --pattern $name --dir runtime/released
+          if($LASTEXITCODE -ne 0){throw 'Exact release download failed'}
           if((Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant() -cne $env:INSTALLER_SHA256){throw 'Released byte identity mismatch'}
           pwsh -NoProfile -File scripts/windows-install-smoke.ps1 -Installer $path
           if($LASTEXITCODE -ne 0){throw 'Exact installer smoke failed'}
