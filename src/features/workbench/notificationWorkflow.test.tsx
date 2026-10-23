@@ -7,10 +7,18 @@ afterEach(()=>{cleanup();vi.useRealTimers();localStorage.clear();});
 const watch=(id:string,count:number):CodexWatch=>({threadId:id,label:id,cwd:'D:\\fictional',enabled:true,generation:1,snapshot:{state:'IDLE',turnId:null,itemId:null,text:'fictional current message'},checkedAt:Date.now(),errorCode:null,sendCount:count});
 function api(rows:CodexWatch[]):NotificationApi{return{watches:vi.fn().mockResolvedValue(rows),connect:vi.fn(),threads:vi.fn(),enable:vi.fn(),pause:vi.fn(),feed:vi.fn().mockResolvedValue({events:[],nextCursor:0,hasMore:false}),event:vi.fn(),webUrl:vi.fn().mockResolvedValue(null)};}
 const order=()=>[...document.querySelectorAll<HTMLElement>('[data-watch-id]')].map(n=>n.dataset.watchId);
-it('sorts paused and active watches together by last native message, not cumulative sends',async()=>{
+it('keeps active and paused groups while sorting by last native message, not cumulative sends',async()=>{
  const a=api([{...watch('latest-paused',0),enabled:false,lastMessageAt:300},{...watch('old-active',100),lastMessageAt:100},{...watch('middle-active',1),lastMessageAt:200}]);
  render(<CodexNotifications api={a} standalone/>);await act(async()=>{});fireEvent.click(screen.getByRole('tab',{name:'监听对话'}));
- expect(order()).toEqual(['latest-paused','middle-active','old-active']);expect(a.enable).not.toHaveBeenCalled();expect(a.pause).not.toHaveBeenCalled();
+ expect(order()).toEqual(['middle-active','old-active','latest-paused']);expect(a.enable).not.toHaveBeenCalled();expect(a.pause).not.toHaveBeenCalled();
+});
+it('keeps running children and native executions above newer attention and completed messages',async()=>{
+ const child={...watch('child-running',0),lastMessageAt:10,taskTree:{running:1,attention:0}} as CodexWatch;
+ const runner={...watch('native-running',0),lastMessageAt:20,snapshot:{...watch('',0).snapshot,state:'RUNNING'}};
+ const waiting={...watch('waiting',0),lastMessageAt:200,snapshot:{...watch('',0).snapshot,state:'ACTION_REQUIRED'}};
+ const a=api([{...watch('completed',0),lastMessageAt:300},waiting,child,runner]);
+ render(<CodexNotifications api={a} standalone/>);await act(async()=>{});fireEvent.click(screen.getByRole('tab',{name:'监听对话'}));
+ expect(order()).toEqual(['native-running','child-running','waiting','completed']);
 });
 it('reorders on new messages during a visit and retains the same order after reentry',async()=>{
  vi.useFakeTimers();const first={...watch('first',8),lastMessageAt:200},second={...watch('second',1),lastMessageAt:100};const a=api([first,second]);
