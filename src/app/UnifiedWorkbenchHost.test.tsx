@@ -1,8 +1,8 @@
-import { StrictMode } from "react";
+import { StrictMode,useLayoutEffect } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const composition=vi.hoisted(()=>({last:null as import("../features/workbench/UnifiedWorkbench").UnifiedWorkbenchProps|null}));
+const composition=vi.hoisted(()=>({selectDuringLayout:null as string|null,last:null as import("../features/workbench/UnifiedWorkbench").UnifiedWorkbenchProps|null}));
 const api = vi.hoisted(() => ({
   createBridge:vi.fn(),
   nativeWriterAcceptanceAvailable: vi.fn(), debugAcceptNativeChatGptWriter: vi.fn(),
@@ -51,6 +51,7 @@ async function enterAdvancedConnection() {
 }
 
 beforeEach(() => {
+  composition.selectDuringLayout=null;
     composition.last=null;
   composition.last=null;
   api.nativeWriterAcceptanceAvailable.mockResolvedValue(false);
@@ -1401,7 +1402,7 @@ describe("UnifiedWorkbenchHost V3 project and pairing inputs", () => {
 // composition. They are not Native R2 UI acceptance; native flow checks are separate.
 vi.mock("../features/workbench/UnifiedWorkbench",async(importOriginal)=>{
  const actual=await importOriginal<typeof import("../features/workbench/UnifiedWorkbench")>();
- return {...actual,LEGACY_WORKBENCH_DETAILS:true,UnifiedWorkbench:(props:import("../features/workbench/UnifiedWorkbench").UnifiedWorkbenchProps)=>{composition.last=props;return <actual.LegacyWorkbench {...props}/>;}};
+ return {...actual,LEGACY_WORKBENCH_DETAILS:true,UnifiedWorkbench:(props:import("../features/workbench/UnifiedWorkbench").UnifiedWorkbenchProps)=>{composition.last=props;const scheduled=composition.selectDuringLayout;useLayoutEffect(()=>{if(scheduled&&props.selectedWorkstreamId){composition.selectDuringLayout=null;props.onSelectWorkstream(scheduled);}},[scheduled,props.selectedWorkstreamId]);return <actual.LegacyWorkbench {...props}/>;}};
 });
 
 it("opens the newly created exact Bridge even when the previous render's index lacked its ID",async()=>{render(<UnifiedWorkbenchHost initialSurface="BRIDGES"/>);await waitFor(()=>expect(composition.last?.items.some(item=>item.id==="work-a")).toBe(true));const create=composition.last!.onCreateBridge!;const row={...workstreams[0],id:"work-new-exact",name:"new owner Bridge"};const fresh={...snapshot,workstreams:[...workstreams,row],selectedWorkstreamId:row.id};api.createBridge.mockResolvedValue(row.id);api.workspaceSnapshot.mockResolvedValue(fresh);api.workstreamSnapshot.mockImplementation(async(id:string)=>id===row.id?fresh:snapshot);await act(async()=>{await create("new owner Bridge");});expect(api.selectWorkspace).toHaveBeenCalledWith("project-1",row.id);expect(api.workstreamSnapshot).toHaveBeenCalledWith(row.id);await waitFor(()=>expect(composition.last?.selectedWorkstreamId).toBe(row.id));expect(composition.last?.surface).toBe("WORKSPACE");});
@@ -1414,4 +1415,10 @@ it("selects the new reader while presentation persistence is pending",async()=>{
  act(()=>{composition.last!.onSelectWorkstream("work-b");});
  await waitFor(()=>expect(composition.last?.selectedWorkstreamId).toBe("work-b"));expect(composition.last?.surface).toBe("WORKSPACE");
  await act(async()=>finish());
+});
+
+it("keeps a newer selection when the previous commit still has a pending reader effect",async()=>{
+ composition.selectDuringLayout="work-b";render(<UnifiedWorkbenchHost initialSurface="BRIDGES"/>);
+ await waitFor(()=>expect(api.selectWorkspace).toHaveBeenCalledWith("project-1","work-b"));
+ await waitFor(()=>expect(composition.last?.selectedWorkstreamId).toBe("work-b"));
 });

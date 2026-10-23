@@ -171,6 +171,7 @@ export function UnifiedWorkbenchHost({initialSurface="BRIDGES"}:{initialSurface?
   // used to distinguish otherwise identical visible Workstream names.
   const [dashboard, setDashboard] = useState<DashboardProjection | null>(()=>readModels.peek<DashboardProjection>("directory:desktop")??null);
   const [selectedWorkstreamId, setSelectedWorkstreamId] = useState<string | null>(null);
+  const readerSelectionIntent = useRef<string | null>(null);
   const [history, setHistory] = useState<FeedEvent[]>([]);
   const [codexHistoryError, setCodexHistoryError] = useState<string | null>(null);
   const [goal, setGoal] = useState<GoalPresentation | null>(null);
@@ -644,6 +645,7 @@ export function UnifiedWorkbenchHost({initialSurface="BRIDGES"}:{initialSurface?
   }, [codexRefreshBusy, selectedCodexEndpoint, selectedWorkstreamId]);
 
   const loadSelected = useCallback(async (workstreamId: string, preserveExplicitChatGptCandidate = false) => {
+    readerSelectionIntent.current = workstreamId;
     const draftLoadGeneration = beginDraftLoad(workstreamId);
     const selectionGeneration = ++candidateScopeGeneration.current;
     setUnprojectedThread(null);
@@ -744,7 +746,9 @@ export function UnifiedWorkbenchHost({initialSurface="BRIDGES"}:{initialSurface?
   }, [loadSelected, snapshot?.workstreams,dashboard?.workstreams]);
 
   useEffect(() => {
-    if (selectedWorkstreamId) void loadSelected(selectedWorkstreamId).catch((error) => setRuntimeError(String(error)));
+    // A committed older selection may still have a passive effect pending after
+    // a newer explicit selection. It must not choose the old reader again.
+    if (selectedWorkstreamId && (!readerSelectionIntent.current || readerSelectionIntent.current === selectedWorkstreamId)) void loadSelected(selectedWorkstreamId).catch((error) => setRuntimeError(String(error)));
   // Loading belongs to a chosen exact workstream, not the changing snapshot object.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWorkstreamId]);
@@ -1635,7 +1639,7 @@ export function UnifiedWorkbenchHost({initialSurface="BRIDGES"}:{initialSurface?
       throw error;
     })}
     onLifecycleChange={(id, lifecycle) => changeLifecycle(id, lifecycle)}
-    onPurgeTrashedWorkstream={(id) => { const target = snapshot?.workstreams.find((workstream) => workstream.id === id); if (!target) return; void codexApi.purgeTrashedWorkstream(id, target.bindingRevision, "PURGE_LOCAL_WORKSTREAM").then(async () => { setSelectedWorkstreamId(null); await refreshIndex(); }).catch((error) => setRuntimeError(`永久清除未执行：${String(error)}`)); }}
+    onPurgeTrashedWorkstream={(id) => { const target = snapshot?.workstreams.find((workstream) => workstream.id === id); if (!target) return; void codexApi.purgeTrashedWorkstream(id, target.bindingRevision, "PURGE_LOCAL_WORKSTREAM").then(async () => { readerSelectionIntent.current=null;setSelectedWorkstreamId(null); await refreshIndex(); }).catch((error) => setRuntimeError(`永久清除未执行：${String(error)}`)); }}
     onCreateVerifiedBackup={() => void codexApi.createVerifiedLocalBackup().then((backup) => setBackupNotice(`已创建并验证本地备份：${backup.path} · ${backup.bytes} bytes · SHA-256 ${backup.sha256}`)).catch((error) => setRuntimeError(`一致性备份失败：${String(error)}`))}
     onGoalAction={(threadId, action) => void changeGoal(threadId, action).catch((error) => setRuntimeError(String(error)))}
     onHideToTray={hideToTray}
