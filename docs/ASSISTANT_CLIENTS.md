@@ -1,3 +1,5 @@
+> 新用户先读：[AI 助手与 MCP 图解入门](tutorials/AI_ASSISTANT_QUICKSTART.zh-CN.md)。应用内「设置 → AI 助手」提供同样的原理图、使用示例和分步连接教程。
+
 # 通用 AI 助手连接与 WorkBuddy
 
 2026-10-17 开发版本；工程验收与实际用户接通分别记录。现有 Dot 连接、OAuth 令牌、授权、Events 订阅和任务不因新增客户端而重建。

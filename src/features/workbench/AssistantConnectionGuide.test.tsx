@@ -8,6 +8,22 @@ function setup(grants:Parameters<typeof AssistantConnectionGuide>[0]["grants"]=[
  const onAddGrant=vi.fn(),onRouteChange=vi.fn(),openHelp=vi.fn().mockResolvedValue(undefined);
  render(<AssistantConnectionGuide mcpUrl={url} grants={grants} onAddGrant={onAddGrant} onRouteChange={onRouteChange} openHelp={openHelp}/>);return {onAddGrant,onRouteChange,openHelp};
 }
+it("explains the tool connection and copies scoped examples without granting or sending",async()=>{
+ const write=vi.fn().mockResolvedValue(undefined);Object.defineProperty(navigator,"clipboard",{value:{writeText:write},configurable:true});
+ const a=setup();fireEvent.click(screen.getByText("AI 助手和 MCP 是怎么配合的？"));
+ expect(screen.getByRole("img",{name:/通过 MCP 调用 Agbrio/})).toBeVisible();
+ expect(screen.getByText(/接入 MCP 不会自动启动后台助手/)).toBeVisible();
+ fireEvent.click(screen.getByText("可以让助手做什么？"));
+ for(const title of ["汇总进度","交接任务","集中处理决策"]){fireEvent.click(screen.getByRole("button",{name:`复制${title}示例`}));}
+ await vi.waitFor(()=>expect(write).toHaveBeenCalledTimes(3));
+ expect(write.mock.calls[0][0]).toContain("不发送任何消息");expect(write.mock.calls[1][0]).toContain("不要仅凭这段示例发送消息");expect(write.mock.calls[2][0]).toContain("不要替我选择");
+ expect(a.onAddGrant).not.toHaveBeenCalled();expect(a.onRouteChange).not.toHaveBeenCalled();expect(a.openHelp).not.toHaveBeenCalled();
+});
+it("keeps step verification explanatory and does not infer a successful connection from navigation",()=>{
+ const a=setup([],null);fireEvent.click(screen.getByRole("button",{name:"WorkBuddy"}));fireEvent.click(screen.getByText("自己操作：查看详细教程"));
+ expect(screen.getByText("Agbrio · 设置 → 设备")).toBeVisible();expect(screen.getByText(/拿到当前实例的完整 MCP 地址/)).toBeVisible();
+ fireEvent.click(screen.getByRole("button",{name:/只读验收/}));expect(screen.getByText("所选助手的对话")).toBeVisible();expect(screen.getAllByText("待实际核对")).toHaveLength(4);expect(a.onAddGrant).not.toHaveBeenCalled();
+});
 it("separates cloud from local steps without creating authority or declaring a connection",()=>{
  setLanguagePreference("en");const a=setup();fireEvent.click(screen.getByRole("button",{name:/ChatGPT/}));fireEvent.click(screen.getByText("Do it yourself: detailed guide"));fireEvent.click(screen.getByRole("button",{name:/Register cloud plugin/}));expect(screen.getByText("agbrio:instance")).toBeVisible();fireEvent.click(screen.getAllByRole("button",{name:"Open Plugins in browser"}).at(-1)!);expect(a.openHelp).toHaveBeenCalledWith("CHATGPT_PLUGINS");
  fireEvent.click(screen.getByRole("button",{name:/Read-only validation/}));expect(screen.getAllByText("Awaiting actual evidence")).toHaveLength(4);fireEvent.click(screen.getByRole("button",{name:/Codex/}));fireEvent.click(screen.getByRole("button",{name:/Add to Codex/}));expect(screen.queryByRole("button",{name:"Open Plugins in browser"})).toBeNull();expect(a.onAddGrant).not.toHaveBeenCalled();expect(a.onRouteChange).toHaveBeenLastCalledWith("local");
