@@ -9,8 +9,10 @@ on:
       installer_sha256:
         description: SHA256 of the updater-signed installer
         required: true
+# Draft releases require push access to be visible. Limit that ephemeral token
+# to this trusted, manually dispatched same-repository validation workflow.
 permissions:
-  contents: read
+  contents: write
 jobs:
   released-install:
     runs-on: windows-2025
