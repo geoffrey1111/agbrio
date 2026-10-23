@@ -14,6 +14,10 @@ Open Board to explore examples. If a board is already connected, choose Create b
 
 ![Choose a board example](assets/en/boards-guide.png)
 
+## Ask Claude to talk to Codex
+
+In the Agbrio Claude Code plugin, use `/agbrio-bridge:codex` with a Codex conversation link or thread ID and what you want to send or read. Complete the Agbrio MCP connection when prompted. You do not need to bind a Bridge. [Plugin guide](../tools/claude-code-plugin/README.md).
+
 ## Need more help?
 
 [Connection walkthrough](SETUP.md) · [Boards](BOARDS.md) · [Connect an assistant](ASSISTANT_CONNECTION_GUIDE.en.md) · [Troubleshooting](FAQ.md)
