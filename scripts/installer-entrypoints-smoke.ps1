@@ -43,7 +43,9 @@ SectionEnd
 '@
  foreach($pair in @(@('__BINARY__',$binary),@('__UTILS__',$utils),@('__HOOK__',$hook),@('__LINKS__',$links),@('__OLD__',$old),@('__NEW__',$current))){$source=$source.Replace($pair[0],$pair[1])}
  [IO.File]::WriteAllText($fixture,$source,[Text.UTF8Encoding]::new($false))
- $makensis=Join-Path $env:LOCALAPPDATA 'tauri/NSIS/makensis.exe'
+ $targetDirectory=Split-Path (Split-Path (Split-Path (Split-Path $utils)))
+ $makensis=Join-Path $targetDirectory '.tauri/NSIS/makensis.exe'
+ if(!(Test-Path -LiteralPath $makensis)){$makensis=Join-Path $env:LOCALAPPDATA 'tauri/NSIS/makensis.exe'}
  & $makensis /V2 $fixture
  if($LASTEXITCODE -ne 0){throw 'NSIS_FIXTURE_COMPILE_FAILED'}
  foreach($round in 1..2){
