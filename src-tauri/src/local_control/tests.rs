@@ -6,6 +6,7 @@ fn fixture()->(tempfile::TempDir,RouterCore,HostRuntime){
     (temp,core,HostRuntime::default())
 }
 fn request(command:&str,expected:Option<&str>)->Vec<u8>{serde_json::to_vec(&json!({"apiVersion":1,"requestId":uuid::Uuid::new_v4().to_string(),"command":command,"expectedInstance":expected})).unwrap()}
+#[test]fn publication_requires_current_host_and_never_becomes_a_remote_path_reader(){let(_temp,core,host)=fixture();let mut seen=HashMap::new();assert_eq!(dispatch(&core,&host,&request("PUBLISH_BOARD",None),&mut seen).0["errorCode"],"APP_CONTROL_EXPECTED_INSTANCE_REQUIRED");assert_eq!(dispatch(&core,&host,&request("PUBLISH_BOARD",Some("old")),&mut seen).0["errorCode"],"APP_CONTROL_INSTANCE_CHANGED");assert_eq!(dispatch(&core,&host,&request("PUBLISH_BOARD",Some(host.instance_id())),&mut seen).0["errorCode"],"PUBLISHED_BOARD_FOLDER_REQUIRED");assert!(core.session.lock().unwrap().adapter.is_none());}
 #[test]fn shutdown_pins_exact_host_and_cannot_replay_or_become_a_shell(){
     let(_temp,core,host)=fixture();let mut seen=HashMap::new();
     assert_eq!(dispatch(&core,&host,&request("SHUTDOWN",None),&mut seen).0["errorCode"],"APP_CONTROL_EXPECTED_INSTANCE_REQUIRED");

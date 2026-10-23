@@ -26,7 +26,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 55
     env:
-      VITE_AGBRIO_APP_VERSION: 0.1.35-rc.57
+      VITE_AGBRIO_APP_VERSION: 0.1.35-rc.58
       AGBRIO_HOSTED_CONTROL_ORIGIN: https://agbrio-connect.geoffreygroup.cc
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +63,8 @@ jobs:
         run: npm run build:browser-executor
       - name: Native tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked -- --test-threads=2
+      - name: Native published board isolation
+        run: pwsh -NoProfile -File scripts/check-published-board-native.ps1
       - name: Build Windows installer
         run: npm run build:windows -- --config docs/RELEASE_BUILD.json
       - name: Checksums

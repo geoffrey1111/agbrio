@@ -85,7 +85,7 @@ pub(crate) fn frame(revision:&str,channel:&str)->Result<String,String>{
 
 fn digest(bytes: &[u8]) -> String { format!("{:x}", Sha256::digest(bytes)) }
 fn error(_: impl std::fmt::Debug) -> String { "BOARD_FILE_UNAVAILABLE".into() }
-fn no_reparse(path: &Path) -> Result<(),String> {
+pub(crate) fn no_reparse(path: &Path) -> Result<(),String> {
     for part in path.ancestors() {
         let m=fs::symlink_metadata(part).map_err(error)?;
         if m.file_type().is_symlink() { return Err("BOARD_LINK_REFUSED".into()); }

@@ -1,59 +1,33 @@
-<img src="docs/assets/agbrio-icon.png" width="72" alt="Agbrio">
-
-**rc.57：設定可能なボード、Claude 子会話ツリー、質問・選択カード、メッセージ順序の修正、モバイル送信表示の簡素化、アプリ機能の検出とローカル操作 API を含みます。** ボードは設定から登録します。個人のボード内容は同梱しません。[リリース範囲](docs/RELEASE_0.1.35-rc.57.md)。
-
 # Agbrio
 
-**Agent Bridge — 判断とレビューを担う会話と、実装を担う会話をつなぐ。**
+**デスクトップでもスマートフォンでも、AI エージェントの作業を確認。**
+
+[![Download](https://img.shields.io/github/v/release/geoffrey1111/agbrio?label=download)](https://github.com/geoffrey1111/agbrio/releases/latest)
+[![Build](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml/badge.svg?branch=main)](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml)
+[![MIT](https://img.shields.io/github/license/geoffrey1111/agbrio)](LICENSE)
+[![Windows](https://img.shields.io/badge/Windows-x64-0078D4)](https://github.com/geoffrey1111/agbrio/releases/latest)
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
-計画用の会話と実行用の会話を分けていませんか？Agbrio は、その使い方のための引き継ぎツールです。結果を読み、次の作業に必要な部分を選び、受信側を確認して送信します。計画の文脈と実装の文脈を保ちながら、複数のプロジェクトでも正確な相手へ渡せます。
+Codex と Claude Code の会話をまとめて確認し、結果を読み、返信や質問への回答を行えます。必要な内容を選んで別の会話に渡すこともできます。
 
-[Windows v0.1.35-rc.57 をダウンロード](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.57) · [セットアップ](docs/SETUP.md) · [MIT](LICENSE)
+![プロジェクトボード](docs/assets/en/boards-project.png)
 
-[最新の共有 Codex 修正 v0.1.35-rc.57](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.57)：共有起動・通常起動への復帰、ネイティブツール検証、Windows 状態復旧。[検証範囲と制限](docs/RELEASE_0.1.35-rc.57.md)。現在の推奨ダウンロードです。非公開のキャラクターボードは含みません。
+## できること
 
-## はじめに
+- 会話の進行状況と最新の返信を確認する。
+- スマートフォンから返信し、対応する質問や選択肢に回答する。
+- 会話内の Markdown、画像、コード、JSON、CSV を読む。
+- プロジェクトの進捗、比較案、レポートをボードにまとめる。
 
-[Complete setup (English)](docs/SETUP.md) · [FAQ (English)](docs/FAQ.md) · [简体中文完整教程](docs/SETUP.zh-CN.md)
+<p align="center"><img src="docs/assets/en/mobile-chat.png" width="300" alt="スマートフォンの会話"> &nbsp; <img src="docs/assets/en/mobile-file.png" width="300" alt="ファイルを読む"></p>
 
-共有接続の修正は **0.1.35-rc.57 修復版**です。現在の latest は 0.1.35-rc.57 です。rc.57 は公式 Desktop が終了していてもインストールを検出できます。初回ログイン後は **Codex (Agbrio shared)** を直接利用でき、毎回通常版を開いて閉じる必要はありません。実行中の作業を完了してから通常版を終了してください。公式の起動方法は変更せず、将来の更新すべての互換性は保証しません。現在のソースとガイドは **main** に統一しています。
+## はじめる
 
-任意の日報：読み取り専用の接続確認後、時刻（現地22:00を推奨）、タイムゾーン、送信先、委任済みBridgeを指定してアシスタントに依頼します。実際のスケジュール機能と既存タスクを確認し、非対応なら有効化済みとは表示しません。同じタスクを変更・停止し、重複作成しません。[日報と検証範囲](docs/DAILY_REPORTS.md)。
+1. [Windows 版をダウンロード](https://github.com/geoffrey1111/agbrio/releases/latest)して、利用中のエージェントを接続します。
+2. 会話を選ぶか、Board を開いて例を選び、手順をデスクトップのエージェントに渡します。
+3. Settings → Devices でスマートフォンをペアリングします。提供されたコードか、自分の HTTPS 接続を利用できます。
 
-## レビューから次の作業へ
+スマートフォンから利用する間は、コンピューターと Agbrio をオンラインにしてください。
 
-![Agbrio の管理側と実行側。英語 UI と架空の会話](docs/assets/en/desktop-bridge.png)
-
-管理側は計画・証拠の評価・次の判断を担当し、実行側はプロジェクトを変更して報告します。Bridge はタイトルではなく正確な会話 ID を結びます。
-
-<p><img src="docs/assets/en/mobile-handoff.png" width="320" alt="指示だけを選択"> <img src="docs/assets/en/mobile-preview.png" width="320" alt="受信側と最終メッセージを確認"></p>
-
-分析は元の会話に残し、指示だけを引き継げます。全文、選択した段落、ファイル、最終メッセージと送信先を確認してください。停滞後の短い更新だけでなく、前の詳細な結果もレビューできます。通知・Bridge 外の会話の監視・元の会話への返信・対応する Codex の質問への回答・署名付き更新も利用できます。
-
-画面は実際の Agbrio コンポーネントをブラウザーで描画し、架空のデータを使用しています。日本語は紹介文の翻訳です。**アプリ UI は英語・簡体字中国語・繁体字中国語に対応**し、このページの画像は英語です。実機 iPhone の録画ではありません。
-
-## AI アシスタントと連携
-
-![クラウド接続の手順。英語 UI](docs/assets/en/assistant-guide.png)
-
-Settings → AI assistant の6段階ガイドで ChatGPT / dot クラウドと Codex ローカルを選択します。自身の HTTPS MCP URL と有効な権限を使い、本人が OAuth 同意を行い、対象アシスタントでツールを検証します。ローカルの ready 表示だけではクラウド接続の成功になりません。手動ガイドとコピー用の指示が用意されています。
-
-INSTANCE + CONVERSATION_REVIEW は30日間・取り消し可能です。アシスタントは最初に、担当する Bridge をユーザーに確認します。作業・方向・判断が必要な場合・停止条件を合意してから、通常の引き継ぎをレビューして進めます。未解決の判断は本人に質問し、実際の回答を記録します。権限を得ただけで全 Bridge が委任されたことにはなりません。
-
-公式 MCP Events は0.1.25から実装されています。0.1.26の正式な委任範囲で、事前承認された範囲スキャンの fallback を使い、実際のイベント起動から一度の引き渡しと受信を確認しました。新たなユーザー入力や定期ポーリングは不要でした。二つの委任済み Bridge の8購読を維持しています。イベント結果の自動注入は未解決で、受信側の実行開始はタスク完了ではありません。[Events guide](docs/MCP_EVENTS_WORKFLOW.md) · [Goal recovery limits](docs/GOAL_RECOVERY.md).
-
-## 接続と動作条件
-
-既存の Cloudflare Tunnel、Tailscale Funnel / Serve、HTTPS 入口を利用できます。運営者の引き換えコードを使うホスト接続は任意で、自己ホストも可能です。インスタンスの資格情報とルーティングは分離され、共通 MCP 資格情報を全ユーザーに渡す方式ではありません。コンピューターを起動・接続したままにし、スマートフォン PWA をペアリングします。
-
-現在は Windows x64 + Codex + PWA の Alpha です。macOS と他の実行 Agent は未検証です。受信確認は、その後の作業完了を証明しません。選択ファイルは受信側プロジェクトへコピーされ、パスと SHA-256 が付きます。[ビルド](docs/BUILD.md) · [助手プロトコル](docs/ASSISTANT_MCP.md)。
-
-[作者に連絡](mailto:geoffreyzjx@qq.com) · [問題を報告](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [改善を提案](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
-
-## 使用量と接続ガイド
-
-Codex の実際の使用量ウィンドウ、残りとリセット時刻を確認でき、手動で更新できます。AI アシスタント接続はクラウド／ローカルを選び、設定用の指示をコピー。ユーザーは認証と委任する Bridge の選択を行います。PWA は設定から手動更新でき、再インストールや再ペアリングは不要です。
-
-Claude Code now supports standalone monitored conversations and authenticated owner text replies to the original session. Native model/permissions are inherited; no autonomous/MCP Claude writer or goal control. Receipt requires a stored native message, not submit/HTTP success. Real owner-message acceptance remains separate. [Contract](docs/CLAUDE_CODE.md).
+[使い方](docs/START_HERE.md) · [ボード](docs/BOARDS.md) · [ソースからビルド](docs/BUILD.md)

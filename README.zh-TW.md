@@ -1,88 +1,39 @@
-<img src="docs/assets/agbrio-icon.png" width="72" alt="Agbrio">
-
-**rc.57 包含可設定看板、Claude 子對話樹、原生問題與決策卡片、訊息排序修正、精簡手機傳送提示，以及應用能力探索和本機操作 API。** 請在設定中配置自己的看板；不包含私人看板內容。[版本範圍](docs/RELEASE_0.1.35-rc.57.md)。
-
 # Agbrio
 
-**Agent Bridge — 一個對話負責決策與審閱，一個對話負責執行。**
+**電腦上的 Agent 在推進，手機上的你隨時跟進。**
+
+[![Download](https://img.shields.io/github/v/release/geoffrey1111/agbrio?label=download)](https://github.com/geoffrey1111/agbrio/releases/latest)
+[![Build](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml/badge.svg?branch=main)](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml)
+[![MIT](https://img.shields.io/github/license/geoffrey1111/agbrio)](LICENSE)
+[![Windows](https://img.shields.io/badge/Windows-x64-0078D4)](https://github.com/geoffrey1111/agbrio/releases/latest)
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
-你是不是也用一個對話負責管理，一個負責執行？Agbrio 連接這兩段既有的上下文：讀取結果、選出下一輪需要的內容、核對接收端，再把工作交接過去。
+把 Codex、Claude Code 的對話和項目看板放在一起。查看進展、閱讀成果、回覆消息，需要你決定時及時處理。
 
-**思考留在思考端，執行留在執行端，Bridge 負責準確交接。**
+![Agbrio 項目看板](docs/assets/boards-project-current.png)
 
-[下載 Windows v0.1.35-rc.57](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.57) · [安裝與配對](docs/SETUP.md) · [連接 AI 助手](docs/ASSISTANT_CONNECTION_GUIDE.zh-TW.md) · [MIT 授權](LICENSE)
+## 離開電腦，也能接着工作
 
-[最新共享 Codex 修復版 v0.1.35-rc.57](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.57)：獨立共享與返回普通入口、本機工具元件驗證及 Windows 狀態恢復。[已完成檢查與剩餘限制](docs/RELEASE_0.1.35-rc.57.md)。這是目前最新推薦下載，不含私人角色看板；保留準確 rc.57 版本號及檢查範圍。
+- **跟進對話**：查看執行状態和最新回覆，在手機上回覆原對話。
+- **處理問题**：回答支持的提問與選項，查看子對話的工作状態。
+- **轉交成果**：選擇有用的内容，確认目标後轉給另一条對話。
+- **直接讀文件**：在對話里打開 Markdown、圖片、代碼、JSON 和 CSV。
 
-## 新使用者從這裡開始
+<p align="center"><img src="docs/assets/mobile-chat-current.png" width="300" alt="在手機上回覆并回答問题"> &nbsp; <img src="docs/assets/mobile-file-current.png" width="300" alt="直接閱讀項目文檔"></p>
 
-[完整流程（簡體中文）](docs/SETUP.zh-CN.md) · [Q&A（簡體中文）](docs/FAQ.zh-CN.md) · [English guide](docs/SETUP.md)
+## 讓 Agent 把成果整理成看板
 
-共享連線修復請明確選擇 **0.1.35-rc.57 修復版**；它就是目前的 latest，0.1.34 僅為歷史版本。先安裝及登入官方 Codex，完成任務並正常退出普通 Desktop，再用 **Codex (Agbrio shared)** 或從設定準備/開啟；核對 Desktop 已接入，之後才綁定兩端、預覽及傳送。手機和助手是選用且獨立驗證的連線。
+項目進展、方案對比、資料報告，都可以變成手機上的一個頁面。打開 **看板**（已有看板時點 **創建看板**），選一個示例，把指令發給電腦上的 Agent。創建完成後，看板會出現在 Agbrio，跟隨項目文件更新。
 
-舊流程先開普通版是為了發現後端。**rc.57 在 Desktop 關閉時也能辨識官方安裝**；日常與重開機後直接用共享入口，不需每次先開普通版。官方入口不改綁，未來官方更新不保證全數相容；回退用 **Codex (return to normal)**，勿批次結束 Node。當前原始碼與文件統一在 **main**，發行 tag 保留原版本。
+![看板示例與 Agent 創建入口](docs/assets/boards-guide-current.png)
 
-可選日報：真實唯讀驗收後，選擇時間（建議本地22:00）、時區、接收位置與委託Bridge，再明確提交給助手。它核對真實定時工具與既有任務；不支援就說明未啟用。修改或停用沿用原任務，不重複建立；Bridge刪除或MCP離線也可請求停用。唯讀連續計窗及部分核實規則：[日報教學](docs/DAILY_REPORTS.md)。
+## 開始使用
 
-## 從審閱到下一項任務
+1. **[下载 Windows 版](https://github.com/geoffrey1111/agbrio/releases/latest)**，連接正在使用的 Agent。
+2. **選擇對話，或創建看板**，從手頭的項目開始。
+3. **在 設置 → 設備 配對手機**，使用托管兌換碼或自己的 HTTPS 連接。
 
-![Agbrio 兩端對照：繁體中文介面與虛構對話](docs/assets/zh-TW/desktop-bridge.png)
+手機访問時，電腦和 Agbrio 需要保持在線。
 
-管理端保留計畫、分析證據、決定下一步；執行端在專案中完成工作並回報。Bridge 綁定兩端精確的對話 ID，多組專案並行時也能核對正確的接收對象。
-
-<p><img src="docs/assets/zh-TW/mobile-handoff.png" width="320" alt="只選擇指令段，保留未選的分析"> <img src="docs/assets/zh-TW/mobile-preview.png" width="320" alt="核對執行端與最終文字後確認傳送"></p>
-
-只選擇需要交接的指令，分析仍留在原對話。預覽最終文字和接收端，確認傳送；在電腦或手機 PWA 上繼續審閱下一次結果。手機讓你離開桌前也能完成這一步，產品核心仍是兩段對話之間的交接。
-
-截圖使用實際 Agbrio 元件與獨立虛構資料，介面與對話均為繁體中文；屬於瀏覽器預覽，不冒充兩個 Codex 視窗或手機實機錄影。
-
-## 為雙對話工作方式準備的能力
-
-| 能力 | 用途 |
-| --- | --- |
-| 精確 Bridge 綁定 | 按穩定 ID 交接，保持管理與執行上下文獨立 |
-| 選擇性轉發 | 選擇整段、核對檔案、編輯最終文字，確認接收對象 |
-| 較早的完整結果 | 目標停滯後仍可審閱前面更有價值的彙報 |
-| 目前狀態與審閱提醒 | 聚焦正在工作的那一端，需要介入時提示審閱 |
-| 監聽與通知 | 持續關注 Bridge 外的對話，回覆精確的原對話 |
-| Codex 提問 | 在應用中回答支援的問題與選項 |
-| 桌面 Host 與手機 PWA | 電腦保持上線，手機離開桌面也能審閱與交接 |
-| 簽章更新 | 在設定中檢查、下載與安裝經過驗證的 Windows 更新 |
-
-選中的 Codex 檔案會複製到接收端專案的 `.aiwr/incoming/<handoff-id>/`，訊息包含相對路徑與 SHA-256；它是本地專案資料，不代表已上傳成 ChatGPT 附件。
-
-## 讓 AI 助手參與審閱
-
-![應用內雲端連接教學：繁體中文](docs/assets/zh-TW/assistant-guide.png)
-
-設定 → AI 助手提供六步視覺化教學，也能複製指令交給助手。先選擇 **ChatGPT / dot 雲端**或 **Codex 本地**：讀取自己實例的完整 HTTPS MCP 位址、沿用有效授權、由本人登入同意，在目標助手中探索工具並唯讀驗收。桌面顯示準備就緒不等於雲端連接通過。
-
-整個應用授權為 **INSTANCE + CONVERSATION_REVIEW**，預設 30 天，可撤銷。連接後，助手先問「你希望我接管哪些 Bridge？」，再確認任務、方向、必須詢問的情況與暫停條件。直接在助手對話中說明即可，不強制填寫 Brief / Insight；整個應用可存取不等於所有工作都已委託。
-
-明確委託內的常規交接，助手審閱後可以推進，不需要每輪回手機審批；要求衝突、超出範圍或需要你決定時，再向你提問。沿用準備交接 → 核對與確認 → 查回執，保留版本、決策紀錄與防重複傳送。
-
-官方 MCP Events 從0.1.25起實作。0.1.26正式範圍已驗證真實事件喚醒後，沿用預先授權的範圍掃描 fallback 完成一次交接，原目標收到並開始執行；沒有新的使用者訊息或週期輪詢，這是當時的授權驗收，不代表新使用者自動擁有訂閱。自動事件詳情注入尚未修復，開始執行不等於任務完成。[Events 教程](docs/MCP_EVENTS_WORKFLOW.zh-CN.md) · [Goal 恢復限制](docs/GOAL_RECOVERY.md)。
-
-## 連接自己的電腦
-
-保留既有部署。桌面設定 → 裝置可選自己的 Cloudflare Tunnel 網域、Tailscale Funnel / Serve 或現有 HTTPS 入口；也可使用營運者提供的託管兌換碼，自行部署仍可使用。部署步驟可複製給自己的 AI 助手。啟用託管後的實例憑證與租戶路由獨立，沒有給所有使用者一份共用 MCP 憑證。
-
-即時讀取與傳送需要電腦開機、不休眠並連網；有效登入直接沿用，新瀏覽器確實需要時再配對。[安裝說明](docs/SETUP.md) · [託管選項](docs/HOSTED_RELAY.md)。
-
-## 版本與參與
-
-目前為 Windows x64 + Codex + 配對 PWA 的 Alpha。應用支援**繁體中文、簡體中文、英語**，在設定 → 語言切換。日語與韓語目前僅翻譯產品介紹；macOS 和其他執行 Agent 尚未列入已驗證發行範圍。來源正文不能擴大授權，交接回執不等於下游任務已完成。
-
-[從原始碼建置](docs/BUILD.md) · [助手協定](docs/ASSISTANT_MCP.md) · [v0.1.34 更新](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.34) · [第三方聲明](THIRD_PARTY_NOTICES.md)
-
-[聯絡作者](mailto:geoffreyzjx@qq.com) · [回報問題](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [提出建議](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
-
-## 交給 agent 設定，自己完成必要步驟
-
-在**設定 → AI 助手**先選 **ChatGPT / dot 雲端**或 **Codex 本地**，再點**複製給 agent 的指令**。指令使用你的實例位址，agent 先檢查並復用現有部署和授權；你只需選擇授權、本人登入同意，並告訴助手接管哪些 Bridge。詳細手動教學保留折疊入口。本地認證不代表雲端連接成功。
-
-Bridge 的 **Codex 額度**入口顯示原生週期、剩餘、重置與上次讀取，可手動刷新；不支援時顯示暫不可讀取，離線舊結果明確標示。手機設定及關於可手動檢查介面更新，準備好後點擊套用，不必刪除 PWA 或重新配對。
-
-Claude Code now supports standalone monitored conversations and authenticated owner text replies to the original session. Native model/permissions are inherited; no autonomous/MCP Claude writer or goal control. Receipt requires a stored native message, not submit/HTTP success. Real owner-message acceptance remains separate. [Contract](docs/CLAUDE_CODE.md).
+[使用幫助](docs/START_HERE.md) · [看板指南](docs/BOARDS.md) · [源碼構建](docs/BUILD.md)

@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
- [ValidateSet('Status','Capabilities','Diagnostics','Start','Stop','Restart')][string]$Command='Status',
+ [ValidateSet('Status','Capabilities','Diagnostics','Start','Stop','Restart','PublishBoard')][string]$Command='Status',
+ [string]$Folder='',
  [string]$Executable=(Join-Path $PSScriptRoot '..\ai-work-router.exe'),
  [string]$ExpectedInstance='',
  [guid]$RequestId=[guid]::NewGuid()
@@ -13,7 +14,9 @@ function Invoke-Control([string]$Operation,[string]$Expected='',[guid]$Identity=
  $pipe=[IO.Pipes.NamedPipeClientStream]::new('.', $pipeName, [IO.Pipes.PipeDirection]::InOut,[IO.Pipes.PipeOptions]::Asynchronous,[Security.Principal.TokenImpersonationLevel]::Identification)
  try {
   $pipe.Connect(2000)
-  $bytes=[Text.Encoding]::UTF8.GetBytes((@{apiVersion=1;requestId=$Identity.ToString();command=$Operation;expectedInstance=if($Expected){$Expected}else{$null}} | ConvertTo-Json -Compress)+"`n")
+  $payload=@{apiVersion=1;requestId=$Identity.ToString();command=$Operation;expectedInstance=if($Expected){$Expected}else{$null}}
+  if($Operation -eq 'PUBLISH_BOARD'){$payload.folder=$Folder}
+  $bytes=[Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Compress)+"`n")
   $write=$pipe.WriteAsync($bytes,0,$bytes.Length);if(!$write.Wait(3000)){throw 'APP_CONTROL_WRITE_UNCONFIRMED'};$write.GetAwaiter().GetResult()
   $buffer=[byte[]]::new(8192);$output=[IO.MemoryStream]::new();$deadline=[DateTime]::UtcNow.AddSeconds(5)
   try {
@@ -88,6 +91,7 @@ try {
   'Status' {Invoke-Control 'STATUS' $ExpectedInstance $RequestId}
   'Capabilities' {Invoke-Control 'CAPABILITIES' $ExpectedInstance $RequestId}
   'Diagnostics' {Invoke-Control 'DIAGNOSTICS' $ExpectedInstance $RequestId}
+  'PublishBoard' {if(!$Folder){throw 'PUBLISHED_BOARD_FOLDER_REQUIRED'};$owner=Invoke-Control 'STATUS';Invoke-Control 'PUBLISH_BOARD' $owner.instanceId $RequestId}
   'Start' {Start-Host (Exact-Executable)}
   'Stop' {Stop-Host (Exact-Executable)}
   'Restart' {$path=Exact-Executable;$null=Stop-Host $path;Start-Host $path}
@@ -95,7 +99,7 @@ try {
  $result | ConvertTo-Json -Depth 30 -Compress
 } catch {
  $code=$_.Exception.Message
- if($code -notmatch '^APP_[A-Z_]+$'){$code='APP_CONTROL_UNREACHABLE'}
+ if($code -notmatch '^(APP_|PUBLISHED_BOARD_)[A-Z_]+$'){$code='APP_CONTROL_UNREACHABLE'}
  @{errorCode=$code;state='UNCONFIRMED';automaticWriteRetry=$false} | ConvertTo-Json -Compress
  exit 1
 }

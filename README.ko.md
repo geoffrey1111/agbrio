@@ -1,59 +1,33 @@
-<img src="docs/assets/agbrio-icon.png" width="72" alt="Agbrio">
-
-**rc.57에는 보드 설정, Claude 하위 대화 트리, 질문 및 선택 카드, 메시지 순서 수정, 간소화된 모바일 전송 상태, 앱 기능 검색 및 로컬 제어 API가 포함됩니다.** 설정에서 자신의 보드를 연결하세요. 개인 보드 내용은 포함되지 않습니다. [릴리스 범위](docs/RELEASE_0.1.35-rc.57.md).
-
 # Agbrio
 
-**Agent Bridge — 판단과 검토를 맡는 대화, 실행을 맡는 대화를 연결합니다.**
+**컴퓨터와 휴대폰에서 AI 에이전트의 작업을 이어서 확인하세요.**
+
+[![Download](https://img.shields.io/github/v/release/geoffrey1111/agbrio?label=download)](https://github.com/geoffrey1111/agbrio/releases/latest)
+[![Build](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml/badge.svg?branch=main)](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml)
+[![MIT](https://img.shields.io/github/license/geoffrey1111/agbrio)](LICENSE)
+[![Windows](https://img.shields.io/badge/Windows-x64-0078D4)](https://github.com/geoffrey1111/agbrio/releases/latest)
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
-계획용 대화와 실행용 대화를 따로 사용하시나요? Agbrio는 이 작업 방식에 맞춘 인계 도구입니다. 결과를 읽고, 다음 작업에 필요한 부분을 선택하고, 받을 대화를 확인한 뒤 전달합니다. 두 대화의 문맥을 유지하면서 여러 프로젝트에서도 정확한 대상으로 보낼 수 있습니다.
+Codex와 Claude Code 대화를 한곳에서 확인하고, 결과를 읽고, 답장하거나 필요한 질문에 응답하세요. 선택한 내용을 다른 대화로 전달할 수도 있습니다.
 
-[Windows v0.1.35-rc.57 다운로드](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.57) · [설치와 연결](docs/SETUP.md) · [MIT](LICENSE)
+![프로젝트 보드](docs/assets/en/boards-project.png)
 
-[최신 공유 Codex 수정 v0.1.35-rc.57](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.57): 공유 실행과 일반 실행 복귀, 네이티브 도구 검증, Windows 상태 복구.[검증 범위와 제한](docs/RELEASE_0.1.35-rc.57.md). 현재 권장 다운로드입니다. 비공개 캐릭터 보드는 포함되지 않습니다.
+## 할 수 있는 일
+
+- 작업 상태와 최신 답변을 확인합니다.
+- 휴대폰으로 답장하고 지원되는 질문과 선택지에 응답합니다.
+- 대화 속 Markdown, 이미지, 코드, JSON, CSV를 바로 읽습니다.
+- 프로젝트 진행 상황, 비교안, 보고서를 보드로 정리합니다.
+
+<p align="center"><img src="docs/assets/en/mobile-chat.png" width="300" alt="휴대폰 대화"> &nbsp; <img src="docs/assets/en/mobile-file.png" width="300" alt="프로젝트 문서 읽기"></p>
 
 ## 시작하기
 
-[Complete setup (English)](docs/SETUP.md) · [FAQ (English)](docs/FAQ.md) · [简体中文完整教程](docs/SETUP.zh-CN.md)
+1. [Windows 앱을 다운로드](https://github.com/geoffrey1111/agbrio/releases/latest)하고 사용 중인 에이전트를 연결하세요.
+2. 대화를 선택하거나 Board에서 예시를 고른 뒤, 안내를 컴퓨터의 에이전트에게 전달하세요.
+3. Settings → Devices에서 휴대폰을 연결하세요. 제공받은 코드 또는 자신의 HTTPS 연결을 사용할 수 있습니다.
 
-공유 연결 수정은 **0.1.35-rc.57 수정 버전**에 있습니다. 현재 latest는 0.1.35-rc.57입니다. rc.57는 공식 Desktop이 종료된 상태에서도 설치를 확인하므로 최초 로그인 후 **Codex (Agbrio shared)**로 바로 실행할 수 있습니다. 매번 일반 버전을 열고 닫을 필요는 없습니다. 진행 중인 작업을 마친 뒤 일반 Desktop을 정상 종료하세요. 공식 실행 방식은 바꾸지 않으며 향후 모든 업데이트의 호환성을 보장하지 않습니다. 현재 소스와 안내는 **main**으로 통일합니다.
+휴대폰으로 사용할 때는 컴퓨터와 Agbrio가 온라인 상태여야 합니다.
 
-선택형 일일 보고: 읽기 전용 연결 확인 후 시간(현지22:00 권장), 시간대, 수신 위치와 위임된Bridge를 지정해 도우미에게 명시적으로 요청하세요. 실제 예약 도구와 기존 작업을 확인하고, 지원하지 않으면 활성화됐다고 주장하지 않습니다. 같은 작업을 수정하거나 중지하며 중복 생성하지 않습니다.[보고 및 검증 범위](docs/DAILY_REPORTS.md).
-
-## 검토에서 다음 작업까지
-
-![관리와 실행 대화가 연결된 Agbrio. 영어 UI와 가상 대화](docs/assets/en/desktop-bridge.png)
-
-관리 대화는 계획, 증거 검토, 다음 판단을 맡습니다. 실행 대화는 프로젝트를 변경하고 보고합니다. Bridge는 제목이나 화면 위치가 아닌 정확한 대화 ID로 두 역할을 연결합니다.
-
-<p><img src="docs/assets/en/mobile-handoff.png" width="320" alt="지시만 선택하기"> <img src="docs/assets/en/mobile-preview.png" width="320" alt="수신 대상과 최종 내용 확인하기"></p>
-
-분석은 원래 대화에 남기고 지시만 전달할 수 있습니다. 문단과 파일을 선택하고 최종 내용과 수신 대상을 확인하세요. 작업이 정체된 뒤의 짧은 업데이트뿐 아니라 이전의 자세한 결과도 검토할 수 있습니다. 알림, Bridge 외 대화 감시, 원래 대화에 답장, 지원되는 Codex 질문 응답, 서명된 앱 업데이트도 제공합니다.
-
-화면은 실제 Agbrio 구성 요소를 브라우저에서 렌더링하고 가상 데이터를 사용했습니다. 한국어는 제품 소개 번역입니다. **앱 UI는 영어·중국어 간체·중국어 번체를 지원**하며 이 페이지의 이미지는 영어입니다. 실제 iPhone 녹화가 아닙니다.
-
-## AI 비서와 협업
-
-![클라우드 연결 단계 안내. 영어 UI](docs/assets/en/assistant-guide.png)
-
-Settings → AI assistant의 6단계 안내에서 ChatGPT / dot 클라우드와 Codex 로컬을 먼저 선택합니다. 자신의 HTTPS MCP 주소와 유효한 권한을 사용하고, 본인이 OAuth에 동의한 다음 대상 비서에서 도구를 확인합니다. 로컬 ready 상태만으로 클라우드 연결이 성공한 것은 아닙니다. 직접 따라 하는 안내와 복사 가능한 AI 지침을 함께 제공합니다.
-
-INSTANCE + CONVERSATION_REVIEW 권한은 30일이며 취소할 수 있습니다. 비서는 먼저 어떤 Bridge를 맡을지 묻습니다. 작업, 전달 방향, 반드시 물어볼 상황, 중단 조건을 합의한 후 일상적인 인계를 검토하고 진행합니다. 해결되지 않은 결정은 사용자에게 질문하고 실제 답변을 기록합니다. 전체 앱 접근 권한만으로 모든 Bridge가 위임되지는 않습니다.
-
-공식 MCP Events는0.1.25부터 구현되었습니다. 0.1.26의 정식 위임 범위에서 사전 승인된 범위 스캔 fallback으로 실제 이벤트 기상 후 한 번의 인계와 수신을 확인했습니다. 새 사용자 메시지나 주기적 폴링은 없었으며, 위임된 두 Bridge의8개 구독을 유지합니다. 이벤트 결과 자동 주입은 아직 해결되지 않았고 수신 측 실행 시작은 작업 완료가 아닙니다. [Events guide](docs/MCP_EVENTS_WORKFLOW.md) · [Goal recovery limits](docs/GOAL_RECOVERY.md).
-
-## 연결과 실행 조건
-
-기존 Cloudflare Tunnel, Tailscale Funnel / Serve 또는 HTTPS 서비스를 유지할 수 있습니다. 운영자가 제공하는 코드로 활성화하는 호스팅 연결은 선택 사항이며 자체 호스팅도 가능합니다. 인스턴스별 자격 증명과 라우팅을 분리하며 모든 사용자에게 하나의 MCP 자격 증명을 제공하지 않습니다. 컴퓨터를 켜고 네트워크 연결을 유지한 상태에서 휴대폰 PWA를 페어링합니다.
-
-현재 Alpha 범위는 Windows x64 + Codex + PWA입니다. macOS와 다른 실행 Agent는 검증된 대상이 아닙니다. 인계 수락은 후속 작업 완료를 뜻하지 않습니다. 선택한 파일은 수신 프로젝트에 복사되며 경로와 SHA-256이 포함됩니다.[소스 빌드](docs/BUILD.md) · [비서 프로토콜](docs/ASSISTANT_MCP.md).
-
-[작성자 연락처](mailto:geoffreyzjx@qq.com) · [문제 제보](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [개선 제안](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
-
-## 사용량과 연결 안내
-
-Codex의 실제 사용량 기간, 잔여량과 초기화 시간을 확인하고 수동 새로고침할 수 있습니다. AI 도우미 연결은 클라우드/로컬 경로를 선택하고 설정 지침을 복사합니다. 사용자는 인증과 위임할 Bridge 선택을 담당합니다. PWA 설정에서 수동 업데이트할 수 있으며 재설치나 재페어링은 필요하지 않습니다.
-
-Claude Code now supports standalone monitored conversations and authenticated owner text replies to the original session. Native model/permissions are inherited; no autonomous/MCP Claude writer or goal control. Receipt requires a stored native message, not submit/HTTP success. Real owner-message acceptance remains separate. [Contract](docs/CLAUDE_CODE.md).
+[사용 안내](docs/START_HERE.md) · [보드 안내](docs/BOARDS.md) · [소스 빌드](docs/BUILD.md)

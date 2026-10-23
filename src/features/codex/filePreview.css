@@ -1,6 +1,115 @@
-.agbrio-file-preview{position:fixed;inset:5vh max(24px,calc((100vw - 1100px)/2));z-index:1501;display:flex;flex-direction:column;min-width:0;font-family:var(--r2-font,var(--v6-font,system-ui));background:var(--r2-paper,#fff);color:var(--r2-ink,#242321);border:1px solid var(--r2-line,#dedbd6);border-radius:16px;box-shadow:0 20px 80px #0003;overflow:hidden}
-.agbrio-file-preview>header{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--r2-line,#dedbd6);flex-shrink:0}.agbrio-file-preview h2{font-size:16px;font-weight:600;margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.agbrio-file-preview button{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:10px;background:transparent;color:inherit;touch-action:manipulation;cursor:pointer}.agbrio-file-preview button:active{background:#0001}.agbrio-file-preview button:disabled{opacity:.4;cursor:default}
-.agbrio-file-body{overflow:auto;overscroll-behavior:contain;min-height:0;flex:1;padding:24px;overflow-wrap:anywhere}.agbrio-file-code{font-size:14px;line-height:1.65;white-space:pre;tab-size:4;overflow-wrap:normal;margin:0}.agbrio-file-code>span{display:block;min-height:1.65em}.agbrio-file-line{display:inline-block;min-width:4em;color:#888;user-select:none;position:sticky;left:0;background:var(--r2-paper,#fff)}.agbrio-file-csv{border-collapse:collapse;font-size:14px}.agbrio-file-csv td{border:1px solid var(--r2-line,#dedbd6);padding:8px 12px;min-width:90px;max-width:480px;white-space:pre-wrap}.agbrio-file-csv tr:first-child{font-weight:600;background:#00000005}.agbrio-file-image{display:block;height:auto}.agbrio-file-image-tools{position:sticky;top:0;display:flex;justify-content:center;background:var(--r2-paper,#fff);width:fit-content;margin:0 auto 12px;border-radius:10px}
-@media(max-width:760px){.agbrio-file-preview{inset:auto;left:var(--aiwr-shell-left,0);top:var(--aiwr-shell-top,0);width:var(--aiwr-shell-width,100%);height:var(--aiwr-shell-height,100dvh);max-height:100dvh;border-radius:0;border:0;padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);padding-bottom:env(safe-area-inset-bottom);box-sizing:border-box}.agbrio-file-body{padding:16px}.agbrio-file-preview>header{padding:8px 12px}}
-
-.agbrio-file-preview button:focus-visible{outline:2px solid var(--r2-accent,#b44e28);outline-offset:2px}
+.agbrio-file-preview {
+  position: fixed;
+  inset: 5vh max(24px, calc((100vw - 1100px) / 2));
+  z-index: 1501;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  box-sizing: border-box;
+  font-family: var(--r2-font, var(--v6-font, system-ui));
+  background: var(--r2-paper, #fff);
+  color: var(--r2-ink, #242321);
+  border: 1px solid var(--r2-line, #dedbd6);
+  border-radius: 16px;
+  box-shadow: 0 20px 80px #0003;
+  overflow: hidden;
+}
+.agbrio-file-preview > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--r2-line, #dedbd6);
+  flex-shrink: 0;
+}
+.agbrio-file-preview > header h2 {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agbrio-file-preview button {
+  min-width: 44px;
+  min-height: 44px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
+}
+.agbrio-file-preview button:active { background: #0001; }
+.agbrio-file-preview button:disabled { opacity: .4; cursor: default; }
+.agbrio-file-preview button:focus-visible { outline: 2px solid var(--r2-accent, #b44e28); outline-offset: 2px; }
+.agbrio-file-body {
+  overflow: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+  flex: 1;
+  padding: 32px;
+  overflow-wrap: anywhere;
+  scrollbar-gutter: stable;
+}
+/* The portal is outside the chat shell: give documents their own reading type. */
+.agbrio-file-body > .markdown-message {
+  max-width: 72ch;
+  margin: 0 auto;
+  font-size: 16px;
+  line-height: 1.75;
+}
+.agbrio-file-body > .markdown-message :is(h1,h2,h3,h4,h5,h6) {
+  line-height: 1.4;
+  margin: 1.5em 0 .65em;
+  font-weight: 600;
+}
+.agbrio-file-body > .markdown-message h1 { font-size: 26px; }
+.agbrio-file-body > .markdown-message h2 { font-size: 22px; }
+.agbrio-file-body > .markdown-message h3 { font-size: 19px; }
+.agbrio-file-body > .markdown-message :is(h4,h5,h6) { font-size: 16px; }
+.agbrio-file-body > .markdown-message p { margin: 0 0 1em; }
+.agbrio-file-body > .markdown-message :is(ul,ol) { margin: .75em 0 1.25em; padding-left: 1.5em; }
+.agbrio-file-body > .markdown-message li + li { margin-top: .4em; }
+.agbrio-file-body > .markdown-message > :first-child { margin-top: 0; }
+.agbrio-file-body > .markdown-message > :last-child { margin-bottom: 0; }
+.agbrio-file-code { font-size: 14px; line-height: 1.65; white-space: pre; tab-size: 4; overflow-wrap: normal; margin: 0; }
+.agbrio-file-code > span { display: block; min-height: 1.65em; }
+.agbrio-file-line { display: inline-block; min-width: 4em; color: var(--r2-muted, #706a63); user-select: none; position: sticky; left: 0; background: var(--r2-paper, #fff); }
+.agbrio-file-csv { border-collapse: collapse; font-size: 14px; }
+.agbrio-file-csv td { border: 1px solid var(--r2-line, #dedbd6); padding: 8px 12px; min-width: 90px; max-width: 480px; white-space: pre-wrap; }
+.agbrio-file-csv tr:first-child { font-weight: 600; background: #00000005; }
+.agbrio-file-image { display: block; height: auto; }
+.agbrio-file-image-tools { position: sticky; top: 0; display: flex; justify-content: center; background: var(--r2-paper, #fff); width: fit-content; margin: 0 auto 12px; border-radius: 10px; }
+@media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1100px) {
+  .agbrio-file-preview {
+    inset: auto;
+    left: var(--aiwr-shell-left, 0);
+    top: var(--aiwr-shell-top, 0);
+    width: var(--aiwr-shell-width, 100%);
+    height: var(--aiwr-shell-height, 100dvh);
+    max-height: 100dvh;
+    border-radius: 0;
+    border: 0;
+    box-shadow: none;
+    /* Reuse the resolved visible insets: keyboard/pan must not count twice. */
+    padding-top: var(--aiwr-inset-top, env(safe-area-inset-top, 0px));
+    padding-right: var(--aiwr-inset-right, env(safe-area-inset-right, 0px));
+    padding-bottom: var(--aiwr-inset-bottom, env(safe-area-inset-bottom, 0px));
+    padding-left: var(--aiwr-inset-left, env(safe-area-inset-left, 0px));
+  }
+  .agbrio-file-preview > header { padding: 6px 12px 6px 20px; gap: 4px; }
+  .agbrio-file-body { padding: 24px 20px 32px; scrollbar-gutter: auto; }
+  .agbrio-file-body > .markdown-message h1 { font-size: 24px; }
+  .agbrio-file-body > .markdown-message h2 { font-size: 20px; }
+  .agbrio-file-body > .markdown-message h3 { font-size: 18px; }
+}

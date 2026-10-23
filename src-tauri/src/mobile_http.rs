@@ -247,6 +247,9 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         .route("/v1/mobile/character-board/view",get(character_board_view).layer(tower_http::compression::CompressionLayer::new()))
         .route("/v1/mobile/character-board/review",post(character_board_review))
         .route("/v1/mobile/board-source",get(board_source_read))
+        .route("/v1/mobile/boards",get(published_boards_list))
+        .route("/v1/mobile/boards/{id}",get(published_board_snapshot).layer(tower_http::compression::CompressionLayer::new()))
+        .route("/v1/mobile/boards/{id}/assets/{asset_id}",get(published_board_asset))
         .route("/v1/mobile/character-board/assets/{asset_id}",get(character_board_asset))
         .route("/v1/mobile/bridges",post(create_bridge))
         .route("/v1/mobile/bridges/{workstream_id}/rename",post(rename_bridge))
@@ -582,6 +585,17 @@ struct BoardQuery { known_revision:Option<String>,#[serde(default)] metadata_onl
 struct BoardReviewInput{revision:String,#[serde(flatten)]input:crate::character_board_review::ReviewInput}
 /// The phone may read which board source is active; only the desktop can change it.
 async fn board_source_read(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<Option<crate::character_board::Source>>{board_authenticated(&headers,&state).await?;Ok(Json(crate::character_board::source()))}
+async fn published_boards_list(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<Vec<crate::published_boards::BoardInfo>>{board_authenticated(&headers,&state).await?;Ok(Json(run_core_blocking("Published board list",crate::published_boards::list).await?))}
+async fn published_board_snapshot(Path(id):Path<String>,State(state):State<MobileHttpState>,headers:HeaderMap,Query(query):Query<BoardQuery>)->Result<impl IntoResponse,ApiError>{
+ board_authenticated(&headers,&state).await?;
+ let value=run_core_blocking("Published board",move||crate::published_boards::snapshot(&id,query.known_revision.as_deref())).await?;
+ Ok(([("cache-control","private, no-store")],Json(value)))
+}
+async fn published_board_asset(Path((id,asset_id)):Path<(String,String)>,State(state):State<MobileHttpState>,headers:HeaderMap,Query(query):Query<BoardAssetQuery>)->Result<impl IntoResponse,ApiError>{
+ board_authenticated(&headers,&state).await?;
+ let value=run_core_blocking("Published board asset",move||crate::published_boards::asset(&id,&query.revision,&asset_id)).await?;
+ Ok(([("cache-control","private, no-store"),("x-content-type-options","nosniff")],Json(value)))
+}
 async fn character_board_review(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<BoardReviewInput>)->Result<impl IntoResponse,ApiError>{
     authenticated(&headers,&state,true).await?;
     Ok(([("cache-control","private, no-store")],Json(crate::character_board_review::proxy(input.revision,input.input).await)))

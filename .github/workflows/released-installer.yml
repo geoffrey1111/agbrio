@@ -5,7 +5,7 @@ on:
       version:
         description: Exact version built from main
         required: true
-        default: 0.1.35-rc.57
+        default: 0.1.35-rc.58
       installer_sha256:
         description: SHA256 of the updater-signed installer
         required: true

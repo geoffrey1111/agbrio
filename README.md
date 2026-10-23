@@ -1,101 +1,39 @@
-<img src="docs/assets/agbrio-icon.png" width="72" alt="Agbrio">
-
-**rc.57 adds read-only Markdown/image/text/code/JSON/CSV file previews in conversations and includes the configurable Boards tab, local/HTTPS board viewing and supported manual board review, full Claude child-conversation trees, native decision/question cards, chronological message updates, quieter mobile sending and keyboard/zoom recovery, plus application capability discovery and local-control APIs.** Configure your own board in Settings; private board content is never bundled. [Release scope](docs/RELEASE_0.1.35-rc.57.md) · [Application operations](docs/APP_CONTROL.md).
-
-Main source: [WorkBuddy / general MCP assistant setup](docs/ASSISTANT_CLIENTS.md) · [Copyable development instruction](docs/tutorials/WORKBUDDY_DEVELOPMENT_PROMPT.zh-CN.txt). Included in rc.57; real external-user WorkBuddy acceptance is pending.
-
 # Agbrio
 
-**Agent Bridge — one conversation plans and reviews; another executes.**
+**Keep up with your AI agents — from your desktop or phone.**
+
+[![Download](https://img.shields.io/github/v/release/geoffrey1111/agbrio?label=download)](https://github.com/geoffrey1111/agbrio/releases/latest)
+[![Build](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml/badge.svg?branch=main)](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml)
+[![MIT](https://img.shields.io/github/license/geoffrey1111/agbrio)](LICENSE)
+[![Windows](https://img.shields.io/badge/Windows-x64-0078D4)](https://github.com/geoffrey1111/agbrio/releases/latest)
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
-Do you already keep one agent conversation for decisions and another for implementation? Agbrio connects those existing contexts. Read the result, select what belongs in the next task, check the recipient, and hand it over.
+Follow your Codex and Claude Code conversations, review their work, reply when needed, and keep project results on a board you can open anywhere.
 
-**Keep the reasoning in one conversation. Keep the execution in another. Carry the right work between them.**
+![Project board in Agbrio](docs/assets/en/boards-project.png)
 
-[Download Windows v0.1.35-rc.57](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.57) · [Install and pair](docs/SETUP.md) · [Connect an assistant](docs/ASSISTANT_CONNECTION_GUIDE.en.md) · [MIT license](LICENSE)
+## Your work, within reach
 
-[Latest shared Codex repair v0.1.35-rc.57](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.35-rc.57): bounded tunnel recovery, the current desktop/PWA interface, owner-approved Claude text relays, and the existing guarded shared startup and recovery entries. [Checks and remaining limits](docs/RELEASE_0.1.35-rc.57.md). This is the latest recommended download; its exact rc.57 version and validation limits are retained. Private artwork, board content, conversations and runtime state are excluded.
+- **Stay in the conversation.** See current activity, read results and reply from your paired phone.
+- **Make the next decision.** Answer supported questions and review child-conversation activity.
+- **Hand over the useful part.** Select a result, check the destination and forward it to another conversation.
+- **Open the files.** Read Markdown, images, code, JSON and CSV directly from a conversation.
 
-## Start here
+<p align="center"><img src="docs/assets/en/mobile-chat.png" width="300" alt="Reply and answer questions on your phone"> &nbsp; <img src="docs/assets/en/mobile-file.png" width="300" alt="Read a project document without leaving Agbrio"></p>
 
-**New user? Read the [complete walkthrough](docs/SETUP.md) and [FAQ](docs/FAQ.md).** Shared-connection repairs are in the **0.1.35-rc.57 release** above, now the latest recommended download; 0.1.34 is historical.
+## Turn a project into a board
 
-1. Install Agbrio and complete your official Codex installation/login.
-2. With ordinary Codex exited after tasks finish, use **Codex (Agbrio shared)** (rc.57), or prepare/open from Agbrio settings. Verify Desktop-connected, not just backend-prepared.
-3. Bind two exact conversations, select content, preview destination/text, send once and check the receipt.
-4. Optionally add a paired phone, Claude Code or a scoped AI assistant; each connection is verified separately.
+Ask your desktop agent to create a progress page, compare options or gather a report. Open **Board** (choose **Create board** if one is already connected), pick an example and copy the instructions to your agent. Its board appears in Agbrio and follows updates to the project files.
 
-**Why open ordinary Codex and then close it?** Older preparation used its running backend; actual switching needed a clean exit. **rc.57 can discover the official installation while Desktop is closed.** After initial installation/login, use the shared shortcut directly on later launches/reboots. Official default/taskbar startup stays unchanged. Official updates are rechecked at idle startup, with no guarantee for every future version. [Startup and fallback](docs/SETUP.md#4-daily-startup-reboot-official-updates-and-fallback).
+![Examples and agent instructions](docs/assets/en/boards-guide.png)
 
-Development and current documentation use **main**. Release tags preserve the exact published source; historical branch links are not a second supported setup path.
+## Get started
 
-Optional daily reports: after real read-only acceptance, choose time (suggested22:00 local), timezone, delivery destination and delegated Bridges; explicitly submit to your assistant. It verifies real scheduler tools and the original saved task, or says unsupported. Change or disable the same task without duplicating it; disabling works without active Bridges/MCP. Read-only receipt windows and honest partial attribution: [daily reports](docs/DAILY_REPORTS.md).
+1. **[Download Agbrio for Windows](https://github.com/geoffrey1111/agbrio/releases/latest)** and connect your existing agents.
+2. **Choose a conversation or create a board.** Start with the work you already have.
+3. **Pair your phone** in Settings → Devices. Use a hosted redemption code or your own HTTPS connection.
 
-## From review to the next task
+Keep your computer and Agbrio online for phone access.
 
-![Two bound roles in an Agbrio Bridge, with English UI and fictional conversations](docs/assets/en/desktop-bridge.png)
-
-The manager keeps the plan, evaluates returned evidence, and decides the next step. The executor works in the project and reports back. A Bridge binds their exact conversation IDs, so the handoff goes to the intended conversation even when several projects run in parallel.
-
-<p><img src="docs/assets/en/mobile-handoff.png" width="320" alt="Select the instruction while keeping the analysis unselected"> <img src="docs/assets/en/mobile-preview.png" width="320" alt="Review the exact destination and final text before sending"></p>
-
-Select only the instruction block. The analysis remains in its original conversation. Preview the final message and recipient, then confirm. Read the next result from your desktop or paired phone PWA.
-
-These are browser-rendered screenshots of actual Agbrio components with fictional, localized data. They are not two Codex windows or physical-device recordings.
-
-## A focused workspace for handoffs
-
-| Capability | What it helps you do |
-| --- | --- |
-| Exact Bridge bindings | Keep manager and executor conversations separate and deliver by stable IDs |
-| Selective forwarding | Choose whole paragraphs, review files, edit the outgoing message, and confirm its recipient |
-| Earlier results | Review a useful earlier result when later stalled-goal updates are less informative |
-| Activity and review attention | See the active side; review attention appears when intervention is needed |
-| Watches and notifications | Follow conversations outside a Bridge and reply to the original conversation |
-| Native Codex questions | Answer supported questions and choices through the app |
-| Desktop Host + phone PWA | Review and hand off away from the desk while your computer stays online |
-| Signed app updates | Check, download and install verified Windows updates from Settings |
-
-Selected Codex files are copied to the destination project's `.aiwr/incoming/<handoff-id>/`, with relative paths and SHA-256 in the outgoing message. They are local project materials, not a claim that ChatGPT received an uploaded attachment.
-
-## Let your assistant help with review
-
-![The cloud assistant tutorial, fully in English](docs/assets/en/assistant-guide.png)
-
-Settings → AI assistant now has a visible six-step tutorial and copyable instructions. Choose **ChatGPT / dot cloud** or **Codex local** first. Use your instance's actual HTTPS MCP address, reuse a valid authorization, complete owner consent, and verify tools in the target assistant. A desktop-ready indicator is not cloud acceptance.
-
-For whole-app access, Agbrio offers a revocable 30-day **INSTANCE + CONVERSATION_REVIEW** authorization. After connecting, the assistant asks **which Bridges you want it to handle**. Agree the task, direction, questions that need your decision, and pause conditions in that conversation. A grant alone does not delegate every Bridge.
-
-Within your explicit delegation, ordinary reviewed handoffs can proceed without a phone approval every round. Conflicts, scope changes and unresolved decisions come back to you. Agbrio reuses prepare → confirm → receipt, exact versions, decision records and duplicate-send protection.
-
-Official MCP Events is implemented from 0.1.25. A formal 0.1.26 run verified one real event-woken handoff using the previously authorized delegated-scope scan fallback, without a new user prompt or periodic polling; that historical acceptance does not provision subscriptions for new users. Automatic event-result injection remains unresolved, and recipient execution is not task completion. [Events tutorial](docs/MCP_EVENTS_WORKFLOW.md) · [Goal recovery limits](docs/GOAL_RECOVERY.md).
-
-## Reach your own Host
-
-Keep your existing deployment. Desktop Settings → Devices supports your own Cloudflare Tunnel domain, Tailscale Funnel / Serve, or an existing HTTPS entry. You can also use an optional operator-issued hosted redemption code; self-hosting remains available. The setup can generate instructions for your deployment assistant. Hosted connection credentials and tenant routing remain separate per activated instance; no shared MCP credential is supplied to users.
-
-The computer must stay powered on, awake and connected for live work. A new browser session may require pairing; an already valid session should be reused. [Setup](docs/SETUP.md) · [Hosted option](docs/HOSTED_RELAY.md).
-
-## Release and participation
-
-Windows x64 + Codex + paired PWA is the alpha scope. App languages: **English, Simplified Chinese, Traditional Chinese** (Settings → Language). Japanese and Korean are introduction translations; macOS and other execution agents are not verified release targets. Source data is review material, never a way to enlarge authorization. An accepted handoff does not prove its downstream task completed.
-
-[Build from source](docs/BUILD.md) · [Assistant protocol](docs/ASSISTANT_MCP.md) · [v0.1.34 changes](https://github.com/geoffrey1111/agbrio/releases/tag/v0.1.34) · [Third-party notices](THIRD_PARTY_NOTICES.md)
-
-[Contact the author](mailto:geoffreyzjx@qq.com) · [Report a problem](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml) · [Suggest an improvement](https://github.com/geoffrey1111/agbrio/issues/new?template=feature_request.yml)
-
-## Native usage and simpler assistant setup
-
-## Quick setup with your agent
-
-In **Settings → AI assistant**, choose **ChatGPT / dot cloud** or **Codex local**, then **Copy instructions for your agent**. The prompt uses your configured instance URL. Your agent checks existing deployment and access; you choose authorization, sign in and consent, and tell the assistant which Bridges to handle. Valid grants are reused. Detailed self-service steps remain under **Do it yourself: detailed guide**. Desktop authentication alone does not prove cloud readiness.
-
-Bridge now has a quiet **Codex usage** row. Open it to see native quota windows, remaining percentage, reset time, last reading and **Refresh usage**. Sparse or unsupported accounts show unavailable, and offline readings are labelled. No inferred five-hour bucket or quota purchases. Phone **Settings** and **About** include **Check interface updates**; prepared changes apply on your click, with pending writes protected. Do not reinstall or pair again.
-
-<p><img src="docs/assets/en/codex-quota.png" width="320" alt="Actual native quota UI with fictional usage"> <img src="docs/assets/en/assistant-guide-simple.png" width="320" alt="Agent-first connection steps in English"></p>
-
-These use actual UI components and fictional demo data; they are browser captures, not physical iPhone recordings.
-
-Claude Code now supports standalone monitored conversations and authenticated owner text replies to the original session. Native model/permissions are inherited; no autonomous/MCP Claude writer or goal control. Receipt requires a stored native message, not submit/HTTP success. Real owner-message acceptance remains separate. [Contract](docs/CLAUDE_CODE.md).
+[Setup & help](docs/START_HERE.md) · [Board guide](docs/BOARDS.md) · [Build from source](docs/BUILD.md)

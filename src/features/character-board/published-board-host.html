@@ -1,0 +1,13 @@
+<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; frame-src 'self' about: blob: data:; connect-src 'none'; form-action 'none'; base-uri 'none'"><style>html,body{height:100%;margin:0;overflow:hidden}iframe{display:block;width:100%;height:100%;border:0}</style></head><body><iframe title="Project presentation" sandbox="allow-scripts"></iframe><script>
+// This trusted, opaque host never executes the published HTML itself. Its frame
+// policy also blocks the inner page from navigating itself to a remote website.
+(() => {const child=document.querySelector('iframe');let initialized=false,channel=null;
+addEventListener('message',event=>{const m=event.data;
+ if(event.source===parent){
+  if(m?.kind==='document'&&!initialized&&typeof m.html==='string'&&m.html.length<=4000000&&typeof m.channel==='string'){initialized=true;channel=m.channel;child.srcdoc=m.html;return;}
+  if(initialized&&m?.channel===channel&&['init','assetResult'].includes(m.kind))child.contentWindow.postMessage(m,'*');
+ }else if(event.source===child.contentWindow&&event.origin==='null'&&m&&JSON.stringify(m).length<=4096){
+  if(m.kind==='ready'||(m.channel===channel&&['asset','state'].includes(m.kind)))parent.postMessage(m,'*');
+ }
+});})();
+</script></body></html>

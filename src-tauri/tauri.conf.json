@@ -20,7 +20,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; frame-src 'self' character-board: http://character-board.localhost https: http://127.0.0.1:* http://localhost:*; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:1420 ws://localhost:1420;"
+      "csp": "default-src 'self'; frame-src 'self' published-board: http://published-board.localhost character-board: http://character-board.localhost https: http://127.0.0.1:* http://localhost:*; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:1420 ws://localhost:1420;"
     }
   },
   "bundle": {

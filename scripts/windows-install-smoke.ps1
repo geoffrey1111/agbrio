@@ -34,6 +34,19 @@ try{
   try{$agbrioSession=Invoke-RestMethod 'http://127.0.0.1:47114/v1/mobile/auth/session';break}catch{Start-Sleep -Milliseconds 500}
  }while((Get-Date) -lt $agbrioDeadline)
  if(!$agbrioSession){throw 'Fresh installed Host did not start.'}
+ # Publish a disposable local board through the installed current-user CLI.
+ $boardFolder=Join-Path $agbrioRoot 'board-fixture'
+ New-Item -ItemType Directory -Path $boardFolder -Force | Out-Null
+ '<!doctype html><html><head><link rel="stylesheet" href="style.css"></head><body><h1>QA published result</h1><p id="parent">Checking isolation</p><p id="native">Checking native API</p><img src="pixel.png" alt="Published diagram" onload="document.getElementById(&quot;image&quot;).textContent=&quot;Published image readable&quot;"><p id="image"></p><script src="app.js"></script></body></html>' | Set-Content (Join-Path $boardFolder 'index.html') -Encoding utf8
+ 'body{font:18px system-ui;padding:30px;background:#fffcf8;color:#342d27}img{width:32px;height:32px}' | Set-Content (Join-Path $boardFolder 'style.css') -Encoding utf8
+ "document.querySelector('h1').textContent='QA board script loaded';try{void parent.document.body;document.getElementById('parent').textContent='Parent escaped'}catch{document.getElementById('parent').textContent='Parent isolated'};(async()=>{try{await window.__TAURI_INTERNALS__.invoke('app_capabilities');document.getElementById('native').textContent='Native API escaped'}catch{document.getElementById('native').textContent='Native API isolated'}})();" | Set-Content (Join-Path $boardFolder 'app.js') -Encoding utf8
+ [IO.File]::WriteAllBytes((Join-Path $boardFolder 'pixel.png'),[Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0u8AAAAASUVORK5CYII='))
+ @{schemaVersion=1;title='QA project board';entry='index.html';files=@('index.html','style.css','app.js','pixel.png')} | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $boardFolder 'agbrio-board.json') -Encoding utf8
+ $published=& pwsh -NoProfile -File (Join-Path $agbrioInstall 'app-control/control.ps1') -Command PublishBoard -Folder $boardFolder
+ if($LASTEXITCODE -ne 0){throw 'Installed board CLI failed'}
+ $publishedBoard=$published | ConvertFrom-Json
+ if(!$publishedBoard.id -or !$publishedBoard.revision){throw 'Installed publication receipt missing'}
+ $published | Set-Content (Join-Path $agbrioRoot 'published-board-proof.json') -Encoding utf8
  $agbrioWindowType=@'
 using System;using System.Runtime.InteropServices;
 public static class AgbrioSmokeWindow{[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr window,int command);}

@@ -14,6 +14,7 @@ pub(crate) fn capabilities(scope: &str) -> Value {
         "apiVersion":API_VERSION,"appVersion":version(),"scope":scope,
         "tools":crate::assistant_mcp::tools_for_scope(scope)["tools"],
         "discoveryOnly":true,"delegationRequired":true,
+        "boards":{"publication":"OWNER_LOCAL_CLI_OR_DESKTOP","cliPath":if instance{std::env::current_exe().ok().and_then(|p|p.parent().map(|d|d.join("app-control/control.ps1").to_string_lossy().into_owned()))}else{None},"command":"app-control/control.ps1 -Command PublishBoard -Folder <absolute-folder>","manifest":"agbrio-board.json","schema":{"schemaVersion":1,"title":"My board","entry":"index.html","files":["index.html"]},"phone":"existing paired mobile origin; no separate domain setup","updates":"edit manifest-listed files in the registered folder","limits":{"files":256,"fileBytes":8388608,"totalBytes":33554432},"sandbox":"read-only presentation; no provider, permission or approval authority"},
         "applicationReads":instance,
         "http":if scope=="OWNER" {json!({"capabilities":"GET /v1/mobile/app/capabilities","diagnostics":"GET /v1/mobile/app/diagnostics","authentication":"existing owner authentication"})}else{Value::Null},
         "providers":{
@@ -21,7 +22,7 @@ pub(crate) fn capabilities(scope: &str) -> Value {
             "CHATGPT":{"read":true,"writes":"EXISTING_REVIEWED_HANDOFF","accountSecurityStop":true},
             "CLAUDE_CODE":{"read":true,"writes":"OWNER_TEXT_ONLY","mcpWrite":false,"attachments":false,"goalControl":false}
         },
-        "localMaintenance":{"transport":"WINDOWS_CURRENT_USER_NAMED_PIPE","commands":["STATUS","CAPABILITIES","DIAGNOSTICS","SHUTDOWN"],"start":"external local CLI","shutdownRequiresExactInstance":true,"remoteShutdown":false},
+        "localMaintenance":{"transport":"WINDOWS_CURRENT_USER_NAMED_PIPE","commands":["STATUS","CAPABILITIES","DIAGNOSTICS","SHUTDOWN","PUBLISH_BOARD"],"start":"external local CLI","shutdownRequiresExactInstance":true,"remoteShutdown":false},
         "rules":["Discovery is not delegation or runtime readiness","Use stable native identities and existing review/receipt commands","After uncertain writes inspect the original receipt; never resend automatically","No shell, credentials, provider restart or permission changes"]
     })
 }
