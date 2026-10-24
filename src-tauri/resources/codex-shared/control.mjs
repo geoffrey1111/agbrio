@@ -129,7 +129,9 @@ export async function lifecycle(options,dependencies={}){
    child=createProcess(saved.desktop,[],desktopLaunchOptions(`ws://127.0.0.1:${cfg.port}/rpc`));
    child.on('error',()=>{});
    await progress('CONNECTING');
-   const deadline=now()+45000;let connected=false,waitingWindow=false;
+   // Store-updated Desktop may spend over 100 seconds in bootstrap before opening
+   // its native connection. Keep one bounded launch attempt; never respawn it.
+   const deadline=now()+180000;let connected=false,waitingWindow=false;
    while(now()<deadline){
     if(child.exitCode!==null)break;
     if((await health())?.desktopConnected){

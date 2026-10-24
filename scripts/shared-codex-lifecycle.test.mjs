@@ -251,3 +251,21 @@ test('a backend lost during verification blocks Desktop startup and preserves di
  await assert.rejects(lifecycle({...f.options,action:'launch'},f.dependencies),/SHARED_BACKEND_LOST_BEFORE_DESKTOP/);
  assert.equal(JSON.parse(await readFile(join(f.options.directory,'launch-progress.json'),'utf8')).errorCode,'SHARED_BACKEND_LOST_BEFORE_DESKTOP');
 });
+
+// Regression: observed updated Desktop bootstrap took109s, beyond old45s fence.
+test('one cold Desktop launch can connect after109seconds without an early rollback or second spawn',async()=>{
+ const f=await fixture();await lifecycle({...f.options,action:'setup'},f.dependencies);
+ let clock=0;f.dependencies.now=()=>clock;f.dependencies.sleep=async ms=>{clock+=ms;if(clock>=109000)f.setDesktop(true);};
+ const spawn=f.dependencies.spawn;f.dependencies.spawn=(...args)=>{const c=spawn(...args);f.setDesktop(false);return c;};
+ const before=f.calls.length;const result=await lifecycle({...f.options,action:'launch'},f.dependencies);
+ assert.equal(result.desktopConnected,true);assert.ok(clock>=109000&&clock<180000);
+ assert.equal(f.calls.slice(before).filter(x=>x==='spawn-Desktop').length,1);assert.ok(!f.calls.slice(before).includes('Stop'));
+});
+
+test('cold Desktop grace remains bounded and does not relaunch a never-connecting window',async()=>{
+ const f=await fixture();await lifecycle({...f.options,action:'setup'},f.dependencies);
+ let clock=0;f.dependencies.now=()=>clock;f.dependencies.sleep=async ms=>{clock+=ms;};
+ const spawn=f.dependencies.spawn;f.dependencies.spawn=(...args)=>{const c=spawn(...args);f.setDesktop(false);return c;};
+ const before=f.calls.length;await assert.rejects(lifecycle({...f.options,action:'launch'},f.dependencies),/SHARED_DESKTOP_CONNECTION_FAILED/);
+ assert.ok(clock>=180000&&clock<181000);assert.equal(f.calls.slice(before).filter(x=>x==='spawn-Desktop').length,1);
+});
