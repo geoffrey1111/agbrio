@@ -18,7 +18,7 @@ pub(crate) fn capabilities(scope: &str) -> Value {
         "applicationReads":instance,
         "http":if scope=="OWNER" {json!({"capabilities":"GET /v1/mobile/app/capabilities","diagnostics":"GET /v1/mobile/app/diagnostics","authentication":"existing owner authentication"})}else{Value::Null},
         "providers":{
-            "CODEX":{"read":true,"writes":"EXISTING_REVIEWED_ACTIONS","runtimeVerificationRequired":true},
+            "CODEX":{"read":true,"createChat":"REVIEWED_CREATE_CHAT","defaultFollowUp":"STEER_WHEN_ACTIVE_SEND_WHEN_IDLE","implicitQueue":false,"writes":"EXISTING_REVIEWED_ACTIONS","runtimeVerificationRequired":true},
             "CHATGPT":{"read":true,"writes":"EXISTING_REVIEWED_HANDOFF","accountSecurityStop":true},
             "CLAUDE_CODE":{"read":true,"writes":"OWNER_TEXT_ONLY","mcpWrite":false,"attachments":false,"goalControl":false}
         },

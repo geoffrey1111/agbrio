@@ -7,6 +7,59 @@ use std::time::Instant;
 #[path="assistant_events_http_tests.rs"]
 mod events_contract;
 fn now_ms()->i64{clock() as i64*1000}
+#[test]#[ignore="explicit existing shared backend, creates one disposable empty Codex thread; no model prompt or owner-session mutation"]
+fn real_mcp_create_empty_codex_and_read_without_any_model_turn(){
+ let root=std::path::PathBuf::from(std::env::var("AGBRIO_CREATE_QA_ROOT").unwrap());assert!(root.is_absolute()&&root.is_dir());
+ let store=Arc::new(RouterStore::open_at(root.join("isolated-create.db")).unwrap());
+ let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};
+ let mut command=std::process::Command::new("node");command.arg(std::env::var("AGBRIO_READONLY_TRANSPORT").unwrap()).arg(std::env::var("AGBRIO_READONLY_SHARED_URL").unwrap());
+ #[cfg(windows)]{use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}
+ let mut adapter=crate::codex::adapter::CodexAdapter::start_shared_validation(command,Arc::new(|_|{})).unwrap();adapter.initialize().unwrap();core.session.lock().unwrap().adapter=Some(adapter);
+ let g=core.store.connect_assistant_instance(router_core::store::assistant::AssistantConnectionInput{label:"Disposable create-only QA".into(),expires_at:now_ms()+600000}).unwrap();
+ let call=|name:&str,input:Value|crate::assistant_mcp::call(&core,&g.id,name,input).unwrap();
+ let a=call("agbrio_prepare_action",json!({"requestId":"real-empty-create-once","operation":"CREATE_CHAT","input":{"provider":"CODEX","directory":root,"label":"Agbrio create-only validation"}}));
+ let approval=json!({"actionId":a["id"],"expectedHash":a["payloadHash"],"ruleId":null,"useOwnerAnswer":false,"assessment":"Owner-approved feature engineering, disposable empty thread only; no model task"});
+ let r=call("agbrio_execute_action",approval.clone());assert_eq!(r["status"],"APPLIED","{r}");assert_eq!(r["result"]["firstMessageSent"],false);assert_eq!(call("agbrio_execute_action",approval),r);
+ let id=r["result"]["threadId"].as_str().unwrap();let chat=call("agbrio_read_chat",json!({"threadId":id}));assert_eq!(chat["state"]["watch"]["threadId"],id);assert!(chat["history"]["messages"].as_array().unwrap().is_empty());
+ assert!(core.store.watch_replies(id).unwrap().is_empty());let mut s=core.session.lock().unwrap();let a=s.adapter.as_mut().unwrap();assert!(!a.has_owned_turns());
+ let cleanup=a.request("thread/archive",json!({"threadId":id}));
+ std::fs::write(root.join("real-create-proof.json"),serde_json::to_vec_pretty(&json!({"threadId":id,"createAction":r["id"],"createOnce":true,"registeredWatch":true,"emptyHistoryReadable":true,"modelPrompts":0,"ownerThreadsMutated":false,"archiveCleanup":cleanup.is_ok(),"archiveError":cleanup.err()})).unwrap()).unwrap();drop(s);core.shutdown_owned_adapter();
+}
+#[test]fn mcp_created_codex_conversation_is_registered_readable_and_created_once_without_a_model_prompt(){
+ let(dir,core,legacy,_)=fixture();let old=core.store.assistant_grant(&legacy).unwrap();
+ let g=core.store.create_assistant_instance_grant(router_core::store::assistant::InstanceGrantInput{label:"New executor QA".into(),rules:old.rules,expires_at:now_ms()+600000}).unwrap();
+ let call=|name:&str,input:Value|crate::assistant_mcp::call(&core,&g.id,name,input).unwrap();
+ assert!(crate::assistant_mcp::call(&core,&legacy,"agbrio_prepare_action",json!({"requestId":"legacy-no-create","operation":"CREATE_CHAT","input":{"directory":dir.path()}})).is_err());
+ let a=call("agbrio_prepare_action",json!({"requestId":"create-codex-once","operation":"CREATE_CHAT","input":{"provider":"CODEX","directory":dir.path(),"label":"QA new executor"}}));
+ let approve=json!({"actionId":a["id"],"expectedHash":a["payloadHash"],"ruleId":"continue","useOwnerAnswer":false,"assessment":"Owner delegated one disposable executor"});
+ let r=call("agbrio_execute_action",approve.clone());assert_eq!(r["status"],"APPLIED");assert_eq!(r["result"]["firstMessageSent"],false);
+ let id=r["result"]["threadId"].as_str().unwrap();assert_eq!(id,"10000000-0000-4000-8000-000000000071");assert_eq!(call("agbrio_execute_action",approve),r);
+ assert_eq!(std::fs::read_to_string(dir.path().join("native-creates.jsonl")).unwrap().lines().count(),1);assert!(!dir.path().join("native-writes.jsonl").exists());
+ let chat=call("agbrio_read_chat",json!({"threadId":id}));assert_eq!(chat["state"]["watch"]["threadId"],id);assert!(chat["history"]["messages"].as_array().unwrap().is_empty());
+ for input in [json!({"provider":"CLAUDE_CODE","directory":dir.path()}),json!({"directory":"relative/path"}),json!({"directory":dir.path(),"permissionMode":"bypassPermissions"})]{assert!(crate::assistant_mcp::call(&core,&g.id,"agbrio_prepare_action",json!({"requestId":"refused-create","operation":"CREATE_CHAT","input":input})).is_err());}
+}
+#[test]fn mcp_normalizes_implicit_queue_before_review_and_returns_not_sent_for_a_prewrite_conflict(){
+ let(_dir,core,legacy,_)=fixture();let old=core.store.assistant_grant(&legacy).unwrap();let g=core.store.create_assistant_instance_grant(router_core::store::assistant::InstanceGrantInput{label:"Follow-up QA".into(),rules:old.rules,expires_at:now_ms()+600000}).unwrap();
+ crate::codex_watch::enable(&core,"qa-watch-original").unwrap();let w=core.store.codex_chat_context("qa-watch-original").unwrap();
+ let first=router_core::store::watch_reply::WatchReply{id:uuid::Uuid::new_v4().to_string(),thread_id:w.thread_id.clone(),cwd:w.cwd.clone(),generation:w.generation,source_sequence:None,expected_turn_id:None,mode:"QUEUE".into(),text:"Earlier explicit queued input".into(),options:json!({"model":null,"effort":null,"attachments":[]}),payload_hash:String::new(),status:String::new(),turn_id:None,error_code:None,created_at:0,updated_at:0};core.store.prepare_watch_reply(&first).unwrap();
+ let a=crate::assistant_mcp::call(&core,&g.id,"agbrio_prepare_action",json!({"requestId":"not-an-implicit-queue","operation":"SEND_CHAT","input":{"threadId":w.thread_id,"generation":w.generation,"mode":"QUEUE","text":"New owner-approved follow-up"}})).unwrap();assert_eq!(a["input"]["mode"],"AUTO");
+ let approval=json!({"actionId":a["id"],"expectedHash":a["payloadHash"],"ruleId":"continue","useOwnerAnswer":false,"assessment":"Covered follow-up; preserve previous pending receipt"});
+ let r=crate::assistant_mcp::call(&core,&g.id,"agbrio_execute_action",approval.clone()).unwrap();assert_eq!(r["status"],"FAILED");assert_eq!(r["result"]["delivery"],"NOT_SENT");assert_eq!(r["errorCode"],"REPLY_PREVIOUS_PENDING_CHECK_FIRST");assert_eq!(crate::assistant_mcp::call(&core,&g.id,"agbrio_execute_action",approval).unwrap(),r);
+ assert!(core.store.watch_reply(a["id"].as_str().unwrap()).unwrap().is_none());assert_eq!(core.store.watch_reply(&first.id).unwrap().unwrap().status,"QUEUED");
+}
+#[test]fn mcp_busy_codex_followups_default_to_native_steer_instead_of_a_queue_or_second_turn(){
+ let(dir,core,legacy,_)=fixture();let old=core.store.assistant_grant(&legacy).unwrap();let g=core.store.create_assistant_instance_grant(router_core::store::assistant::InstanceGrantInput{label:"Guide running executor".into(),rules:old.rules,expires_at:now_ms()+600000}).unwrap();
+ std::fs::write(dir.path().join("native-active"),b"active").unwrap();crate::codex_watch::enable(&core,"qa-watch-original").unwrap();let w=core.store.codex_chat_context("qa-watch-original").unwrap();
+ let p=core.store.create_project("Bridge writer fixture".into(),None).unwrap();let bridge=core.store.create_workstream(&p.id,"Known running executor".into()).unwrap();let endpoint=core.store.bind_endpoint(&bridge.id,router_core::store::Provider::Codex,w.thread_id.clone(),"Executor".into(),false).unwrap();let run=core.store.create_provider_run(&bridge.id,&endpoint.id,"CODEX",None,Some("fixture-active-turn"),"RUNNING").unwrap();
+ let call=|name:&str,input:Value|crate::assistant_mcp::call(&core,&g.id,name,input).unwrap();
+ let a=call("agbrio_prepare_action",json!({"requestId":"guide-default","operation":"SEND_CHAT","input":{"threadId":w.thread_id,"generation":w.generation,"mode":"QUEUE","text":"Adjust the current fictional task."}}));assert_eq!(a["input"]["mode"],"AUTO");
+ let approve=json!({"actionId":a["id"],"expectedHash":a["payloadHash"],"ruleId":"continue","useOwnerAnswer":false,"assessment":"Owner requested guidance, not queued follow-up"});
+ let r=call("agbrio_execute_action",approve.clone());assert_eq!(r["status"],"APPLIED","{r}");assert_eq!(r["result"]["mode"],"STEER");assert_eq!(r["result"]["status"],"SENT");assert_eq!(r["result"]["turnId"],"fixture-active-turn");assert_eq!(call("agbrio_execute_action",approve),r);
+ let writes=std::fs::read_to_string(dir.path().join("native-writes.jsonl")).unwrap();assert_eq!(writes.lines().count(),1);assert!(writes.contains("turn/steer"));assert!(!writes.contains("turn/start"));assert!(core.store.queued_watch_replies().unwrap().is_empty());
+ assert_eq!(core.store.provider_runs_for_workstream(&bridge.id).unwrap()[0].id,run.id);assert_eq!(core.store.provider_runs_for_workstream(&bridge.id).unwrap()[0].status,"RUNNING");
+ let explicit=call("agbrio_prepare_action",json!({"requestId":"explicit-wait","operation":"SEND_CHAT","input":{"threadId":w.thread_id,"generation":w.generation,"mode":"QUEUE","queueRequested":true,"expectedTurnId":"fixture-active-turn","text":"User explicitly asked to wait."}}));assert_eq!(explicit["input"]["mode"],"QUEUE");
+ let queued=call("agbrio_execute_action",json!({"actionId":explicit["id"],"expectedHash":explicit["payloadHash"],"ruleId":"continue","useOwnerAnswer":false,"assessment":"Owner explicitly requested waiting for the current turn"}));assert_eq!(queued["result"]["status"],"QUEUED");assert_eq!(std::fs::read_to_string(dir.path().join("native-writes.jsonl")).unwrap().lines().count(),1);
+}
 #[test]fn instance_operations_manage_seen_inbox_restore_watches_and_send_original_chat_once(){
  let(_dir,core,old_gid,_)=fixture();let old=core.store.assistant_grant(&old_gid).unwrap();let g=core.store.create_assistant_instance_grant(router_core::store::assistant::InstanceGrantInput{label:"App manager QA".into(),rules:old.rules,expires_at:now_ms()+600000}).unwrap();
  let mut index=0;let mut apply=|operation:&str,input:Value|{index+=1;let a=crate::assistant_mcp::call(&core,&g.id,"agbrio_prepare_action",json!({"requestId":format!("op-{index}"),"operation":operation,"input":input})).unwrap();let args=json!({"actionId":a["id"],"expectedHash":a["payloadHash"],"ruleId":"continue","useOwnerAnswer":false,"assessment":"Covered disposable operation"});let result=crate::assistant_mcp::call(&core,&g.id,"agbrio_execute_action",args.clone()).unwrap();assert_eq!(result["status"],"APPLIED");assert_eq!(crate::assistant_mcp::call(&core,&g.id,"agbrio_execute_action",args).unwrap(),result);result};
@@ -56,10 +109,13 @@ import fs from 'node:fs';
 const cwd=process.argv[2];
 readline.createInterface({input:process.stdin}).on('line',line=>{
  const q=JSON.parse(line);if(q.id===undefined)return;
+ if(q.method==='thread/start')fs.appendFileSync(cwd+'/native-creates.jsonl',JSON.stringify({cwd:q.params.cwd})+'\n');
  if(q.method==='turn/start'||q.method==='turn/steer')fs.appendFileSync(cwd+'/native-writes.jsonl',JSON.stringify({method:q.method,threadId:q.params.threadId})+'\n');
- const thread={id:q.params?.threadId,cwd,status:{type:'idle'},turns:[]};
- const result=q.method==='initialize'?{userAgent:'Agbrio offline fixture'}:q.method==='thread/read'||q.method==='thread/resume'?{thread,model:'fixture',reasoningEffort:'low'}:q.method==='thread/turns/list'?{data:[],nextCursor:null}:q.method==='thread/goal/get'?{goal:null}:q.method==='turn/start'?{turn:{id:'fixture-turn-'+q.params.threadId,status:'inProgress'}}:{};
+ const busy=fs.existsSync(cwd+'/native-active');
+ const thread={id:q.method==='thread/start'?'10000000-0000-4000-8000-000000000071':q.params?.threadId,cwd,status:{type:busy?'active':'idle'},turns:[]};
+ const result=q.method==='initialize'?{userAgent:'Agbrio offline fixture'}:q.method==='thread/start'||q.method==='thread/read'||q.method==='thread/resume'?{thread,model:'fixture',reasoningEffort:'low'}:q.method==='thread/turns/list'?{data:busy?[{id:'fixture-active-turn',status:'inProgress',itemsView:'notLoaded'}]:[],nextCursor:null}:q.method==='thread/items/list'?{data:[],nextCursor:null}:q.method==='turn/steer'?{turnId:'fixture-active-turn'}:q.method==='thread/goal/get'?{goal:null}:q.method==='turn/start'?{turn:{id:'fixture-turn-'+q.params.threadId,status:'inProgress'}}:{};
  process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:q.id,result})+'\n');
+ if(q.method==='thread/resume'&&busy)process.stdout.write(JSON.stringify({method:'turn/started',params:{threadId:q.params.threadId,turn:{id:'fixture-active-turn'}}})+'\n');
 });
 "#).unwrap();
  let mut command=std::process::Command::new("node");command.arg(path).arg(dir.path());

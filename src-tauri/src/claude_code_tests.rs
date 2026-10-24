@@ -33,7 +33,7 @@ fn event(root:&std::path::Path,session:&str,kind:&str,sequence:i64)->Event {
  let mut complete=event(temp.path(),sid,"COMPLETE",3);complete.turn_id=Some(turn.clone());complete.text=Some("observed original answer".into());complete.completed_at=Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64);ingest(&core,&pair.token,&complete).unwrap();
  let key=format!("claude_code:{sid}");let before=crate::claude_chat::state(&core,&key).unwrap();assert_eq!(before["inputReady"],false);let generation=before["watch"]["generation"].as_i64().unwrap();assert!(generation<0);
  let mut beat=event(temp.path(),sid,"HEARTBEAT",4);beat.turn_id=Some(turn.clone());ingest(&core,&pair.token,&beat).unwrap();store.offer_claude_manual(&pair.token,&beat).unwrap();assert_eq!(crate::claude_chat::state(&core,&key).unwrap()["inputReady"],true);
- let command=|generation|crate::watch_chat::ChatCommand::Send{thread_id:key.clone(),id:uuid::Uuid::new_v4().to_string(),generation,source_sequence:None,expected_turn_id:Some(turn.clone()),mode:"SEND".into(),text:"owner supplied actual reply".into(),options:Default::default()};
+ let command=|generation|crate::watch_chat::ChatCommand::Send{queue_requested:false,thread_id:key.clone(),id:uuid::Uuid::new_v4().to_string(),generation,source_sequence:None,expected_turn_id:Some(turn.clone()),mode:"SEND".into(),text:"owner supplied actual reply".into(),options:Default::default()};
  assert_eq!(crate::claude_chat::command(&core,command(generation-1)).unwrap_err(),"REPLY_TARGET_CHANGED_REFRESH");
  let r=crate::claude_chat::command(&core,command(generation)).unwrap();assert_eq!(r["status"],"QUEUED");let offered=store.offer_claude_manual(&pair.token,&beat).unwrap().unwrap();assert_eq!(offered.session_id,sid);
  assert!(!router_core::claude_code::WRITES_ENABLED);assert_eq!(router_core::claude_code::require_write_capability().unwrap_err(),"CLAUDE_WRITES_DISABLED_BY_OWNER");
@@ -121,14 +121,15 @@ fn event(root:&std::path::Path,session:&str,kind:&str,sequence:i64)->Event {
  finish(a,2,"指令一");
  let relay=|text:&str|{let state=crate::role_bridge::read(&core,&w.id,"DECISION").unwrap();let reply=state.replies.last().unwrap().id.clone();let h=crate::role_bridge::prepare(&core,&w.id,"DECISION",&reply,text,&[]).unwrap();crate::role_bridge::approve(&core,&h.id,&h.payload_hash).unwrap();h};
  let h=relay("指令一");
- // MCP stays closed. The owner's send queues even before the plugin checks in.
+ // MCP stays closed; an unavailable/busy target never silently queues an owner relay.
  assert_eq!(crate::role_bridge::send(&core,&h.id).err().unwrap(),"CLAUDE_WRITES_OWNER_ONLY");
- crate::role_bridge::send_owner(&core,&h.id).unwrap();assert_eq!(store.role_handoff(&h.id).unwrap().status,"SENDING");
+ assert!(crate::role_bridge::send_owner(&core,&h.id).err().unwrap().contains("CLAUDE_BUSY_NO_IMPLICIT_QUEUE"));assert_eq!(store.role_handoff(&h.id).unwrap().status,"APPROVED");
  let beat=|seq:i64|event(temp.path(),b,"HEARTBEAT",seq);
  ingest(&core,&pair.token,&beat(2)).unwrap();
  // Destination is not idle yet (SESSION_START): nothing is offered.
  assert!(store.offer_claude_manual(&pair.token,&beat(3)).unwrap().is_none());
  finish(b,3,"执行端空闲");
+ crate::role_bridge::send_owner(&core,&h.id).unwrap();assert_eq!(store.role_handoff(&h.id).unwrap().status,"SENDING");
  let cmd=store.offer_claude_manual(&pair.token,&beat(5)).unwrap().unwrap();
  assert_eq!((cmd.request_id.as_str(),cmd.session_id.as_str(),cmd.text.as_str()),(h.id.as_str(),b,"指令一"));
  assert!(store.offer_claude_manual(&pair.token,&beat(6)).unwrap().is_none()); // never offered twice
@@ -249,7 +250,7 @@ fn owner_reply_before_first_plugin_registration_waits_and_delivers_once(){
  crate::claude_chat::enable(&core,&key).unwrap();
  let state=crate::claude_chat::state(&core,&key).unwrap();assert_eq!(state["inputReady"],false);
  let id=uuid::Uuid::new_v4().to_string();
- let send=||crate::watch_chat::ChatCommand::Send{thread_id:key.clone(),id:id.clone(),generation:state["watch"]["generation"].as_i64().unwrap(),source_sequence:None,expected_turn_id:Some(turn.into()),mode:"QUEUE".into(),text:"owner approved reply".into(),options:Default::default()};
+ let send=||crate::watch_chat::ChatCommand::Send{queue_requested:true,thread_id:key.clone(),id:id.clone(),generation:state["watch"]["generation"].as_i64().unwrap(),source_sequence:None,expected_turn_id:Some(turn.into()),mode:"QUEUE".into(),text:"owner approved reply".into(),options:Default::default()};
  assert_eq!(crate::claude_chat::command(&core,send()).unwrap()["status"],"QUEUED");
  assert_eq!(crate::claude_chat::command(&core,send()).unwrap()["status"],"QUEUED");
  let start=event(temp.path(),sid,"SESSION_START",1);store.ingest_claude_event_owned(&pair.token,&start,true).unwrap();

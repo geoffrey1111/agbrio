@@ -1,5 +1,5 @@
 ---
-description: Send an owner-authorized message to an exact Codex conversation and read its reply through Agbrio; no Bridge binding required.
+description: Create a Codex executor or message an exact owner-approved Codex conversation through Agbrio MCP.
 argument-hint: <Codex thread ID or link> <message, or read the latest reply>
 ---
 
@@ -26,11 +26,19 @@ The owner's request to send the specified message is the task authorization. Do 
 Prepare one action with a fresh requestId and retain it:
 
 operation: SEND_CHAT
-input: {threadId: <exact ID>, generation: <state.watch.generation>, sourceSequence: null, expectedTurnId: null, mode: SEND, text: <owner-authorized text>, options: {model: null, effort: null, attachments: []}}
+input: {threadId: <exact ID>, generation: <state.watch.generation>, sourceSequence: null, expectedTurnId: null, mode: AUTO, text: <owner-authorized text>, options: {model: null, effort: null, attachments: []}}
 
 Use the actual tool schema and current returned fields. Review the prepared action's exact input, destination and payload hash. Execute with actionId=<returned id>, expectedHash=<returned payloadHash>, ruleId=null and useOwnerAnswer=false for a covered CONVERSATION_REVIEW action, plus a meaningful assessment only if allowed by the grant and owner instructions. If a decision is required, use the existing question/actual-owner-answer path. Never invent an owner answer or change the payload to bypass it.
 
 Inspect agbrio_action_receipt with the same action ID and hash, then agbrio_read_chat. APPLIED alone is not delivery: inspect the nested original reply receipt and independently observed native user message. QUEUED means waiting, not sent. UNKNOWN/EXECUTING, a lost response or an ambiguous native row blocks another attempt. Preserve the original request/action/reply IDs; never replace them or automatically resend. Pending native questions stay pending; ask the owner if they require action.
+
+## Creating a Codex conversation
+
+For an owner-delegated new executor, use prepare/review/execute/action_receipt with CREATE_CHAT and input {provider:"CODEX",directory:<exact existing absolute project directory>,label:<short display label>}. Use the authorized project's native directory; never invent a folder or silently switch projects. The receipt returns the exact threadId and watch generation; creation sends no model prompt. Send the actual owner-authorized first task with a separate reviewed SEND_CHAT. An empty conversation is session-only until its first native turn; creation alone does not prove restart durability. A failed watch registration may still return the created native ID in the original action receipt. Never repeat UNKNOWN/EXECUTING creation. Claude creation/writes are not exposed.
+
+## Follow-up delivery
+
+Default to mode:AUTO: guide the exact active Codex turn with STEER, SEND when idle. Never choose QUEUE just because work is running. Only an explicit owner request to wait may use mode:QUEUE with queueRequested:true. A pre-write rejection is FAILED with delivery:NOT_SENT; retain its terminal action, inspect the earlier pending message and prepare a separate reviewed request only after resolving the conflict. UNKNOWN/EXECUTING still forbids another attempt. Do not cancel or resend real pending owner messages during engineering tests.
 
 ## Receiving the reply
 

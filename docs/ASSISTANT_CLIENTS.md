@@ -1,3 +1,12 @@
+## 2026-10-24 — Create an executor and follow up immediately
+
+An authorized INSTANCE assistant can prepare CREATE_CHAT with provider:CODEX, the exact existing project directory and an optional display label. Review and execute once, then retain the returned threadId/watch.generation. Creation sends no first task; use a separate reviewed SEND_CHAT for the actual delegated work. Empty conversations are not promised to survive a backend restart before the first real task. Inspect the original action receipt after uncertainty, never create again to replace an unknown result.
+
+For SEND_CHAT, use AUTO by default: guide the active exact Codex turn or send while idle. Queue only when the owner explicitly asked to wait, with mode:QUEUE and queueRequested:true. FAILED with delivery:NOT_SENT is a proven blocked/pre-write result; UNKNOWN is an unresolved native attempt. Both keep their original terminal request identity. Refresh MCP tool discovery after updating an older Host so the client sees CREATE_CHAT/current policy. This adds no Claude MCP write/creation or unattended orchestration.
+
+> 新用户先读：[AI 助手与 MCP 图解入门](tutorials/AI_ASSISTANT_QUICKSTART.zh-CN.md)。应用内「设置 → AI 助手」提供同样的原理图、使用示例和分步连接教程。
+
+
 > 新用户先读：[AI 助手与 MCP 图解入门](tutorials/AI_ASSISTANT_QUICKSTART.zh-CN.md)。应用内「设置 → AI 助手」提供同样的原理图、使用示例和分步连接教程。
 
 # 通用 AI 助手连接与 WorkBuddy

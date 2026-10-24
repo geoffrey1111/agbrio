@@ -85,7 +85,10 @@ impl RouterStore {
         // After reload, SESSION_START proves identity, not idle. Explicit QUEUE
         // may use the native prompt queue (which never aborts a running turn).
         // It is not an idle/goal-recovery claim. Known approvals never dispatch.
-        if !matches!(state.as_str(),"SESSION_START"|"COMPLETE"|"FAILED"|"INTERRUPTED"|"EMPTY"|"LIMITED") {tx.commit().map_err(db_error)?;return Ok(None);}
+        if !matches!(state.as_str(),"SESSION_START"|"COMPLETE"|"FAILED"|"INTERRUPTED"|"EMPTY"|"LIMITED") {
+            if mode=="SEND"{tx.execute("UPDATE watch_replies SET status='FAILED',error_code='CLAUDE_BUSY_BEFORE_DELIVERY',updated_at=?2 WHERE id=?1 AND status='QUEUED'",params![request,now()]).map_err(db_error)?;}
+            tx.commit().map_err(db_error)?;return Ok(None);
+        }
         if mode=="QUEUE"&&!matches!(state.as_str(),"SESSION_START"|"COMPLETE"|"EMPTY") {tx.commit().map_err(db_error)?;return Ok(None);}
         if mode=="SEND"&&state=="SESSION_START" {tx.commit().map_err(db_error)?;return Ok(None);}
         if mode=="SEND" && expected!=turn {

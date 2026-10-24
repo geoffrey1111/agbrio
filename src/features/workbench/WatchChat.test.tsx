@@ -33,7 +33,7 @@ it('does not turn pinch zoom into keyboard height and keeps the draft on dismiss
  expect(shell.style.getPropertyValue('--aiwr-chat-height')).toBe('844px');expect(input).toHaveValue('保留草稿');
  expect(shell.dataset.keyboard).toBe('false');
 });
-it('a Claude conversation whose plugin is quiet still accepts a reply, which queues until it is active',async()=>{
+it('a quiet Claude sender retains the draft and only queues after an explicit choice',async()=>{
  const native={...original,threadId:'claude_code:10000000-0000-4000-8000-000000000001'};
  const chat={...state,provider:'CLAUDE_CODE' as const,inputReady:false,watch:{...state.watch,threadId:native.threadId}};
  let queued:WatchReply|undefined;
@@ -44,8 +44,8 @@ it('a Claude conversation whose plugin is quiet still accepts a reply, which que
  render(<WatchChat original={native} api={{state:async()=>({...chat,replies:queued?[queued]:[]}),command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
  expect(screen.queryByText(/回复会先排队/)).toBeNull();
  fireEvent.change(screen.getByRole('textbox'),{target:{value:'Owner approved actual reply'}});
- await waitFor(()=>expect(screen.getByRole('button',{name:'发送回复'})).toBeEnabled());
- fireEvent.click(screen.getByRole('button',{name:'发送回复'}));
+ await screen.findByText('发送连接尚未就绪，可选择排队');
+ expect(screen.getByRole('button',{name:'调整当前任务'})).toBeDisabled();expect(command.mock.calls.filter(([c])=>c.action==='SEND')).toHaveLength(0);fireEvent.click(screen.getByRole('button',{name:'排队'}));fireEvent.click(screen.getByRole('button',{name:'排队，完成后发送'}));
  await screen.findByText('已排队');expect(screen.getAllByText('已排队')).toHaveLength(1);expect(screen.queryByText(/请先处理这条回复/)).toBeNull();
  expect(command.mock.calls.find(([c])=>c.action==='SEND')?.[0]).toMatchObject({threadId:native.threadId,text:'Owner approved actual reply'});
  expect(screen.getByRole('textbox')).toHaveValue('');
@@ -103,11 +103,21 @@ it("sends only to the notified thread and focuses its reader heading",async()=>{
 it("lost HTTP acknowledgement reconciles the exact receipt automatically and never resends",async()=>{let id="";const command=vi.fn(async(input)=>{if(input.action==="SEND"){id=input.id as string;throw Error("network lost");}if(input.action==="RECEIPT")return response(id);throw Error("unexpected");});const api:WatchChatApi={state:vi.fn(async()=>({...state,replies:id?[response(id)]:[]})),command:command as WatchChatApi["command"]};const view=render(<WatchChat original={original} api={api} onBack={()=>{}}/>);fireEvent.change(screen.getByLabelText("回复这个 Codex 对话"),{target:{value:"第一条回复"}});await waitFor(()=>expect(screen.getByRole("button",{name:"发送回复"})).toBeEnabled());fireEvent.click(screen.getByRole("button",{name:"发送回复"}));// The leftover attempt is checked automatically; the Host holds the exact receipt, so it settles without resending.
 await waitFor(()=>expect(command.mock.calls.some(([x])=>x.action==="RECEIPT")).toBe(true));view.unmount();render(<WatchChat original={original} api={api} onBack={()=>{}}/>);await waitFor(()=>expect(screen.getByLabelText("回复这个 Codex 对话")).toHaveValue(""));expect(command.mock.calls.filter(([x])=>x.action==="SEND")).toHaveLength(1);expect(command.mock.calls.find(([x])=>x.action==="RECEIPT")?.[0].id).toBe(id);});
 it("preserves text entered while the submitted draft awaits acknowledgement",async()=>{let finish:(v:WatchReply)=>void=()=>{};let id="";const command=vi.fn(input=>{id=input.id as string;return new Promise<WatchReply>(r=>{finish=r;});});const api:WatchChatApi={state:vi.fn(async()=>state),command:command as WatchChatApi["command"]};render(<WatchChat original={original} api={api} onBack={()=>{}}/>);const input=screen.getByLabelText("回复这个 Codex 对话");fireEvent.change(input,{target:{value:"第一条回复"}});await waitFor(()=>expect(screen.getByRole("button",{name:"发送回复"})).toBeEnabled());fireEvent.click(screen.getByRole("button",{name:"发送回复"}));await waitFor(()=>expect(command).toHaveBeenCalled());fireEvent.change(input,{target:{value:"正在准备下一条"}});finish(response(id));await waitFor(()=>expect(input).toHaveValue("正在准备下一条"));});
-it("queues busy external work without offering unproven stop or steer",async()=>{const api:WatchChatApi={state:vi.fn(async()=>({...state,externalBusy:true})),command:vi.fn()};render(<WatchChat original={original} api={api} onBack={()=>{}} backLabel="监听对话"/>);await screen.findByRole("button",{name:"排队，完成后发送"});expect(screen.queryByRole("button",{name:"停止本次执行"})).toBeNull();expect(screen.queryByRole("button",{name:"调整当前任务"})).toBeNull();expect(screen.getByRole("button",{name:"‹ 监听对话"})).toBeVisible();});
+it("never silently queues busy work without native steering; queue is an explicit choice",async()=>{
+ const command=vi.fn(async c=>c.action==='HISTORY'?{messages:[],nextCursor:null}:response(c.id,'QUEUED'));
+ const api:WatchChatApi={state:vi.fn(async()=>({...state,externalBusy:true})),command:command as WatchChatApi['command']};
+ render(<WatchChat original={original} api={api} onBack={()=>{}} backLabel="监听对话"/>);
+ const input=await screen.findByRole('textbox');fireEvent.change(input,{target:{value:'补充要求'}});
+ expect(screen.getByRole('button',{name:'调整当前任务'})).toBeDisabled();expect(screen.getByText('当前暂不支持引导，可选择排队')).toBeVisible();
+ expect(screen.getByRole('button',{name:'排队'})).toHaveAttribute('aria-pressed','false');expect(command.mock.calls.filter(([c])=>c.action==='SEND')).toHaveLength(0);
+ fireEvent.click(screen.getByRole('button',{name:'排队'}));fireEvent.click(screen.getByRole('button',{name:'排队，完成后发送'}));
+ await waitFor(()=>expect(command.mock.calls.find(([c])=>c.action==='SEND')?.[0]).toMatchObject({mode:'QUEUE',queueRequested:true,expectedTurnId:'turn-a'}));
+ expect(screen.getByRole('button',{name:'排队'})).toHaveAttribute('aria-pressed','false');expect(screen.queryByRole('button',{name:'停止本次执行'})).toBeNull();expect(screen.getByRole('button',{name:'‹ 监听对话'})).toBeVisible();
+});
 it('shows shared follow-up controls without claiming a Desktop turn and steers the exact current turn',async()=>{
  const command=vi.fn(async(input)=>input.action==='HISTORY'?{messages:[],nextCursor:null}:{...response(input.id),mode:'STEER',turnId:'desktop-turn'});
  const api:WatchChatApi={state:vi.fn(async()=>({...state,externalBusy:true,controllableTurnId:'desktop-turn',watch:{...state.watch,snapshot:{...state.watch.snapshot,state:'RUNNING',turnId:'desktop-turn'}}})),command:command as WatchChatApi['command']};render(<WatchChat original={original} api={api} onBack={()=>{}}/>);
- await screen.findByRole('button',{name:'停止本次执行'});fireEvent.click(screen.getByRole('button',{name:'引导'}));fireEvent.change(screen.getByLabelText('回复这个 Codex 对话'),{target:{value:'Keep the current task bounded.'}});
+ await screen.findByRole('button',{name:'停止本次执行'});expect(screen.getByRole('button',{name:'引导'})).toHaveAttribute('aria-pressed','true');fireEvent.change(screen.getByLabelText('回复这个 Codex 对话'),{target:{value:'Keep the current task bounded.'}});
  const buttons=screen.getAllByRole('button',{name:'调整当前任务'});fireEvent.click(buttons.at(-1)!);
  await waitFor(()=>expect(command.mock.calls.find(([c])=>c.action==='SEND')?.[0]).toMatchObject({mode:'STEER',expectedTurnId:'desktop-turn',threadId:'exact-original'}));
 });

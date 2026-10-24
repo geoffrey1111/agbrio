@@ -2,6 +2,31 @@ use super::*;
 use assistant::{BriefRule,InstanceGrantInput,GrantInput};
 use assistant_actions::{ActionInput,ActionApproval};
 fn rules()->Vec<BriefRule>{vec![BriefRule{id:"routine".into(),text:"Carry out routine approved operations; ask about changes".into()}]}
+#[test]fn direct_send_prewrite_rejection_is_terminal_not_sent_but_claimed_delivery_stays_unknown(){
+ let d=tempfile::tempdir().unwrap();let s=RouterStore::open_at(d.path().join("actions.db")).unwrap();let g=global(&s);
+ let prepare=|request:&str|{let a=s.prepare_assistant_action(&g.id,ActionInput{request_id:request.into(),operation:"SEND_CHAT".into(),input:serde_json::json!({"threadId":"target"})}).unwrap();s.claim_assistant_action(&g.id,ActionApproval{action_id:a.id.clone(),expected_hash:a.payload_hash.clone(),rule_id:Some("routine".into()),use_owner_answer:false,assessment:"Explicitly delegated follow-up".into()}).unwrap();a};
+ let a=prepare("blocked-before-write");s.finish_assistant_action(&a.id,Err("REPLY_PREVIOUS_PENDING_CHECK_FIRST".into())).unwrap();let r=s.assistant_action(&g.id,&a.id,None).unwrap();assert_eq!(r.status,"FAILED");assert_eq!(r.result.unwrap()["delivery"],"NOT_SENT");
+ assert!(s.claim_assistant_action(&g.id,ActionApproval{action_id:a.id,expected_hash:a.payload_hash,rule_id:Some("routine".into()),use_owner_answer:false,assessment:"Must not replay".into()}).is_err());
+ let a=prepare("claimed-native-write");s.with_connection(|c|{c.execute("INSERT INTO watch_replies(id,thread_id,cwd,generation,mode,text,options_json,payload_hash,status,created_at,updated_at) VALUES(?1,'target','fixture',1,'STEER','test','{}','hash','SENDING',1,1)",[&a.id]).map_err(db_error)?;Ok(())}).unwrap();
+ s.finish_assistant_action(&a.id,Err("lost native ack".into())).unwrap();assert_eq!(s.assistant_action(&g.id,&a.id,None).unwrap().status,"UNKNOWN");
+}
+#[test]fn created_native_identity_survives_a_failed_registration_and_never_allows_recreation(){
+ let d=tempfile::tempdir().unwrap();let s=RouterStore::open_at(d.path().join("create.db")).unwrap();let g=global(&s);
+ let a=s.prepare_assistant_action(&g.id,ActionInput{request_id:"create-once".into(),operation:"CREATE_CHAT".into(),input:serde_json::json!({"directory":"fixture"})}).unwrap();
+ s.claim_assistant_action(&g.id,ActionApproval{action_id:a.id.clone(),expected_hash:a.payload_hash.clone(),rule_id:Some("routine".into()),use_owner_answer:false,assessment:"Create one delegated executor".into()}).unwrap();
+ s.checkpoint_assistant_created_chat(&a.id,&serde_json::json!({"threadId":"native-created-id","firstMessageSent":false})).unwrap();s.finish_assistant_action(&a.id,Err("registration failed".into())).unwrap();
+ let r=s.assistant_action(&g.id,&a.id,None).unwrap();assert_eq!(r.status,"UNKNOWN");assert_eq!(r.result.unwrap()["threadId"],"native-created-id");
+ assert!(s.claim_assistant_action(&g.id,ActionApproval{action_id:a.id,expected_hash:a.payload_hash,rule_id:Some("routine".into()),use_owner_answer:false,assessment:"Must not create again".into()}).is_err());
+}
+#[test]fn failed_action_migration_only_reconciles_proven_prewrite_conflicts_and_preserves_other_actions(){
+ let d=tempfile::tempdir().unwrap();let path=d.path().join("upgrade.db");let s=RouterStore::open_at(&path).unwrap();let g=global(&s);
+ for (id,code) in [("prewrite","REPLY_PREVIOUS_PENDING_CHECK_FIRST"),("uncertain","lost response")]{
+  s.with_connection(|c|{c.execute("INSERT INTO assistant_actions(id,grant_id,request_id,payload_hash,operation,input_json,status,error_code,created_at,updated_at) VALUES(?1,?2,?1,'same-payload','SEND_CHAT','{}','UNKNOWN',?3,1,2)",params![id,g.id,code]).map_err(db_error)?;Ok(())}).unwrap();
+ }
+ s.with_connection(|c|{c.execute_batch("CREATE TEMP TABLE original_actions AS SELECT * FROM assistant_actions;DROP TABLE assistant_actions;").map_err(db_error)?;let sql=include_str!("../../migrations/normal/014_assistant_instance.sql");c.execute_batch(&sql[sql.find("CREATE TABLE assistant_actions (").unwrap()..]).map_err(db_error)?;c.execute_batch("INSERT INTO assistant_actions SELECT * FROM original_actions;DROP TABLE original_actions;DELETE FROM router_feature_migrations WHERE key='assistant-action-failed-v1';").map_err(db_error)?;Ok(())}).unwrap();drop(s);
+ let s=RouterStore::open_at(&path).unwrap();let r=s.assistant_action(&g.id,"prewrite",None).unwrap();assert_eq!(r.status,"FAILED");assert_eq!(r.payload_hash,"same-payload");assert_eq!(s.assistant_action(&g.id,"uncertain",None).unwrap().status,"UNKNOWN");drop(s);
+ let s=RouterStore::open_at(path).unwrap();assert_eq!(s.assistant_action(&g.id,"prewrite",None).unwrap().status,"FAILED");
+}
 #[test]fn instance_bridge_index_covers_projects_separates_trash_and_keeps_scope_and_selection(){
  let d=tempfile::tempdir().unwrap();let s=RouterStore::open_at(d.path().join("example.db")).unwrap();let g=global(&s);
  let pa=s.create_project("Demo A".into(),None).unwrap();let pb=s.create_project("Demo B".into(),None).unwrap();

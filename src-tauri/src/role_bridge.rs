@@ -513,6 +513,8 @@ fn send_to_claude(core: &RouterCore, preview: &HandoffHistoryItem) -> Result<Bri
     // a quiet plugin no longer refuses the owner's approved send up front.
     let session = preclaim(core, preview, "TARGET", crate::claude_code::observed_session(core, &preview.destination_endpoint.external_id, target.cwd.as_deref()))?;
     if session.state == "WAITING_DECISION" { return preclaim(core, preview, "TARGET", Err("CLAUDE_NATIVE_APPROVAL_PENDING".into())); }
+    if !matches!(session.state.as_str(),"COMPLETE"|"FAILED"|"INTERRUPTED"|"EMPTY"|"LIMITED") {return preclaim(core,preview,"TARGET",Err("CLAUDE_BUSY_NO_IMPLICIT_QUEUE".into()));}
+    preclaim(core,preview,"TARGET",if core.store.claude_manual_ready(&session.session_id,&session.instance_id)?{Ok(())}else{Err("CLAUDE_INPUT_PLUGIN_NOT_READY".into())})?;
     preclaim(core, preview, "CLAIM", core.store.claim_role_handoff_for_claude(&preview.id, &session.session_id, &session.instance_id, &session.cwd))?;
     state(core, &preview.workstream_id)
 }

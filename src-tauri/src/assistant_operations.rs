@@ -6,6 +6,7 @@ use serde_json::{json,Value};
 #[derive(Deserialize)]
 #[serde(tag="operation",rename_all="SCREAMING_SNAKE_CASE",rename_all_fields="camelCase",deny_unknown_fields)]
 pub(crate) enum Operation{
+ CreateChat{#[serde(default="codex_provider")]provider:String,directory:String,label:Option<String>},
  CreateBridge{name:String},
  RenameBridge{workstream_id:String,binding_revision:i64,name:String},
  BindBridge{workstream_id:String,binding_revision:i64,decision:RoleBindingInput,execution:RoleBindingInput},
@@ -14,12 +15,31 @@ pub(crate) enum Operation{
  EnableWatch{thread_id:String},PauseWatch{thread_id:String,generation:i64},
  RemoveWatchItem{kind:String,id:String,removed:bool,generation:Option<i64>},
  MarkNotificationRead{sequence:i64},
- SendChat{thread_id:String,generation:i64,source_sequence:Option<i64>,expected_turn_id:Option<String>,mode:String,text:String,options:crate::watch_chat::ReplyOptions},
+ SendChat{thread_id:String,generation:i64,source_sequence:Option<i64>,expected_turn_id:Option<String>,#[serde(default="automatic_mode")]mode:String,#[serde(default)]queue_requested:bool,text:String,#[serde(default)]options:crate::watch_chat::ReplyOptions},
  PauseGoal{target:crate::goal_control::GoalTarget,expected_goal_fingerprint:String},
  ResumeGoal{target:crate::goal_control::GoalTarget,expected_goal_fingerprint:String},
  StopChat{thread_id:String,turn_id:String},
  RespondChat{thread_id:String,request_id:String,input:crate::host_application::MobileCodexResponseInput},
  AcknowledgeUnknownChat{thread_id:String,reply_id:String,generation:i64},
+}
+fn codex_provider()->String{"CODEX".into()}
+fn automatic_mode()->String{"AUTO".into()}
+fn create_directory(value:&str)->Result<String,String>{
+ if value.trim().is_empty()||value.len()>4096||value.starts_with("\\\\")||value.contains('\0'){return Err("ASSISTANT_CREATE_DIRECTORY_INVALID".into());}
+ let path=std::path::Path::new(value);
+ if !path.is_absolute()||!path.is_dir(){return Err("ASSISTANT_CREATE_DIRECTORY_INVALID".into());}
+ let canonical=std::fs::canonicalize(path).map_err(|_|"ASSISTANT_CREATE_DIRECTORY_UNAVAILABLE")?;
+ let value=canonical.to_string_lossy();let value=value.strip_prefix("\\\\?\\").unwrap_or(&value);
+ if value.starts_with("UNC\\")||value.starts_with("\\\\"){return Err("ASSISTANT_CREATE_DIRECTORY_INVALID".into());}Ok(value.into())
+}
+pub(crate) fn normalize(input:&mut router_core::store::assistant_actions::ActionInput)->Result<(),String>{
+ let op=decode(&input.operation,input.input.clone())?;
+ match op {
+  Operation::CreateChat{directory,..}=>input.input["directory"]=json!(create_directory(&directory)?),
+  Operation::SendChat{mode,queue_requested,..}=>{
+   if !queue_requested&&matches!(mode.as_str(),"AUTO"|"SEND"|"QUEUE"){input.input["mode"]=json!("AUTO");}
+  },_=>{}
+ }Ok(())
 }
 pub(crate) fn decode(operation:&str,input:Value)->Result<Operation,String>{
  let mut obj=input.as_object().cloned().ok_or("ASSISTANT_ARGUMENTS_INVALID")?;
@@ -51,13 +71,14 @@ fn watch(core:&RouterCore,id:&str,generation:i64)->Result<(),String>{
 fn chat_context(core:&RouterCore,id:&str,generation:i64)->Result<(),String>{if core.store.codex_chat_context(id)?.generation!=generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}Ok(())}
 pub(crate) fn validate(core:&RouterCore,op:&Operation)->Result<(),String>{
  match op{
+  Operation::CreateChat{provider,directory,label}=>{if provider!="CODEX"{return Err("ASSISTANT_CREATE_PROVIDER_UNSUPPORTED".into());}if create_directory(directory)?!=*directory{return Err("ASSISTANT_CREATE_DIRECTORY_CHANGED".into());}if label.as_ref().is_some_and(|s|s.trim().is_empty()||s.chars().count()>120){return Err("WATCH_LABEL_INVALID".into());}},
   Operation::CreateBridge{name}=>if name.trim().is_empty()||name.chars().count()>100{return Err("BRIDGE_NAME_INVALID".into());},
   Operation::RenameBridge{workstream_id,binding_revision,name}=>{bridge(core,workstream_id,*binding_revision)?;if name.trim().is_empty()||name.chars().count()>100{return Err("BRIDGE_NAME_INVALID".into());}},
   Operation::BindBridge{workstream_id,binding_revision,..}|Operation::PinBridge{workstream_id,binding_revision,..}=>bridge(core,workstream_id,*binding_revision)?,
   Operation::BridgeLifecycle{workstream_id,binding_revision,lifecycle}=>{bridge(core,workstream_id,*binding_revision)?;if !matches!(lifecycle.as_str(),"ACTIVE"|"TRASHED"){return Err("ASSISTANT_LIFECYCLE_INVALID".into());}},
   Operation::PauseGoal{target,expected_goal_fingerprint}|Operation::ResumeGoal{target,expected_goal_fingerprint}=>crate::goal_control::validate(core,&crate::goal_control::GoalInput{target:target.clone(),expected_goal_fingerprint:expected_goal_fingerprint.clone()},if matches!(op,Operation::PauseGoal{..}){"PAUSE_GOAL"}else{"RESUME_GOAL"})?,
   Operation::PauseWatch{thread_id,generation}=>watch(core,thread_id,*generation)?,
-  Operation::SendChat{thread_id,generation,..}=>chat_context(core,thread_id,*generation)?,
+  Operation::SendChat{thread_id,generation,mode,queue_requested,..}=>{if thread_id.starts_with(router_core::store::claude_manual::PREFIX){return Err("CLAUDE_MCP_WRITE_DISABLED".into());}if !matches!(mode.as_str(),"AUTO"|"SEND"|"QUEUE"|"STEER")||(*queue_requested&&mode!="QUEUE"){return Err("REPLY_INPUT_INVALID".into());}chat_context(core,thread_id,*generation)?;},
   Operation::AcknowledgeUnknownChat{thread_id,reply_id,generation}=>{chat_context(core,thread_id,*generation)?;let r=core.store.watch_reply(reply_id)?.ok_or("REPLY_NOT_FOUND")?;if r.thread_id!=*thread_id||r.status!="UNKNOWN"{return Err("ASSISTANT_UNKNOWN_RECEIPT_REQUIRED".into());}},
   Operation::RemoveWatchItem{kind,id,generation,removed}=>{if kind=="WATCH"{let expected=generation.ok_or("ASSISTANT_WATCH_GENERATION_REQUIRED")?;if *removed{watch(core,id,expected)?;}else if core.store.registered_codex_watch(id)?.generation!=expected{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}}else if kind=="EVENT"{core.store.codex_watch_event(id.parse().map_err(|_|"WATCH_SEQUENCE_INVALID")?)?;}else{return Err("WATCH_REMOVAL_INVALID".into());}},
   Operation::MarkNotificationRead{sequence}=>{core.store.codex_watch_event(*sequence)?;},
@@ -66,6 +87,17 @@ pub(crate) fn validate(core:&RouterCore,op:&Operation)->Result<(),String>{
 }
 pub(crate) fn execute(core:&RouterCore,aid:&str,op:Operation)->Result<Value,String>{
  match op{
+  Operation::CreateChat{directory,label,..}=>{
+   let directory=create_directory(&directory)?;
+   let created=core.start_mobile_unprojected_codex_thread(Some(directory.clone()))?;
+   if uuid::Uuid::parse_str(&created.thread.id).is_err(){return Err("ASSISTANT_CREATE_IDENTITY_INVALID_CHECK_RECEIPT".into());}
+   core.store.checkpoint_assistant_created_chat(aid,&json!({"provider":"CODEX","threadId":created.thread.id,"directory":directory,"firstMessageSent":false,"registration":"PENDING","automaticRetry":false}))?;
+   // Retain the created identity before any subsequent observation can fail.
+   // Empty native threads are session-only until the first actual owner task.
+   core.store.enable_codex_watch(&created.thread.id,label.as_deref().or(created.thread.name.as_deref()).unwrap_or("新 Codex 对话"),&directory,&router_core::store::codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()})?;
+   let w=core.store.codex_chat_context(&created.thread.id)?;
+   Ok(json!({"provider":"CODEX","threadId":created.thread.id,"directory":directory,"watch":w,"firstMessageSent":false,"durability":"SESSION_ONLY_UNTIL_FIRST_TURN","nextAction":"SEND_CHAT","automaticRetry":false}))
+  },
   Operation::CreateBridge{name}=>Ok(json!({"workstreamId":crate::role_bridge::create(core,&name)?})),
   Operation::RenameBridge{workstream_id,name,..}=>serde_json::to_value(core.store.rename_workstream(&workstream_id,&name)?).map_err(|_|"ASSISTANT_RESPONSE_UNAVAILABLE".into()),
   Operation::BindBridge{workstream_id,binding_revision,decision,execution}=>serde_json::to_value(crate::role_bridge::bind(core,&workstream_id,binding_revision,decision,execution)?).map_err(|_|"ASSISTANT_RESPONSE_UNAVAILABLE".into()),
@@ -75,7 +107,12 @@ pub(crate) fn execute(core:&RouterCore,aid:&str,op:Operation)->Result<Value,Stri
   Operation::PauseWatch{thread_id,..}=>{core.store.pause_codex_watch(&thread_id)?;Ok(json!({"ok":true}))},
   Operation::RemoveWatchItem{kind,id,removed,..}=>{core.store.set_watch_item_removed(&kind,&id,removed)?;Ok(json!({"ok":true}))},
   Operation::MarkNotificationRead{sequence}=>{core.store.mark_codex_watch_event_seen(sequence)?;Ok(json!({"ok":true}))},
-  Operation::SendChat{thread_id,generation,source_sequence,expected_turn_id,mode,text,options}=>crate::watch_chat::command(core,crate::watch_chat::ChatCommand::Send{thread_id,id:aid.into(),generation,source_sequence,expected_turn_id,mode,text,options}),
+  Operation::SendChat{thread_id,generation,source_sequence,expected_turn_id,mode,queue_requested,text,options}=>{
+   let (mode,expected_turn_id)=if mode=="STEER"||(mode=="QUEUE"&&queue_requested){(mode,expected_turn_id)}else{
+    crate::watch_chat::automatic_reply_target(core,&thread_id,generation,expected_turn_id)?
+   };
+   crate::watch_chat::command(core,crate::watch_chat::ChatCommand::Send{thread_id,id:aid.into(),generation,source_sequence,expected_turn_id,mode,queue_requested,text,options})
+  },
   Operation::PauseGoal{target,expected_goal_fingerprint}=>{let r=crate::goal_control::apply(core,aid,crate::goal_control::GoalInput{target,expected_goal_fingerprint},"PAUSE_GOAL",false)?;if r.status!="APPLIED"{return Err("GOAL_CONTROL_UNCERTAIN_CHECK_RECEIPT".into());}serde_json::to_value(r).map_err(|_|"ASSISTANT_RESPONSE_UNAVAILABLE".into())},
   Operation::ResumeGoal{target,expected_goal_fingerprint}=>{let owner=core.store.assistant_action_has_owner_answer(aid)?;let r=crate::goal_control::apply(core,aid,crate::goal_control::GoalInput{target,expected_goal_fingerprint},"RESUME_GOAL",owner)?;if r.status!="APPLIED"{return Err("GOAL_CONTROL_UNCERTAIN_CHECK_RECEIPT".into());}serde_json::to_value(r).map_err(|_|"ASSISTANT_RESPONSE_UNAVAILABLE".into())},
   Operation::StopChat{thread_id,turn_id}=>crate::watch_chat::command(core,crate::watch_chat::ChatCommand::Stop{thread_id,turn_id}),

@@ -421,6 +421,10 @@ impl RouterStore {
             if let Some((thread, _)) = steer {
                 if h.destination_endpoint.provider != "CODEX" || h.destination_endpoint.external_id != thread { return Err("BRIDGE_STEER_IDENTITY_INVALID".into()); }
             }
+            if let Some((session,_,_))=claude {
+                let state:Option<String>=tx.query_row("SELECT state FROM claude_sessions WHERE session_id=?1",[session],|r|r.get(0)).optional().map_err(db_error)?;
+                if !state.as_deref().is_some_and(|s|matches!(s,"COMPLETE"|"FAILED"|"INTERRUPTED"|"EMPTY"|"LIMITED")){return Err("CLAUDE_BUSY_NO_IMPLICIT_QUEUE".into());}
+            }
             super::assistant::validate_claim(&tx,&h)?;
             let duplicate:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM handoffs WHERE status='SENT' AND source_response_identity=?1 AND destination_endpoint_id=?2 AND payload_hash=?3)",params![h.source_response_identity,h.destination_endpoint.id,h.payload_hash],|r|r.get(0)).map_err(db_error)?;
             if duplicate {return Err("BRIDGE_ALREADY_SENT".into());}

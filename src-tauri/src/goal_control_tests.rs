@@ -57,7 +57,7 @@ fn sets(d:&tempfile::TempDir)->Vec<Value>{fs::read_to_string(d.path().join("rpc.
 
 #[test]fn a_genuine_supplement_in_a_loaded_idle_active_goal_chat_uses_one_start_and_keeps_the_goal(){
  let(d,c,_)=fixture("active","IDLE");let context=c.store.codex_chat_context("goal-target-fixture").unwrap();let id=uuid::Uuid::new_v4().to_string();
- let command=crate::watch_chat::ChatCommand::Send{thread_id:context.thread_id.clone(),id:id.clone(),generation:context.generation,source_sequence:None,expected_turn_id:None,mode:"SEND".into(),text:"New authorized supplemental instruction".into(),options:Default::default()};
+ let command=crate::watch_chat::ChatCommand::Send{queue_requested:false,thread_id:context.thread_id.clone(),id:id.clone(),generation:context.generation,source_sequence:None,expected_turn_id:None,mode:"SEND".into(),text:"New authorized supplemental instruction".into(),options:Default::default()};
  let r=crate::watch_chat::command(&c,command).unwrap();assert_eq!(r["status"],"SENT");assert_eq!(r["turnId"],"fixture-supplement-turn");assert!(sets(&d).is_empty());
  let records=fs::read_to_string(d.path().join("rpc.jsonl")).unwrap();assert_eq!(records.lines().filter(|s|s.contains("turn/start")).count(),1);assert!(!records.contains("thread/goal/clear"));
 }

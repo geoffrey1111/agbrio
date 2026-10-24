@@ -784,6 +784,7 @@ impl RouterStore {
         endpoint_claims::migrate(&mut connection, &path)?;
         claude_code::migrate(&mut connection, &path)?;
         claude_manual::migrate(&mut connection)?;
+        assistant_actions::migrate(&mut connection)?;
         bridge_notifications::migrate(&mut connection)?;
         goal_control::migrate(&connection)?;
         assistant_processed::migrate(&connection)?;

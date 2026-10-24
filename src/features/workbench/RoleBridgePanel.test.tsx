@@ -20,7 +20,7 @@ describe("role-compatible Bridge", () => {
     render(<NativeSurfaceContext.Provider value><RoleBridgePanel workstreamId="work-a" api={api}/></NativeSurfaceContext.Provider>);
     fireEvent.click(await screen.findByRole("button",{name:"转给执行端"}));
     const dialog=await screen.findByRole("dialog",{name:"转发"});
-    expect(within(dialog).getByText(/Claude Code 空闲后才会收到/)).toBeVisible();
+    expect(within(dialog).queryByText(/Claude Code 空闲后才会收到/)).toBeNull();
     expect(within(dialog).queryByText(/仅观察/)).toBeNull();
     expect(api.send).not.toHaveBeenCalled();
   });

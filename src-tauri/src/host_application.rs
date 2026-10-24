@@ -4018,10 +4018,7 @@ pub(crate) fn read_latest_codex_reply(
 }
 
 pub(crate) fn is_unmaterialized_empty_codex_thread(thread_id: &str, error: &str) -> bool {
-    let Some(raw) = error.strip_prefix("Codex JSON-RPC error: ") else { return false; };
-    let Ok(value) = serde_json::from_str::<Value>(raw) else { return false; };
-    value["code"] == -32600
-        && value["message"].as_str() == Some(format!("thread {thread_id} is not materialized yet; thread/turns/list is unavailable before first user message").as_str())
+    router_core::codex::adapter::is_unmaterialized_empty_thread(thread_id,error)
 }
 
 /// Starts a Codex thread only through the official app-server and verifies the

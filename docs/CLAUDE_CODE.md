@@ -1,3 +1,7 @@
+## 2026-10-24 plugin0.1.10 and guidance-first original replies
+
+The Codex command now documents reviewed CREATE_CHAT and AUTO follow-ups. It adds no new native Claude hooks or Claude MCP write/create capability. Current owner replies do not silently queue while busy/offline; Queue is explicit. Claude Bridge sends require idle/ready. Native decision/permission and UNKNOWN/no-replay protections remain. Refresh MCP discovery after updating Host to see CREATE_CHAT/current action input. The native prompt.submit contract waits for idle; this release does not simulate guidance with abort/asUser/hidden peer messages.
+
 ## Codex result reminders
 
 Update both Agbrio and its Claude plugin (0.1.9), then reload the plugin when the current task is idle. Ask Claude to notify this conversation when a selected Codex turn finishes. The native `codex_wait` tool registers one exact turn; it also supports checking and cancelling the reminder. Keep the requesting session open. The default expiry is one hour, with an explicit maximum of 24 hours. Result, attention or failure ends the one-shot wait. Cancelling does not stop Codex.

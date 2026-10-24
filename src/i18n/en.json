@@ -1372,5 +1372,13 @@
   "Codex 读取连接已断开，正在重新连接。已有内容和草稿已保留。": "The Codex reading connection was interrupted. Reconnecting; content and draft are preserved.",
   "Claude Code 读取连接已断开，请检查原客户端后重试。草稿已保留。": "The Claude Code reading connection was interrupted. Check the original client, then retry. Your draft is preserved.",
   "暂时无法连接电脑。已有内容和草稿已保留，请重试。": "Cannot reach the computer right now. Content and draft are preserved. Please retry.",
-  "暂时无法读取对话，已有内容和草稿已保留。请重试。": "Cannot read the conversation right now. Content and draft are preserved. Please retry."
+  "暂时无法读取对话，已有内容和草稿已保留。请重试。": "Cannot read the conversation right now. Content and draft are preserved. Please retry.",
+  "当前暂不支持引导，可选择排队": "Guidance is unavailable right now. Choose Queue to wait.",
+  "这条对话正在执行，请使用引导跟进。": "This conversation is running. Use guidance to follow up.",
+  "Claude Code 正在执行，暂不支持引导；空闲后可发送。": "Claude Code is running. Guidance is unavailable; send when idle.",
+  "CLAUDE_BUSY_NO_IMPLICIT_QUEUE": "Claude Code is running. Nothing was sent or queued; send when idle.",
+  "发送连接尚未就绪，可选择排队": "The sending connection is not ready. Choose Queue to wait.",
+  "发送连接尚未就绪，请检查原 Claude Code 对话。草稿已保留。": "The sending connection is not ready. Check the original Claude Code conversation. Your draft is preserved.",
+  "原 Claude Code 已开始新任务，本条未发送。草稿已保留。": "Claude Code started another task. This reply was not sent; your draft is preserved.",
+  "排队需要明确选择，请重新打开对话后重试。": "Queueing needs an explicit choice. Reopen this conversation and try again."
 }

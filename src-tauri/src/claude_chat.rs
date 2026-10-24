@@ -58,7 +58,7 @@ pub(crate) fn state(core:&RouterCore,key:&str)->Result<Value,String>{
 pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{
     let encode=|r:WatchReply|serde_json::to_value(r).map_err(|_|"CLAUDE_RESPONSE_INVALID".to_string());
     match c {
-        ChatCommand::Send{thread_id,id,generation,source_sequence,expected_turn_id,mode,text,options}=>{
+        ChatCommand::Send{thread_id,id,generation,source_sequence,expected_turn_id,mode,queue_requested,text,options}=>{
             let w=core.store.codex_chat_context(&thread_id)?;
             let session=crate::claude_code::observed_session(core,native_id(&thread_id)?,Some(&w.cwd))?;
             if generation!=w.generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}
@@ -67,10 +67,12 @@ pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{
             // A duplicate ID checks the exact payload and returns its old receipt;
             // it never re-enqueues or grants a second physical submission.
             if core.store.watch_reply(&input.id)?.is_some(){return encode(core.store.prepare_watch_reply(&input)?);}
+            if input.mode=="QUEUE"&&!queue_requested{return Err("REPLY_EXPLICIT_QUEUE_REQUIRED: 排队需要明确选择，请重新打开对话后重试。".into());}
             if session.state=="WAITING_DECISION"{return Err("CLAUDE_NATIVE_APPROVAL_PENDING".into());}
+            if input.mode=="SEND"&&!core.store.claude_manual_ready(&session.session_id,&session.instance_id)?{return Err("CLAUDE_INPUT_PLUGIN_NOT_READY".into());}
             if input.expected_turn_id!=session.turn_id{return Err("REPLY_TURN_CHANGED_REFRESH".into());}
             if input.mode=="SEND"&&!matches!(session.state.as_str(),"COMPLETE"|"FAILED"|"INTERRUPTED"|"EMPTY"|"LIMITED"){return Err("REPLY_EXTERNAL_STATE_UNCONFIRMED".into());}
-            if input.mode=="QUEUE"&&!matches!(session.state.as_str(),"RUNNING"|"SESSION_START"){return Err("REPLY_TURN_CHANGED_REFRESH".into());}
+            if input.mode=="QUEUE"&&!matches!(session.state.as_str(),"RUNNING"|"SESSION_START"|"COMPLETE"|"EMPTY"){return Err("REPLY_TURN_CHANGED_REFRESH".into());}
             let r=core.store.prepare_watch_reply(&input)?;
             if let Err(error)=core.store.enqueue_claude_manual(&r,&session.instance_id){
                 let code=match error.as_str(){"CLAUDE_TARGET_CHANGED"=>"CLAUDE_TARGET_CHANGED",_=>"CLAUDE_PREWRITE_FAILED"};

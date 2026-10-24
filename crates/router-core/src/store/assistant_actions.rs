@@ -2,6 +2,16 @@
 use super::*;
 use super::assistant::{active,bounded};
 use serde::Deserialize;
+use serde_json::json;
+pub(super) fn migrate(c:&mut Connection)->Result<(),String>{
+ let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
+ let done:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM router_feature_migrations WHERE key='assistant-action-failed-v1')",[],|r|r.get(0)).map_err(db_error)?;
+ if !done {
+  tx.execute_batch(include_str!("../../migrations/normal/025_assistant_action_failed.sql")).map_err(db_error)?;
+  tx.execute("INSERT INTO router_feature_migrations(key,applied_at) VALUES('assistant-action-failed-v1',?1)",[now()]).map_err(db_error)?;
+ }
+ tx.commit().map_err(db_error)
+}
 #[derive(Clone,Debug,Serialize,Deserialize)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]
 pub struct ActionInput{pub request_id:String,pub operation:String,pub input:Value}
@@ -65,8 +75,16 @@ impl RouterStore{
   tx.execute("UPDATE assistant_actions SET status='EXECUTING',basis=?2,assessment=?3,updated_at=?4 WHERE id=?1 AND status='READY'",params![a.id,basis,input.assessment,now()]).map_err(db_error)?;
   let out=action(&tx,gid,&a.id,None)?;tx.commit().map_err(db_error)?;Ok(out)
  })}
+ pub fn checkpoint_assistant_created_chat(&self,aid:&str,result:&Value)->Result<(),String>{self.with_connection(|c|{
+  if c.execute("UPDATE assistant_actions SET result_json=?2,updated_at=?3 WHERE id=?1 AND status='EXECUTING' AND operation='CREATE_CHAT' AND result_json IS NULL",params![aid,result.to_string(),now()]).map_err(db_error)?!=1{return Err("ASSISTANT_CREATE_RECEIPT_UNAVAILABLE".into());}Ok(())
+ })}
  pub fn finish_assistant_action(&self,aid:&str,result:Result<Value,String>)->Result<(),String>{self.with_connection(|c|{
-  let(status,value,error)=match result{Ok(v)=>("APPLIED",Some(v.to_string()),None),Err(e)=>("UNKNOWN",None,Some(e))};
-  if c.execute("UPDATE assistant_actions SET status=?2,result_json=?3,error_code=?4,updated_at=?5 WHERE id=?1 AND status='EXECUTING'",params![aid,status,value,error,now()]).map_err(db_error)?!=1{return Err("ASSISTANT_ACTION_ALREADY_ATTEMPTED".into());}Ok(())
+  // Direct sends must persist a reply before claiming any native writer. Its
+  // absence (or a proven pre-write failure) is NOT an ambiguous delivery.
+  let operation:String=c.query_row("SELECT operation FROM assistant_actions WHERE id=?1",[aid],|r|r.get(0)).map_err(db_error)?;
+  let reply:Option<String>=c.query_row("SELECT status FROM watch_replies WHERE id=?1",[aid],|r|r.get(0)).optional().map_err(db_error)?;
+  let known_not_sent=operation=="SEND_CHAT" && reply.as_deref().is_none_or(|s|matches!(s,"FAILED"|"CANCELLED"));
+  let(status,value,error)=match result{Ok(v)=>("APPLIED",Some(v.to_string()),None),Err(e) if known_not_sent=>("FAILED",Some(json!({"delivery":"NOT_SENT","automaticRetry":false}).to_string()),Some(e)),Err(e)=>("UNKNOWN",None,Some(e))};
+  if c.execute("UPDATE assistant_actions SET status=?2,result_json=COALESCE(?3,result_json),error_code=?4,updated_at=?5 WHERE id=?1 AND status='EXECUTING'",params![aid,status,value,error,now()]).map_err(db_error)?!=1{return Err("ASSISTANT_ACTION_ALREADY_ATTEMPTED".into());}Ok(())
  })}
 }

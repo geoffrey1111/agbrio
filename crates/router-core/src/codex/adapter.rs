@@ -11,6 +11,11 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
+pub fn is_unmaterialized_empty_thread(thread:&str,error:&str)->bool{
+ let Some(raw)=error.strip_prefix("Codex JSON-RPC error: ")else{return false};
+ let Ok(value)=serde_json::from_str::<Value>(raw)else{return false};
+ value["code"]==-32600&&value["message"].as_str()==Some(format!("thread {thread} is not materialized yet; thread/turns/list is unavailable before first user message").as_str())
+}
 #[derive(serde::Serialize,serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PublicChatCursor{thread:String,turn:String,item:Option<String>,older:Option<String>}
@@ -41,6 +46,11 @@ fn project_public_chat_turn(turn:&str,head:&[Value],tail:&[Value])->Result<Vec<V
 #[cfg(test)]
 mod public_chat_projection_tests {
     use super::*;
+    #[test]
+    fn empty_native_history_error_is_exact_to_the_new_thread_and_error_family(){
+        let error=format!("Codex JSON-RPC error: {}",json!({"code":-32600,"message":"thread exact is not materialized yet; thread/turns/list is unavailable before first user message"}));
+        assert!(is_unmaterialized_empty_thread("exact",&error));assert!(!is_unmaterialized_empty_thread("other",&error));assert!(!is_unmaterialized_empty_thread("exact",&error.replace("-32600","-32000")));assert!(!is_unmaterialized_empty_thread("exact","Codex backend disconnected"));
+    }
     #[test]#[ignore="explicit exact owner-selected shared history, read-only and no provider writes"]
     fn real_shared_media_history_read_only() {
         let thread=std::env::var("AGBRIO_READONLY_THREAD").unwrap();
@@ -718,7 +728,7 @@ impl CodexAdapter {
       self.public_chat_read=Some((thread.into(),4));
       let result=(||{
         if position.turn.is_empty(){
-          let turns=self.request_with_timeout("thread/turns/list",json!({"threadId":thread,"cursor":position.older,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"}),Duration::from_secs(12))?;
+          let turns=match self.request_with_timeout("thread/turns/list",json!({"threadId":thread,"cursor":position.older,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"}),Duration::from_secs(12)){Ok(v)=>v,Err(e) if cursor.is_none()&&is_unmaterialized_empty_thread(thread,&e)=>json!({"data":[],"nextCursor":null}),Err(e)=>return Err(e)};
           let rows=turns["data"].as_array().filter(|r|r.len()<=1).ok_or("CHAT_HISTORY_INVALID")?;
           let Some(turn)=rows.first()else{return Ok(json!({"messages":[],"nextCursor":null}))};
           position.turn=turn["id"].as_str().filter(|s|!s.is_empty()&&s.len()<=256).ok_or("CHAT_HISTORY_INVALID")?.into();position.older=turns["nextCursor"].as_str().map(str::to_owned);

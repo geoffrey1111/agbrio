@@ -15,7 +15,7 @@ pub(crate) struct ReplyOptions { pub model:Option<String>,pub effort:Option<Stri
 pub(crate) enum ChatCommand {
  GoalControl { #[serde(rename="threadId")]thread_id:String,id:String,operation:String,input:crate::goal_control::GoalInput,confirmed:bool },
  GoalReceipt { #[serde(rename="threadId")]thread_id:String,id:String },
- Send { #[serde(rename="threadId")]thread_id:String,id:String,generation:i64,#[serde(rename="sourceSequence")]source_sequence:Option<i64>,#[serde(rename="expectedTurnId")]expected_turn_id:Option<String>,mode:String,text:String,#[serde(default)]options:ReplyOptions },
+ Send { #[serde(rename="threadId")]thread_id:String,id:String,generation:i64,#[serde(rename="sourceSequence")]source_sequence:Option<i64>,#[serde(rename="expectedTurnId")]expected_turn_id:Option<String>,mode:String,#[serde(default,rename="queueRequested")]queue_requested:bool,text:String,#[serde(default)]options:ReplyOptions },
  Cancel { #[serde(rename="threadId")]thread_id:String,id:String },
  Abandon { #[serde(rename="threadId")]thread_id:String,id:String },
  Receipt { #[serde(rename="threadId")]thread_id:String,id:String },
@@ -34,6 +34,18 @@ pub(crate) enum ChatCommand {
 #[derive(Serialize)]#[serde(rename_all="camelCase")]
 pub(crate) struct ChatState {latest_turn:Option<router_core::codex::adapter::NativeTurnDiagnostic>, pub(crate) watch:CodexWatch,host:String,owned_turn_id:Option<String>,controllable_turn_id:Option<String>,external_busy:bool,replies:Vec<WatchReply>,requests:Vec<MobileCodexRequest>,async_questions:Vec<Value>,goal:Option<MobileCodexGoal>,goal_controls:Option<crate::goal_control::GoalControls>,public_messages:Vec<Value>,activity:Option<String>,checked_at:i64 }
 fn watch(core:&RouterCore,id:&str)->Result<CodexWatch,String>{core.store.codex_chat_context(id)}
+pub(crate) fn default_reply_mode(running:bool,controllable:bool)->Result<&'static str,String>{
+ if !running{Ok("SEND")}else if controllable{Ok("STEER")}else{Err("REPLY_STEER_UNAVAILABLE_CHOOSE_QUEUE".into())}
+}
+pub(crate) fn automatic_reply_target(core:&RouterCore,id:&str,generation:i64,expected:Option<String>)->Result<(String,Option<String>),String>{
+ let view=state(core,id)?;
+ if view.watch.generation!=generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}
+ let running=view.external_busy||view.owned_turn_id.is_some()||view.watch.snapshot.state=="RUNNING";
+ let mode=default_reply_mode(running,view.controllable_turn_id.is_some())?;
+ let turn=if running{view.controllable_turn_id}else{view.watch.snapshot.turn_id};
+ if expected.is_some()&&expected!=turn{return Err("REPLY_TURN_CHANGED_REFRESH".into());}
+ Ok((mode.into(),turn))
+}
 pub(crate) fn metadata(a:&mut crate::codex::adapter::CodexAdapter,w:&CodexWatch)->Result<Value,String>{
  let v=a.request_with_timeout("thread/read",json!({"threadId":w.thread_id,"includeTurns":false}),CODEX_OBSERVER_REQUEST_TIMEOUT)?;
  if v.pointer("/thread/id").and_then(Value::as_str)!=Some(&w.thread_id)||v.pointer("/thread/cwd").and_then(Value::as_str)!=Some(&w.cwd){return Err("REPLY_TARGET_CHANGED_REFRESH".into());}Ok(v)
@@ -155,14 +167,14 @@ pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{matc
   if let Some(prior)=core.store.watch_reply(&id)?{if prior.thread_id!=thread_id{return Err("REPLY_TARGET_CHANGED_REFRESH".into())}return serde_json::to_value(prior).map_err(|_|"REPLY_RESPONSE_INVALID".into())}
   let view=state(core,&thread_id)?;let card=view.async_questions.iter().find(|q|q["requestId"]==request_id&&q["responseSent"]==false).ok_or("REPLY_REQUEST_EXPIRED")?;if revision!=1{return Err("REPLY_REQUEST_EXPIRED".into())}
   let text=async_answer_text(card,&answers)?;
-  let mode=if view.external_busy&&view.controllable_turn_id.is_some(){"STEER"}else if view.external_busy{"QUEUE"}else{"SEND"};let expected=if mode=="STEER"{view.controllable_turn_id}else{view.watch.snapshot.turn_id};
-  command(core,ChatCommand::Send{thread_id,id,generation:view.watch.generation,source_sequence:None,expected_turn_id:expected,mode:mode.into(),text,options:Default::default()})
+  let mode=default_reply_mode(view.external_busy||view.owned_turn_id.is_some(),view.controllable_turn_id.is_some())?;let expected=if mode=="STEER"{view.controllable_turn_id}else{view.watch.snapshot.turn_id};
+  command(core,ChatCommand::Send{queue_requested:false,thread_id,id,generation:view.watch.generation,source_sequence:None,expected_turn_id:expected,mode:mode.into(),text,options:Default::default()})
  },
  ChatCommand::Respond{thread_id,request_id,input}=>{let w=watch(core,&thread_id)?;let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;let a=s.adapter.as_mut().ok_or("Codex backend disconnected")?;metadata(a,&w)?;let owned=a.active_turn_id(&thread_id);let shared=a.is_shared_subscribed(&thread_id);let r=s.pending_codex_requests.get(&request_id).ok_or("REPLY_REQUEST_EXPIRED")?.clone();if r.thread_id!=thread_id||(!shared&&owned.as_deref()!=Some(&r.turn_id))||r.responded||r.revision!=input.revision{return Err("REPLY_REQUEST_EXPIRED".into());}let payload=server_request_response_result(&r,input)?;s.adapter.as_mut().unwrap().respond_to_server_request(&r.raw_request_id,payload)?;let r=s.pending_codex_requests.get_mut(&request_id).unwrap();r.responded=true;r.revision+=1;Ok(json!({"ok":true}))},
- ChatCommand::Send{thread_id,id,generation,source_sequence,expected_turn_id,mode,text,options}=>{
+ ChatCommand::Send{thread_id,id,generation,source_sequence,expected_turn_id,mode,queue_requested,text,options}=>{
   let w=watch(core,&thread_id)?;if generation!=w.generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}if mode=="STEER"&&(options.model.is_some()||options.effort.is_some()){return Err("REPLY_STEER_INHERITS_OPTIONS".into());}
   let input=WatchReply{id,thread_id,cwd:w.cwd.clone(),generation,source_sequence,expected_turn_id,mode,text,options:serde_json::to_value(options).map_err(|_|"REPLY_OPTIONS_INVALID")?,payload_hash:String::new(),status:String::new(),turn_id:None,error_code:None,created_at:0,updated_at:0};
-  let prior=core.store.watch_reply(&input.id)?;let r=core.store.prepare_watch_reply(&input)?;if prior.is_some(){return serde_json::to_value(r).map_err(|_|"REPLY_RESPONSE_INVALID".into());}
+  let prior=core.store.watch_reply(&input.id)?;if prior.is_none()&&input.mode=="QUEUE"&&!queue_requested{return Err("REPLY_EXPLICIT_QUEUE_REQUIRED: 排队需要明确选择，请重新打开对话后重试。".into());}let r=core.store.prepare_watch_reply(&input)?;if prior.is_some(){return serde_json::to_value(r).map_err(|_|"REPLY_RESPONSE_INVALID".into());}
   if r.mode=="QUEUE" {let outcome=(||{let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;let a=s.adapter.as_mut().ok_or("Codex backend disconnected")?;let (_,cwd,snap)=crate::codex_watch::inspect(a,&w.thread_id)?;let owned=a.active_turn_id(&w.thread_id);if cwd!=w.cwd||r.expected_turn_id.as_deref()!=owned.as_deref().or(snap.turn_id.as_deref()){return Err("REPLY_TURN_CHANGED_REFRESH".to_string());}serde_json::to_value(&r).map_err(|_|"REPLY_RESPONSE_INVALID".into())})();if outcome.is_err(){let _=core.store.finish_watch_reply(&r.id,"FAILED",None,Some("REPLY_QUEUE_PREWRITE_FAILED"));}return outcome;}
   let outcome=(||{let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;dispatch(core,&mut s,&w,&r)})();match outcome{Ok(r)=>serde_json::to_value(r).map_err(|_|"REPLY_RESPONSE_INVALID".into()),Err(e)=>{let status=core.store.watch_reply(&r.id)?.map(|r|r.status);let _=core.store.finish_watch_reply(&r.id,if status.as_deref()==Some("SENDING"){"UNKNOWN"}else{"FAILED"},None,Some("REPLY_PREWRITE_FAILED"));Err(e)}}
  }
@@ -203,11 +215,15 @@ pub(crate) fn start_queue(core:RouterCore){let _=core.store.recover_watch_replie
   let url=std::env::var("AIWR_INPUT_FIXTURE_START_RUNNING").unwrap();let client=reqwest::blocking::Client::builder().no_proxy().timeout(Duration::from_secs(10)).build().unwrap();let started:Value=client.get(&url).send().unwrap().json().unwrap();let turn=started["turn"]["id"].as_str().unwrap().to_string();
   let deadline=std::time::Instant::now()+Duration::from_secs(10);let view=loop{let v=state(&c,&thread).unwrap();assert!(v.owned_turn_id.is_none());if v.controllable_turn_id.as_deref()==Some(turn.as_str()){break v;}assert!(std::time::Instant::now()<deadline,"current native turn unobserved");std::thread::sleep(Duration::from_millis(100));};
   if let Some(wid)=bridge_id.as_ref(){let rows=crate::role_bridge::directory_activity(&c,&[wid.clone()]).unwrap();assert!(matches!(rows[0].sides[0].state.as_str(),"RUNNING"|"THINKING"));assert!(c.store.codex_watches().unwrap().is_empty());}
-  let w=view.watch;let id=Uuid::new_v4().to_string();let send=||ChatCommand::Send{thread_id:thread.clone(),id:id.clone(),generation:w.generation,source_sequence:None,expected_turn_id:Some(turn.clone()),mode:"STEER".into(),text:"Keep the same fictional scope.".into(),options:ReplyOptions::default()};
+  let w=view.watch;let id=Uuid::new_v4().to_string();let send=||ChatCommand::Send{queue_requested:false,thread_id:thread.clone(),id:id.clone(),generation:w.generation,source_sequence:None,expected_turn_id:Some(turn.clone()),mode:"STEER".into(),text:"Keep the same fictional scope.".into(),options:ReplyOptions::default()};
   let receipt=command(&c,send()).unwrap();assert_eq!(receipt["status"],"SENT");assert_eq!(receipt["turnId"],turn);assert_eq!(command(&c,send()).unwrap()["id"],receipt["id"]);assert!(c.session.lock().unwrap().adapter.as_ref().unwrap().active_turn_id(&thread).is_none());
   std::fs::write(root.join("watch-service-proof.json"),serde_json::to_vec_pretty(&json!({"bridgeReplyWithoutIndependentWatch":bridge_only,"localModelOnly":true,"productionTouched":false,"lateSubscriptionReplaysQuestion":true,"optionsPreserved":true,"staleRevisionRejected":true,"oneResponse":true,"resolved":true,"desktopSteerAck":true,"steerReplaySameReceipt":true,"desktopTurnNotClaimed":true})).unwrap()).unwrap();c.shutdown_owned_adapter();
  }
- #[test]fn offline_explicit_send_retains_failed_intent_without_later_dispatch(){let(_d,c)=fixture();let w=watch(&c,"exact").unwrap();let id=Uuid::new_v4().to_string();let r=command(&c,ChatCommand::Send{thread_id:w.thread_id,id:id.clone(),generation:w.generation,source_sequence:None,expected_turn_id:None,mode:"SEND".into(),text:"bytes".into(),options:ReplyOptions::default()});assert!(r.is_err());assert_eq!(c.store.watch_reply(&id).unwrap().unwrap().status,"FAILED");}
+ #[test]fn offline_explicit_send_retains_failed_intent_without_later_dispatch(){let(_d,c)=fixture();let w=watch(&c,"exact").unwrap();let id=Uuid::new_v4().to_string();let r=command(&c,ChatCommand::Send{queue_requested:false,thread_id:w.thread_id,id:id.clone(),generation:w.generation,source_sequence:None,expected_turn_id:None,mode:"SEND".into(),text:"bytes".into(),options:ReplyOptions::default()});assert!(r.is_err());assert_eq!(c.store.watch_reply(&id).unwrap().unwrap().status,"FAILED");}
+ #[test]fn old_client_cannot_create_an_implicit_queue_without_an_explicit_choice(){
+  let(_d,c)=fixture();let w=watch(&c,"exact").unwrap();let id=Uuid::new_v4().to_string();let input=serde_json::from_value(json!({"action":"SEND","threadId":"exact","id":id,"generation":w.generation,"mode":"QUEUE","text":"preserve this draft"})).unwrap();
+  assert!(command(&c,input).unwrap_err().contains("REPLY_EXPLICIT_QUEUE_REQUIRED"));assert!(c.store.watch_reply(&id).unwrap().is_none());
+ }
  #[test]fn uploaded_data_is_bounded_pinned_and_rehashed(){let(_d,c)=fixture();use base64ct::{Base64,Encoding};let out=upload(&c,"exact","review.txt",&Base64::encode_string(b"public file data")).unwrap();let options=ReplyOptions{attachments:vec![out["id"].as_str().unwrap().into()],..Default::default()};let w=watch(&c,"exact").unwrap();assert!(files(&w,&options).unwrap().1.contains("review.txt"));assert!(upload(&c,"exact","../escape.txt","YWJj").is_err());let p=Path::new(&w.cwd).join(".aiwr/watch-replies").join(&options.attachments[0]).join("content.bin");std::fs::write(p,b"changed file data").unwrap();assert!(files(&w,&options).is_err());}
  #[test]fn input_options_cannot_override_project_permissions_or_provider(){assert!(serde_json::from_value::<ChatCommand>(json!({"action":"SEND","threadId":"exact","id":Uuid::new_v4().to_string(),"generation":1,"mode":"SEND","text":"hello","options":{"cwd":"D:\\elsewhere","sandbox":"danger-full-access"}})).is_err());}
  #[test]#[ignore="owned disposable native Codex follow-up through authenticated HTTP; bounded inference"]
