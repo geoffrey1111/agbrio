@@ -30,7 +30,8 @@ fn real_mcp_create_empty_codex_and_read_without_any_model_turn(){
  let g=core.store.create_assistant_instance_grant(router_core::store::assistant::InstanceGrantInput{label:"New executor QA".into(),rules:old.rules,expires_at:now_ms()+600000}).unwrap();
  let call=|name:&str,input:Value|crate::assistant_mcp::call(&core,&g.id,name,input).unwrap();
  assert!(crate::assistant_mcp::call(&core,&legacy,"agbrio_prepare_action",json!({"requestId":"legacy-no-create","operation":"CREATE_CHAT","input":{"directory":dir.path()}})).is_err());
- let a=call("agbrio_prepare_action",json!({"requestId":"create-codex-once","operation":"CREATE_CHAT","input":{"provider":"CODEX","directory":dir.path(),"label":"QA new executor"}}));
+ let create_dir=dir.path().join("different-native-directory");std::fs::create_dir(&create_dir).unwrap();
+ let a=call("agbrio_prepare_action",json!({"requestId":"create-codex-once","operation":"CREATE_CHAT","input":{"provider":"CODEX","directory":create_dir,"label":"QA new executor"}}));
  let approve=json!({"actionId":a["id"],"expectedHash":a["payloadHash"],"ruleId":"continue","useOwnerAnswer":false,"assessment":"Owner delegated one disposable executor"});
  let r=call("agbrio_execute_action",approve.clone());assert_eq!(r["status"],"APPLIED");assert_eq!(r["result"]["firstMessageSent"],false);
  let id=r["result"]["threadId"].as_str().unwrap();assert_eq!(id,"10000000-0000-4000-8000-000000000071");assert_eq!(call("agbrio_execute_action",approve),r);
@@ -109,11 +110,12 @@ import fs from 'node:fs';
 const cwd=process.argv[2];
 readline.createInterface({input:process.stdin}).on('line',line=>{
  const q=JSON.parse(line);if(q.id===undefined)return;
- if(q.method==='thread/start')fs.appendFileSync(cwd+'/native-creates.jsonl',JSON.stringify({cwd:q.params.cwd})+'\n');
+ if(q.method==='thread/start'){fs.appendFileSync(cwd+'/native-creates.jsonl',JSON.stringify({cwd:q.params.cwd})+'\n');fs.writeFileSync(cwd+'/native-created-cwd',q.params.cwd);}
  if(q.method==='turn/start'||q.method==='turn/steer')fs.appendFileSync(cwd+'/native-writes.jsonl',JSON.stringify({method:q.method,threadId:q.params.threadId,input:q.params.input})+'\n');
  const busy=fs.existsSync(cwd+'/native-active');
  const rollout=fs.existsSync(cwd+'/native-rollout-path')?fs.readFileSync(cwd+'/native-rollout-path','utf8'):null;
- const thread={path:rollout,id:q.method==='thread/start'?'10000000-0000-4000-8000-000000000071':q.params?.threadId,cwd,status:{type:busy?'active':'idle'},turns:[]};
+ const threadCwd=(q.method==='thread/start'||q.params?.threadId==='10000000-0000-4000-8000-000000000071')&&fs.existsSync(cwd+'/native-created-cwd')?fs.readFileSync(cwd+'/native-created-cwd','utf8'):cwd;
+ const thread={path:rollout,id:q.method==='thread/start'?'10000000-0000-4000-8000-000000000071':q.params?.threadId,cwd:threadCwd,status:{type:busy?'active':'idle'},turns:[]};
  const result=q.method==='initialize'?{userAgent:'Agbrio offline fixture'}:q.method==='thread/start'||q.method==='thread/read'||q.method==='thread/resume'?{thread,model:'fixture',reasoningEffort:'low'}:q.method==='thread/turns/list'?{data:busy?[{id:'fixture-active-turn',status:'inProgress',itemsView:'notLoaded'}]:[],nextCursor:null}:q.method==='thread/items/list'?{data:[],nextCursor:null}:q.method==='turn/steer'?{turnId:'fixture-active-turn'}:q.method==='thread/goal/get'?{goal:null}:q.method==='turn/start'?{turn:{id:'fixture-turn-'+q.params.threadId,status:'inProgress'}}:{};
  process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:q.id,result})+'\n');
  if(q.method==='thread/resume'&&busy)process.stdout.write(JSON.stringify({method:'turn/started',params:{threadId:q.params.threadId,turn:{id:'fixture-active-turn'}}})+'\n');
