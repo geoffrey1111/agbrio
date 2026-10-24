@@ -41,6 +41,17 @@ fn project_public_chat_turn(turn:&str,head:&[Value],tail:&[Value])->Result<Vec<V
 #[cfg(test)]
 mod public_chat_projection_tests {
     use super::*;
+    #[test]#[ignore="explicit exact owner-selected shared history, read-only and no provider writes"]
+    fn real_shared_media_history_read_only() {
+        let thread=std::env::var("AGBRIO_READONLY_THREAD").unwrap();
+        let mut command=Command::new("node");command.arg(std::env::var("AGBRIO_READONLY_TRANSPORT").unwrap()).arg(std::env::var("AGBRIO_READONLY_SHARED_URL").unwrap());
+        #[cfg(windows)] {use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}
+        let mut adapter=CodexAdapter::start_shared_transport(Arc::new(crate::events::NullEventSink),Arc::new(|_|{}),command).unwrap();adapter.initialize().unwrap();
+        let page=adapter.read_public_chat_page(&thread,None).unwrap();
+        assert!(page["messages"].is_array());assert!(!adapter.has_owned_turns());
+        assert!(adapter.request_counts().keys().all(|m|matches!(m.as_str(),"initialize"|"thread/turns/list"|"thread/items/list")));
+        println!("exactNativeHistory=true publicMessages={} modelCalls=0",page["messages"].as_array().unwrap().len());
+    }
     #[test]
     fn long_turn_keeps_real_prompt_before_tail_and_excludes_private_items(){
         let prompt=json!({"turnId":"exact","item":{"id":"u","type":"userMessage","content":[{"type":"text","text":"original prompt"}]}});
@@ -1259,10 +1270,12 @@ fn spawn_stdout_reader(
     thread::spawn(move || {
         let mut reader = BufReader::new(stdout);
         loop {
-            let line = match bounded_frame(&mut reader) {
+            let limit = native_frame_limit(shared_scope.is_some(), guard.is_some());
+            let line = match bounded_frame(&mut reader, limit) {
                 Ok(Some(line)) => line,
                 Ok(None) => break,
                 Err(reason) => {
+                    if let Ok(mut detail) = stderr_detail.lock() { *detail = Some(reason.into()); }
                     if let Some(g) = &guard {
                         g.fail(reason);
                     }
@@ -1459,16 +1472,20 @@ impl Drop for PendingCleanup {
     }
 }
 
-fn bounded_frame(reader: &mut impl BufRead) -> Result<Option<String>, &'static str> {
+fn native_frame_limit(shared: bool, guarded: bool) -> u64 {
+    if shared && !guarded { 100 * 1024 * 1024 } else { 8 * 1024 * 1024 }
+}
+
+fn bounded_frame(reader: &mut impl BufRead, limit: u64) -> Result<Option<String>, &'static str> {
     let mut bytes = Vec::new();
     let count = Read::by_ref(reader)
-        .take(8 * 1024 * 1024 + 1)
+        .take(limit + 1)
         .read_until(b'\n', &mut bytes)
         .map_err(|_| "OBSERVATION_IO_FAILED")?;
     if count == 0 {
         return Ok(None);
     }
-    if count > 8 * 1024 * 1024 {
+    if count as u64 > limit {
         return Err("NATIVE_FRAME_LIMIT");
     }
     if bytes.last() != Some(&b'\n') {
@@ -1532,13 +1549,24 @@ mod tests {
     }
     #[test]
     fn bounded_reader_rejects_large_truncated_and_non_utf8_frames() {
-        assert!(bounded_frame(&mut Cursor::new(vec![b'x'; 8 * 1024 * 1024 + 1])).is_err());
-        assert!(bounded_frame(&mut Cursor::new(b"{}".to_vec())).is_err());
-        assert!(bounded_frame(&mut Cursor::new(vec![255, b'\n'])).is_err());
+        assert!(bounded_frame(&mut Cursor::new(vec![b'x'; 8 * 1024 * 1024 + 1]),8 * 1024 * 1024).is_err());
+        assert!(bounded_frame(&mut Cursor::new(b"{}".to_vec()),8 * 1024 * 1024).is_err());
+        assert!(bounded_frame(&mut Cursor::new(vec![255, b'\n']),8 * 1024 * 1024).is_err());
         assert_eq!(
-            bounded_frame(&mut Cursor::new(b"{}\n".to_vec())).unwrap(),
+            bounded_frame(&mut Cursor::new(b"{}\n".to_vec()),8 * 1024 * 1024).unwrap(),
             Some("{}\n".into())
         );
+    }
+    #[test]
+    fn shared_media_frames_keep_their_bound_without_expanding_guarded_sessions() {
+        assert_eq!(super::native_frame_limit(true,false),100 * 1024 * 1024);
+        for (shared,guarded) in [(false,false),(false,true),(true,true)] {
+            assert_eq!(super::native_frame_limit(shared,guarded),8 * 1024 * 1024);
+        }
+        let mut frame=vec![b' ';12 * 1024 * 1024];frame[0]=b'{';frame[1]=b'}';frame.push(b'\n');
+        assert!(bounded_frame(&mut Cursor::new(&frame),super::native_frame_limit(false,false)).is_err());
+        assert!(bounded_frame(&mut Cursor::new(&frame),super::native_frame_limit(true,false)).unwrap().is_some());
+        assert_eq!(bounded_frame(&mut Cursor::new(b"{}\n"),2),Err("NATIVE_FRAME_LIMIT"));
     }
     #[test]
     fn late_event_after_ack_is_observed_before_exit_drain_completes() {
