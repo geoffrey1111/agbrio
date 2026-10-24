@@ -63,7 +63,8 @@ try{
  # a wait, creating a credential or contacting any native provider.
  $agbrioPlugin=Join-Path $agbrioInstall 'claude-code-plugin'
  $agbrioPluginManifest=Get-Content -LiteralPath (Join-Path $agbrioPlugin '.claude-plugin/plugin.json') -Raw | ConvertFrom-Json
- if($agbrioPluginManifest.version -cne '0.1.9'){throw 'Installed Claude plugin version mismatch'}
+ $agbrioExpectedPluginVersion=(Get-Content -LiteralPath 'tools/claude-code-plugin/.claude-plugin/plugin.json' -Raw | ConvertFrom-Json).version
+if($agbrioPluginManifest.version -cne $agbrioExpectedPluginVersion){throw 'Installed Claude plugin version mismatch'}
  if(!(Test-Path -LiteralPath (Join-Path $agbrioPlugin 'hooks/codex-wait.mjs'))){throw 'Installed Codex wait module missing'}
  $agbrioProbe=@{sessionId='10000000-0000-4000-8000-000000000001';instanceId='20000000-0000-4000-8000-000000000001';cwd=$agbrioRoot;threadId='30000000-0000-4000-8000-000000000001';generation=1;turnId='40000000-0000-4000-8000-000000000001'} | ConvertTo-Json
  $agbrioWaitResponse=Invoke-WebRequest -Uri 'http://127.0.0.1:47114/v1/claude-code/codex-wait' -Method Post -ContentType 'application/json' -Body $agbrioProbe -SkipHttpErrorCheck
