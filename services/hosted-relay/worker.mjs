@@ -1,9 +1,10 @@
 // Agbrio hosted HTTP relay. No provider credentials or transcript persistence.
 import {DurableObject} from 'cloudflare:workers';
+import {trialRequest} from './trials.mjs';
 const MAX_BODY=16*1024*1024, MAX_FRAME=23*1024*1024;
 const json=(value,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'no-store'}});
 const fail=(code,status=400)=>json({error:code},status);
-function unavailable(req,code,status){const u=new URL(req.url);if(req.method!=='GET'||!['/','/mobile'].includes(u.pathname)||!req.headers.get('Accept')?.includes('text/html'))return fail(code,status);const zh=(req.headers.get('Accept-Language')??'').toLowerCase().startsWith('zh'),expired=code==='SUBSCRIPTION_INACTIVE';const title=zh?(expired?'连接已到期或停用':'电脑暂时离线'):(expired?'Connection expired or disabled':'Computer offline');const note=zh?(expired?'在电脑 Agbrio 的设备设置中使用新兑换码续期。':'保持电脑和 Agbrio 运行，然后重试。'):(expired?'Renew in Agbrio’s device settings on your computer.':'Keep your computer and Agbrio running, then retry.');const label=zh?'重试':'Retry';return new Response(`<!doctype html><html lang="${zh?'zh':'en'}"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light"><title>Agbrio</title><style>body{margin:0;background:#fffcf8;color:#302c27;font:16px system-ui;min-height:100dvh;display:grid;place-items:center}main{padding:32px;max-width:440px}h1{font-size:24px}p{line-height:1.6;color:#746a5d}button{background:#aa5735;border:0;border-radius:24px;padding:14px 24px;color:white;font:inherit;cursor:pointer}</style><main><strong>Agbrio · Agent Bridge</strong><h1>${title}</h1><p>${note}</p><form><button>${label}</button></form></main></html>`,{status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});}
+function unavailable(req,code,status){const u=new URL(req.url);if(req.method!=='GET'||!['/','/mobile'].includes(u.pathname)||!req.headers.get('Accept')?.includes('text/html'))return fail(code,status);const zh=(req.headers.get('Accept-Language')??'').toLowerCase().startsWith('zh'),expired=code==='SUBSCRIPTION_INACTIVE';const title=zh?(expired?'连接已到期或停用':'电脑暂时离线'):(expired?'Connection expired or disabled':'Computer offline');const note=zh?(expired?'在电脑 Agbrio 的设备设置中输入激活码，即可继续使用作者服务器。':'保持电脑和 Agbrio 运行，然后重试。'):(expired?'Renew in Agbrio’s device settings on your computer.':'Keep your computer and Agbrio running, then retry.');const label=zh?'重试':'Retry';return new Response(`<!doctype html><html lang="${zh?'zh':'en'}"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light"><title>Agbrio</title><style>body{margin:0;background:#fffcf8;color:#302c27;font:16px system-ui;min-height:100dvh;display:grid;place-items:center}main{padding:32px;max-width:440px}h1{font-size:24px}p{line-height:1.6;color:#746a5d}button{background:#aa5735;border:0;border-radius:24px;padding:14px 24px;color:white;font:inherit;cursor:pointer}</style><main><strong>Agbrio · Agent Bridge</strong><h1>${title}</h1><p>${note}</p><form><button>${label}</button></form>${expired?`<p><a href="mailto:geoffreyzjx@qq.com">${zh?'联系作者获取激活码':'Contact the author for an activation code'}</a></p>`:''}</main></html>`,{status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});}
 const uuid=()=>crypto.randomUUID().replaceAll('-','');
 const validId=x=>typeof x==='string'&&/^[a-f0-9]{32}$/.test(x);
 const validKey=x=>typeof x==='string'&&/^[a-f0-9]{64}$/.test(x);
@@ -17,11 +18,11 @@ function safeHeaders(headers,response=false){const allowed=response?['content-ty
 export default {async fetch(req,env){try{
  const u=new URL(req.url);if(u.protocol!=='https:')return fail('TLS_REQUIRED',400);
  if(u.hostname===env.CONTROL_HOST){
-  if(u.pathname==='/health'&&req.method==='GET')return json({service:'Agbrio hosted relay',version:1});
+  if(u.pathname==='/health'&&req.method==='GET')return json({service:'Agbrio hosted relay',version:1,trial:true});
   if(req.method!=='POST')return fail('NOT_FOUND',404);
   const origin=req.headers.get('Origin');if(origin&&origin!==u.origin)return fail('ORIGIN_REJECTED',403);
   if(u.pathname.startsWith('/admin/')&&req.headers.get('Authorization')!==`Bearer ${env.ADMIN_TOKEN}`)return fail('UNAUTHORIZED',401);
-  if(!['/v1/redeem','/admin/issue','/admin/ready','/admin/revoke','/admin/expire','/admin/status'].includes(u.pathname))return fail('NOT_FOUND',404);
+  if(!['/v1/redeem','/v1/trial','/v1/trial/confirm','/admin/trials/prepare','/admin/trials/ready','/admin/trials/revoke','/admin/issue','/admin/ready','/admin/revoke','/admin/expire','/admin/status'].includes(u.pathname))return fail('NOT_FOUND',404);
   return env.CONTROL.get(env.CONTROL.idFromName('control-v1')).fetch(req);
  }
  const suffix='.'+env.ZONE_ROOT;const label=u.hostname.endsWith(suffix)?u.hostname.slice(0,-suffix.length):'';
@@ -34,6 +35,7 @@ export class Control extends DurableObject {
  constructor(ctx,env){super(ctx,env);this.ctx=ctx;this.env=env;}
  async fetch(req){return this.ctx.blockConcurrencyWhile(async()=>{try{
   const p=new URL(req.url).pathname, input=await readJSON(req,p==='/admin/issue'?32768:16384), s=this.ctx.storage;
+  if(p.startsWith('/admin/trials/')||p==='/v1/trial'||p==='/v1/trial/confirm')return await trialRequest(this,req,input,p,{validId,validKey,hash,hostToken,json,fail});
   if(p==='/admin/issue'){
    if(!Array.isArray(input.codes)||input.codes.length<1||input.codes.length>60)return fail('INVALID_BATCH');
    const ids=new Set(),hashes=new Set();for(const c of input.codes){if(!validKey(c.hash)||!validId(c.tenantId)||![7,30,365].includes(c.days)||ids.has(c.tenantId)||hashes.has(c.hash))return fail('INVALID_CODE');ids.add(c.tenantId);hashes.add(c.hash);const old=await s.get('c:'+c.hash),allocated=await s.get('a:'+c.tenantId);if(old&&(old.days!==c.days||old.tenantId!==c.tenantId)||allocated&&allocated!==c.hash)return fail('ISSUANCE_CONFLICT',409);}
@@ -45,7 +47,7 @@ export class Control extends DurableObject {
    for(const h of input.hashes){const c=await s.get('c:'+h);if(!c)return fail('CODE_NOT_FOUND',404);}
    for(const h of input.hashes){const c=await s.get('c:'+h);await s.put('c:'+h,{...c,ready:true});}return json({ready:true});
   }
-  if(p==='/admin/status'){const codes=await s.list({prefix:'c:'});return json({codes:[...codes.values()].map(c=>({hash:c.hash,tenantId:c.usedTenant??c.tenantId,days:c.days,ready:c.ready,redeemedAt:c.redeemedAt??null,expiresAt:c.expiresAt??null,revoked:c.revoked}))});}
+  if(p==='/admin/status'){const codes=await s.list({prefix:'c:'});return json({codes:[...codes.values()].map(c=>({hash:c.hash,tenantId:c.usedTenant??c.tenantId,days:c.days,ready:c.ready,redeemedAt:c.redeemedAt??null,expiresAt:c.expiresAt??null,revoked:c.revoked})),trials:[...(await s.list({prefix:'p:'})).values()].map(t=>({tenantId:t.id,ready:t.ready,used:t.used}))});}
   if(p==='/admin/revoke'){
    if(!validKey(input.hash))return fail('INVALID_CODE');const c=await s.get('c:'+input.hash);if(!c)return fail('CODE_NOT_FOUND',404);
    await s.put('c:'+input.hash,{...c,revoked:true});if(c.usedTenant){const t=await s.get('t:'+c.usedTenant);await s.put('t:'+c.usedTenant,{...t,revoked:true});await this.env.TENANTS.get(this.env.TENANTS.idFromName(c.usedTenant)).configure({...t,revoked:true});}return json({revoked:true});
@@ -62,11 +64,11 @@ export class Control extends DurableObject {
   if(prior?.revoked)return fail('SUBSCRIPTION_REVOKED',403);
   const token=await hostToken(this.env,id,input.deviceKey), origin=`https://ag-${id}.${this.env.ZONE_ROOT}`;
   const expiresAt=c.deviceHash?(prior?.expiresAt??c.expiresAt):(Math.max(Date.now(),prior?.expiresAt??0)+c.days*86400000);
-  const t={id,origin,expiresAt,tokenHash:await hash(token),revoked:false};
+  const t={id,origin,expiresAt,kind:'CODE',tokenHash:await hash(token),revoked:false};
   // Persist the one-use decision before RPC; retry finishes the same lease.
   await s.put({['c:'+codeHash]:{...c,deviceHash,usedTenant:id,expiresAt,redeemedAt:c.redeemedAt??Date.now()},['d:'+deviceHash]:id,['t:'+id]:t});
   await this.env.TENANTS.get(this.env.TENANTS.idFromName(id)).configure(t);
-  return json({tenantId:id,origin,expiresAt,hostToken:token});
+  return json({tenantId:id,origin,expiresAt,kind:"CODE",serverNow:Date.now(),hostToken:token});
  }catch{return fail('CONTROL_REQUEST_FAILED');}});}
 }
 
@@ -74,6 +76,7 @@ export class Tenant extends DurableObject {
  constructor(ctx,env){super(ctx,env);this.ctx=ctx;this.env=env;this.pending=new Map();this.minute=0;this.requests=0;}
  async configure(t){return this.ctx.blockConcurrencyWhile(async()=>{await this.ctx.storage.put('lease',t);if(t.revoked||t.expiresAt<=Date.now()){for(const ws of this.ctx.getWebSockets()){ws.send(JSON.stringify({type:'inactive',state:t.revoked?'REVOKED':'EXPIRED'}));ws.close(1008,'Subscription inactive');}this.finishPending();}await this.schedule();});}
  async lease(){return this.ctx.storage.get('lease');}
+ async connected(){const t=await this.lease();return Boolean(t&&!t.revoked&&t.expiresAt>Date.now()&&this.ctx.getWebSockets().some(ws=>ws.deserializeAttachment()?.authorized));}
  async schedule(){const t=await this.lease();const deadlines=this.ctx.getWebSockets().map(w=>w.deserializeAttachment()?.deadline).filter(x=>x>Date.now());if(t&&!t.revoked&&t.expiresAt>Date.now())deadlines.push(t.expiresAt);if(deadlines.length)await this.ctx.storage.setAlarm(Math.min(...deadlines));}
  async alarm(){const t=await this.lease();for(const ws of this.ctx.getWebSockets()){const a=ws.deserializeAttachment();if(!t||t.revoked||t.expiresAt<=Date.now()||!a?.authorized&&a?.deadline<=Date.now()){ws.send(JSON.stringify({type:'inactive',state:t?.revoked?'REVOKED':'EXPIRED'}));ws.close(1008,'Connection expired');}}if(!t||t.revoked||t.expiresAt<=Date.now())this.finishPending();await this.schedule();}
  finishPending(){for(const p of this.pending.values()){clearTimeout(p.timer);p.resolve(fail('HOST_DISCONNECTED_UNCERTAIN',503));}this.pending.clear();}
@@ -86,6 +89,7 @@ export class Tenant extends DurableObject {
    if(this.ctx.getWebSockets().some(w=>w.deserializeAttachment()?.authorized))return fail('CONNECTOR_BUSY',409);
    const pair=new WebSocketPair();this.ctx.acceptWebSocket(pair[1]);pair[1].serializeAttachment({authorized:true,deadline:t.expiresAt});pair[1].send(JSON.stringify({type:'ready',expiresAt:t.expiresAt}));await this.schedule();return new Response(null,{status:101,webSocket:pair[0],headers:{'Sec-WebSocket-Protocol':'agbrio'}});
   }
+  if(t.kind==='TRIAL_PENDING'&&(u.pathname!=='/v1/mobile/connection/probe'||req.method!=='GET'))return fail('TRIAL_SETUP_PENDING',503);
   if(u.pathname.startsWith('/__agbrio/')||u.pathname.startsWith('/admin/'))return fail('NOT_FOUND',404);
   const minute=Math.floor(Date.now()/60000);if(minute!==this.minute){this.minute=minute;this.requests=0;}if(++this.requests>240)return fail('RATE_LIMIT',429);
   const socket=this.ctx.getWebSockets().find(w=>w.deserializeAttachment()?.authorized);if(!socket)return unavailable(req,'COMPUTER_OFFLINE',503);

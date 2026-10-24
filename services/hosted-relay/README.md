@@ -37,3 +37,25 @@ or Cloudflare. Relay bodies are transient memory, not persisted transcripts.
 Entitlement metadata/hash receipts persist. Requests are bounded and never replayed
 after timeout/disconnect. The computer must stay online. Mac, transfer, account UI,
 payment, automatic DNS provisioning and large-scale capacity are separate scopes.
+
+## Optional seven-day trial
+
+The first-run desktop offers an explicit seven-day hosted trial. It reserves a
+prepared tenant, verifies the public connection to the exact desktop, then starts
+seven server-clock days. Pending setup can relay only GET connection probes.
+Normal reinstall or another phone does not reset eligibility; this is a Windows
+installation marker, not an account or strong anti-tamper license. Existing paid
+credit is preserved. Codes renew the same tenant/capability; expiry affects hosted
+remote access, not local data/features or self-hosted connections.
+
+Operator: use `generate-trials --batch <new-private-pool.json> --count 12`,
+`prepare-trials --batch <pool.json>`, provision only those exact tenant custom
+domains, then `ready-trials --batch <pool.json>`. Every action also takes the
+existing `--operator <private-operator.json>`. Readiness verifies each HTTPS
+entrance before enabling allocation. Extend only the existing BIC-only exact-host
+rule when machine clients receive1010. Never disable other products or a whole
+zone. `status` reports available slots; `revoke-trial --tenant <exact-id>` ends an
+unrenewed trial. Defaults:20new reservations/day,5/day per salted IP bucket, and
+only prepared ready slots. `TRIAL_DAILY_LIMIT` and `TRIAL_IP_DAILY_LIMIT` can lower
+those limits. Replenishing the pool requires preparing more exact domains; do not
+promise unlimited capacity. Keep private operator/pool/fixture data out of Git.

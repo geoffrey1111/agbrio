@@ -25,18 +25,25 @@ fn write_atomic(path:&Path,bytes:&[u8])->Result<(),String>{
  if let Some(parent)=path.parent(){std::fs::create_dir_all(parent).map_err(|_|"MOBILE_CONFIG_WRITE_FAILED")?;}
  let pending=path.with_extension("json.pending");std::fs::write(&pending,bytes).map_err(|_|"MOBILE_CONFIG_WRITE_FAILED")?;std::fs::rename(&pending,path).map_err(|_|"MOBILE_CONFIG_WRITE_FAILED".into())
 }
-pub(crate) fn configure(core:&RouterCore,host:&HostRuntime,input:ConnectionInput)->Result<ConnectionView,String>{
- let path=mobile_http::mobile_runtime_config_path()?;
- let private=input.method=="TAILSCALE_SERVE";
- configure_at(core,host,input,&path,|url,nonce,instance|{
+fn probe_https(url:&str,nonce:&str,instance:&str,private:bool)->Result<(),String>{
   let builder=reqwest::blocking::Client::builder().timeout(Duration::from_secs(10)).redirect(reqwest::redirect::Policy::none()).user_agent("Agbrio/0.1 Agent-Bridge");let builder=if private{builder.no_proxy()}else{builder};
   let client=builder.build().map_err(|_|"MOBILE_PROBE_FAILED")?;
   let response=client.get(format!("{url}/v1/mobile/connection/probe")).query(&[("nonce",nonce)]).send().map_err(|_|"MOBILE_PROBE_FAILED")?;
   if !response.status().is_success(){return Err("MOBILE_PROBE_FAILED".into());}
   let value:Value=response.json().map_err(|_|"MOBILE_PROBE_FAILED")?;
   if value["nonce"]!=nonce||value["instance"]!=instance{return Err("MOBILE_PROBE_WRONG_HOST".into());}Ok(())
- })?;
- view(host)
+}
+/// Verify the exact resident Host without changing its current connection or saved configuration.
+pub(crate) fn verify(host:&HostRuntime,input:&ConnectionInput)->Result<(),String>{
+ let _lock=CONFIGURE.lock().map_err(|_|"MOBILE_CONFIG_BUSY")?;
+ let(origin,authority)=validate(input)?;let nonce=uuid::Uuid::new_v4().to_string();
+ *host.mobile_probe.lock().map_err(|_|"MOBILE_CONFIG_BUSY")?=Some(ProbeGrant{nonce:nonce.clone(),host:authority,expires:Instant::now()+Duration::from_secs(20)});
+ let result=probe_https(&origin,&nonce,host.instance_id(),input.method=="TAILSCALE_SERVE");
+ *host.mobile_probe.lock().map_err(|_|"MOBILE_CONFIG_BUSY")?=None;result
+}
+pub(crate) fn configure(core:&RouterCore,host:&HostRuntime,input:ConnectionInput)->Result<ConnectionView,String>{
+ let path=mobile_http::mobile_runtime_config_path()?;let private=input.method=="TAILSCALE_SERVE";
+ configure_at(core,host,input,&path,|url,nonce,instance|probe_https(url,nonce,instance,private))?;view(host)
 }
 fn configure_at<F>(core:&RouterCore,host:&HostRuntime,input:ConnectionInput,path:&Path,probe:F)->Result<(),String>
 where F:FnOnce(&str,&str,&str)->Result<(),String>{

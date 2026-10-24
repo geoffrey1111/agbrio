@@ -18,11 +18,13 @@ export type ChatMessage = { clientId?:string|null; card?:NativeTurnCard|null; id
 export type ChatHistory = { messages: ChatMessage[]; nextCursor: string | null; coverage?:string;ownerRequests?:ClaudeOwnerRequest[] };
 export type ClaudeTaskTree={nodes:{sessionId:string;parentSessionId:string;title:string;depth:number;state:string;updatedAt:number}[];running:number;attention:number;unknown:number;limited:boolean};
 export type ChatModel = { id: string; model: string; displayName: string; supportedReasoningEfforts: { reasoningEffort: string; description: string }[] };
-export interface WatchChatApi { state(threadId: string): Promise<WatchChatState>; command<T>(input: ChatCommand): Promise<T>; cachedState?(threadId:string):WatchChatState|undefined; cachedHistory?(threadId:string):ChatHistory|undefined; subscribe?(threadId:string,listener:()=>void):()=>void }
+export interface WatchChatApi { refreshState?(threadId:string):Promise<WatchChatState>;refreshHistory?(threadId:string):Promise<ChatHistory>;state(threadId: string): Promise<WatchChatState>; command<T>(input: ChatCommand): Promise<T>; cachedState?(threadId:string):WatchChatState|undefined; cachedHistory?(threadId:string):ChatHistory|undefined; subscribe?(threadId:string,listener:()=>void):()=>void }
 const revision=(s:WatchChatState)=>JSON.stringify([s.watch.generation,s.watch.cwd,s.watch.snapshot.turnId,s.watch.snapshot.itemId,s.watch.snapshot.state,s.historyRevision]);
 export function cachedWatchChatApi(raw:WatchChatApi):WatchChatApi {
  const state=async(threadId:string)=>{const next=await raw.state(threadId);if(next.watch.threadId!==threadId)throw Error("REPLY_TARGET_CHANGED_REFRESH");const old=readModels.peek<WatchChatState>(chatCacheKey(threadId));if(old&&revision(old)!==revision(next))readModels.invalidate(historyCacheKey(threadId));return next;};
  return {cachedState:id=>readModels.peek(chatCacheKey(id)),cachedHistory:id=>readModels.peek(historyCacheKey(id)),subscribe:(id,fn)=>{const a=readModels.subscribe(chatCacheKey(id),fn),b=readModels.subscribe(historyCacheKey(id),fn);return()=>{a();b();};},
+ refreshState:id=>readModels.refresh(chatCacheKey(id),()=>state(id)),
+ refreshHistory:id=>readModels.refresh(historyCacheKey(id),()=>raw.command<ChatHistory>({action:"HISTORY",threadId:id,cursor:null}),15000),
  state:id=>readModels.read(chatCacheKey(id),()=>state(id)),
  command:async<T>(input:ChatCommand)=>{
   if(input.action==="HISTORY"&&!input.cursor)return readModels.read<T>(historyCacheKey(input.threadId),()=>raw.command<T>(input),15000);

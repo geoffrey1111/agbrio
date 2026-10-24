@@ -1,7 +1,7 @@
 import * as mediaModule from "../codex/messageMedia";
 import { act,cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { WatchChat } from "./WatchChat";
+import { WatchChat,chatError } from "./WatchChat";
 import type { ChatMessage, WatchChatApi, WatchChatState, WatchReply } from "./watchChatApi";
 const original={sequence:17,threadId:"exact-original",label:"原对话",cwd:"D:\\project-a",snapshot:{state:"RESULT_READY",turnId:"turn-a",itemId:"item-a",text:"完整原文"},observedAt:1};
 const state:WatchChatState={watch:{...original,enabled:true,generation:2,checkedAt:1,errorCode:null},host:"电脑A",ownedTurnId:null,externalBusy:false,replies:[],requests:[],goal:null};
@@ -211,9 +211,9 @@ it('retries a failed initial history read on reconnect and replaces the obsolete
  const native={threadId:'claude_code:10000000-0000-4000-8000-000000000001',label:'manager',cwd:original.cwd,enabled:true,generation:2,checkedAt:1,errorCode:null,snapshot:{state:'RESULT_READY',turnId:'obsolete',itemId:'claude_reply:obsolete',text:'old directory summary'}};
  const message={id:'claude_msg:latest',turnId:'latest',role:'assistant' as const,text:'latest native conclusion',order:10};
  let attempts=0;
- const api:WatchChatApi={state:async()=>({...state,watch:{...native,snapshot:{state:'RESULT_READY',turnId:'latest',itemId:message.id,text:message.text}},publicMessages:[message]}),command:vi.fn(async()=>{if(++attempts===1)throw Error('Failed to fetch');return {messages:[message],nextCursor:null}}) as WatchChatApi['command']};
+ let reconnected!:(value:WatchChatState)=>void;const api:WatchChatApi={state:()=>new Promise(resolve=>{reconnected=resolve;}),command:vi.fn(async()=>{if(++attempts===1)throw Error('Failed to fetch');return {messages:[message],nextCursor:null}}) as WatchChatApi['command']};
  render(<WatchChat original={native} api={api} onBack={()=>{}}/>);
- await screen.findByRole('alert');fireEvent.click(screen.getByRole('button',{name:'检查状态'}));
+ await screen.findByRole('alert');act(()=>reconnected({...state,watch:{...native,snapshot:{state:'RESULT_READY',turnId:'latest',itemId:message.id,text:message.text}},publicMessages:[message]}));
  await waitFor(()=>expect(attempts).toBeGreaterThan(1));await waitFor(()=>expect(screen.queryByRole('alert')).toBeNull());
  expect(screen.getAllByText('latest native conclusion')).toHaveLength(1);expect(screen.queryByText('old directory summary')).toBeNull();
 });
@@ -302,4 +302,14 @@ it('a running Codex turn refreshes its native public tail when the native item c
  await screen.findByText('owner request');const calls=command.mock.calls.length;
  snap={...snap,itemId:'two',text:'second progress'};act(()=>notify());
  await waitFor(()=>expect(command.mock.calls.length).toBeGreaterThan(calls));await screen.findByText('second progress');
+});
+
+it('does not describe a desktop provider disconnect or read timeout as an unreachable computer',()=>{
+ expect(chatError(Error('Codex backend disconnected'))).toContain('Codex 读取连接已断开');expect(chatError(Error('ROUTER_READ_TIMEOUT'))).toContain('读取对话超时');expect(chatError(Error('ROUTER_READ_TIMEOUT'))).not.toContain('连不上');
+});
+it('explicit retry bypasses cached reads, preserves the draft and clears only recovered read errors',async()=>{
+ const fresh={...state,watch:{...state.watch,snapshot:{...state.watch.snapshot,state:'RUNNING'}}};
+ const api:WatchChatApi={state:vi.fn().mockResolvedValue(fresh),command:vi.fn().mockRejectedValue(Error('Codex backend disconnected')),refreshState:vi.fn().mockResolvedValue(fresh),refreshHistory:vi.fn().mockResolvedValue({messages:[{id:'recovered',turnId:'turn-a',role:'assistant',text:'fresh recovered history'}],nextCursor:null})};
+ render(<WatchChat original={original} api={api} onBack={vi.fn()}/>);const warning=await screen.findByRole('alert');expect(warning).toHaveTextContent('Codex 读取连接已断开');expect(screen.getAllByText('状态待确认').length).toBeGreaterThan(0);
+ const input=screen.getByRole('textbox');fireEvent.change(input,{target:{value:'preserved draft'}});fireEvent.click(screen.getByRole('button',{name:'检查状态'}));await screen.findByText('fresh recovered history');await waitFor(()=>expect(screen.queryByRole('alert')).toBeNull());expect(api.refreshState).toHaveBeenCalledOnce();expect(api.refreshHistory).toHaveBeenCalledOnce();expect(input).toHaveValue('preserved draft');expect((api.command as any).mock.calls.every((c:any)=>c[0].action==='HISTORY')).toBe(true);
 });
