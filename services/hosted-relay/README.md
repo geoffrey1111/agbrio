@@ -59,3 +59,5 @@ unrenewed trial. Defaults:20new reservations/day,5/day per salted IP bucket, and
 only prepared ready slots. `TRIAL_DAILY_LIMIT` and `TRIAL_IP_DAILY_LIMIT` can lower
 those limits. Replenishing the pool requires preparing more exact domains; do not
 promise unlimited capacity. Keep private operator/pool/fixture data out of Git.
+
+Pending probes require a single UUID nonce, at most12requests/minute and a bounded2KiB response containing only the matching nonce and Host instance UUID. This prevents treating pending setup as a general-purpose free relay.

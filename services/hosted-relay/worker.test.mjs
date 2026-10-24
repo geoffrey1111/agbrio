@@ -54,3 +54,12 @@ test('confirmation RPC failure is recoverable without extending time or allocati
  tenant.configure=async t=>{if(once){once=false;throw Error('isolated failure');}return configure(t);};assert.equal((await f.call('/v1/trial/confirm',trialInput)).status,400);
  const stored=await f.c.storage.get('t:'+pending.tenantId),retry=await(await f.call('/v1/trial',trialInput)).json();assert.equal(retry.expiresAt,stored.expiresAt);assert.equal((await tenant.lease()).expiresAt,stored.expiresAt);
 });
+
+test('pending setup cannot tunnel arbitrary probe payloads or bypass its small request budget',async()=>{
+ const f=fixture();await trialPool(f);const pending=await(await f.call('/v1/trial',trialInput)).json(),t=f.tenants.get(pending.tenantId);connectTrial(f,pending);const socket=t.ctx.sockets[0];let sent=0;
+ const nonce='10000000-0000-4000-8000-000000000001';assert.equal((await t.fetch(new Request(pending.origin+'/v1/mobile/connection/probe?nonce=arbitrary-data'))).status,400);
+ socket.send=raw=>{sent++;const frame=JSON.parse(raw);queueMicrotask(()=>t.webSocketMessage(socket,JSON.stringify({type:'response',id:frame.id,status:200,headers:[['content-type','application/json']],body:Buffer.from(JSON.stringify({nonce,instance:nonce})).toString('base64')})));};
+ assert.equal((await t.fetch(new Request(pending.origin+'/v1/mobile/connection/probe?nonce='+nonce))).status,200);
+ socket.send=raw=>{const frame=JSON.parse(raw);queueMicrotask(()=>t.webSocketMessage(socket,JSON.stringify({type:'response',id:frame.id,status:200,headers:[],body:Buffer.from('x'.repeat(4096)).toString('base64')})));};assert.equal((await t.fetch(new Request(pending.origin+'/v1/mobile/connection/probe?nonce='+nonce))).status,503);
+ t.requests=12;t.minute=Math.floor(Date.now()/60000);assert.equal((await t.fetch(new Request(pending.origin+'/v1/mobile/connection/probe?nonce='+nonce))).status,429);assert.equal(sent,1);
+});

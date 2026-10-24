@@ -89,9 +89,9 @@ export class Tenant extends DurableObject {
    if(this.ctx.getWebSockets().some(w=>w.deserializeAttachment()?.authorized))return fail('CONNECTOR_BUSY',409);
    const pair=new WebSocketPair();this.ctx.acceptWebSocket(pair[1]);pair[1].serializeAttachment({authorized:true,deadline:t.expiresAt});pair[1].send(JSON.stringify({type:'ready',expiresAt:t.expiresAt}));await this.schedule();return new Response(null,{status:101,webSocket:pair[0],headers:{'Sec-WebSocket-Protocol':'agbrio'}});
   }
-  if(t.kind==='TRIAL_PENDING'&&(u.pathname!=='/v1/mobile/connection/probe'||req.method!=='GET'))return fail('TRIAL_SETUP_PENDING',503);
+  if(t.kind==='TRIAL_PENDING'){if(u.pathname!=='/v1/mobile/connection/probe'||req.method!=='GET')return fail('TRIAL_SETUP_PENDING',503);if([...u.searchParams.keys()].length!==1||!/^([a-f0-9]{8}-){1}[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(u.searchParams.get('nonce')??''))return fail('INVALID_PROBE',400);}
   if(u.pathname.startsWith('/__agbrio/')||u.pathname.startsWith('/admin/'))return fail('NOT_FOUND',404);
-  const minute=Math.floor(Date.now()/60000);if(minute!==this.minute){this.minute=minute;this.requests=0;}if(++this.requests>240)return fail('RATE_LIMIT',429);
+  const minute=Math.floor(Date.now()/60000);if(minute!==this.minute){this.minute=minute;this.requests=0;}if(++this.requests>(t.kind==='TRIAL_PENDING'?12:240))return fail('RATE_LIMIT',429);
   const socket=this.ctx.getWebSockets().find(w=>w.deserializeAttachment()?.authorized);if(!socket)return unavailable(req,'COMPUTER_OFFLINE',503);
   if(this.pending.size>=12)return fail('HOST_BUSY',429);
   const origin=req.headers.get('Origin');if(origin&&origin!==t.origin)return fail('ORIGIN_REJECTED',403);
@@ -99,7 +99,7 @@ export class Tenant extends DurableObject {
   if(Number(req.headers.get('Content-Length'))>MAX_BODY)return fail('TOO_LARGE',413);
   let body;try{body=await boundedBody(req,MAX_BODY);}catch{return fail('TOO_LARGE',413);}
   const id=uuid(),frame={type:'request',id,method:req.method,path:u.pathname+u.search,headers:safeHeaders(req.headers),body:b64(body)};
-  return new Promise(resolve=>{const timer=setTimeout(()=>{this.pending.delete(id);resolve(fail('HOST_TIMEOUT_UNCERTAIN',504));},60000);this.pending.set(id,{resolve,timer});try{socket.send(JSON.stringify(frame));}catch{clearTimeout(timer);this.pending.delete(id);resolve(fail('HOST_DISCONNECTED_UNCERTAIN',503));}});
+  return new Promise(resolve=>{const timer=setTimeout(()=>{this.pending.delete(id);resolve(fail('HOST_TIMEOUT_UNCERTAIN',504));},60000);this.pending.set(id,{resolve,timer,probeNonce:t.kind==='TRIAL_PENDING'?u.searchParams.get('nonce'):null});try{socket.send(JSON.stringify(frame));}catch{clearTimeout(timer);this.pending.delete(id);resolve(fail('HOST_DISCONNECTED_UNCERTAIN',503));}});
  }
  async webSocketMessage(ws,message){try{
   const t=await this.lease(),a=ws.deserializeAttachment();if(!t||t.revoked||t.expiresAt<=Date.now()){ws.close(1008,'Subscription inactive');return;}
@@ -107,7 +107,8 @@ export class Tenant extends DurableObject {
   if(!a?.authorized){if(f.type!=='auth'||!validKey(f.token)||await hash(f.token)!==t.tokenHash||this.ctx.getWebSockets().some(w=>w!==ws&&w.deserializeAttachment()?.authorized)){ws.close(1008,'Authentication rejected');return;}ws.serializeAttachment({authorized:true,deadline:t.expiresAt});ws.send(JSON.stringify({type:'ready',expiresAt:t.expiresAt}));return;}
   if(f.type!=='response'||!validId(f.id))return;const p=this.pending.get(f.id);if(!p)return;
   if(!Number.isInteger(f.status)||f.status<200||f.status>599||!Array.isArray(f.headers))throw Error('INVALID_RESPONSE');
-  const body=unb64(f.body);if(body.length>MAX_BODY)throw Error('TOO_LARGE');const headers=new Headers(f.headers);const result=new Response([204,205,304].includes(f.status)?null:body,{status:f.status,headers:safeHeaders(headers,true)});
+  if(p.probeNonce&&(typeof f.body!=='string'||f.body.length>4096))throw Error('INVALID_PROBE_RESPONSE');
+  const body=unb64(f.body);if(p.probeNonce){if(body.length>2048)throw Error('INVALID_PROBE_RESPONSE');if(f.status>=200&&f.status<300){const probe=JSON.parse(new TextDecoder().decode(body));if(Object.keys(probe).length!==2||probe.nonce!==p.probeNonce||typeof probe.instance!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(probe.instance))throw Error('INVALID_PROBE_RESPONSE');}}if(body.length>MAX_BODY)throw Error('TOO_LARGE');const headers=new Headers(f.headers);const result=new Response([204,205,304].includes(f.status)?null:body,{status:f.status,headers:safeHeaders(headers,true)});
   clearTimeout(p.timer);this.pending.delete(f.id);p.resolve(result);
  }catch{ws.close(1008,'Invalid frame');this.finishPending();}}
  webSocketClose(ws){if(ws.deserializeAttachment()?.authorized)this.finishPending();}
