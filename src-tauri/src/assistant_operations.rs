@@ -42,13 +42,33 @@ pub(crate) fn normalize(input:&mut router_core::store::assistant_actions::Action
  }Ok(())
 }
 pub(crate) fn decode(operation:&str,input:Value)->Result<Operation,String>{
+ if operation=="RESPOND_CHAT"{validate_response_shape(&input)?;}
  let mut obj=input.as_object().cloned().ok_or("ASSISTANT_ARGUMENTS_INVALID")?;
  if obj.contains_key("operation"){return Err("ASSISTANT_ARGUMENTS_INVALID".into());}obj.insert("operation".into(),json!(operation));
  serde_json::from_value(Value::Object(obj)).map_err(|_|"ASSISTANT_OPERATION_OR_ARGUMENTS_INVALID".into())
 }
+fn validate_response_shape(value:&Value)->Result<(),String>{
+ let fail=|field:&str,expected:&str|format!("ASSISTANT_ARGUMENTS_INVALID: RESPOND_CHAT.{field} {expected}; use requestId/revision and questions[].id from read_chat; answers is a question-ID to answer-string map");
+ let outer=value.as_object().ok_or_else(||fail("input","must be an object"))?;
+ for key in outer.keys(){if !matches!(key.as_str(),"threadId"|"requestId"|"input"){return Err(fail("input","has an unknown field; allowed: threadId, requestId, input"));}}
+ for key in ["threadId","requestId"]{if value[key].as_str().is_none_or(|s|s.trim().is_empty()||s.len()>256){return Err(fail(key,"must be a nonempty string"));}}
+ let input=value["input"].as_object().ok_or_else(||fail("input","must be an object with revision and answers or decision"))?;
+ for key in input.keys(){if !matches!(key.as_str(),"revision"|"answers"|"decision"){return Err(fail("input","has an unknown field; allowed: revision, answers, decision"));}}
+ if input.get("revision").and_then(Value::as_u64).is_none_or(|n|n==0){return Err(fail("input.revision","must be the positive integer revision from read_chat"));}
+ let answers=input.get("answers").filter(|v|!v.is_null());let decision=input.get("decision").filter(|v|!v.is_null());
+ if answers.is_some()==decision.is_some(){return Err(fail("input","requires exactly one of answers or decision"));}
+ if let Some(answers)=answers{if answers.as_object().is_none_or(|a|a.is_empty()||a.len()>12||a.values().any(|v|v.as_str().is_none_or(|s|s.trim().is_empty()||s.len()>16000))){return Err(fail("input.answers","must be a nonempty object mapping exact question IDs to nonempty answer strings"));}}
+ if decision.is_some_and(|v|v.as_str().is_none_or(|s|s.trim().is_empty())){return Err(fail("input.decision","must be a decision string offered by the request"));}Ok(())
+}
 #[cfg(test)]
 mod scope_tests {
  use super::*;
+ #[test]fn respond_chat_errors_identify_fields_without_echoing_answer_text(){
+  let valid=json!({"threadId":"thread","requestId":"call","input":{"revision":1,"answers":{"[\"request_user_input_async\",\"call\",0]":"A"}}});assert!(decode("RESPOND_CHAT",valid.clone()).is_ok());
+  for (value,field) in [(json!({"threadId":"thread","requestId":"call","answers":{"q":"secret-answer"}}),"input"),(json!({"threadId":"thread","requestId":"call","input":{"answers":{"q":"secret-answer"}}}),"input.revision"),(json!({"threadId":"thread","requestId":"call","input":{"revision":1,"answers":["secret-answer"]}}),"input.answers"),(json!({"threadId":"thread","requestId":"call","input":{"revision":1,"answers":{"q":["secret-answer"]}}}),"input.answers")]{let error=decode("RESPOND_CHAT",value).err().unwrap();assert!(error.contains(field),"{error}");assert!(!error.contains("secret-answer"));}
+  let mut both=valid;both["input"]["decision"]=json!("accept");assert!(decode("RESPOND_CHAT",both).is_err());
+  assert!(decode("RESPOND_CHAT",json!({"threadId":"thread","requestId":"call","input":{"revision":1,"decision":"accept"}})).is_ok());
+ }
  #[test]
  fn global_bridge_operation_checks_exact_project_independently_of_selection(){
   let dir=tempfile::tempdir().unwrap();let store=std::sync::Arc::new(crate::RouterStore::open_at(dir.path().join("test.db")).unwrap());
@@ -82,7 +102,8 @@ pub(crate) fn validate(core:&RouterCore,op:&Operation)->Result<(),String>{
   Operation::AcknowledgeUnknownChat{thread_id,reply_id,generation}=>{chat_context(core,thread_id,*generation)?;let r=core.store.watch_reply(reply_id)?.ok_or("REPLY_NOT_FOUND")?;if r.thread_id!=*thread_id||r.status!="UNKNOWN"{return Err("ASSISTANT_UNKNOWN_RECEIPT_REQUIRED".into());}},
   Operation::RemoveWatchItem{kind,id,generation,removed}=>{if kind=="WATCH"{let expected=generation.ok_or("ASSISTANT_WATCH_GENERATION_REQUIRED")?;if *removed{watch(core,id,expected)?;}else if core.store.registered_codex_watch(id)?.generation!=expected{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}}else if kind=="EVENT"{core.store.codex_watch_event(id.parse().map_err(|_|"WATCH_SEQUENCE_INVALID")?)?;}else{return Err("WATCH_REMOVAL_INVALID".into());}},
   Operation::MarkNotificationRead{sequence}=>{core.store.codex_watch_event(*sequence)?;},
-  Operation::EnableWatch{thread_id}|Operation::StopChat{thread_id,..}|Operation::RespondChat{thread_id,..}=>if thread_id.trim().is_empty()||thread_id.len()>256{return Err("ASSISTANT_ARGUMENTS_INVALID".into());},
+  Operation::RespondChat{thread_id,request_id,input}=>{crate::watch_chat::assistant_response_command(core,thread_id,request_id,input)?;},
+  Operation::EnableWatch{thread_id}|Operation::StopChat{thread_id,..}=>if thread_id.trim().is_empty()||thread_id.len()>256{return Err("ASSISTANT_ARGUMENTS_INVALID".into());},
  }Ok(())
 }
 pub(crate) fn execute(core:&RouterCore,aid:&str,op:Operation)->Result<Value,String>{
@@ -116,7 +137,7 @@ pub(crate) fn execute(core:&RouterCore,aid:&str,op:Operation)->Result<Value,Stri
   Operation::PauseGoal{target,expected_goal_fingerprint}=>{let r=crate::goal_control::apply(core,aid,crate::goal_control::GoalInput{target,expected_goal_fingerprint},"PAUSE_GOAL",false)?;if r.status!="APPLIED"{return Err("GOAL_CONTROL_UNCERTAIN_CHECK_RECEIPT".into());}serde_json::to_value(r).map_err(|_|"ASSISTANT_RESPONSE_UNAVAILABLE".into())},
   Operation::ResumeGoal{target,expected_goal_fingerprint}=>{let owner=core.store.assistant_action_has_owner_answer(aid)?;let r=crate::goal_control::apply(core,aid,crate::goal_control::GoalInput{target,expected_goal_fingerprint},"RESUME_GOAL",owner)?;if r.status!="APPLIED"{return Err("GOAL_CONTROL_UNCERTAIN_CHECK_RECEIPT".into());}serde_json::to_value(r).map_err(|_|"ASSISTANT_RESPONSE_UNAVAILABLE".into())},
   Operation::StopChat{thread_id,turn_id}=>crate::watch_chat::command(core,crate::watch_chat::ChatCommand::Stop{thread_id,turn_id}),
-  Operation::RespondChat{thread_id,request_id,input}=>crate::watch_chat::command(core,crate::watch_chat::ChatCommand::Respond{thread_id,request_id,input}),
+  Operation::RespondChat{thread_id,request_id,input}=>{let command=crate::watch_chat::assistant_response_command(core,&thread_id,&request_id,&input)?;crate::watch_chat::command(core,command)},
   Operation::AcknowledgeUnknownChat{thread_id,reply_id,..}=>crate::watch_chat::command(core,crate::watch_chat::ChatCommand::AcknowledgeUnknown{thread_id,id:reply_id,confirmed:true}),
  }
 }

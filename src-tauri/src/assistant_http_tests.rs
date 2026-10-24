@@ -110,9 +110,10 @@ const cwd=process.argv[2];
 readline.createInterface({input:process.stdin}).on('line',line=>{
  const q=JSON.parse(line);if(q.id===undefined)return;
  if(q.method==='thread/start')fs.appendFileSync(cwd+'/native-creates.jsonl',JSON.stringify({cwd:q.params.cwd})+'\n');
- if(q.method==='turn/start'||q.method==='turn/steer')fs.appendFileSync(cwd+'/native-writes.jsonl',JSON.stringify({method:q.method,threadId:q.params.threadId})+'\n');
+ if(q.method==='turn/start'||q.method==='turn/steer')fs.appendFileSync(cwd+'/native-writes.jsonl',JSON.stringify({method:q.method,threadId:q.params.threadId,input:q.params.input})+'\n');
  const busy=fs.existsSync(cwd+'/native-active');
- const thread={id:q.method==='thread/start'?'10000000-0000-4000-8000-000000000071':q.params?.threadId,cwd,status:{type:busy?'active':'idle'},turns:[]};
+ const rollout=fs.existsSync(cwd+'/native-rollout-path')?fs.readFileSync(cwd+'/native-rollout-path','utf8'):null;
+ const thread={path:rollout,id:q.method==='thread/start'?'10000000-0000-4000-8000-000000000071':q.params?.threadId,cwd,status:{type:busy?'active':'idle'},turns:[]};
  const result=q.method==='initialize'?{userAgent:'Agbrio offline fixture'}:q.method==='thread/start'||q.method==='thread/read'||q.method==='thread/resume'?{thread,model:'fixture',reasoningEffort:'low'}:q.method==='thread/turns/list'?{data:busy?[{id:'fixture-active-turn',status:'inProgress',itemsView:'notLoaded'}]:[],nextCursor:null}:q.method==='thread/items/list'?{data:[],nextCursor:null}:q.method==='turn/steer'?{turnId:'fixture-active-turn'}:q.method==='thread/goal/get'?{goal:null}:q.method==='turn/start'?{turn:{id:'fixture-turn-'+q.params.threadId,status:'inProgress'}}:{};
  process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:q.id,result})+'\n');
  if(q.method==='thread/resume'&&busy)process.stdout.write(JSON.stringify({method:'turn/started',params:{threadId:q.params.threadId,turn:{id:'fixture-active-turn'}}})+'\n');
@@ -452,4 +453,31 @@ fn instance_fixture_for_sdk_and_browser(){
   core.store.revoke_assistant_grant(&grant.id).unwrap();assert_eq!(rpc("agbrio_diagnostics").send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
   assert_eq!(core.session.lock().unwrap().adapter.is_some(),had_adapter);handle.shutdown().await;
  });
+}
+
+#[test]#[ignore="explicit isolated CODEX_HOME fixture, native protocol stub only; never touches owner chats"]
+fn mcp_async_question_response_uses_exact_card_and_one_durable_answer(){
+ let root=std::path::PathBuf::from(std::env::var("AGBRIO_MCP_ASYNC_QA_ROOT").unwrap());assert_eq!(std::env::var_os("CODEX_HOME").unwrap(),root.as_os_str());assert!(root.is_absolute()&&root.is_dir());
+ let sessions=root.join("sessions");std::fs::create_dir_all(&sessions).unwrap();let rollout=sessions.join(format!("fixture-{}.jsonl",uuid::Uuid::new_v4()));
+ let(dir,core,legacy,_)=fixture();let old=core.store.assistant_grant(&legacy).unwrap();let g=core.store.create_assistant_instance_grant(router_core::store::assistant::InstanceGrantInput{label:"Question QA".into(),rules:old.rules,expires_at:now_ms()+600000}).unwrap();
+ let rows=vec![json!({"type":"session_meta","payload":{"id":"qa-source-thread"}}),json!({"type":"response_item","payload":{"type":"function_call","name":"request_user_input_async","call_id":"fixture-question","arguments":json!({"questions":[{"title":"Which?","options":["A","B"]}]}).to_string()}})];
+ std::fs::write(&rollout,rows.iter().map(Value::to_string).collect::<Vec<_>>().join("\n")+"\n").unwrap();std::fs::write(dir.path().join("native-rollout-path"),rollout.to_string_lossy().as_bytes()).unwrap();
+ let busy=std::env::var("AGBRIO_ASYNC_BUSY").as_deref()==Ok("1");if busy{std::fs::write(dir.path().join("native-active"),b"active").unwrap();core.session.lock().unwrap().adapter.as_mut().unwrap().request("thread/resume",json!({"threadId":"qa-source-thread"})).unwrap();}
+ let call=|name:&str,input:Value|crate::assistant_mcp::call(&core,&g.id,name,input);
+ let chat=call("agbrio_read_chat",json!({"threadId":"qa-source-thread"})).unwrap();let card=&chat["state"]["asyncQuestions"][0];assert_eq!(card["requestId"],"fixture-question");let key=card["questions"][0]["id"].as_str().unwrap();
+ let input=json!({"threadId":"qa-source-thread","requestId":card["requestId"],"input":{"revision":card["revision"],"answers":{key:"A"}}});
+ let action=call("agbrio_prepare_action",json!({"requestId":"async-answer-one","operation":"RESPOND_CHAT","input":input})).unwrap();let approve=json!({"actionId":action["id"],"expectedHash":action["payloadHash"],"ruleId":"continue","useOwnerAnswer":false,"assessment":"Delegated fictional choice"});
+ let result=call("agbrio_execute_action",approve.clone()).unwrap();assert_eq!(result["status"],"APPLIED","{result}");assert_eq!(call("agbrio_execute_action",approve).unwrap(),result);
+ let writes=std::fs::read_to_string(dir.path().join("native-writes.jsonl")).unwrap();assert_eq!(writes.lines().count(),1);assert!(writes.contains(if busy{"turn/steer"}else{"turn/start"}));assert!(writes.contains("send_user_message_question_reply"));assert!(writes.contains("fixture-question"));
+ let mut changed=input.clone();changed["input"]["answers"][key]=json!("B");assert!(call("agbrio_prepare_action",json!({"requestId":"different-answer","operation":"RESPOND_CHAT","input":changed})).unwrap_err().contains("DIFFERENT_CONTENT"));
+ let answered=json!({"type":"response_item","payload":{"type":"message","role":"user","content":[{"text":format!("<send_user_message_question_reply>[{{\"questionItemId\":{},\"answer\":\"A\"}}]</send_user_message_question_reply>",json!(key))}]}});
+ use std::io::Write;writeln!(std::fs::OpenOptions::new().append(true).open(&rollout).unwrap(),"{}",answered).unwrap();
+ assert!(call("agbrio_prepare_action",json!({"requestId":"answered-card","operation":"RESPOND_CHAT","input":input})).unwrap_err().contains("EXPIRED"));assert_eq!(std::fs::read_to_string(dir.path().join("native-writes.jsonl")).unwrap().lines().count(),1);
+ std::fs::remove_file(rollout).unwrap();core.shutdown_owned_adapter();
+}
+
+#[test]fn mcp_response_argument_errors_expose_field_and_no_receipt_or_private_answer(){
+ let(_d,core,_,_)=fixture();let g=core.store.connect_assistant_instance(router_core::store::assistant::AssistantConnectionInput{label:"Argument diagnostics".into(),expires_at:now_ms()+600000}).unwrap();
+ let result=crate::assistant_mcp::rpc(&core,&g.id,json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"agbrio_prepare_action","arguments":{"requestId":"bad-response","operation":"RESPOND_CHAT","input":{"threadId":"qa-source-thread","requestId":"question","input":{"answers":{"q":"private-answer-sentinel"}}}}}}));
+ assert_eq!(result["result"]["isError"],true);assert_eq!(result["result"]["structuredContent"]["error_code"],"ASSISTANT_ARGUMENTS_INVALID");assert_eq!(result["result"]["structuredContent"]["receiptRequired"],false);assert!(result.to_string().contains("input.revision"));assert!(!result.to_string().contains("private-answer-sentinel"));
 }

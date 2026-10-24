@@ -150,6 +150,24 @@ fn async_answer_text(card:&Value,answers:&std::collections::HashMap<String,Strin
   let rows=questions.iter().map(|q|{let key=q["id"].as_str().ok_or("REPLY_REQUEST_EXPIRED")?;let answer=answers.get(key).filter(|s|!s.trim().is_empty()&&s.len()<=16000).ok_or("REPLY_ANSWER_INVALID")?;Ok(json!({"questionItemId":key,"question":q["label"],"answer":answer}))}).collect::<Result<Vec<Value>,&str>>()?;
   Ok(format!("<send_user_message_question_reply>\n{}\n</send_user_message_question_reply>",serde_json::to_string(&rows).map_err(|_|"REPLY_ANSWER_INVALID")?))
 }
+/// MCP uses the same native response paths as owner UI, never a free-form fallback.
+pub(crate) fn assistant_response_command(core:&RouterCore,thread:&str,request:&str,input:&MobileCodexResponseInput)->Result<ChatCommand,String>{
+ let pending=core.session.lock().map_err(|_|"Router session unavailable")?.pending_codex_requests.get(request).cloned();
+ if let Some(r)=pending{
+  if r.thread_id!=thread||r.responded||r.revision!=input.revision{return Err("REPLY_REQUEST_EXPIRED".into());}
+  let value=MobileCodexResponseInput{revision:input.revision,decision:input.decision.clone(),answers:input.answers.clone()};
+  server_request_response_result(&r,value)?;
+  return Ok(ChatCommand::Respond{thread_id:thread.into(),request_id:request.into(),input:MobileCodexResponseInput{revision:input.revision,decision:input.decision.clone(),answers:input.answers.clone()}});
+ }
+ let view=state(core,thread)?;
+ let card=view.async_questions.iter().find(|q|q["requestId"]==request).ok_or("REPLY_REQUEST_EXPIRED")?;
+ if card["responseSent"]!=false||card["revision"].as_u64()!=Some(input.revision){return Err("REPLY_REQUEST_EXPIRED".into());}
+ if input.decision.is_some(){return Err("ASSISTANT_ARGUMENTS_INVALID: RESPOND_CHAT.input.answers is required for asyncQuestions".into());}
+ let answers=input.answers.clone().ok_or("ASSISTANT_ARGUMENTS_INVALID: RESPOND_CHAT.input.answers is required")?;
+ let text=async_answer_text(card,&answers)?;let id=router_core::codex::adapter::CodexAdapter::async_answer_id(thread,request);
+ if let Some(prior)=core.store.watch_reply(&id)?{if prior.thread_id!=thread||prior.text!=text{return Err("REPLY_ID_REUSED_WITH_DIFFERENT_CONTENT".into());}if matches!(prior.status.as_str(),"SENDING"|"UNKNOWN"){return Err("REPLY_PREVIOUS_PENDING_CHECK_FIRST".into());}}
+ Ok(ChatCommand::AsyncRespond{thread_id:thread.into(),id,request_id:request.into(),revision:input.revision as i64,answers})
+}
 pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{match c{
  ChatCommand::ChildOpen{..}|ChatCommand::ClaudeDecision{..}|ChatCommand::ChildHistory{..}|ChatCommand::ChildNotifications{..}=>Err("CLAUDE_OPERATION_NOT_SUPPORTED".into()),
  ChatCommand::GoalControl{thread_id,id,operation,input,confirmed}=>{require_goal_confirmation(confirmed)?;if input.target.thread_id!=thread_id{return Err("GOAL_TARGET_CHANGED".into());}serde_json::to_value(crate::goal_control::apply(core,&id,input,&operation,true)?).map_err(|_|"GOAL_RESPONSE_INVALID".into())},

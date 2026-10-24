@@ -1,3 +1,26 @@
+## Answering Codex questions through MCP
+
+Use `agbrio_read_chat` and copy the card's exact `requestId`, integer `revision`, and every `questions[].id`. Both `state.requests` and `state.asyncQuestions` use the reviewed `RESPOND_CHAT` operation:
+
+```json
+{
+  "requestId": "unique-action-request-id",
+  "operation": "RESPOND_CHAT",
+  "input": {
+    "threadId": "exact-native-thread-id",
+    "requestId": "exact-card-request-id",
+    "input": {
+      "revision": 1,
+      "answers": {"exact-question-id-from-card": "Selected option or written answer"}
+    }
+  }
+}
+```
+
+The outer `requestId` identifies the prepared action; the nested `requestId` identifies the question card. The innermost `input` is required. Async question IDs are JSON-encoded strings: preserve them exactly, rather than replacing them with the option label, number or array. `revision: 1` above is an example: always copy the current card revision. Native permission cards instead use `input: {"revision": <current revision>, "decision": "<offered decision>"}`. Submit exactly one of `answers` or `decision`.
+
+Prepare, review, execute, and inspect the action receipt using the existing grant. Async answers share the owner's durable answer ID and native structured answer wrapper; active controllable turns use guidance, idle turns send, unavailable guidance never queues implicitly. Already-answered, changed or expired cards are rejected. Do not substitute a plain SEND_CHAT for a failed response, invent an owner decision, or resend an answer already delivered. Argument errors identify the bad field without echoing answer content; `receiptRequired: false` applies to these pre-prepare format errors only. Actual uncertain writes still require their receipt.
+
 ## 2026-10-24 — Create an executor and follow up immediately
 
 An authorized INSTANCE assistant can prepare CREATE_CHAT with provider:CODEX, the exact existing project directory and an optional display label. Review and execute once, then retain the returned threadId/watch.generation. Creation sends no first task; use a separate reviewed SEND_CHAT for the actual delegated work. Empty conversations are not promised to survive a backend restart before the first real task. Inspect the original action receipt after uncertainty, never create again to replace an unknown result.
