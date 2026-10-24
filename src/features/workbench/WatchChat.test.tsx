@@ -46,7 +46,7 @@ it('a quiet Claude sender retains the draft and only queues after an explicit ch
  fireEvent.change(screen.getByRole('textbox'),{target:{value:'Owner approved actual reply'}});
  await screen.findByText('发送连接尚未就绪，可选择排队');
  expect(screen.getByRole('button',{name:'调整当前任务'})).toBeDisabled();expect(command.mock.calls.filter(([c])=>c.action==='SEND')).toHaveLength(0);fireEvent.click(screen.getByRole('button',{name:'排队'}));fireEvent.click(screen.getByRole('button',{name:'排队，完成后发送'}));
- await screen.findByText('已排队');expect(screen.getAllByText('已排队')).toHaveLength(1);expect(screen.queryByText(/请先处理这条回复/)).toBeNull();
+ await screen.findByRole('button',{name:'已排队'});expect(screen.getAllByRole('button',{name:'已排队'})).toHaveLength(1);expect(screen.queryByText(/请先处理这条回复/)).toBeNull();
  expect(command.mock.calls.find(([c])=>c.action==='SEND')?.[0]).toMatchObject({threadId:native.threadId,text:'Owner approved actual reply'});
  expect(screen.getByRole('textbox')).toHaveValue('');
 });
@@ -92,7 +92,7 @@ it('opens one chronological native transcript and prepends older pages without d
  const receipt={...response('r'),turnId:'turn-a',text:'当前的问题'};
  const view=render(<WatchChat original={original} api={{state:vi.fn(async()=>({...state,replies:[receipt]})),command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
  await screen.findByRole('button',{name:'加载更早消息'});
- const rows=()=>[...view.container.querySelectorAll('.v4-chat-reader>.v4-chat-message')].map(e=>e.textContent);
+ const rows=()=>[...view.container.querySelectorAll('.v4-chat-reader>.v4-chat-message-row>.v4-chat-message')].map(e=>e.textContent);
  expect(rows()).toEqual([expect.stringContaining('之前的问题'),expect.stringContaining('之前的回答'),expect.stringContaining('当前的问题'),expect.stringContaining('完整原文')]);
  expect(screen.getAllByText('当前的问题')).toHaveLength(1);
  fireEvent.click(screen.getByRole('button',{name:'加载更早消息'}));await screen.findByText('更早的回答');
@@ -170,15 +170,16 @@ it("moves one submission into the transcript immediately and rapid submits canno
  expect(input).toHaveValue("");fireEvent.submit(form);expect(command.mock.calls.filter(([v])=>v.action==="SEND")).toHaveLength(1);
 });
 it("leaving before acknowledgement keeps the empty composer and exact receipt across reopen",async()=>{
+ let confirmed=false;
  let finish:(r:WatchReply)=>void=()=>{};let id="";
- const command=vi.fn(async(input)=>{if(input.action==="HISTORY")return {messages:[],nextCursor:null};if(input.action==="SEND"){id=input.id as string;return new Promise<WatchReply>(resolve=>{finish=resolve;});}if(input.action==="RECEIPT")return response(id);throw Error("unexpected command");});
+ const command=vi.fn(async(input)=>{if(input.action==="HISTORY")return {messages:[],nextCursor:null};if(input.action==="SEND"){id=input.id as string;return new Promise<WatchReply>(resolve=>{finish=resolve;});}if(input.action==="RECEIPT")return response(id,confirmed?"SENT":"UNKNOWN");throw Error("unexpected command");});
  const api:WatchChatApi={state:vi.fn(async()=>state),command:command as WatchChatApi["command"]};
  const view=render(<WatchChat original={original} api={api} onBack={()=>{}}/>);fireEvent.change(screen.getByLabelText("回复这个 Codex 对话"),{target:{value:"第一条回复"}});
  await waitFor(()=>expect(screen.getByRole("button",{name:"发送回复"})).toBeEnabled());fireEvent.click(screen.getByRole("button",{name:"发送回复"}));view.unmount();finish(response(id));
  render(<WatchChat original={original} api={api} onBack={()=>{}}/>);
- await screen.findByRole('button',{name:'检查发送记录'});expect(screen.getByLabelText("回复这个 Codex 对话")).toHaveValue("");
- expect(screen.getByRole("button",{name:"发送回复"})).toBeDisabled();
- fireEvent.click(screen.getByRole('button',{name:'检查发送记录'}));await waitFor(()=>expect(sessionStorage.getItem('aiwr-watch-draft:exact-original:pending')).toBeNull());
+ fireEvent.click(await screen.findByRole('button',{name:'送达尚未确认'}));await screen.findByRole('button',{name:'检查发送记录'});expect(screen.getByLabelText("回复这个 Codex 对话")).toHaveValue("");
+ expect(document.querySelector('.v4-chat-composer button[type="submit"]')).toBeDisabled();
+ confirmed=true;fireEvent.click(screen.getByRole('button',{name:'检查发送记录'}));await waitFor(()=>expect(sessionStorage.getItem('aiwr-watch-draft:exact-original:pending')).toBeNull());
  expect(command.mock.calls.filter(([v])=>v.action==="SEND")).toHaveLength(1);
 });
 it('does not display an old cancelled queue after the current result or replay it',async()=>{
@@ -196,7 +197,7 @@ it('unknown receipt recovery requires the owner click, preserves uncertainty and
  const command=vi.fn(async(input)=>{if(input.action==='HISTORY')return {messages:[],nextCursor:null};if(input.action==='ACKNOWLEDGE_UNKNOWN'){status='ACKNOWLEDGED';return {ok:true};}throw Error('unexpected write');});
  const api={state:vi.fn(async()=>({...state,replies:[{...unknown,status,errorCode:status==='UNKNOWN'?'REPLY_ACK_UNOBSERVED':'OWNER_CHECKED_DELIVERY_STILL_UNKNOWN'}]})),command:command as WatchChatApi['command']};
  render(<WatchChat original={original} api={api} onBack={()=>{}}/>);
- await screen.findByText('发送详情');fireEvent.click(screen.getByText('发送详情'));
+ fireEvent.click(await screen.findByRole('button',{name:'送达尚未确认'}));await screen.findByRole('dialog',{name:'发送详情'});
  const check=await screen.findByRole('button',{name:'我已检查原对话，继续输入新回复'});
  expect(command.mock.calls.every(([input])=>input.action==='HISTORY')).toBe(true);
  fireEvent.click(check);
@@ -212,7 +213,7 @@ it("a known unsent attempt restores its draft without losing newer input",async(
  fireEvent.change(screen.getByLabelText('回复这个 Codex 对话'),{target:{value:'第一条回复'}});
  await waitFor(()=>expect(screen.getByRole('button',{name:'发送回复'})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:'发送回复'}));
  await screen.findByText('已确认这次没有发送。草稿保留，可检查后重新发送。');expect(screen.getByLabelText('回复这个 Codex 对话')).toHaveValue('第一条回复');
- expect(screen.getByText('未发送成功')).toBeVisible();
+ expect(screen.getByRole('button',{name:'未发送成功'})).toBeVisible();
  expect(sessionStorage.getItem('aiwr-watch-draft:exact-original:pending')).toBeNull();
 });
 it("an attempt the Host never received is cancelled and its draft comes back for an explicit resend",async()=>{let id="";const command=vi.fn(async(input)=>{if(input.action==="SEND"){id=input.id as string;throw Error("network lost");}if(input.action==="RECEIPT")return null;if(input.action==="ABANDON")return{cancelled:true};throw Error("unexpected");});const api:WatchChatApi={state:vi.fn(async()=>({...state,replies:[]})),command:command as WatchChatApi["command"]};render(<WatchChat original={original} api={api} onBack={()=>{}}/>);fireEvent.change(screen.getByLabelText("回复这个 Codex 对话"),{target:{value:"没收到的回复"}});await waitFor(()=>expect(screen.getByRole("button",{name:"发送回复"})).toBeEnabled());fireEvent.click(screen.getByRole("button",{name:"发送回复"}));await waitFor(()=>expect(command.mock.calls.find(([x])=>x.action==="ABANDON")?.[0].id).toBe(id));await waitFor(()=>expect(screen.getByLabelText("回复这个 Codex 对话")).toHaveValue("没收到的回复"));expect(command.mock.calls.filter(([x])=>x.action==="SEND")).toHaveLength(1);});
@@ -295,8 +296,8 @@ it('a later exact SENT observation clears a previously uncertain attempt without
  const command=vi.fn(async(c)=>c.action==='RECEIPT'?response(attempt.id,'UNKNOWN'):{messages:[],nextCursor:null});
  const api:WatchChatApi={state:async()=>current,cachedState:()=>current,subscribe:(_id,fn)=>{notify=fn;return()=>{};},command:command as WatchChatApi['command']};
  const view=render(<WatchChat original={original} api={api} onBack={()=>{}}/>);
- await screen.findByRole('button',{name:'检查发送记录'});
- expect(screen.getByRole('button',{name:'检查发送记录'}).closest('.v4-chat-message')).not.toBeNull();
+ fireEvent.click(await screen.findByRole('button',{name:'送达尚未确认'}));await screen.findByRole('button',{name:'检查发送记录'});
+ expect(view.container.querySelector('.v4-chat-message-row .v4-delivery-trigger')).not.toBeNull();
  expect(screen.queryByText('上一次回复仍需确认，草稿已保留。')).toBeNull();
  current={...current,replies:[response(attempt.id,'SENT')]};act(()=>notify());
  await waitFor(()=>expect(sessionStorage.getItem('aiwr-watch-draft:exact-original:pending')).toBeNull());

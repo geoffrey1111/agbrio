@@ -1,3 +1,4 @@
+import {MessageDelivery} from './MessageDelivery';
 import {NativeTurnActions} from './NativeTurnActions';
 import {ClaudeDecisionCards} from './ClaudeDecisionCards';
 import {ClaudeTaskStatus,ClaudeChildReader,claudeTaskSummary} from "./ClaudeTaskStatus";
@@ -21,7 +22,6 @@ import {CodexRequestCard as RequestCard} from "./CodexRequestCard";
 import {ConversationAvatar} from "./ConversationHome";
 
 const states: Record<string, string> = { get IDLE(){return uiText("尚无任务");}, get RUNNING(){return uiText("正在执行");}, get ACTION_REQUIRED(){return uiText("需要你确认或回答");}, get RESULT_READY(){return uiText("结果已到达");}, get RESULT_PENDING(){return uiText("正在读取结果");}, get FAILED(){return uiText("执行失败");}, get INTERRUPTED(){return uiText("已停止");}, get INCOMPLETE(){return uiText("执行状态待确认");}, get UNKNOWN(){return uiText("状态待确认");} };
-const replyStates: Record<string, string> = { get QUEUED(){return uiText("已排队");}, get SENDING(){return uiText("正在发送");}, get SENT(){return uiText("已发送");}, get UNKNOWN(){return uiText("送达尚未确认");}, get ACKNOWLEDGED(){return uiText("已检查，送达状态仍未确定");}, get CANCELLED(){return uiText("已取消排队");}, get FAILED(){return uiText("未发送成功");} };
 const key = (id: string) => `aiwr-watch-draft:${id}`;
 type FileRef = { id: string; name: string; size: number };
 type Draft = { text: string; files: FileRef[]; model: string; effort: string };
@@ -48,6 +48,7 @@ export type WatchControls={enabled:boolean;toggle:()=>Promise<void>;remove:()=>P
 export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知"),controls }: { original: WatchEvent | CodexWatch; api: WatchChatApi; onBack: () => void;backLabel?:string;controls?:WatchControls }) {
  useLanguage();
  const modeGroup=useId();
+ const [sendInFlight,setSendInFlight]=useState(false);
  const claude=original.threadId.startsWith("claude_code:");
  const provider=claude?"Claude Code":"Codex";
  const [draft, setDraftState] = useState(() => loadDraft(original.threadId));
@@ -168,7 +169,7 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
   followLatest.current=true;
   if(selectedText===undefined)setDraft({...submitted,text:"",files:[]});
   input.current?.focus({preventScroll:true});
-  let reply: WatchReply;
+  let reply: WatchReply;setSendInFlight(true);
   try { reply = await command<WatchReply>("SEND", request); } catch (e) {
    if (!mounted.current) return;
    // A refusal usually means nothing was stored. Ask the Host for this exact id: with
@@ -184,7 +185,7 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
    if (!mounted.current) return;
    setError(chatError(e,provider));
    setNotice(settled?uiText("这条没有发出，原文已放回输入框。"):uiText("回复是否送达尚未确认。请检查发送记录；草稿已保留，不会自动重发。"));
-   await refresh(); return settled?undefined:request.id; }
+   await refresh(); return settled?undefined:request.id; } finally {if(mounted.current)setSendInFlight(false);}
   if (!mounted.current) return;
   if(reply.id!==request.id||reply.threadId!==original.threadId)throw Error("REPLY_TARGET_CHANGED_REFRESH");
   setState(current=>current?{...current,replies:[reply,...current.replies.filter(r=>r.id!==reply.id)]}:current);
@@ -204,7 +205,7 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
  const sourceSnapshot=childNotification?(state?.watch.snapshot??{turnId:null,itemId:null,text:''}):!('sequence' in original)&&state?state.watch.snapshot:original.snapshot;
  const sourceMessage={id:sourceSnapshot.itemId??'notification',turnId:sourceSnapshot.turnId??'notification',role:'assistant' as const,text:sourceSnapshot.text||uiText("暂时没有可读取的公开消息。"),seenAt:('observedAt' in original?original.observedAt:original.checkedAt)??Date.now()};
  const currentMessage=latest?.turnId&&latest?.itemId&&latest.text?(state?.publicMessages?.find(m=>m.turnId===latest.turnId&&m.id===latest.itemId)??{id:latest.itemId,turnId:latest.turnId,role:'assistant' as const,text:latest.text}):undefined;
- const localPending:WatchReply|undefined=unconfirmed&&!state?.replies.some(r=>r.id===unconfirmed.id)?{id:unconfirmed.id,threadId:original.threadId,sourceSequence:unconfirmed.sourceSequence??null,expectedTurnId:unconfirmed.expectedTurnId??null,mode:unconfirmed.mode??"SEND",text:unconfirmed.text,options:unconfirmed.options,status:busy?"SENDING":"UNKNOWN",turnId:null,errorCode:null,createdAt:unconfirmed.createdAt??Date.now()}:undefined;
+ const localPending:WatchReply|undefined=unconfirmed&&!state?.replies.some(r=>r.id===unconfirmed.id)?{id:unconfirmed.id,threadId:original.threadId,sourceSequence:unconfirmed.sourceSequence??null,expectedTurnId:unconfirmed.expectedTurnId??null,mode:unconfirmed.mode??"SEND",text:unconfirmed.text,options:unconfirmed.options,status:sendInFlight?"SENDING":"UNKNOWN",turnId:null,errorCode:null,createdAt:unconfirmed.createdAt??Date.now()}:undefined;
  const timeline=chatTimeline(history,publicMessages,[...(state?.replies??[]),...(localPending?[localPending]:[])],sourceMessage,historyLoaded,currentMessage,"sequence" in original&&latest?.turnId!==sourceMessage.turnId,currentAttemptIds.current);
  const [historyCoverage,setHistoryCoverage]=useState<string>();
  const [newMessages,setNewMessages]=useState(false);
@@ -239,22 +240,13 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
    {childNotification&&<details className="v4-chat-collaboration" open><summary>{uiText('子对话结果')} · {original.label}</summary><MarkdownMessage text={original.snapshot.text}/></details>}
    {claude&&state?.taskTree&&<ClaudeTaskStatus tree={state.taskTree} api={api} threadId={original.threadId} generation={state.watch.generation} notificationsEnabled={state.childResultsEnabled??false} onNotificationsChanged={refresh} onOpenChild={node=>void openChildConversation(node)}/>}
    <div className="v4-chat-history">{historyCursor&&<button type="button" disabled={busy||historyReading.current} onClick={()=>void readHistory(historyCursor)}>{uiText("加载更早消息")}</button>}{historyCoverage==="ADAPTER_RECEIVED_ONLY"&&<p role="status">{uiText("暂时只能读取已收到的消息，完整历史尚不可用。")}</p>}{!historyLoaded&&historyRetry.current&&!readWarning&&<button type="button" disabled={busy||historyReading.current} onClick={()=>void readHistory(null,true)}>{uiText("读取对话消息")}</button>}</div>
-   {timeline.filter(m=>m.id!=="notification"||!historyLoaded||!history.length).map(m=>{const r=m.receipt;if(m.kind==="COLLABORATION")return <details key={`${m.turnId}:${m.id}`} className="v4-chat-collaboration"><summary>{uiText("内部协作消息")}{m.timestamp?` · ${new Date(m.timestamp).toLocaleTimeString(getLanguage(),{hour:"2-digit",minute:"2-digit"})}`:""}</summary><MarkdownMessage text={m.text}/></details>;return <article key={`${m.turnId}:${m.id}`} className="v4-chat-message" data-role={m.role} data-message-kind={m.id.startsWith("receipt:")?"receipt":"native"} aria-label={m.source?uiText("完整通知内容"):undefined}>
-    {(()=>{const meta=m.role==='user'?(r&&r.status!=='SENT'?replyStates[r.status]:''):m.source&&'sequence' in original&&latest?.turnId!==m.turnId?`${provider} · ${uiText("通知原文")}`:'';return meta?<p className="v4-meta">{meta}</p>:null;})()}
+   {timeline.filter(m=>m.id!=="notification"||!historyLoaded||!history.length).map(m=>{const r=m.receipt;if(m.kind==="COLLABORATION")return <details key={`${m.turnId}:${m.id}`} className="v4-chat-collaboration"><summary>{uiText("内部协作消息")}{m.timestamp?` · ${new Date(m.timestamp).toLocaleTimeString(getLanguage(),{hour:"2-digit",minute:"2-digit"})}`:""}</summary><MarkdownMessage text={m.text}/></details>;return <div key={`${m.turnId}:${m.id}`} className="v4-chat-message-row" data-role={m.role}>{r&&<MessageDelivery status={r.status}>{r.status==='QUEUED'&&<button type="button" disabled={busy} onClick={()=>void act(async()=>{await command('CANCEL',{id:r.id});await refresh();})}>{uiText("取消排队")}</button>}{r.status==='UNKNOWN'&&<><p>{uiText("回复可能已发出。请先检查原对话，不会自动重发。")}</p>{unconfirmed?.id===r.id&&<button type="button" disabled={busy} onClick={()=>void act(checkReceipt)}>{uiText("检查发送记录")}</button>}{unconfirmed?.id===r.id&&<button type="button" disabled={busy} onClick={()=>void act(async()=>{const v=await command<{cancelled:boolean}>("ABANDON",{id:unconfirmed.id});if(v.cancelled){restoreAttempt(unconfirmed);clearReceipt();}await refresh();})}>{uiText("取消尚未发送的尝试")}</button>}{r.id!==localPending?.id&&<button type="button" disabled={busy} onClick={()=>void act(()=>acknowledgeUnknown(r))}>{uiText("我已检查原对话，继续输入新回复")}</button>}</>}{r.status==='FAILED'&&<p>{uiText("这条回复没有完成发送。请检查当前对话后重新输入。")}</p>}</MessageDelivery>}<article className="v4-chat-message" data-role={m.role} data-message-kind={m.id.startsWith("receipt:")?"receipt":"native"} aria-label={m.source?uiText("完整通知内容"):undefined}>
+    {(()=>{const meta=m.role==='user'?'':m.source&&'sequence' in original&&latest?.turnId!==m.turnId?`${provider} · ${uiText("通知原文")}`:'';return meta?<p className="v4-meta">{meta}</p>:null;})()}
     <MarkdownMessage text={m.role==='user'?ownerMessageText(r?r.text:m.text):m.text} media={m.source?media:messageMedia({kind:'WATCH',threadId:original.threadId,turnId:m.turnId,itemId:m.id})}/>
     {r&&r.options.attachments.length>0&&<details className="v4-chat-attachments"><summary>{uiText('附件 · {0} 项',r.options.attachments.length)}</summary><MarkdownMessage text={m.text.startsWith(r.text)?m.text.slice(r.text.length):uiText('附件已随这条消息发送。')} media={messageMedia({kind:'WATCH',threadId:original.threadId,turnId:m.turnId,itemId:m.id})}/></details>}
-    {r?.status==='QUEUED'&&<button type="button" disabled={busy} onClick={()=>void act(async()=>{await command('CANCEL',{id:r.id});await refresh();})}>{uiText("取消排队")}</button>}
-    {r?.status==='UNKNOWN'&&<div className="v4-chat-delivery">
-     {unconfirmed?.id===r.id&&<button type="button" disabled={busy} onClick={()=>void act(checkReceipt)}>{uiText("检查发送记录")}</button>}
-     <details><summary>{uiText("发送详情")}</summary><p>{uiText("回复可能已发出。请先检查原对话，不会自动重发。")}</p>
-      {unconfirmed&&unconfirmed.id===r.id&&<button type="button" disabled={busy} onClick={()=>void act(async()=>{const v=await command<{cancelled:boolean}>("ABANDON",{id:unconfirmed.id});if(v.cancelled){restoreAttempt(unconfirmed);clearReceipt();setNotice(uiText("已取消尚未发送的尝试。草稿保留。"));}else setNotice(uiText("这条回复已进入发送，请查看原对话，不会重复发送。"));await refresh();})}>{uiText("取消尚未发送的尝试")}</button>}
-      {r.id!==localPending?.id&&<button type="button" disabled={busy} onClick={()=>void act(()=>acknowledgeUnknown(r))}>{uiText("我已检查原对话，继续输入新回复")}</button>}
-     </details>
-    </div>}
-    {r?.status==='FAILED'&&<p role="status">{uiText("这条回复没有完成发送。请检查当前对话后重新输入。")}</p>}
     {m.card&&<NativeTurnActions card={m.card} replies={state?.replies??[]} disabled={busy||blocked||steerUnavailable} unavailable={nativeCardUnavailable(m,timeline)} submit={text=>act(()=>send(nextMode,text))}/>}
     {m.source&&<div className="v4-chat-message-tools"><button type="button" aria-label={uiText("复制原文")} onClick={()=>void act(async()=>{await navigator.clipboard.writeText(m.text);setNotice(uiText("原文已复制。"));})}><Copy size={24} aria-hidden="true"/></button>{'sequence' in original&&<time className="v4-meta">{new Date(sourceMessage.seenAt).toLocaleString(getLanguage())}</time>}</div>}
-   </article>;})}
+   </article></div>;})}
    {state?.requests.filter(r=>r.kind!=="USER_INPUT").map(r => <RequestCard key={`${r.requestId}:${r.revision}`} request={r} disabled={busy} respond={extra => act(async () => { await command("RESPOND", { requestId: r.requestId, input: extra }); await refresh(); })} />)}
    {state?.requests.filter(r=>r.kind==="USER_INPUT").map(r=><RequestCard key={`${r.requestId}:${r.revision}`} request={r} disabled={busy} respond={extra=>act(async()=>{await command("RESPOND",{requestId:r.requestId,input:extra});await refresh();})}/>)}
    {state?.asyncQuestions?.map(r=><RequestCard key={`async:${r.requestId}`} request={r} disabled={busy||blocked} allowSkip={false} lockAfterSubmit persistAnswers={false} respond={extra=>act(async()=>{const input=extra as {revision:number;answers:Record<string,string>};const id=r.answerId;currentAttemptIds.current.add(id);await command("ASYNC_RESPOND",{id,requestId:r.requestId,revision:input.revision,answers:input.answers});await refresh();})}/>)}
