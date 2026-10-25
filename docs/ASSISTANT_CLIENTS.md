@@ -1,3 +1,30 @@
+## 创建 Codex 对话时选择模型
+
+管理助手先调用 `agbrio_list_codex_models`，获取这台电脑实际支持的模型、推理强度和速度。然后通过现有 `agbrio_prepare_action` / `agbrio_execute_action` 审阅并创建：
+
+```json
+{
+  "requestId": "create-task-unique-id",
+  "operation": "CREATE_CHAT",
+  "input": {
+    "provider": "CODEX",
+    "directory": "C:/Projects/example",
+    "model": "从 models[].model 选择",
+    "effort": "从该模型 supportedReasoningEfforts[].reasoningEffort 选择",
+    "serviceTier": "default"
+  }
+}
+```
+
+- `model`：实际可用模型。选择强度或速度时必须同时指定模型。
+- `effort`：该模型支持的推理强度。
+- `serviceTier`：`default` 为标准速度；快速档使用该模型 `serviceTiers[].id`，支持时通常为 `priority`。实际可用档位以工具返回为准。
+- 不传某项则沿用 Codex 默认设置。选择只影响新对话，不修改电脑的全局配置。
+
+创建结果返回实际生效的 `settings`、原始 `requestedSettings` 和对话 ID。创建不会发送第一条任务；管理助手可在确认结果后，用现有 `SEND_CHAT` 单独派发。若创建状态未确认，先检查原操作记录，不要重新创建。
+
+需要 Agbrio 实例授权（INSTANCE）。更新后若助手尚未看到新工具，在客户端重新连接 Agbrio；不必重新绑定对话。
+
 ## Answering Codex questions through MCP
 
 Use `agbrio_read_chat` and copy the card's exact `requestId`, integer `revision`, and every `questions[].id`. Both `state.requests` and `state.asyncQuestions` use the reviewed `RESPOND_CHAT` operation:

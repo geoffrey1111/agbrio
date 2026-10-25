@@ -1000,6 +1000,21 @@ impl RouterCore {
         })
     }
 
+    pub(crate) fn codex_creation_models(&self)->Result<Value,String>{
+        let mut session=self.session.lock().map_err(|_|"Router session unavailable")?;
+        crate::codex::creation::models(session.adapter.as_mut().ok_or("Codex backend disconnected")?)
+    }
+    pub(crate) fn validate_codex_creation_settings(&self,settings:&crate::codex::creation::Settings)->Result<(),String>{
+        settings.shape()?;if !settings.any(){return Ok(());}
+        let mut session=self.session.lock().map_err(|_|"Router session unavailable")?;
+        crate::codex::creation::validate(session.adapter.as_mut().ok_or("Codex backend disconnected")?,settings)
+    }
+    pub(crate) fn start_configured_codex_thread(&self,directory:&str,settings:&crate::codex::creation::Settings)->Result<Value,String>{
+        let directory=unprojected_thread_directory(Some(directory.into()))?;
+        let mut session=self.session.lock().map_err(|_|"Router session unavailable")?;
+        crate::codex::creation::start(session.adapter.as_mut().ok_or("Codex backend disconnected")?,&directory,settings)
+    }
+
     pub(crate) fn create_mobile_verified_local_backup(
         &self,
     ) -> Result<persistence::VerifiedBackup, String> {

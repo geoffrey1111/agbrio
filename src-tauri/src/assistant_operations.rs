@@ -6,7 +6,7 @@ use serde_json::{json,Value};
 #[derive(Deserialize)]
 #[serde(tag="operation",rename_all="SCREAMING_SNAKE_CASE",rename_all_fields="camelCase",deny_unknown_fields)]
 pub(crate) enum Operation{
- CreateChat{#[serde(default="codex_provider")]provider:String,directory:String,label:Option<String>},
+ CreateChat{#[serde(default="codex_provider")]provider:String,directory:String,label:Option<String>,model:Option<String>,effort:Option<String>,service_tier:Option<String>},
  CreateBridge{name:String},
  RenameBridge{workstream_id:String,binding_revision:i64,name:String},
  BindBridge{workstream_id:String,binding_revision:i64,decision:RoleBindingInput,execution:RoleBindingInput},
@@ -43,9 +43,18 @@ pub(crate) fn normalize(input:&mut router_core::store::assistant_actions::Action
 }
 pub(crate) fn decode(operation:&str,input:Value)->Result<Operation,String>{
  if operation=="RESPOND_CHAT"{validate_response_shape(&input)?;}
+ if operation=="CREATE_CHAT"{validate_create_shape(&input)?;}
  let mut obj=input.as_object().cloned().ok_or("ASSISTANT_ARGUMENTS_INVALID")?;
  if obj.contains_key("operation"){return Err("ASSISTANT_ARGUMENTS_INVALID".into());}obj.insert("operation".into(),json!(operation));
  serde_json::from_value(Value::Object(obj)).map_err(|_|"ASSISTANT_OPERATION_OR_ARGUMENTS_INVALID".into())
+}
+fn validate_create_shape(value:&Value)->Result<(),String>{
+ let fail=|field:&str|format!("ASSISTANT_ARGUMENTS_INVALID: CREATE_CHAT.{field}; allowed fields: provider, directory, label, model, effort, serviceTier; call agbrio_list_codex_models for supported settings");
+ let obj=value.as_object().ok_or_else(||fail("input must be an object"))?;
+ for key in obj.keys(){if !matches!(key.as_str(),"provider"|"directory"|"label"|"model"|"effort"|"serviceTier"){return Err(fail("input contains an unknown field"));}}
+ if value["directory"].as_str().is_none(){return Err(fail("directory must be an existing absolute directory"));}
+ for key in ["label","model","effort","serviceTier"]{if obj.get(key).is_some_and(|v|!v.is_null()&&!v.is_string()){return Err(fail(key));}}
+ if obj.get("provider").is_some_and(|v|!v.is_string()){return Err(fail("provider must be CODEX"));}Ok(())
 }
 fn validate_response_shape(value:&Value)->Result<(),String>{
  let fail=|field:&str,expected:&str|format!("ASSISTANT_ARGUMENTS_INVALID: RESPOND_CHAT.{field} {expected}; use requestId/revision and questions[].id from read_chat; answers is a question-ID to answer-string map");
@@ -91,7 +100,7 @@ fn watch(core:&RouterCore,id:&str,generation:i64)->Result<(),String>{
 fn chat_context(core:&RouterCore,id:&str,generation:i64)->Result<(),String>{if core.store.codex_chat_context(id)?.generation!=generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}Ok(())}
 pub(crate) fn validate(core:&RouterCore,op:&Operation)->Result<(),String>{
  match op{
-  Operation::CreateChat{provider,directory,label}=>{if provider!="CODEX"{return Err("ASSISTANT_CREATE_PROVIDER_UNSUPPORTED".into());}if create_directory(directory)?!=*directory{return Err("ASSISTANT_CREATE_DIRECTORY_CHANGED".into());}if label.as_ref().is_some_and(|s|s.trim().is_empty()||s.chars().count()>120){return Err("WATCH_LABEL_INVALID".into());}},
+  Operation::CreateChat{provider,directory,label,model,effort,service_tier}=>{if provider!="CODEX"{return Err("ASSISTANT_CREATE_PROVIDER_UNSUPPORTED".into());}if create_directory(directory)?!=*directory{return Err("ASSISTANT_CREATE_DIRECTORY_CHANGED".into());}if label.as_ref().is_some_and(|s|s.trim().is_empty()||s.chars().count()>120){return Err("WATCH_LABEL_INVALID".into());}core.validate_codex_creation_settings(&crate::codex::creation::Settings{model:model.clone(),effort:effort.clone(),service_tier:service_tier.clone()})?;},
   Operation::CreateBridge{name}=>if name.trim().is_empty()||name.chars().count()>100{return Err("BRIDGE_NAME_INVALID".into());},
   Operation::RenameBridge{workstream_id,binding_revision,name}=>{bridge(core,workstream_id,*binding_revision)?;if name.trim().is_empty()||name.chars().count()>100{return Err("BRIDGE_NAME_INVALID".into());}},
   Operation::BindBridge{workstream_id,binding_revision,..}|Operation::PinBridge{workstream_id,binding_revision,..}=>bridge(core,workstream_id,*binding_revision)?,
@@ -108,16 +117,18 @@ pub(crate) fn validate(core:&RouterCore,op:&Operation)->Result<(),String>{
 }
 pub(crate) fn execute(core:&RouterCore,aid:&str,op:Operation)->Result<Value,String>{
  match op{
-  Operation::CreateChat{directory,label,..}=>{
+  Operation::CreateChat{directory,label,model,effort,service_tier,..}=>{
    let directory=create_directory(&directory)?;
-   let created=core.start_mobile_unprojected_codex_thread(Some(directory.clone()))?;
-   if uuid::Uuid::parse_str(&created.thread.id).is_err(){return Err("ASSISTANT_CREATE_IDENTITY_INVALID_CHECK_RECEIPT".into());}
-   core.store.checkpoint_assistant_created_chat(aid,&json!({"provider":"CODEX","threadId":created.thread.id,"directory":directory,"firstMessageSent":false,"registration":"PENDING","automaticRetry":false}))?;
-   // Retain the created identity before any subsequent observation can fail.
-   // Empty native threads are session-only until the first actual owner task.
-   core.store.enable_codex_watch(&created.thread.id,label.as_deref().or(created.thread.name.as_deref()).unwrap_or("新 Codex 对话"),&directory,&router_core::store::codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()})?;
-   let w=core.store.codex_chat_context(&created.thread.id)?;
-   Ok(json!({"provider":"CODEX","threadId":created.thread.id,"directory":directory,"watch":w,"firstMessageSent":false,"durability":"SESSION_ONLY_UNTIL_FIRST_TURN","nextAction":"SEND_CHAT","automaticRetry":false}))
+   let requested=crate::codex::creation::Settings{model,effort,service_tier};
+   let created=core.start_configured_codex_thread(&directory,&requested)?;
+   let id=created.pointer("/thread/id").and_then(Value::as_str).filter(|v|uuid::Uuid::parse_str(v).is_ok()).ok_or("ASSISTANT_CREATE_IDENTITY_INVALID_CHECK_RECEIPT")?;
+   let settings=crate::codex::creation::effective(&created);
+   // Checkpoint even a mismatched effective setting before any later failure.
+   core.store.checkpoint_assistant_created_chat(aid,&json!({"provider":"CODEX","threadId":id,"directory":directory,"settings":settings,"requestedSettings":requested.requested(),"firstMessageSent":false,"registration":"PENDING","automaticRetry":false}))?;
+   crate::codex::creation::verify(&created,&requested)?;
+   core.store.enable_codex_watch(id,label.as_deref().or(created.pointer("/thread/name").and_then(Value::as_str)).unwrap_or("新 Codex 对话"),&directory,&router_core::store::codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()})?;
+   let w=core.store.codex_chat_context(id)?;
+   Ok(json!({"provider":"CODEX","threadId":id,"directory":directory,"settings":settings,"requestedSettings":requested.requested(),"settingsVerification":if ["model","reasoningEffort","serviceTier"].iter().all(|key|created.get(*key).is_some()){"NATIVE_THREAD_START_RESPONSE"}else{"PARTIAL_NATIVE_RESPONSE"},"watch":w,"firstMessageSent":false,"durability":"SESSION_ONLY_UNTIL_FIRST_TURN","nextAction":"SEND_CHAT","automaticRetry":false}))
   },
   Operation::CreateBridge{name}=>Ok(json!({"workstreamId":crate::role_bridge::create(core,&name)?})),
   Operation::RenameBridge{workstream_id,name,..}=>serde_json::to_value(core.store.rename_workstream(&workstream_id,&name)?).map_err(|_|"ASSISTANT_RESPONSE_UNAVAILABLE".into()),

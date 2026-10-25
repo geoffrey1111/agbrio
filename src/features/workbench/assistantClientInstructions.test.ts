@@ -22,3 +22,5 @@ describe("client-independent connection instructions",()=>{
   expect(assistantSetupInstructions("https://fixture.invalid/mcp","en","local")).toContain("local Codex");
  });
 });
+
+it.each(['zh-CN','zh-TW','en'] as const)('creation instructions expose live model, reasoning and speed choices in %s',language=>{const text=assistantTakeoverInstructions(language,'generic');for(const key of ['agbrio_list_codex_models','model','effort','serviceTier','default','settings'])expect(text).toContain(key);});
