@@ -9,7 +9,7 @@ export function hostOrigin(value) {
   return u.origin;
 }
 function diagnostic(state) {
-  return JSON.stringify({pluginVersion:'0.1.9',mode:'OWNER_MANUAL_INPUT',phase:state.phase,error:state.error,httpStatus:state.httpStatus,identityReady:!!state.identity,pendingEvents:state.pending.length,deliveredEvents:state.delivered,writesEnabled:false,manualInputProtocol:1,codexWaitProtocol:state.codexWaitReady?1:null});
+  return JSON.stringify({pluginVersion:'0.1.11',mode:'OWNER_MANUAL_INPUT',phase:state.phase,error:state.error,httpStatus:state.httpStatus,identityReady:!!state.identity,pendingEvents:state.pending.length,deliveredEvents:state.delivered,writesEnabled:false,manualInputProtocol:1,codexWaitProtocol:state.codexWaitReady?1:null});
 }
 function noteError(state, error) {
   const message=typeof error?.message==='string' ? error.message : '';
@@ -26,7 +26,7 @@ async function flush($, state) {
   while (state.pending.length) {
     state.phase='HTTP';
     let response;
-    try { response = await $.http.fetch(`${state.origin}/v1/claude-code/events`, {method: 'POST', headers: {'content-type': 'application/json', authorization: `Bearer ${state.token}`, 'x-agbrio-control-version':'1'}, body: JSON.stringify(state.pending[0])}); } catch {throw new Error('AGBRIO_HTTP_UNAVAILABLE');}
+    try { response = await $.http.fetch(`${state.origin}/v1/claude-code/events`, {method: 'POST', headers: {'content-type': 'application/json', authorization: `Bearer ${state.token}`, 'x-agbrio-control-version':'1','x-agbrio-plugin-version':'0.1.11'}, body: JSON.stringify(state.pending[0])}); } catch {throw new Error('AGBRIO_HTTP_UNAVAILABLE');}
     state.httpStatus=Number.isInteger(response.status) ? response.status : null;
     if (!response.ok) throw new Error('AGBRIO_ADAPTER_DELIVERY_UNCONFIRMED');
     state.pending.shift();state.delivered++;state.phase='CONNECTED';state.error=null;state.reported=null;

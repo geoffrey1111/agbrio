@@ -1006,7 +1006,7 @@ impl CodexAdapter {
         if let Some(guard) = self.guard.as_ref().filter(|_| !cleanup) {
             guard.check()?;
         }
-        if message.to_string().len() > 8 * 1024 * 1024 {
+        if message.to_string().len() > if self.guard.is_some(){8*1024*1024}else{16*1024*1024} {
             return Err("NATIVE_FRAME_LIMIT".into());
         }
         if self.guard.is_some() && method == "thread/goal/set" {
@@ -1482,8 +1482,8 @@ impl Drop for PendingCleanup {
     }
 }
 
-fn native_frame_limit(shared: bool, guarded: bool) -> u64 {
-    if shared && !guarded { 100 * 1024 * 1024 } else { 8 * 1024 * 1024 }
+fn native_frame_limit(_shared: bool, guarded: bool) -> u64 {
+    if !guarded { 100 * 1024 * 1024 } else { 8 * 1024 * 1024 }
 }
 
 fn bounded_frame(reader: &mut impl BufRead, limit: u64) -> Result<Option<String>, &'static str> {
@@ -1570,11 +1570,12 @@ mod tests {
     #[test]
     fn shared_media_frames_keep_their_bound_without_expanding_guarded_sessions() {
         assert_eq!(super::native_frame_limit(true,false),100 * 1024 * 1024);
-        for (shared,guarded) in [(false,false),(false,true),(true,true)] {
+        assert_eq!(super::native_frame_limit(false,false),100*1024*1024);
+        for (shared,guarded) in [(false,true),(true,true)] {
             assert_eq!(super::native_frame_limit(shared,guarded),8 * 1024 * 1024);
         }
         let mut frame=vec![b' ';12 * 1024 * 1024];frame[0]=b'{';frame[1]=b'}';frame.push(b'\n');
-        assert!(bounded_frame(&mut Cursor::new(&frame),super::native_frame_limit(false,false)).is_err());
+        assert!(bounded_frame(&mut Cursor::new(&frame),super::native_frame_limit(false,false)).unwrap().is_some());
         assert!(bounded_frame(&mut Cursor::new(&frame),super::native_frame_limit(true,false)).unwrap().is_some());
         assert_eq!(bounded_frame(&mut Cursor::new(b"{}\n"),2),Err("NATIVE_FRAME_LIMIT"));
     }

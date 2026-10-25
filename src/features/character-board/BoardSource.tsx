@@ -4,7 +4,7 @@ import {ExternalLink,FolderOpen,Globe} from 'lucide-react';
 import {liveRequest} from '../../mobile/api';
 import {t as uiText,useLanguage} from '../../i18n';
 import {CharacterBoard} from './CharacterBoard';
-import {sizeBoardInputs} from './mobileInputSizing';
+import {UrlBoardFrame} from './UrlBoardFrame';
 import {BoardHub} from './BoardHub';
 
 /** Where the board comes from. Only the desktop may change it. */
@@ -26,7 +26,7 @@ function useBoardSource(enabled=true){
 export function BoardView({active}:{active:boolean}){
  useLanguage();const source=useBoardSource(active);
  const src=source?.kind==='URL'?(isTauri()&&source.desktopUrl?source.desktopUrl:source.url):null;
- const legacy=src?<div className="board-web"><iframe src={src} title={uiText('看板')} onLoad={e=>sizeBoardInputs(e.currentTarget)} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads" referrerPolicy="no-referrer"/><a className="board-web-open" href={src} target="_blank" rel="noreferrer noopener"><ExternalLink size={16}/>{uiText('在浏览器打开')}</a></div>:source?.kind==='LOCAL'?<CharacterBoard active={active}/>:null;
+ const legacy=src?<UrlBoardFrame key={src} src={src} active={active}/>:source?.kind==='LOCAL'?<CharacterBoard active={active}/>:null;
  return <BoardHub active={active} legacy={legacy} legacyAvailable={Boolean(source)} sourceLoading={source===undefined}/>;
 }
 

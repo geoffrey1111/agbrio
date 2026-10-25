@@ -53,11 +53,11 @@ test('native initialization failure is observable and never blocks or publishes'
  expect(result.text).toContain('AGBRIO_VERSION_FAILED');expect(result.text).not.toContain('PRIVATE_UNEXPECTED_FAILURE');expect(passed).toBe(1);expect(posted).toBe(0);expect(logs.length).toBe(1);
 });
 
-test('native VM returns exact owner answers and one-call decisions without prompt submission',async(driver,on)=>{
+test('native VM returns one-call decisions and preserves denials without prompt submission',async(driver,on)=>{
  mock.store(on);mock.clock(on,{now:1791777600000});let kind='',posts=0,submits=0;let nativeDecision='ask';
  on('command.register',()=>({value:undefined}));on('ui.log',()=>({value:undefined}));
  on('session.id',()=>({value:'10000000-0000-4000-8000-000000000001'}));on('session.cwd',()=>({value:'D:\\fixture'}));on('session.version',()=>({value:{version:'2.1.304'}}));on('session.start',()=>({cwd:'D:\\fixture'}));
- on('tool.call',{tool:'AskUserQuestion'},($,e)=>({result:{answers:e.answers??{}}}));on('classic.PreToolUse',()=>({}));on('tool.check',()=>({decision:nativeDecision}));on('prompt.submit',()=>{submits++;throw Error('NO_PROMPT_ALLOWED')});
+ on('classic.PreToolUse',()=>({}));on('tool.check',()=>({decision:nativeDecision}));on('prompt.submit',()=>{submits++;throw Error('NO_PROMPT_ALLOWED')});
  on('http.fetch',($,e)=>{const body=JSON.parse(e.init.body);posts++;let response={};
   if(e.url.endsWith('/owner-requests')){kind=body.kind;response={captured:true};}
   else if(e.url.endsWith('/poll'))response={status:'ANSWER',answer:kind==='QUESTION'?{action:'ANSWER',answers:{'Choose transport':'A'}}:{action:'ALLOW_ONCE'}};
@@ -65,8 +65,9 @@ test('native VM returns exact owner answers and one-call decisions without promp
   return{value:{ok:true,status:200,headers:{},text:JSON.stringify(response)}};
  });
  await driver.session.start({surface:'desktop',isInteractive:true,cwd:'D:\\fixture'});
- const question=await driver.tool.call({tool:'AskUserQuestion',tool_use_id:'native-question',questions:[{question:'Choose transport',header:'Transport',options:[{label:'A',description:'First'},{label:'B',description:'Second'}],multiSelect:false}]});
- expect(question.result?.answers?.['Choose transport']).toBe('A');
+ // AskUserQuestion classic hooks cannot be driven via a mocked tool.call:
+ // the testing core is short-circuited. Their exact answer contract is covered
+ // separately by owner-requests.test.mjs, not claimed as native decision UAT.
  const permission=await driver.tool.check({tool:'Bash',tool_use_id:'native-permission',command:'echo fictional'});expect(permission.decision).toBe('allow');expect(permission.updatedPermissions).toBeUndefined();
  const previous=posts;nativeDecision='deny';expect((await driver.tool.check({tool:'Bash',tool_use_id:'managed-deny',command:'echo fictional'})).decision).toBe('deny');expect(posts).toBe(previous);
  nativeDecision='ask';expect((await driver.tool.check({tool:'Bash',tool_use_id:'organization-ceiling',command:'echo fictional',ceiling:'ask'})).decision).toBe('ask');expect(posts).toBe(previous);expect(submits).toBe(0);

@@ -279,3 +279,18 @@ Host correction is published source only; no replacement installer was released.
 ## Live publisher registration after owner-local inline configuration
 
 The owner saved hostUrl/token under agbrio-bridge@inline using official CLI stdin locally; no secret was submitted to the assistant. The Host now records the exact original session/root, engine2.1.295 and a continuously refreshed publisher lease. This is genuine callback registration, beyond installation or fixture proof. No complete natural reply is recorded yet. Numeric binding remainsrev1 with its former Codex sides and8ACTIVE event subscriptions unchanged; native selection/save and natural reply acceptance remain pending. Rebinding changes revision, so old event filters need an explicit client update. No agent prompt, model request, engine restart or auto-resume modification occurred.
+
+## Selected files and completion notices
+
+Phone and desktop owners can attach selected images/files to an existing Claude Code conversation. Up to four files, 20 MiB each and 64 MiB combined. Images are read through verified local references using the conversation's existing file permissions. Bridge/MCP file writes remain unavailable.
+
+Plugin0.1.11 supports128 simultaneous exact-turn completion waits; settled history no longer blocks future notices. Unknown delivery is never retried. Update the installed plugin and reload only while the conversation is idle; application installation alone does not update a running plugin. Authenticated heartbeat diagnostics report the loaded version when available.
+
+For an existing official directory installation, refresh only the Agbrio marketplace and update its plugin:
+
+```powershell
+claude plugin marketplace update agbrio-observation
+claude plugin update agbrio-bridge@agbrio-observation --scope user
+```
+
+Then use Claude Code’s official `/reload-plugins` when the conversation is idle. Never stop a running task merely to update a plugin. The CLI cache version does not prove an already-open session adopted it.

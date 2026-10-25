@@ -14,7 +14,7 @@ The command reuses the existing Agbrio MCP tools. If they are missing, connect A
 
 Read first, send once, check the original receipt. Queued means waiting; sent means delivered, not finished. Unknown delivery is never resent automatically.
 
-With a compatible Agbrio Host and plugin 0.1.9, ask “notify this conversation when that Codex turn finishes.” Claude registers a one-shot wait for the exact selected turn. A finished result, decision request or failure returns a short notice to the same open Claude conversation; Claude then reads the full result through your existing MCP authorization. Ask to check or cancel that wait at any time. Cancelling a wait does not stop Codex. Waits expire after one hour by default, at most 24 hours, and require the plugin/session to remain open. An unavailable source or uncertain notification is reported honestly and never automatically resent. Updating this source alone does not update a running installation.
+With a compatible Agbrio Host and plugin 0.1.11, ask “notify this conversation when that Codex turn finishes.” Claude registers a one-shot wait for the exact selected turn. A finished result, decision request or failure returns a short notice to the same open Claude conversation; Claude then reads the full result through your existing MCP authorization. Ask to check or cancel that wait at any time. Cancelling a wait does not stop Codex. Waits expire after one hour by default, at most 24 hours, and require the plugin/session to remain open. An unavailable source or uncertain notification is reported honestly and never automatically resent. Updating this source alone does not update a running installation.
 
 ## Follow Claude conversations in Agbrio
 
@@ -31,3 +31,5 @@ Use the Agbrio marketplace in your supported Claude Code plugin interface:
 Already installed? Update the plugin in that interface. Existing sessions use the supported reload flow when idle; do not stop a task or force a cache-invalidating reload. Installing the command is separate from authenticating MCP and verifying a real send/reply.
 
 [Agbrio setup](https://github.com/geoffrey1111/agbrio/blob/main/docs/START_HERE.md) · [Claude integration boundaries](https://github.com/geoffrey1111/agbrio/blob/main/docs/CLAUDE_CODE.md)
+
+Up to 128 waits can run at once. Settled history no longer blocks new waits; exact-turn receipts are preserved to prevent duplicate notices. Update the installed plugin and reload only while the session is idle.

@@ -59,3 +59,18 @@ test('shared plugin storage keeps simultaneous Claude sessions independent acros
  assert.equal((await handleCodexWait(f.$,other,{action:'status'})).waits[0].threadId,sid);
  const reloaded={...f.state,instanceId:turn,codexWaitQueue:null};assert.equal((await handleCodexWait(f.$,reloaded,{action:'status'})).waits[0].status,'WAITING');
 });
+
+test('settled history never exhausts the active slots and archived turns never submit twice',async()=>{
+ const f=fixture();f.$.http.fetch=async(_,init)=>({ok:true,text:JSON.stringify({...JSON.parse(init.body),state:'RUNNING'})});
+ const items=Array.from({length:64},(_,i)=>({...input,turnId:`30000000-0000-4000-8000-${String(i+1).padStart(12,'0')}`,status:'DELIVERED',expiresAt:200000}));
+ f.data.set(`agbrio-codex-waits-v1:${sid}`,{...f.state.identity,waits:items});
+ await handleCodexWait(f.$,f.state,{...input,turnId:'40000000-0000-4000-8000-000000000001'});
+ const status=await handleCodexWait(f.$,f.state,{action:'status'});assert.equal(status.capacity.waiting,1);assert.ok(status.waits.length<=33);
+ const old=await handleCodexWait(f.$,f.state,{...input,turnId:items[0].turnId});assert.equal(old.wait.status,'DELIVERED');assert.equal(f.submits(),0);
+});
+test('more than eight live waits are accepted while an actual bounded active limit is explicit',async()=>{
+ const f=fixture();f.$.http.fetch=async(_,init)=>({ok:true,text:JSON.stringify({...JSON.parse(init.body),state:'RUNNING'})});
+ for(let i=0;i<128;i++)await handleCodexWait(f.$,f.state,{...input,turnId:`50000000-0000-4000-8000-${String(i+1).padStart(12,'0')}`});
+ assert.equal((await handleCodexWait(f.$,f.state,{action:'status'})).capacity.waiting,128);
+ await assert.rejects(handleCodexWait(f.$,f.state,{...input,turnId:'60000000-0000-4000-8000-000000000001'}),/AGBRIO_WAIT_ACTIVE_LIMIT/);
+});

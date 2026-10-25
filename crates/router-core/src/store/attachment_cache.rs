@@ -1,0 +1,5 @@
+use super::*;
+impl RouterStore{
+ pub fn attachment_cache_contexts(&self)->Result<Vec<(String,String)>,String>{self.with_connection(|c|{let mut q=c.prepare("SELECT thread_id,cwd FROM codex_watches UNION SELECT thread_id,cwd FROM watch_replies UNION SELECT key,cwd FROM claude_child_contexts UNION SELECT CASE WHEN e.provider='CLAUDE_CODE' THEN 'claude_code:'||e.external_id ELSE e.external_id END,d.cwd FROM endpoints e JOIN endpoint_role_details d ON d.endpoint_id=e.id WHERE e.provider IN ('CODEX','CLAUDE_CODE') AND e.external_id IS NOT NULL AND d.cwd IS NOT NULL").map_err(db_error)?;let rows=q.query_map([],|r|Ok((r.get(0)?,r.get(1)?))).map_err(db_error)?;rows.collect::<Result<Vec<_>,_>>().map_err(db_error)})}
+ pub fn attachment_cache_bound(&self,id:&str)->Result<bool,String>{self.with_connection(|c|c.query_row("SELECT EXISTS(SELECT 1 FROM watch_replies r,json_each(r.options_json,'$.attachments') a WHERE a.value=?1)",[id],|r|r.get(0)).map_err(db_error))}
+}

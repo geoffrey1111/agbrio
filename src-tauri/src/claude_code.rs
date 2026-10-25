@@ -194,3 +194,8 @@ pub(crate) fn setup(core:&RouterCore,host:&crate::HostRuntime,resources:&std::pa
     let pairing=core.store.create_claude_connection()?;
     Ok(serde_json::json!({"connectionId":pairing.connection_id,"hostUrl":format!("http://{}",address),"token":pairing.token,"pluginDirectory":plugin.to_string_lossy(),"expiresAt":pairing.expires_at,"writesEnabled":false}))
 }
+
+// Self-reported version on an authenticated adapter heartbeat; diagnostic only.
+static PLUGIN_VERSIONS:std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String,(String,std::time::Instant)>>> =std::sync::OnceLock::new();
+pub(crate) fn record_plugin_version(session:&str,version:&str){if version.len()>24||version.split('.').count()!=3||version.split('.').any(|n|n.is_empty()||!n.bytes().all(|b|b.is_ascii_digit())){return;}let Ok(mut rows)=PLUGIN_VERSIONS.get_or_init(Default::default).lock()else{return;};rows.retain(|_,(_,at)|at.elapsed().as_secs()<90);if rows.len()<512||rows.contains_key(session){rows.insert(session.into(),(version.into(),std::time::Instant::now()));}}
+pub(crate) fn plugin_versions()->serde_json::Value{let mut versions=std::collections::BTreeMap::<String,usize>::new();if let Ok(rows)=PLUGIN_VERSIONS.get_or_init(Default::default).lock(){for(version,at)in rows.values().filter(|(_,at)|at.elapsed().as_secs()<90){let _=at;*versions.entry(version.clone()).or_default()+=1;}}serde_json::json!({"selfReportedLiveVersions":versions,"requiredForExpandedWaits":"0.1.11","source":"AUTHENTICATED_HEARTBEAT"})}

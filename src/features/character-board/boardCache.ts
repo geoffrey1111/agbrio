@@ -70,6 +70,9 @@ export class BoardPersistentCache{
    };};
   }),undefined);
  }
+ stats(){return this.run(db=>this.transaction<{bytes:number;items:number}>(db,(_store,answer,metadata)=>{const request=metadata.getAll();request.onsuccess=()=>{const rows=(request.result as Metadata[]).filter(r=>r.scope===this.scope&&r.key!=='__scope');answer({bytes:rows.reduce((n,r)=>n+(r.bytes||0),0),items:rows.length});};}),{bytes:0,items:0});}
+ clearPresentation(){this.epoch++;const scope=this.scope;return this.run(db=>this.transaction<void>(db,(store,answer,metadata)=>{store.clear();metadata.clear();if(scope)metadata.put({key:'__scope',scope});answer();}),undefined);}
+ pruneExpired(){const cutoff=Date.now()-7*86400000;return this.run(db=>this.transaction<void>(db,(store,answer,metadata)=>{const request=metadata.getAll();request.onsuccess=()=>{for(const row of request.result as Metadata[])if(row.key!=='__scope'&&row.scope===this.scope&&row.touched<cutoff){store.delete(row.key);metadata.delete(row.key);}answer();};}),undefined);}
  async snapshot(){
   const scope=this.scope,epoch=this.epoch;const row=await this.read('snapshot','latest');if(!row)return null;
   try{const value=row.value as BoardSnapshot;if(typeof value.html!=='string'||value.html.length>16*1024*1024||!Array.isArray(value.assets)||value.assets.length>4096||await digest(JSON.stringify(value))!==row.hash)throw Error('BAD_SNAPSHOT');return epoch===this.epoch&&scope===this.scope?value:null;}catch{return null;}

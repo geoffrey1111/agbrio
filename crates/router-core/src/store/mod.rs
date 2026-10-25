@@ -20,6 +20,7 @@ pub mod child_results;
 pub mod claude_owner_requests;
 pub mod claude_child_contexts;
 pub mod watch_reply;
+mod attachment_cache;
 mod bridge_notifications;
 mod endpoint_claims;
 #[cfg(test)]mod watch_usage_tests;

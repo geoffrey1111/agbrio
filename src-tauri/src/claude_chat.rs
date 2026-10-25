@@ -56,13 +56,15 @@ pub(crate) fn state(core:&RouterCore,key:&str)->Result<Value,String>{
     Ok(json!({"watch":watch,"provider":"CLAUDE_CODE","inputReady":ready,"host":std::env::var("COMPUTERNAME").unwrap_or_default(),"ownedTurnId":null,"controllableTurnId":null,"externalBusy":matches!(state,"RUNNING"|"WAITING_DECISION"),"replies":replies,"requests":[],"goal":null,"publicMessages":messages,"historyRevision":history_revision,"taskTree":task_tree,"ownerRequests":core.store.claude_owner_requests(key,watch.generation,native_id(key)?)?,"childResultsEnabled":core.store.child_results_enabled(key)?,"activity":if state=="RUNNING"{Some("EXECUTING")}else{None},"checkedAt":session.as_ref().map(|s|s.checked_at).unwrap_or(watch.checked_at)}))
 }
 pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{
+    let _cache=if matches!(&c,ChatCommand::Send{..}|ChatCommand::Upload{..}){Some(crate::attachment_cache::guard()?)}else{None};
     let encode=|r:WatchReply|serde_json::to_value(r).map_err(|_|"CLAUDE_RESPONSE_INVALID".to_string());
     match c {
         ChatCommand::Send{thread_id,id,generation,source_sequence,expected_turn_id,mode,queue_requested,text,options}=>{
             let w=core.store.codex_chat_context(&thread_id)?;
             let session=crate::claude_code::observed_session(core,native_id(&thread_id)?,Some(&w.cwd))?;
             if generation!=w.generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}
-            if !matches!(mode.as_str(),"SEND"|"QUEUE")||options.model.is_some()||options.effort.is_some()||!options.attachments.is_empty(){return Err("CLAUDE_TEXT_REPLY_ONLY".into());}
+            if !matches!(mode.as_str(),"SEND"|"QUEUE")||options.model.is_some()||options.effort.is_some(){return Err("CLAUDE_REPLY_OPTIONS_UNSUPPORTED".into());}
+            let text=crate::watch_chat::claude_attachment_text(&w,&text,&options)?;
             let input=WatchReply{id,thread_id,cwd:w.cwd,generation,source_sequence,expected_turn_id,mode,text,options:serde_json::to_value(options).map_err(|_|"CLAUDE_RESPONSE_INVALID")?,payload_hash:String::new(),status:String::new(),turn_id:None,error_code:None,created_at:0,updated_at:0};
             // A duplicate ID checks the exact payload and returns its old receipt;
             // it never re-enqueues or grants a second physical submission.
@@ -82,6 +84,7 @@ pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{
             }
             encode(r)
         },
+        ChatCommand::Upload{thread_id,name,data}=>crate::watch_chat::upload(core,&thread_id,&name,&data),
         ChatCommand::AsyncRespond{..}=>Err("CLAUDE_OPERATION_NOT_SUPPORTED".into()),
         ChatCommand::ChildOpen{thread_id,generation,child_id}=>crate::claude_child_contexts::open(core,&thread_id,generation,&child_id),
         ChatCommand::ClaudeDecision{thread_id,generation,child_id,id,revision,answer}=>crate::claude_owner_requests::answer(core,&thread_id,generation,child_id.as_deref(),&id,revision,&answer),

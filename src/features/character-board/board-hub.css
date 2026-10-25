@@ -15,3 +15,6 @@
 .board-hub .board-guide .board-example-list>button>span:first-child{flex:1;min-width:0;text-align:left}
 .board-hub .board-guide .board-guide-intro p{margin:0 0 28px;font-size:16px;line-height:1.65}
 @media(max-width:760px){.board-guide{padding:28px 20px calc(28px + var(--aiwr-inset-bottom,env(safe-area-inset-bottom,0px)))}.board-guide-intro h2{font-size:24px}.board-example-list>button{gap:8px}.board-example-link{font-size:12px}.board-example-frame{height:320px}.board-hub-toolbar{padding-inline:16px}}
+
+.board-web-refresh{position:absolute;bottom:12px;left:12px;display:grid;place-items:center;width:44px;height:44px;padding:0;border:1px solid var(--r2-line,#ddd4c8);border-radius:12px;background:var(--r2-paper,#fff);color:var(--r2-ink,#221e1a)}
+.board-web-refresh-error{position:absolute;bottom:60px;left:12px;margin:0;padding:8px 12px;background:var(--r2-paper,#fff);color:var(--r2-ink,#221e1a);border-radius:8px;font-size:13px}

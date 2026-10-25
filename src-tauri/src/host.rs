@@ -146,7 +146,7 @@ impl HostRuntime {
     fn start_setup_requests(&self,core:RouterCore){
         let Ok(mut worker)=self.setup_worker.lock()else{return;};if worker.is_some(){return;}
         let stop=self.shared_stop.clone();let host=self.clone();*worker=Some(std::thread::spawn(move||{
-            while !stop.load(std::sync::atomic::Ordering::Acquire){crate::mobile_connection::process_setup_request(&core,&host);crate::hosted_relay::ensure(&host);for _ in 0..20{if stop.load(std::sync::atomic::Ordering::Acquire){return;}std::thread::sleep(std::time::Duration::from_millis(100));}}
+            while !stop.load(std::sync::atomic::Ordering::Acquire){crate::mobile_connection::process_setup_request(&core,&host);crate::hosted_relay::ensure(&host);crate::attachment_cache::maintain(&core);for _ in 0..20{if stop.load(std::sync::atomic::Ordering::Acquire){return;}std::thread::sleep(std::time::Duration::from_millis(100));}}
         }));
     }
     /// Explicit human intent only. AUTH_REQUIRED opens native human-only

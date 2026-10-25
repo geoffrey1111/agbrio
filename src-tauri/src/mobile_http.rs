@@ -246,6 +246,8 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         .route("/v1/mobile/character-board",get(character_board_snapshot).layer(tower_http::compression::CompressionLayer::new()))
         .route("/v1/mobile/character-board/view",get(character_board_view).layer(tower_http::compression::CompressionLayer::new()))
         .route("/v1/mobile/character-board/review",post(character_board_review))
+        .route("/v1/mobile/cache",get(app_cache_status))
+        .route("/v1/mobile/cache/cleanup",post(app_cache_cleanup))
         .route("/v1/mobile/board-source",get(board_source_read))
         .route("/v1/mobile/boards",get(published_boards_list))
         .route("/v1/mobile/boards/{id}",get(published_board_snapshot).layer(tower_http::compression::CompressionLayer::new()))
@@ -260,7 +262,7 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         .route("/v1/mobile/codex-watches/events/{sequence}", get(codex_watch_event))
         .route("/v1/mobile/codex-watches/delivery", get(codex_delivery_settings).post(codex_delivery_command))
         .route("/v1/mobile/codex-watches/chat/{thread_id}",get(watch_chat_state))
-        .route("/v1/mobile/codex-watches/chat",post(watch_chat_command).layer(axum::extract::DefaultBodyLimit::max(12*1024*1024)))
+        .route("/v1/mobile/codex-watches/chat",post(watch_chat_command).layer(axum::extract::DefaultBodyLimit::max(crate::watch_chat::UPLOAD_BODY_LIMIT)))
         .layer(axum::middleware::map_response(watch_no_store));
     let api = Router::new()
         .merge(watch_api)
@@ -302,7 +304,7 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         .route("/v1/claude-code/codex-wait", post(claude_codex_wait))
         .route("/v1/claude-code/receipts", post(claude_code_receipt))
         .route("/v1/mobile/claude-code/chat/{thread_id}", get(claude_chat_state))
-        .route("/v1/mobile/claude-code/chat", post(claude_chat_command))
+        .route("/v1/mobile/claude-code/chat", post(claude_chat_command).layer(axum::extract::DefaultBodyLimit::max(crate::watch_chat::UPLOAD_BODY_LIMIT)))
         .route("/v1/claude-code/owner-requests", post(claude_owner_request_capture))
         .route("/v1/claude-code/owner-requests/poll", post(claude_owner_request_poll))
         .route("/v1/claude-code/owner-requests/receipt", post(claude_owner_request_receipt))
@@ -585,6 +587,8 @@ struct BoardQuery { known_revision:Option<String>,#[serde(default)] metadata_onl
 #[derive(Deserialize)]
 struct BoardReviewInput{revision:String,#[serde(flatten)]input:crate::character_board_review::ReviewInput}
 /// The phone may read which board source is active; only the desktop can change it.
+async fn app_cache_status(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<crate::attachment_cache::Report>{authenticated(&headers,&state,false).await?;Ok(Json(run_core_blocking("Cache status",move||crate::attachment_cache::inspect(&state.core,false)).await?))}
+async fn app_cache_cleanup(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<crate::attachment_cache::Report>{authenticated(&headers,&state,true).await?;Ok(Json(run_core_blocking("Cache cleanup",move||crate::attachment_cache::inspect(&state.core,true)).await?))}
 async fn board_source_read(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<Option<crate::character_board::Source>>{board_authenticated(&headers,&state).await?;Ok(Json(crate::character_board::source()))}
 async fn published_boards_list(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<Vec<crate::published_boards::BoardInfo>>{board_authenticated(&headers,&state).await?;Ok(Json(run_core_blocking("Published board list",crate::published_boards::list).await?))}
 async fn published_board_snapshot(Path(id):Path<String>,State(state):State<MobileHttpState>,headers:HeaderMap,Query(query):Query<BoardQuery>)->Result<impl IntoResponse,ApiError>{
@@ -1335,6 +1339,7 @@ async fn claude_code_event(State(state):State<MobileHttpState>,headers:HeaderMap
  // permit publishing adapter state. Refuse browser and public proxy traffic.
  let token=claude_adapter_token(&headers)?;
  let control=headers.get("x-agbrio-control-version").and_then(|h|h.to_str().ok())==Some("1");
+ let plugin_version=headers.get("x-agbrio-plugin-version").and_then(|h|h.to_str().ok()).unwrap_or("").to_owned();
  let core=state.core.clone();
  let result=run_core_blocking("Claude Code adapter",move||{
    let inserted=match crate::claude_code::ingest(&core,&token,&event) {
@@ -1348,6 +1353,7 @@ async fn claude_code_event(State(state):State<MobileHttpState>,headers:HeaderMap
      }
      Err(code)=>{crate::claude_event_log::record(&event.session_id,&event.kind,&code);return Err(code)},
    };
+   crate::claude_code::record_plugin_version(&event.session_id,&plugin_version);
    // The event is stored; a failed watch refresh or offer must not make it retry.
    if let Err(code)=crate::claude_chat::update_watch(&core,&event.session_id){eprintln!("Claude Code watch refresh failed: {code}");}
    if let Err(code)=crate::claude_chat::reconcile_deliveries(&core,&event.session_id){eprintln!("Claude Code delivery reconcile failed: {code}");}
@@ -1382,7 +1388,7 @@ async fn claude_owner_request_receipt(State(state):State<MobileHttpState>,header
 async fn claude_owner_request_native(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<crate::claude_owner_requests::Poll>)->ApiResult<serde_json::Value>{let token=claude_adapter_token(&headers)?;state.core.store.release_claude_owner_request(&token,&input.session_id,&input.instance_id,&input.cwd,&input.id).map_err(core_error)?;Ok(Json(serde_json::json!({"accepted":true})))}
 
 async fn claude_chat_state(State(state):State<MobileHttpState>,headers:HeaderMap,Path(thread_id):Path<String>)->ApiResult<serde_json::Value>{authenticated(&headers,&state,false).await?;crate::claude_chat::state(&state.core,&thread_id).map(Json).map_err(core_error)}
-async fn claude_chat_command(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<crate::watch_chat::ChatCommand>)->ApiResult<serde_json::Value>{authenticated(&headers,&state,true).await?;crate::claude_chat::command(&state.core,input).map(Json).map_err(core_error)}
+async fn claude_chat_command(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<crate::watch_chat::ChatCommand>)->ApiResult<serde_json::Value>{authenticated(&headers,&state,true).await?;Ok(Json(run_core_blocking("Claude reply",move||crate::claude_chat::command(&state.core,input)).await?))}
 async fn role_bridge_command(Path(workstream_id):Path<String>,State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<RoleBridgeCommand>)->ApiResult<serde_json::Value>{
  authenticated(&headers,&state,true).await?;let core=state.core.clone();
  let result=run_core_blocking("Role Bridge command",move||{
@@ -2902,4 +2908,10 @@ async fn app_diagnostics(State(state):State<MobileHttpState>,headers:HeaderMap)-
  authenticated(&headers,&state,false).await?;
  let core=state.core.clone();let host=state.host.clone();
  Ok(([(axum::http::header::CACHE_CONTROL,"no-store")],Json(run_core_blocking("App diagnostics",move||crate::app_control::diagnostics(&core,Some(&host))).await?)).into_response())
+}
+
+#[cfg(test)]#[test]fn owner_cache_and_large_upload_http_keep_auth_and_origin_boundaries(){
+ use base64ct::{Base64,Encoding};let scratch=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("runtime/notice-attachments-20261025");std::fs::create_dir_all(&scratch).unwrap();let d=tempfile::tempdir_in(scratch).unwrap();std::fs::write(d.path().join("index.html"),"fixture").unwrap();let core=RouterCore{store:Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap()),chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default()};core.store.enable_codex_watch("exact","fixture",&d.path().to_string_lossy(),&router_core::store::codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()}).unwrap();let auth=Arc::new(crate::web_auth::WebAuth::open(None).unwrap());let token=auth.exchange(&auth.issue().unwrap().code,"cache fixture",false).unwrap();let cookie=format!("{}={token}",crate::web_auth::COOKIE);let rt=tokio::runtime::Runtime::new().unwrap();let config=MobileHttpConfig{port:0,allowed_host:"router.fixture.invalid".into(),allowed_origin:"https://router.fixture.invalid".into(),access_issuer:"https://unused.invalid".into(),access_audience:"unused".into(),access_jwks_url:"https://unused.invalid/keys".into(),static_dir:d.path().into()};let handle=rt.block_on(start_with_web_auth(core,config,crate::HostRuntime::default(),auth)).unwrap();let base=format!("http://{}/v1/mobile",handle.address);let client=reqwest::blocking::Client::builder().timeout(std::time::Duration::from_secs(30)).build().unwrap();let get=|cookie:&str|client.get(format!("{base}/cache")).header("host","router.fixture.invalid").header("cookie",cookie).send().unwrap();assert_eq!(get("").status(),StatusCode::UNAUTHORIZED);assert_eq!(get(&cookie).json::<serde_json::Value>().unwrap()["retentionDays"],7);
+ let post=|route:&str,origin:&str,cookie:&str,body:&serde_json::Value|client.post(format!("{base}{route}")).header("host","router.fixture.invalid").header("origin",origin).header("cookie",cookie).json(body).send().unwrap();assert_eq!(post("/cache/cleanup","https://wrong.invalid",&cookie,&serde_json::json!({})).status(),StatusCode::FORBIDDEN);assert_eq!(post("/cache/cleanup","https://router.fixture.invalid","",&serde_json::json!({})).status(),StatusCode::UNAUTHORIZED);
+ let body=serde_json::json!({"action":"UPLOAD","threadId":"exact","name":"large.txt","data":Base64::encode_string(&vec![b'x';9*1024*1024])});let upload=post("/codex-watches/chat","https://router.fixture.invalid",&cookie,&body);assert_eq!(upload.status(),StatusCode::OK);assert_eq!(upload.json::<serde_json::Value>().unwrap()["size"],9*1024*1024);let response=post("/claude-code/chat","https://router.fixture.invalid",&cookie,&body);assert_eq!(response.status(),StatusCode::OK);assert_eq!(response.json::<serde_json::Value>().unwrap()["size"],9*1024*1024);assert_eq!(post("/cache/cleanup","https://router.fixture.invalid",&cookie,&serde_json::json!({})).json::<serde_json::Value>().unwrap()["removedCount"],0);rt.block_on(handle.shutdown());
 }

@@ -55,16 +55,19 @@ it('Claude uses the exact original session and inherited settings without acknow
  let receipt:WatchReply|undefined;
  const command=vi.fn(async(c)=>{
   if(c.action==='HISTORY')return {messages:[...(receipt?.status==='SENT'?[{id:`receipt:${receipt.id}`,turnId:`receipt:${receipt.id}`,role:'user',text:receipt.text}]:[]),{id:'item-a',turnId:'turn-a',role:'assistant',text:'完整原文'}],nextCursor:null};
+  if(c.action==='UPLOAD')return {id:'10000000-0000-4000-8000-000000000099',name:'phone.png',size:3};
   if(c.action==='SEND'){receipt={...response(c.id,'QUEUED'),threadId:native.threadId,text:c.text,turnId:null,options:c.options};return receipt;}
   throw Error('unexpected command');
  });
  const api:WatchChatApi={state:async()=>({...state,provider:'CLAUDE_CODE',inputReady:true,watch:{...state.watch,threadId:native.threadId},replies:receipt?[receipt]:[]}),command:command as WatchChatApi['command']};
  const view=render(<WatchChat original={native} api={api} onBack={()=>{}}/>);
  expect(screen.queryByText(/回复会在原 Claude Code 对话空闲时送达/)).toBeNull();
+ expect(screen.getByRole('button',{name:'＋ 附件'})).toBeEnabled();
+ fireEvent.change(view.container.querySelector('input[type=file]')!,{target:{files:[new File(['png'],'phone.png',{type:'image/png'})]}});await screen.findByRole('button',{name:'移除 phone.png'});
  fireEvent.change(screen.getByRole('textbox'),{target:{value:'Actual requested text'}});
  await waitFor(()=>expect(screen.getByRole('button',{name:'发送回复'})).toBeEnabled());
  fireEvent.click(screen.getByRole('button',{name:'发送回复'}));
- await waitFor(()=>expect(command.mock.calls.find(([c])=>c.action==='SEND')?.[0]).toMatchObject({threadId:native.threadId,text:'Actual requested text',mode:'SEND',options:{model:null,effort:null,attachments:[]}}));
+ await waitFor(()=>expect(command.mock.calls.find(([c])=>c.action==='SEND')?.[0]).toMatchObject({threadId:native.threadId,text:'Actual requested text',mode:'SEND',options:{model:null,effort:null,attachments:['10000000-0000-4000-8000-000000000099']}}));
  expect(screen.queryByRole('button',{name:'知道了'})).not.toBeInTheDocument();
  await waitFor(()=>expect(screen.getAllByText('Actual requested text')).toHaveLength(1));
  receipt!.status='SENT';view.unmount();render(<WatchChat original={native} api={api} onBack={()=>{}}/>);

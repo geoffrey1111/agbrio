@@ -20,7 +20,7 @@ pub(crate) fn capabilities(scope: &str) -> Value {
         "providers":{
             "CODEX":{"read":true,"createChat":"REVIEWED_CREATE_CHAT","defaultFollowUp":"STEER_WHEN_ACTIVE_SEND_WHEN_IDLE","implicitQueue":false,"writes":"EXISTING_REVIEWED_ACTIONS","runtimeVerificationRequired":true},
             "CHATGPT":{"read":true,"writes":"EXISTING_REVIEWED_HANDOFF","accountSecurityStop":true},
-            "CLAUDE_CODE":{"read":true,"writes":"OWNER_TEXT_ONLY","mcpWrite":false,"attachments":false,"goalControl":false}
+            "CLAUDE_CODE":{"read":true,"writes":"OWNER_TEXT_AND_SELECTED_FILE_REFERENCES","mcpWrite":false,"attachments":"OWNER_LOCAL_FILE_REFERENCE","attachmentLimits":{"fileBytes":20971520,"totalBytes":67108864,"files":4},"goalControl":false}
         },
         "localMaintenance":{"transport":"WINDOWS_CURRENT_USER_NAMED_PIPE","commands":["STATUS","CAPABILITIES","DIAGNOSTICS","SHUTDOWN","PUBLISH_BOARD"],"start":"external local CLI","shutdownRequiresExactInstance":true,"remoteShutdown":false},
         "rules":["Discovery is not delegation or runtime readiness","Use stable native identities and existing review/receipt commands","After uncertain writes inspect the original receipt; never resend automatically","No shell, credentials, provider restart or permission changes"]
@@ -42,7 +42,7 @@ pub(crate) fn diagnostics(core: &RouterCore, host: Option<&HostRuntime>) -> Resu
     });
     Ok(json!({"apiVersion":API_VERSION,"appVersion":version(),"checkedAt":now,"host":runtime,
         "store":{"readable":true},"codex":codex,
-        "claude":{"registeredSessions":catalog.sessions.len(),"livePublishers":catalog.sessions.iter().filter(|s|s.lease_until>now&&s.state!="SESSION_END").count(),"mcpWrite":false},
+        "claude":{"plugin":crate::claude_code::plugin_versions(),"registeredSessions":catalog.sessions.len(),"livePublishers":catalog.sessions.iter().filter(|s|s.lease_until>now&&s.state!="SESSION_END").count(),"mcpWrite":false},
         "watches":{"total":watches.len(),"enabled":watches.iter().filter(|w|w.enabled).count()},
         "coverage":"LOCAL_OBSERVATION_ONLY","providerProbePerformed":false,
         "notice":"Counts and liveness do not prove end-to-end delivery, provider account readiness or user acceptance"}))

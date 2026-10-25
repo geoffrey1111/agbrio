@@ -37,3 +37,9 @@ Supported content: HTML, CSS, JavaScript, JSON, Markdown, text, CSV, PNG, JPEG, 
 The page is a presentation sandbox. Its own JavaScript can filter, compare and switch local views; it does not gain permissions to send messages or submit business approvals. Existing independently connected website boards retain their separate supported review flows.
 
 </details>
+
+## Refresh and storage
+
+Use the refresh button to reload an embedded website board. Returning from the browser refreshes the frame while preserving unsent edits where they can be detected. Image URLs keep normal browser caching.
+
+Settings → About → Storage and cache shows usage on this device and your computer. Clear downloaded previews and unused temporary uploads there. Unsent uploads expire after seven days; every attachment associated with a conversation reply is kept, including unconfirmed sends. Pairing, drafts, conversation history and original project files are preserved. Private preview caching is bounded at80MiB and expires after seven unused days. Foreign-origin websites keep their own browser cache rules.
