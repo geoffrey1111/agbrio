@@ -20,7 +20,7 @@ pub(crate) fn capabilities(scope: &str) -> Value {
         "providers":{
             "CODEX":{"read":true,"createChat":"REVIEWED_CREATE_CHAT","defaultFollowUp":"STEER_WHEN_ACTIVE_SEND_WHEN_IDLE","implicitQueue":false,"writes":"EXISTING_REVIEWED_ACTIONS","runtimeVerificationRequired":true},
             "CHATGPT":{"read":true,"writes":"EXISTING_REVIEWED_HANDOFF","accountSecurityStop":true},
-            "CLAUDE_CODE":{"read":true,"writes":"OWNER_TEXT_AND_SELECTED_FILE_REFERENCES","mcpWrite":false,"attachments":"OWNER_LOCAL_FILE_REFERENCE","attachmentLimits":{"fileBytes":20971520,"totalBytes":67108864,"files":4},"goalControl":false}
+            "CLAUDE_CODE":{"read":true,"writes":"OWNER_TEXT_AND_SELECTED_FILE_REFERENCES","mcpWrite":false,"attachments":"OWNER_LOCAL_FILE_REFERENCE","attachmentLimits":{"fileBytes":10485760,"totalBytes":41943040,"files":4},"goalControl":false}
         },
         "localMaintenance":{"transport":"WINDOWS_CURRENT_USER_NAMED_PIPE","commands":["STATUS","CAPABILITIES","DIAGNOSTICS","SHUTDOWN","PUBLISH_BOARD"],"start":"external local CLI","shutdownRequiresExactInstance":true,"remoteShutdown":false},
         "rules":["Discovery is not delegation or runtime readiness","Use stable native identities and existing review/receipt commands","After uncertain writes inspect the original receipt; never resend automatically","No shell, credentials, provider restart or permission changes"]

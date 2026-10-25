@@ -63,6 +63,7 @@ it('Claude uses the exact original session and inherited settings without acknow
  const view=render(<WatchChat original={native} api={api} onBack={()=>{}}/>);
  expect(screen.queryByText(/回复会在原 Claude Code 对话空闲时送达/)).toBeNull();
  expect(screen.getByRole('button',{name:'＋ 附件'})).toBeEnabled();
+ const realMatchMedia=window.matchMedia;const phoneMedia=vi.spyOn(window,'matchMedia').mockImplementation(query=>({...realMatchMedia(query),matches:query.includes('max-width:760px')}));fireEvent.click(screen.getByRole('button',{name:'＋ 附件'}));expect(screen.getByText('最多 4 个附件，每个 10 MB，总计 40 MB。上传后可移除，发送时才交给这个对话。')).toBeVisible();fireEvent.click(screen.getByRole('button',{name:'照片或截图'}));phoneMedia.mockRestore();
  fireEvent.change(view.container.querySelector('input[type=file]')!,{target:{files:[new File(['png'],'phone.png',{type:'image/png'})]}});await screen.findByRole('button',{name:'移除 phone.png'});
  fireEvent.change(screen.getByRole('textbox'),{target:{value:'Actual requested text'}});
  await waitFor(()=>expect(screen.getByRole('button',{name:'发送回复'})).toBeEnabled());

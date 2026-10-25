@@ -75,8 +75,8 @@ fn safe_dir(root:&str,parts:&[&str])->Result<PathBuf,String>{
 }
 #[derive(Serialize,Deserialize)]#[serde(rename_all="camelCase",deny_unknown_fields)]
 struct Upload { id:String,thread_id:String,cwd:String,name:String,size:usize,sha256:String }
-pub(crate) const MAX_ATTACHMENT_BYTES:usize=20*1024*1024;
-pub(crate) const MAX_ATTACHMENT_TOTAL:usize=64*1024*1024;
+pub(crate) const MAX_ATTACHMENT_BYTES:usize=10*1024*1024;
+pub(crate) const MAX_ATTACHMENT_TOTAL:usize=40*1024*1024;
 pub(crate) const UPLOAD_BODY_LIMIT:usize=((MAX_ATTACHMENT_BYTES+2)/3)*4+65536;
 pub(crate) fn upload(core:&RouterCore,id:&str,name:&str,data:&str)->Result<Value,String>{
  let w=watch(core,id)?;
@@ -268,7 +268,7 @@ pub(crate) fn start_queue(core:RouterCore){let _=core.store.recover_watch_replie
  let r=upload(&c,"exact","photo.png",&Base64::encode_string(png.get_ref())).unwrap();let o=ReplyOptions{attachments:vec![r["id"].as_str().unwrap().into()],..Default::default()};let text=claude_attachment_text(&w,"请看图",&o).unwrap();assert!(text.starts_with("请看图"));assert!(text.contains("attachment.png"));assert!(text.contains("SHA256"));assert_eq!(text,claude_attachment_text(&w,"请看图",&o).unwrap());let alias=Path::new(&w.cwd).join(".aiwr/watch-replies").join(&o.attachments[0]).join("attachment.png");assert_eq!(std::fs::read(&alias).unwrap(),*png.get_ref());std::fs::write(alias,b"changed").unwrap();assert!(claude_attachment_text(&w,"请看图",&o).is_err());
  }
  #[test]fn uploaded_files_over_eight_mib_fit_the_new_body_and_file_envelopes(){
- let(_d,c)=fixture();use base64ct::{Base64,Encoding};let bytes=vec![b'x';9*1024*1024];let encoded=Base64::encode_string(&bytes);assert!(encoded.len()+1024<UPLOAD_BODY_LIMIT);assert!(upload(&c,"exact","large.txt",&encoded).is_ok());assert_eq!(MAX_ATTACHMENT_BYTES,20*1024*1024);assert_eq!(MAX_ATTACHMENT_TOTAL,64*1024*1024);
+ let(_d,c)=fixture();use base64ct::{Base64,Encoding};let bytes=vec![b'x';9*1024*1024];let encoded=Base64::encode_string(&bytes);assert!(encoded.len()+1024<UPLOAD_BODY_LIMIT);assert!(upload(&c,"exact","large.txt",&encoded).is_ok());assert_eq!(MAX_ATTACHMENT_BYTES,10*1024*1024);assert_eq!(MAX_ATTACHMENT_TOTAL,40*1024*1024);assert!(UPLOAD_BODY_LIMIT<16*1024*1024);assert!(((UPLOAD_BODY_LIMIT+2)/3)*4+8192<23*1024*1024);
  }
  #[test]fn input_options_cannot_override_project_permissions_or_provider(){assert!(serde_json::from_value::<ChatCommand>(json!({"action":"SEND","threadId":"exact","id":Uuid::new_v4().to_string(),"generation":1,"mode":"SEND","text":"hello","options":{"cwd":"D:\\elsewhere","sandbox":"danger-full-access"}})).is_err());}
  #[test]#[ignore="owned disposable native Codex follow-up through authenticated HTTP; bounded inference"]

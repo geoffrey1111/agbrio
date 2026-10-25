@@ -509,8 +509,8 @@
   "项目或监听信息已变化。请重新打开原对话。": "Project or watch information changed. Reopen the original conversation.",
   "已有排队或送达未确认的回复。请先查看它的状态。": "A reply is queued or has unconfirmed delivery. Check its status first.",
   "这条执行请求已失效，请查看当前请求。": "This execution request expired. Check the current request.",
-  "单个附件最多 20 MB。": "Each attachment is limited to 20 MB.",
-  "最多选择 4 个附件，总大小不超过 64 MB。": "Select up to 4 attachments, 64 MB total.",
+  "单个附件最多 10 MB。": "Each attachment can be up to 10 MB.",
+  "最多选择 4 个附件，总大小不超过 40 MB。": "Choose up to 4 attachments, 40 MB in total.",
   "所选模型目前不可用，请在对话选项中重新选择。": "The selected model is unavailable. Choose another in conversation options.",
   "当前模型不支持这项思考强度。": "The current model does not support this reasoning level.",
   "附件在上传后已变化，请重新选择。": "An attachment changed after upload. Select it again.",
@@ -578,7 +578,6 @@
   "添加附件": "Add attachment",
   "照片或截图": "Photo or screenshot",
   "选择文件": "Choose file",
-  "最多 4 个附件，每个 20 MB，总计 64 MB。上传后可移除，发送时才交给这个对话。": "Up to 4 attachments, 20 MB each, 64 MB total. Remove after upload if needed; files reach this conversation only when you send.",
   "本次回复设置": "Reply settings",
   "模型": "Model",
   "沿用原对话": "Keep conversation default",
@@ -1393,5 +1392,6 @@
   "查看缓存占用": "Refresh storage usage",
   "正在清理…": "Clearing…",
   "暂时无法读取电脑缓存；此设备仍可清理。": "Computer storage usage is unavailable. You can still clear this device cache.",
-  "看板刷新未完成，请重试。": "Board refresh did not finish. Please try again."
+  "看板刷新未完成，请重试。": "Board refresh did not finish. Please try again.",
+  "最多 4 个附件，每个 10 MB，总计 40 MB。上传后可移除，发送时才交给这个对话。": "Up to 4 attachments, 10 MB each and 40 MB in total. Remove them before sending if needed; only sending shares them with this conversation."
 }

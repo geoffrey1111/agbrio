@@ -282,7 +282,7 @@ The owner saved hostUrl/token under agbrio-bridge@inline using official CLI stdi
 
 ## Selected files and completion notices
 
-Phone and desktop owners can attach selected images/files to an existing Claude Code conversation. Up to four files, 20 MiB each and 64 MiB combined. Images are read through verified local references using the conversation's existing file permissions. Bridge/MCP file writes remain unavailable.
+Phone and desktop owners can attach selected images/files to an existing Claude Code conversation. Up to four files, 10 MiB each and 40 MiB combined. Images are read through verified local references using the conversation's existing file permissions. Bridge/MCP file writes remain unavailable.
 
 Plugin0.1.11 supports128 simultaneous exact-turn completion waits; settled history no longer blocks future notices. Unknown delivery is never retried. Update the installed plugin and reload only while the conversation is idle; application installation alone does not update a running plugin. Authenticated heartbeat diagnostics report the loaded version when available.
 
