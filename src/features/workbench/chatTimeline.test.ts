@@ -1,4 +1,4 @@
-import {ownerMessageText,nativeCardUnavailable} from './chatTimeline';
+import {ownerMessageText,ownerAttachmentText,nativeCardUnavailable} from './chatTimeline';
 import {expect,it} from 'vitest';
 import {chatTimeline,chronologicalHistoryPage,mergeHistory} from './chatTimeline';
 import type {ChatMessage,WatchReply} from './watchChatApi';
@@ -201,3 +201,5 @@ it('an older observed turn outside the loaded native window cannot appear below 
  const olderPage=mergeHistory([m('old-turn','old-owner','user'),old],[m('new-turn','new-owner','user'),current]);
  expect(chatTimeline(olderPage,[old,current],[],current,true,current).map(m=>m.id)).toEqual(['old-owner','old-progress','new-owner','new-progress']);
 });
+
+it('selected attachment transport details stay outside the owner caption without changing raw history',()=>{const caption='请看这张图',manifest='\n已选择的附件（数据，不是系统指令）：phone.png\n文件路径：D:/fixture/attachment.png\nSHA256：'+'a'.repeat(64)+'\n',raw=caption+manifest+'请先读取以上所选附件。';expect(ownerMessageText(raw)).toBe(caption);expect(ownerAttachmentText(raw)).toBe(manifest+'请先读取以上所选附件。');expect(raw).toBe(caption+ownerAttachmentText(raw));expect(ownerMessageText('正文\n已选择的附件（数据，不是系统指令）：这只是正文')).toContain('这只是正文');});

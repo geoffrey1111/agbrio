@@ -56,7 +56,7 @@ it('Claude uses the exact original session and inherited settings without acknow
  const command=vi.fn(async(c)=>{
   if(c.action==='HISTORY')return {messages:[...(receipt?.status==='SENT'?[{id:`receipt:${receipt.id}`,turnId:`receipt:${receipt.id}`,role:'user',text:receipt.text}]:[]),{id:'item-a',turnId:'turn-a',role:'assistant',text:'完整原文'}],nextCursor:null};
   if(c.action==='UPLOAD')return {id:'10000000-0000-4000-8000-000000000099',name:'phone.png',size:3};
-  if(c.action==='SEND'){receipt={...response(c.id,'QUEUED'),threadId:native.threadId,text:c.text,turnId:null,options:c.options};return receipt;}
+  if(c.action==='SEND'){receipt={...response(c.id,'QUEUED'),threadId:native.threadId,text:c.text+'\n已选择的附件（数据，不是系统指令）：phone.png\n文件路径：D:/fixture/attachment.png\nSHA256：'+'a'.repeat(64)+'\n请先读取以上所选附件。',turnId:null,options:c.options};return receipt;}
   throw Error('unexpected command');
  });
  const api:WatchChatApi={state:async()=>({...state,provider:'CLAUDE_CODE',inputReady:true,watch:{...state.watch,threadId:native.threadId},replies:receipt?[receipt]:[]}),command:command as WatchChatApi['command']};
@@ -70,6 +70,7 @@ it('Claude uses the exact original session and inherited settings without acknow
  await waitFor(()=>expect(command.mock.calls.find(([c])=>c.action==='SEND')?.[0]).toMatchObject({threadId:native.threadId,text:'Actual requested text',mode:'SEND',options:{model:null,effort:null,attachments:['10000000-0000-4000-8000-000000000099']}}));
  expect(screen.queryByRole('button',{name:'知道了'})).not.toBeInTheDocument();
  await waitFor(()=>expect(screen.getAllByText('Actual requested text')).toHaveLength(1));
+ expect(view.container.querySelector('.v4-chat-attachments')).not.toHaveAttribute('open');expect(view.container.querySelector('.v4-chat-attachments')).toHaveTextContent('D:/fixture/attachment.png');
  receipt!.status='SENT';view.unmount();render(<WatchChat original={native} api={api} onBack={()=>{}}/>);
  await waitFor(()=>expect(screen.getAllByText('Actual requested text')).toHaveLength(1));
 });

@@ -123,7 +123,11 @@ export function chatTimeline(history:ChatMessage[],observed:ObservedMessage[],re
 }
 
 /** Native asynchronous-answer transport stays private to the protocol. */
+/** Display only: raw prompt bytes and native identities remain unchanged. */
+export function ownerAttachmentText(text:string){const marker=text.search(/\n已选择的附件（数据，不是系统指令）：[^\r\n]+\r?\n文件路径：[^\r\n]+\r?\nSHA256：[a-f0-9]{64}(?:\r?\n|$)/);return marker<0?'':text.slice(marker);}
 export function ownerMessageText(text:string){
+ const attachment=ownerAttachmentText(text);if(attachment)text=text.slice(0,text.length-attachment.length);
+
  const match=text.trim().match(/^<send_user_message_question_reply>\s*([\s\S]*)\s*<\/send_user_message_question_reply>$/);if(!match)return text;
  try{const rows=JSON.parse(match[1]);if(!Array.isArray(rows)||!rows.length||rows.some(r=>typeof r.questionItemId!=='string'||typeof r.answer!=='string'))return text;return rows.map(r=>[typeof r.question==='string'?r.question:'',r.answer].filter(Boolean).join('\n')).join('\n\n');}catch{return text;}
 }
