@@ -16,13 +16,14 @@ public static class RouterPeerOwner {
  [DllImport("kernel32.dll",CharSet=CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr process,uint flags,StringBuilder path,ref uint size);
  [DllImport("kernel32.dll")] static extern bool GetProcessTimes(IntPtr process,out long created,out long exited,out long kernel,out long user);
  [DllImport("kernel32.dll")] static extern bool GetExitCodeProcess(IntPtr process,out uint code);
+ [DllImport("advapi32.dll",SetLastError=true)] static extern bool GetTokenInformation(IntPtr token,int tokenClass,out int information,int length,out int returned);
  static bool DesktopLineage(uint pid,string owner) {
   var identity=Identity(pid);if(identity==null||identity[1]!=owner||desktopFile==null)return false;
   // File object identity handles Store junctions, without accepting arbitrary
   // descendants (our shell/test clients are also children of Codex Desktop).
   return FileIdentity(identity[0])==desktopFile;
  }
- public static string[] Identity(uint pid){var process=OpenProcess(0x1000,false,pid);if(process==IntPtr.Zero)return null;try{uint code;long created,exited,kernel,user;if(!GetExitCodeProcess(process,out code)||code!=259||!GetProcessTimes(process,out created,out exited,out kernel,out user))return null;var path=new StringBuilder(4096);uint length=4096;if(!QueryFullProcessImageName(process,0,path,ref length))return null;IntPtr token;if(!OpenProcessToken(process,8,out token))return null;try{using(var identity=new WindowsIdentity(token)){return new string[]{path.ToString(),identity.User.Value,created.ToString(System.Globalization.CultureInfo.InvariantCulture)};}}finally{CloseHandle(token);}}finally{CloseHandle(process);}}
+ public static string[] Identity(uint pid){var process=OpenProcess(0x1000,false,pid);if(process==IntPtr.Zero)return null;try{uint code;long created,exited,kernel,user;if(!GetExitCodeProcess(process,out code)||code!=259||!GetProcessTimes(process,out created,out exited,out kernel,out user))return null;var path=new StringBuilder(4096);uint length=4096;if(!QueryFullProcessImageName(process,0,path,ref length))return null;IntPtr token;if(!OpenProcessToken(process,8,out token))return null;try{using(var identity=new WindowsIdentity(token)){int elevation,returned;if(!GetTokenInformation(token,20,out elevation,4,out returned))return null;return new string[]{path.ToString(),identity.User.Value,created.ToString(System.Globalization.CultureInfo.InvariantCulture),elevation!=0?"true":"false"};}}finally{CloseHandle(token);}}finally{CloseHandle(process);}}
  public static int Verify(int peerPort,int serverPort,string owner,uint expectedPid) {
   uint size=0;GetExtendedTcpTable(IntPtr.Zero,ref size,false,2,5,0);IntPtr buffer=Marshal.AllocHGlobal((int)size);
   try {if(GetExtendedTcpTable(buffer,ref size,false,2,5,0)!=0)return 0;int rows=Marshal.ReadInt32(buffer);uint pid=0;int hits=0;
@@ -39,7 +40,7 @@ function RefreshDesktop {
  if($package.InstallLocation){[RouterPeerOwner]::ConfigureDesktop((Join-Path $package.InstallLocation 'app/ChatGPT.exe'))}
 }
 if($QueryPid -eq 0){RefreshDesktop}
-function Identity([uint32]$processId){$v=[RouterPeerOwner]::Identity($processId);if($v -and $v.Length -eq 3){return @{pid=$processId;imagePath=$v[0];ownerSid=$v[1];createdAt=$v[2]}};return $null}
+function Identity([uint32]$processId){$v=[RouterPeerOwner]::Identity($processId);if($v -and $v.Length -eq 4){return @{pid=$processId;imagePath=$v[0];ownerSid=$v[1];createdAt=$v[2];elevated=($v[3] -ceq 'true')}};return $null}
 if($QueryPid -gt 0){Identity $QueryPid|ConvertTo-Json -Compress;exit}
 $parent=(Get-CimInstance Win32_Process -Filter ('ProcessId='+$PID)).ParentProcessId
 @{ready=$true;supervisorIdentity=(Identity $parent)}|ConvertTo-Json -Depth 4 -Compress|ForEach-Object {[Console]::WriteLine($_)}

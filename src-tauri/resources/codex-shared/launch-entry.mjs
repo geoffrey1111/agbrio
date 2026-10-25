@@ -1,3 +1,4 @@
+import {dispatchLifecycle,dispatchEntry} from './privilege.mjs';
 import {lifecycle,readDesktopState} from './control.mjs';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -38,7 +39,7 @@ export async function stageSharedResources({directory,source,node,stamp},{move=r
 export async function launchEntry(options,dependencies={}){
  let stage='STATUS';
  try{
- const control=dependencies.control??lifecycle,exec=dependencies.exec??execute;
+ const control=dependencies.control??dispatchLifecycle,exec=dependencies.exec??execute;
  const {directory,source,node}=options,base={directory,scripts:source};
  const previous=await control({...base,action:'status'});
  // Reuse the live owner. No update, background stop, or second native writer.
@@ -75,7 +76,7 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   process.stdout.write(JSON.stringify({staged:true}));
  }else{
   const source=resolve(process.argv[2]);
-  await launchEntry({source,directory:join(process.env.LOCALAPPDATA,'AIWorkRouter/codex-shared'),node:join(dirname(source),'browser-executor-node.exe')});
+  const entry={source,directory:join(process.env.LOCALAPPDATA,'AIWorkRouter/codex-shared'),node:join(dirname(source),'browser-executor-node.exe')};await dispatchEntry(entry,()=>launchEntry(entry));
  }
  }
  catch(e){

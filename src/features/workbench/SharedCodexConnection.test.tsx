@@ -4,6 +4,23 @@ import {SharedCodexConnection,type SharedCodexStatus} from "./SharedCodexConnect
 afterEach(()=>{cleanup();vi.useRealTimers();});
 const independent:SharedCodexStatus={enabled:false,ready:false,desktopConnected:false,state:"INDEPENDENT"};
 const ready:SharedCodexStatus={enabled:false,ready:true,desktopConnected:false,state:"SHARED_PREPARED"};
+it('distinguishes the next-start choice from the running backend token',async()=>{
+ render(<SharedCodexConnection api={{status:async()=>({...ready,launchAsAdministrator:true,currentAdministrator:false}),setup:vi.fn(),setAdministrator:vi.fn()}}/>);
+ expect(await screen.findByText('当前后台：普通权限')).toBeVisible();expect(screen.getByRole('checkbox',{name:'以管理员身份启动共享 Codex'})).toBeChecked();
+});
+it('defaults administrator launch on and saves an explicit opt-out without starting anything',async()=>{
+ const launch=vi.fn(),setup=vi.fn(),setAdministrator=vi.fn().mockResolvedValue({...ready,launchAsAdministrator:false});
+ render(<SharedCodexConnection api={{status:async()=>ready,launch,setup,setAdministrator}}/>);
+ const checkbox=await screen.findByRole('checkbox',{name:'以管理员身份启动共享 Codex'});
+ await waitFor(()=>expect(checkbox).toBeEnabled());expect(checkbox).toBeChecked();fireEvent.click(checkbox);
+ await waitFor(()=>expect(checkbox).not.toBeChecked());expect(setAdministrator).toHaveBeenCalledWith(false);expect(launch).not.toHaveBeenCalled();expect(setup).not.toHaveBeenCalled();
+});
+it('restores a saved standard-mode choice and retains it when a preference write fails',async()=>{
+ const setAdministrator=vi.fn().mockRejectedValue('SHARED_LAUNCH_PREFERENCES_UNAVAILABLE');
+ render(<SharedCodexConnection api={{status:async()=>({...ready,launchAsAdministrator:false}),setup:vi.fn(),setAdministrator}}/>);
+ const checkbox=await screen.findByRole('checkbox',{name:'以管理员身份启动共享 Codex'});await waitFor(()=>expect(checkbox).toBeEnabled());expect(checkbox).not.toBeChecked();fireEvent.click(checkbox);
+ expect(await screen.findByRole('alert')).toHaveTextContent('启动权限设置未保存');expect(checkbox).not.toBeChecked();
+});
 it('incomplete native components report that shared mode did not start',async()=>{
  const api={status:vi.fn().mockResolvedValue(independent),setup:vi.fn().mockRejectedValue('SHARED_NATIVE_RUNTIME_INCOMPLETE'),launch:vi.fn()};
  render(<SharedCodexConnection api={api}/>);fireEvent.click(await screen.findByRole('button',{name:'准备共享连接'}));

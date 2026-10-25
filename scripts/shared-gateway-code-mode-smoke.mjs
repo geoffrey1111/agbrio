@@ -31,7 +31,7 @@ const ownerSid=(await exec(ps,['-NoProfile','-NonInteractive','-Command','[Secur
 const require=createRequire(import.meta.url),wsRoot=dirname(require.resolve('ws/package.json',{paths:[resolve('tools/isolated-browser-executor')]})),{WebSocket}=require(wsRoot);
 const scratch=resolve('runtime/shared-native-compatibility');await mkdir(scratch,{recursive:true});
 const root=await mkdtemp(join(scratch,'gateway-code-mode-')),runtime=join(root,'runtime'),home=join(root,'home');
-const files=['runtime.mjs','native-cohort.mjs','backend-recovery.mjs','state-file.mjs','peer-service.ps1'];
+const files=['runtime.mjs','privilege.mjs','privilege.ps1','native-cohort.mjs','backend-recovery.mjs','state-file.mjs','peer-service.ps1'];
 let child,closed,ws,health,config,origin,cleanable=true,heldCommand=null,capturedChildren=[],shutdownVerified=false,automaticHostCount=null;const pending=new Map();let id=0,cells=0,restarts=0;
 let mockServer,mockRequests=0,automaticCells=0,automaticHostIdentity=false,automaticHostPid=null,fixtureTurn=null;
 let desktopChild=null,desktopAttached=false,desktopRetired=false,desktopStopScript=null;

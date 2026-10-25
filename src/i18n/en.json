@@ -1393,5 +1393,13 @@
   "正在清理…": "Clearing…",
   "暂时无法读取电脑缓存；此设备仍可清理。": "Computer storage usage is unavailable. You can still clear this device cache.",
   "看板刷新未完成，请重试。": "Board refresh did not finish. Please try again.",
-  "最多 4 个附件，每个 10 MB，总计 40 MB。上传后可移除，发送时才交给这个对话。": "Up to 4 attachments, 10 MB each and 40 MB in total. Remove them before sending if needed; only sending shares them with this conversation."
+  "最多 4 个附件，每个 10 MB，总计 40 MB。上传后可移除，发送时才交给这个对话。": "Up to 4 attachments, 10 MB each and 40 MB in total. Remove them before sending if needed; only sending shares them with this conversation.",
+  "以管理员身份启动共享 Codex": "Launch shared Codex as administrator",
+  "同时作用于 Codex 窗口与共享执行后台。更改将在下次启动共享后台时生效。": "Applies to both the Codex window and shared execution backend. Changes take effect the next time the shared backend starts.",
+  "启动权限设置未保存，请重试。": "The launch permission setting was not saved. Please try again.",
+  "已取消管理员授权，没有启动新的共享进程。": "Administrator approval was cancelled. No new shared process was started.",
+  "共享启动权限与当前设置不一致。请先完成任务，退出共享 Codex 后停用并重新准备连接。": "The shared runtime uses different privileges. Finish your tasks, exit shared Codex, then disable and prepare the connection again.",
+  "启动权限尚未确认，请先检查共享连接状态，不要重复启动。": "Launch permissions are not confirmed. Check the shared connection status before attempting another launch.",
+  "当前后台：管理员权限": "Current backend: administrator",
+  "当前后台：普通权限": "Current backend: standard permissions"
 }

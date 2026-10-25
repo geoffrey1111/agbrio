@@ -299,3 +299,5 @@ html[data-agbrio-input=keyboard] :where(.r2-router,.r2-relay,.r2-sheet,.v5-role-
 .r2-hosted-connection .r2-action{margin-block:8px}.r2-hosted-code{display:inline-flex;align-items:center;gap:8px}
 .r2-hosted-contact{display:inline-block;color:var(--r2-accent);padding-block:12px;min-height:44px;line-height:20px}
 .r2-hosted-connection[hidden]{display:none}.r2-hosted-actions{align-items:stretch}.r2-hosted-actions .r2-action{margin:0;flex:1}.r2-connection-alternative{margin-block:4px 24px}
+
+.v4-shared-permission{display:flex;align-items:center;gap:8px;margin:16px 0 6px}.v4-shared-permission input{width:17px;height:17px;accent-color:var(--r2-accent)}.v4-shared-permission-note{font-size:13px;color:var(--r2-muted)}

@@ -5,6 +5,7 @@
 import{createRequire}from'node:module';import{createServer}from'node:http';import{createServer as tcpServer,connect as tcpConnect}from'node:net';import{spawn,execFile}from'node:child_process';import{readFile}from'node:fs/promises';import{randomBytes,createHash}from'node:crypto';import{dirname,join}from'node:path';
 import {assertNativeCohort} from './native-cohort.mjs';
 import {backendRecovery,verifiedBackendStart} from './backend-recovery.mjs';
+import {verifyProcessPrivilege} from './privilege.mjs';
 import {replaceStateFile} from './state-file.mjs';
 const require=createRequire(import.meta.url),{WebSocket,WebSocketServer}=require('./ws/index.js'),configPath=process.argv[2],cfg=JSON.parse(await readFile(configPath,'utf8'));
 if(!cfg.ownerSid?.startsWith('S-1-')||!Number.isInteger(cfg.port)||cfg.port<1024||cfg.port>65535)throw Error('SHARED_CONFIGURATION_INVALID');
@@ -20,10 +21,10 @@ const gateway=createServer(async(req,res)=>{
  }
  if(req.url!=='/health'||req.method!=='GET'){res.writeHead(403);return res.end();}
  res.setHeader('content-type','application/json');res.setHeader('cache-control','no-store');
- res.end(JSON.stringify({instance:nonce,ready:backendReady&&peerAvailable&&readyDurable,verifierReady:peerAvailable,supervisorPid:process.pid,backendPid:backend?.pid??null,version:cfg.version,activeTurns:activeTurns.size,desktopConnected:[...clients].some(ws=>ws.desktopActor&&['codex_desktop','Codex Desktop'].includes(ws.clientName)&&ws.initialized===true)}));
+ res.end(JSON.stringify({instance:nonce,ready:backendReady&&peerAvailable&&readyDurable,verifierReady:peerAvailable,supervisorPid:process.pid,backendPid:backend?.pid??null,elevated:supervisorIdentity?.elevated??null,backendElevated:backendElevation,version:cfg.version,activeTurns:activeTurns.size,desktopConnected:[...clients].some(ws=>ws.desktopActor&&['codex_desktop','Codex Desktop'].includes(ws.clientName)&&ws.initialized===true)}));
 });
 gateway.on('connection',s=>{gatewaySockets.add(s);s.on('close',()=>gatewaySockets.delete(s));s.on('error',()=>record('SOCKET_ERROR'));});
-let supervisorIdentity=null;let backend=null,backendReady=false,readyDurable=false,backoff=1000,closing=false,innerPort,token;const clients=new Set();const wss=new WebSocketServer({noServer:true,maxPayload:16*1024*1024});
+let supervisorIdentity=null,backendElevation=null;let backend=null,backendReady=false,readyDurable=false,backoff=1000,closing=false,innerPort,token;const clients=new Set();const wss=new WebSocketServer({noServer:true,maxPayload:16*1024*1024});
 const events=[];let eventWrite=Promise.resolve();
 function record(event,detail={}){events.push({at:Date.now(),event,pid:process.pid,...detail});if(events.length>64)events.shift();const value={format:1,events:[...events]};eventWrite=eventWrite.catch(()=>{}).then(()=>replaceStateFile(join(folder,'runtime-events.json'),value));eventWrite.catch(()=>{});}
 let readyWrite=Promise.resolve();function saveReady(){const current=backend,value={instance:nonce,port:cfg.port,supervisorPid:process.pid,backendPid:backend?.pid??null,supervisorIdentity,ready:backendReady&&peerAvailable,verifierReady:peerAvailable};readyWrite=readyWrite.catch(()=>{}).then(async()=>{await replaceStateFile(readyPath,value);if(current===backend)readyDurable=value.ready&&backendReady&&peerAvailable;}).catch(error=>{readyDurable=false;record('STATE_WRITE_FAILED',{code:/^[A-Z_]{1,40}$/.test(error.code??'')?error.code:'IO_ERROR'});console.error('SHARED_STATE_WRITE_FAILED');throw error;});readyWrite.catch(()=>{});return readyWrite;}
@@ -54,7 +55,7 @@ try{
   record('GATEWAY_LISTENING');
 }catch{console.error('SHARED_START_FAILED');await stop();}
 async function freePort(){return new Promise((r,j)=>{const s=tcpServer();s.once('error',j);s.listen(0,'127.0.0.1',()=>{const port=s.address().port;s.close(()=>r(port));});});}
-async function startBackend(){if(closing)return;backendReady=false;
+async function startBackend(){if(closing)return;backendReady=false;backendElevation=null;
  const current=await verifiedBackendStart(()=>closing,async()=>{
   const port=await freePort(),capability=randomBytes(32).toString('hex');return {port,capability,digest:createHash('sha256').update(capability).digest('hex')};
  },async()=>{if(!cfg.testOnly)await assertNativeCohort(cfg.binary,cfg.nativeFiles);},candidate=>{
@@ -63,6 +64,8 @@ async function startBackend(){if(closing)return;backendReady=false;
  const owned=backend;record('BACKEND_START',{backendPid:owned.pid??null});let recovered=false;const recover=(code,signal)=>{if(recovered||backend!==owned)return;recovered=true;backendReady=false;readyDurable=false;record('BACKEND_EXIT',{backendPid:owned.pid??null,code:Number.isInteger(code)?code:null,signal:typeof signal==='string'?signal:null});activeTurns.clear();for(const client of clients)client.close();void saveReady();if(!closing){recovery.schedule(backoff);backoff=Math.min(backoff*2,30000);}};owned.once('error',recover);owned.once('exit',recover);owned.once('close',recover);return owned;
  });
  if(!current)return;
+ const actual=await verifyProcessPrivilege(current.pid,cfg.ownerSid,cfg.binary,supervisorIdentity.elevated);backendElevation=actual.elevated;
+ if(typeof cfg.launchElevated==='boolean'&&cfg.launchElevated!==backendElevation)throw Error('SHARED_PRIVILEGE_TOKEN_MISMATCH');
  for(let n=0;n<40&&!closing&&backend===current&&current.exitCode===null;n++){try{const r=await fetch(`http://127.0.0.1:${innerPort}/readyz`,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(500)});if(r.ok&&!closing&&backend===current&&current.exitCode===null){backendReady=true;backoff=1000;break;}}catch{}await new Promise(r=>setTimeout(r,100));}await saveReady();if(readyDurable)record('BACKEND_READY',{backendPid:current.pid});
 }
 async function stop(){

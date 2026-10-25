@@ -1,3 +1,7 @@
+## 管理员或普通权限启动
+
+当前版本支持在连接设置里选择共享窗口与后台的 Windows 权限。见[使用说明](SHARED_CODEX_PRIVILEGES.md)。现有后台需任务结束、退出并重新准备后才会切换，不会因勾选变化自动重启。
+
 # Shared Codex repair candidate
 
 **For current installation and everyday steps, use the [setup guide](SETUP.md) /

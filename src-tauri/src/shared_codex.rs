@@ -32,9 +32,10 @@ static ASSETS:OnceLock<Assets>=OnceLock::new();static START:Mutex<()>=Mutex::new
 #[derive(Clone,Serialize,Deserialize)]#[serde(rename_all="camelCase")]
 struct Settings{enabled:bool,#[serde(default)]format:u32,#[serde(default)]phase:String,binary:PathBuf,version:String,owner_sid:String,port:u16,instance:String,#[serde(default)]desktop:Option<PathBuf>}
 #[derive(Serialize,Deserialize)]#[serde(rename_all="camelCase")]
-pub(crate)struct Status{pub enabled:bool,pub ready:bool,pub desktop_connected:bool,pub state:String,pub update_pending:bool,#[serde(default)]pub launch_progress:Option<LaunchProgress>}
+pub(crate)struct Status{pub enabled:bool,pub ready:bool,pub desktop_connected:bool,pub state:String,pub update_pending:bool,#[serde(default="default_administrator")]pub launch_as_administrator:bool,pub current_administrator:Option<bool>,#[serde(default)]pub launch_progress:Option<LaunchProgress>}
 #[derive(Serialize,Deserialize)]#[serde(rename_all="camelCase")]
 pub(crate)struct LaunchProgress{step:String,state:String,error_code:Option<String>,updated_at:u64}
+fn default_administrator()->bool{true}
 fn launch_progress()->Option<LaunchProgress>{let v:LaunchProgress=serde_json::from_slice(&fs::read(folder().ok()?.join("launch-progress.json")).ok()?).ok()?;
  matches!(v.step.as_str(),"CHECKING"|"LAUNCHING"|"CONNECTING"|"SHOWING"|"CONNECTED"|"FAILED").then_some(v)
 }
@@ -44,17 +45,38 @@ fn tool_path(path:PathBuf)->PathBuf{
  #[cfg(windows)]{let text=path.to_string_lossy();if let Some(drive)=text.strip_prefix(r"\\?\"){if drive.as_bytes().get(1)==Some(&b':'){return PathBuf::from(drive)}}}
  path
 }
+#[derive(Serialize,Deserialize)]#[serde(rename_all="camelCase",deny_unknown_fields)]
+struct LaunchPreferences{launch_as_administrator:bool}
+fn launch_administrator()->Result<bool,String>{read_launch_administrator(&folder()?)}
+fn read_launch_administrator(directory:&Path)->Result<bool,String>{
+ let path=directory.join("launch-preferences.json");
+ match fs::read(&path){Ok(bytes)=>serde_json::from_slice::<LaunchPreferences>(&bytes).map(|p|p.launch_as_administrator).map_err(|_|"SHARED_LAUNCH_PREFERENCES_INVALID".into()),Err(e)if e.kind()==std::io::ErrorKind::NotFound=>Ok(true),Err(_)=>Err("SHARED_LAUNCH_PREFERENCES_UNAVAILABLE".into())}
+}
+pub(crate)fn set_launch_administrator(enabled:bool)->Result<Status,String>{
+ let _lock=START.lock().map_err(|_|"SHARED_START_UNAVAILABLE")?;
+ #[cfg(windows)]let _owner=OwnerMutex::acquire()?;
+ let directory=folder()?;write_launch_administrator(&directory,enabled)?;Ok(status())
+}
+fn write_launch_administrator(directory:&Path,enabled:bool)->Result<(),String>{
+ use std::io::Write;
+ fs::create_dir_all(directory).map_err(|_|"SHARED_LAUNCH_PREFERENCES_UNAVAILABLE")?;
+ let path=directory.join("launch-preferences.json");
+ if fs::symlink_metadata(directory).is_ok_and(|m|m.file_type().is_symlink())||fs::symlink_metadata(&path).is_ok_and(|m|m.file_type().is_symlink()||m.is_dir()){return Err("SHARED_LAUNCH_PREFERENCES_INVALID".into())}
+ let temporary=directory.join(format!(".launch-preferences-{}.tmp",uuid::Uuid::new_v4()));
+ let result=(||->std::io::Result<()>{let mut f=fs::OpenOptions::new().write(true).create_new(true).open(&temporary)?;f.write_all(&serde_json::to_vec(&LaunchPreferences{launch_as_administrator:enabled}).unwrap())?;f.sync_all()?;drop(f);fs::rename(&temporary,&path)})();
+ if result.is_err(){let _=fs::remove_file(&temporary);return Err("SHARED_LAUNCH_PREFERENCES_UNAVAILABLE".into())}Ok(())
+}
 pub(crate)fn configure(source:PathBuf,node:PathBuf){let _=ASSETS.set(Assets{source:tool_path(source),node:tool_path(node)});}
 #[cfg(windows)]fn hidden(c:&mut Command){use std::os::windows::process::CommandExt;c.creation_flags(0x08000000);}
 #[cfg(not(windows))]fn hidden(_: &mut Command){}
 fn health(s:&Settings)->Option<serde_json::Value>{if s.format!=2{return None}let client=reqwest::blocking::Client::builder().no_proxy().timeout(std::time::Duration::from_secs(2)).build().ok()?;let v=client.get(format!("http://127.0.0.1:{}/health",s.port)).send().ok()?.json::<serde_json::Value>().ok()?;(v["instance"].as_str()==Some(&s.instance)).then_some(v)}
 pub(crate)fn status()->Status{
- let fallback=Status{enabled:false,ready:false,desktop_connected:false,state:"INDEPENDENT".into(),update_pending:false,launch_progress:None};
+ let fallback=Status{enabled:false,ready:false,desktop_connected:false,state:"INDEPENDENT".into(),update_pending:false,launch_as_administrator:launch_administrator().unwrap_or(true),current_administrator:None,launch_progress:None};
  let Ok(Some(s))=settings()else{return fallback};if s.phase=="RECOVERY_REQUIRED"{return Status{state:"RECOVERY_REQUIRED".into(),..fallback}}if s.format!=2{return Status{state:if s.enabled{"LEGACY_REPAIR_REQUIRED"}else{"INDEPENDENT"}.into(),..fallback}};
  let h=health(&s);let ready=h.as_ref().is_some_and(|h|h["ready"]==true);let desktop=h.as_ref().is_some_and(|h|h["desktopConnected"]==true);
- Status{enabled:s.enabled,ready,desktop_connected:desktop,state:if s.phase=="RECOVERY_REQUIRED"{"RECOVERY_REQUIRED"}else if s.phase=="PREPARED"&&ready{"SHARED_PREPARED"}else if s.enabled&&desktop{"SHARED_CONNECTED"}else if s.enabled{"SHARED_RECONNECTING"}else{"INDEPENDENT"}.into(),update_pending:runtime_update_pending(),launch_progress:launch_progress()}
+ Status{enabled:s.enabled,ready,desktop_connected:desktop,state:if s.phase=="RECOVERY_REQUIRED"{"RECOVERY_REQUIRED"}else if s.phase=="PREPARED"&&ready{"SHARED_PREPARED"}else if s.enabled&&desktop{"SHARED_CONNECTED"}else if s.enabled{"SHARED_RECONNECTING"}else{"INDEPENDENT"}.into(),update_pending:runtime_update_pending(),launch_as_administrator:launch_administrator().unwrap_or(true),current_administrator:h.as_ref().and_then(|v|v.get("backendElevated").or_else(||v.get("elevated"))).and_then(serde_json::Value::as_bool),launch_progress:launch_progress()}
 }
-const SHARED_ASSET_NAMES:[&str;19]=["runtime.mjs","transport.mjs","peer-owner.ps1","desktop-runtime.ps1","desktop-state.ps1","native-runtime.ps1","native-cohort.mjs","backend-recovery.mjs","code-mode-probe.mjs","peer-service.ps1","control.mjs","environment.ps1","owned-processes.ps1","desktop-identity.ps1","launch.ps1","launch-entry.mjs","state-file.mjs","return-normal.ps1","shared-offline-recovery.ps1"];
+const SHARED_ASSET_NAMES:[&str;21]=["privilege.mjs","privilege.ps1","runtime.mjs","transport.mjs","peer-owner.ps1","desktop-runtime.ps1","desktop-state.ps1","native-runtime.ps1","native-cohort.mjs","backend-recovery.mjs","code-mode-probe.mjs","peer-service.ps1","control.mjs","environment.ps1","owned-processes.ps1","desktop-identity.ps1","launch.ps1","launch-entry.mjs","state-file.mjs","return-normal.ps1","shared-offline-recovery.ps1"];
 fn resource_stamp(source:&Path,node:&Path,ws:&Path)->Result<String,String>{
  let mut digest=Sha256::new();
  for name in SHARED_ASSET_NAMES{digest.update(fs::read(source.join(name)).map_err(|_|"SHARED_RUNTIME_ASSET_MISSING")?);}
@@ -68,7 +90,7 @@ fn cached_resources_match(root:&Path,stamp:&str)->bool{
  fs::read_to_string(root.join("version")).ok().as_deref()==Some(stamp)&&resource_stamp(root,&root.join("node.exe"),&root.join("ws")).ok().as_deref()==Some(stamp)
 }
 fn live_assets_stamp(source:&Path,node:&Path,ws:&Path)->Option<String>{
- let mut digest=Sha256::new();for name in ["runtime.mjs","transport.mjs","native-cohort.mjs","backend-recovery.mjs","peer-service.ps1"]{digest.update(fs::read(source.join(name)).ok()?);}digest.update(fs::read(node).ok()?);
+ let mut digest=Sha256::new();for name in ["privilege.mjs","privilege.ps1","runtime.mjs","transport.mjs","native-cohort.mjs","backend-recovery.mjs","peer-service.ps1"]{digest.update(fs::read(source.join(name)).ok()?);}digest.update(fs::read(node).ok()?);
  for name in ["index.js","package.json"]{digest.update(fs::read(ws.join(name)).ok()?);}
  let mut files:Vec<_>=fs::read_dir(ws.join("lib")).ok()?.collect::<Result<_,_>>().ok()?;files.sort_by_key(|f|f.file_name());
  for file in files{digest.update(file.file_name().to_string_lossy().as_bytes());digest.update(fs::read(file.path()).ok()?);}Some(format!("{:x}",digest.finalize()))
@@ -151,6 +173,8 @@ pub(crate)fn launch()->Result<Status,String>{let _lock=START.lock().map_err(|_|"
 }
 #[cfg(not(windows))]pub(crate)fn setup()->Result<Status,String>{Err("SHARED_WINDOWS_REQUIRED".into())}
 #[cfg(test)]mod tests{use super::*;
+ #[test]fn launch_permission_default_and_persistence_never_start_a_process(){let dir=tempfile::tempdir().unwrap();assert!(read_launch_administrator(dir.path()).unwrap());write_launch_administrator(dir.path(),false).unwrap();assert!(!read_launch_administrator(dir.path()).unwrap());write_launch_administrator(dir.path(),true).unwrap();assert!(read_launch_administrator(dir.path()).unwrap());fs::write(dir.path().join("launch-preferences.json"),br#"{"launchAsAdministrator":"false"}"#).unwrap();assert!(read_launch_administrator(dir.path()).is_err());}
+
  #[test]fn declared_assets_cover_every_packaged_shared_resource(){
   let source=Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/codex-shared");
   let mut packaged:Vec<_>=fs::read_dir(source).unwrap().map(|e|e.unwrap().file_name().to_string_lossy().into_owned()).collect();

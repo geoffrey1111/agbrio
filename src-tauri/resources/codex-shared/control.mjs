@@ -6,6 +6,7 @@ import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
+import {dispatchLifecycle,launchPreference,inspectPrivileges,verifyProcessPrivilege} from './privilege.mjs';
 import {replaceStateFile} from './state-file.mjs';
 const exec=promisify(execFile),sleep=ms=>new Promise(r=>setTimeout(r,ms));
 export async function atomic(path,value){await replaceStateFile(path,value);}
@@ -61,7 +62,7 @@ export async function lifecycle(options,dependencies={}){
   const installed=await readDesktopState(options.scripts??join(directory,'runtime'),execute);
   if(installed.count>0)throw Error('SHARED_DESKTOP_CLOSE_REQUIRED');
  };
- const status=async()=>{const h=cfg?.format===2?await health():null;return{enabled:saved?.enabled===true&&saved?.format===2,ready:!!h?.ready,desktopConnected:!!h?.desktopConnected,state:saved?.format!==2?(saved?.enabled?'LEGACY_REPAIR_REQUIRED':'INDEPENDENT'):saved.phase==='RECOVERY_REQUIRED'?'RECOVERY_REQUIRED':saved.phase==='ACTIVE'?(h?.desktopConnected?'SHARED_CONNECTED':'SHARED_RECONNECTING'):saved.phase==='PREPARED'&&h?.ready?'SHARED_PREPARED':'INDEPENDENT',updatePending:false,activeTurns:h?.activeTurns??null,launchProgress:await load(join(directory,'launch-progress.json')).catch(()=>null)};};
+ const status=async()=>{const h=cfg?.format===2?await health():null;return{enabled:saved?.enabled===true&&saved?.format===2,ready:!!h?.ready,desktopConnected:!!h?.desktopConnected,state:saved?.format!==2?(saved?.enabled?'LEGACY_REPAIR_REQUIRED':'INDEPENDENT'):saved.phase==='RECOVERY_REQUIRED'?'RECOVERY_REQUIRED':saved.phase==='ACTIVE'?(h?.desktopConnected?'SHARED_CONNECTED':'SHARED_RECONNECTING'):saved.phase==='PREPARED'&&h?.ready?'SHARED_PREPARED':'INDEPENDENT',updatePending:false,launchAsAdministrator:await launchPreference(directory),currentAdministrator:h?.backendElevated??h?.elevated??null,activeTurns:h?.activeTurns??null,launchProgress:await load(join(directory,'launch-progress.json')).catch(()=>null)};};
  const stop=async()=>{
   const h=cfg?.format===2?await health():null;
   if(h?.activeTurns)throw Error('SHARED_DESKTOP_BUSY');
@@ -142,6 +143,8 @@ export async function lifecycle(options,dependencies={}){
     await pause(200);
    }
    if(!connected)throw Error('SHARED_DESKTOP_CONNECTION_FAILED');
+   const identity=await(dependencies.inspectPrivileges??inspectPrivileges)();
+   await(dependencies.verifyProcessPrivilege??verifyProcessPrivilege)(child.pid,identity.ownerSid,saved.desktop,identity.elevated);
    // Commit product state only. Desktop's persistent default endpoint stays
    // untouched even after success, so an absent/crashed gateway cannot trap a
    // normal Desktop launch. Only this explicitly launched process uses ws://.
@@ -178,14 +181,15 @@ export async function lifecycle(options,dependencies={}){
  const snapshot=await run(['-Action','Snapshot']);if(snapshot.CODEX_APP_SERVER_WS_URL&&!sharedUrl(snapshot.CODEX_APP_SERVER_WS_URL))throw Error('SHARED_OTHER_DESKTOP_ENDPOINT_CONFIGURED');
  if(snapshot.CODEX_APP_SERVER_WS_URL)throw Error('SHARED_STALE_ENDPOINT_REQUIRES_REPAIR');
  const nativeVersion=(await execute(binary,['--version'],{windowsHide:true,timeout:10000})).stdout.trim();if(nativeVersion!==`codex-cli ${version}`)throw Error('SHARED_NATIVE_BINARY_UNVERIFIED');
- const sid=(await execute(ps,['-NoProfile','-NonInteractive','-Command','[Security.Principal.WindowsIdentity]::GetCurrent().User.Value'],{windowsHide:true,timeout:10000})).stdout.trim();
- cfg={format:2,enabled:false,phase:'PREPARING',binary,version,desktop,nativeFiles:verifiedNative.files,ownerSid:sid,port:47116,instance:randomUUID(),controlToken:randomBytes(32).toString('hex')};
+ const identity=await(dependencies.inspectPrivileges??inspectPrivileges)(),sid=identity.ownerSid;
+ cfg={format:2,enabled:false,phase:'PREPARING',binary,version,desktop,nativeFiles:verifiedNative.files,ownerSid:sid,launchElevated:identity.elevated,port:47116,instance:randomUUID(),controlToken:randomBytes(32).toString('hex')};
  cfg={...cfg,...dependencies.config};saved={...cfg,originalEnvironment:snapshot};delete saved.controlToken;
  try{
   await persist(settingsPath,saved);await persist(configPath,cfg);
   const child=createProcess(join(directory,'runtime/node.exe'),[join(directory,'runtime/runtime.mjs'),configPath],{detached:true,windowsHide:true,stdio:'ignore'});child.on('error',()=>{});child.unref();
   let ready=false;for(let i=0;i<100;i++){if((await health())?.ready){ready=true;break;}if(child.exitCode!==null)break;await sleep(200);}
   if(!ready)throw Error('SHARED_START_FAILED');
+  if((await health())?.elevated!==identity.elevated)throw Error('SHARED_PRIVILEGE_TOKEN_MISMATCH');
   // Prepare only native RPC; never launch a second Desktop. The owner's single
   // Desktop must connect successfully during explicit launch before activation.
   await (dependencies.probe??probeGateway)({directory,url:`ws://127.0.0.1:${cfg.port}/rpc`});
@@ -207,6 +211,6 @@ export async function probeGateway({directory,url}){
 }
 const normalizedEntry=path=>path.replace(/^\\\\\?\\/,'').replaceAll('\\','/').toLowerCase();
 if(process.argv[1]&&normalizedEntry(fileURLToPath(import.meta.url))===normalizedEntry(resolve(process.argv[1]))){
- try{const options=process.argv[2]==='--disable'?{action:'disable',directory:resolve(process.argv[3]),scripts:dirname(fileURLToPath(import.meta.url))}:JSON.parse(await readFile(process.argv[2],'utf8'));const result=await lifecycle(options);process.stdout.write(JSON.stringify(result));}
+ try{const options=process.argv[2]==='--disable'?{action:'disable',directory:resolve(process.argv[3]),scripts:dirname(fileURLToPath(import.meta.url))}:JSON.parse(await readFile(process.argv[2],'utf8'));const result=await dispatchLifecycle(options);process.stdout.write(JSON.stringify(result));}
  catch(e){process.stderr.write(/^SHARED_[A-Z_]+$/.test(e.message)?e.message:'SHARED_LIFECYCLE_FAILED');process.exitCode=1;}
 }

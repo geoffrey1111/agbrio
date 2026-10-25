@@ -15,6 +15,7 @@ async function fixture(){
  const options={directory,binary:'fixture-codex.exe',version:'0.160.0',desktop:'fixture-Desktop.exe'};
  const child=()=>{const c=new EventEmitter();c.pid=12345;c.exitCode=null;c.unref=()=>{};c.kill=()=>{c.exitCode=0;c.emit('exit',0);desktopConnected=false;};return c;};
  const dependencies={
+  inspectPrivileges:async()=>({ownerSid:'S-1-5-21-fixture',elevated:false}),verifyProcessPrivilege:async()=>({elevated:false}),
   verifyRuntime:async()=>({cohortVerified:true,files:[]}),
   run:async args=>{const action=args[args.indexOf('-Action')+1];calls.push(action);
    if(action==='Snapshot')return {...env};if(action==='DesktopWindow')return {visible:true};
@@ -24,7 +25,7 @@ async function fixture(){
   },
   exec:async(_file,args)=>({stdout:args[0]==='--version'?'codex-cli 0.160.0':args.includes('-DesktopPid')?JSON.stringify({applied:true}):args.some(arg=>arg.endsWith('desktop-state.ps1'))?JSON.stringify({desktop:'fixture-current-Desktop.exe',count:0}):'S-1-5-21-fixture'}),
   spawn:(_file,args)=>{calls.push(args.length?'spawn-supervisor':'spawn-Desktop');if(args.length)running=true;else desktopConnected=true;return child();},
-  fetch:async(url,opts)=>{if(!running)throw Error('refused');if(url.endsWith('/stop')){assert.match(opts.headers.Authorization,/^Bearer [0-9a-f]{64}$/);if(turns)return {ok:false,status:409};running=false;return{ok:true};}const cfg=JSON.parse(await readFile(join(directory,'runtime-config.json'),'utf8'));return{json:async()=>({instance:cfg.instance,ready:true,desktopConnected,activeTurns:turns})};},
+  fetch:async(url,opts)=>{if(!running)throw Error('refused');if(url.endsWith('/stop')){assert.match(opts.headers.Authorization,/^Bearer [0-9a-f]{64}$/);if(turns)return {ok:false,status:409};running=false;return{ok:true};}const cfg=JSON.parse(await readFile(join(directory,'runtime-config.json'),'utf8'));return{json:async()=>({instance:cfg.instance,ready:true,elevated:false,desktopConnected,activeTurns:turns})};},
   probe:async()=>{calls.push('probe-RPC');assert.equal(env.CODEX_APP_SERVER_WS_URL,null);},
  };
  return{options,dependencies,env,calls,setTurns:n=>turns=n,setDesktop:v=>desktopConnected=v};
@@ -269,3 +270,5 @@ test('cold Desktop grace remains bounded and does not relaunch a never-connectin
  const before=f.calls.length;await assert.rejects(lifecycle({...f.options,action:'launch'},f.dependencies),/SHARED_DESKTOP_CONNECTION_FAILED/);
  assert.ok(clock>=180000&&clock<181000);assert.equal(f.calls.slice(before).filter(x=>x==='spawn-Desktop').length,1);
 });
+
+test('a Desktop token mismatch never commits a successful shared launch',async()=>{const f=await fixture();await lifecycle({...f.options,action:'setup'},f.dependencies);f.dependencies.verifyProcessPrivilege=async()=>{throw Error('SHARED_PRIVILEGE_TOKEN_MISMATCH');};await assert.rejects(lifecycle({...f.options,action:'launch'},f.dependencies),/SHARED_PRIVILEGE_TOKEN_MISMATCH/);assert.notEqual(JSON.parse(await readFile(join(f.options.directory,'settings.json'),'utf8')).phase,'ACTIVE');});
