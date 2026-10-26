@@ -1,3 +1,5 @@
+使用 Claude Code 時，請在 Agbrio 選擇 **Claude Code** 並複製專用指令，或查看[客戶端接入說明](ASSISTANT_CLIENTS.md#claude-code)。下方 ChatGPT/dot 指令僅適用於該客戶端。
+
 # Agbrio assistant setup and delegation — zh-TW
 
 WorkBuddy 或其他 MCP 助手請使用[對應接入說明](ASSISTANT_CLIENTS.md)及[可直接複製的開發指令](tutorials/WORKBUDDY_DEVELOPMENT_PROMPT.zh-CN.txt)。以下 ChatGPT/dot 路線僅適用於該客戶端；main 原始碼支援不代表舊安裝包已有功能，也不代表已通過真實後台喚醒驗收。

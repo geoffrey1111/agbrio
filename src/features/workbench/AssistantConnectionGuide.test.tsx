@@ -8,6 +8,14 @@ function setup(grants:Parameters<typeof AssistantConnectionGuide>[0]["grants"]=[
  const onAddGrant=vi.fn(),onRouteChange=vi.fn(),openHelp=vi.fn().mockResolvedValue(undefined);
  render(<AssistantConnectionGuide mcpUrl={url} grants={grants} onAddGrant={onAddGrant} onRouteChange={onRouteChange} openHelp={openHelp}/>);return {onAddGrant,onRouteChange,openHelp};
 }
+it.each(['zh-CN','zh-TW','en'] as const)('offers a distinct Claude Code route and a real completion checklist in %s',language=>{
+ setLanguagePreference(language);const a=setup();fireEvent.click(screen.getByRole('button',{name:'Claude Code'}));
+ const title=language==='en'?'Connect Claude Code in three steps':'Claude Code 接入三步';const steps=screen.getByRole('region',{name:title});
+ expect(steps).toHaveTextContent('claude mcp get agbrio');expect(steps).toHaveTextContent('/mcp');expect(steps).toHaveTextContent('agbrio_read_app');
+ expect(steps.querySelector('pre')).toHaveTextContent("--scope user agbrio 'https://instance.fixture.invalid/mcp'");
+ expect(a.onRouteChange).toHaveBeenLastCalledWith('claude');expect(a.onAddGrant).not.toHaveBeenCalled();expect(a.openHelp).not.toHaveBeenCalled();
+ if(language==='en')expect(steps.textContent).not.toMatch(/[\u3400-\u9fff]/);
+});
 it("explains the tool connection and copies scoped examples without granting or sending",async()=>{
  const write=vi.fn().mockResolvedValue(undefined);Object.defineProperty(navigator,"clipboard",{value:{writeText:write},configurable:true});
  const a=setup();fireEvent.click(screen.getByText("AI 助手和 MCP 是怎么配合的？"));

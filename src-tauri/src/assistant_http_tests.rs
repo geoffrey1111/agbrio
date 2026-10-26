@@ -3,6 +3,37 @@ use crate::host_application::{RouterCore,Session};
 use router_core::store::{RouterStore,assistant::{GrantInput,BriefRule},role_bridge::RoleBindingInput};
 use serde_json::{json,Value};
 use std::time::Instant;
+#[test]
+fn mcp_new_chat_first_message_needs_no_notification_and_has_exactly_one_native_send(){
+ let(dir,core,legacy,_)=fixture();let old=core.store.assistant_grant(&legacy).unwrap();
+ let g=core.store.create_assistant_instance_grant(router_core::store::assistant::InstanceGrantInput{label:"First task fixture".into(),rules:old.rules,expires_at:now_ms()+600000}).unwrap();
+ let call=|name:&str,input:Value|crate::assistant_mcp::call(&core,&g.id,name,input);
+ let created=call("agbrio_prepare_action",json!({"requestId":"create-for-first-send","operation":"CREATE_CHAT","input":{"directory":dir.path()}})).unwrap();
+ let approved=|a:&Value|json!({"actionId":a["id"],"expectedHash":a["payloadHash"],"ruleId":"continue","useOwnerAnswer":false,"assessment":"Owner-delegated offline fixture"});
+ let receipt=call("agbrio_execute_action",approved(&created)).unwrap();assert_eq!(receipt["status"],"APPLIED");
+ assert!(core.store.codex_watch_feed(0).unwrap().events.is_empty());assert!(!dir.path().join("native-writes.jsonl").exists());
+ let mut input=receipt["result"]["nextActionInput"].clone();assert_eq!(receipt["result"]["nextActionRequiredFields"],json!(["text"]));assert!(input["sourceSequence"].is_null());input["text"]=json!("Fictional first task, no real provider.");
+ let id=input["threadId"].as_str().unwrap().to_string();let chat=call("agbrio_read_chat",json!({"threadId":id})).unwrap();assert_eq!(chat["sendContext"],receipt["result"]["nextActionInput"]);
+ for sequence in [-1,0,9000000]{let mut bad=input.clone();bad["sourceSequence"]=json!(sequence);let error=call("agbrio_prepare_action",json!({"requestId":format!("invalid-sequence-{sequence}"),"operation":"SEND_CHAT","input":bad})).unwrap_err();assert!(error.contains("SEND_CHAT.sourceSequence"));assert!(error.contains("null"));}
+ assert!(!dir.path().join("native-writes.jsonl").exists());
+ // The first message is independent of retained notifications, including when
+ // optional fields are omitted rather than supplied as null.
+ input.as_object_mut().unwrap().remove("sourceSequence");input.as_object_mut().unwrap().remove("expectedTurnId");
+ let action=call("agbrio_prepare_action",json!({"requestId":"exact-first-task","operation":"SEND_CHAT","input":input})).unwrap();let approval=approved(&action);
+ let sent=call("agbrio_execute_action",approval.clone()).unwrap();assert_eq!(sent["status"],"APPLIED");assert_eq!(sent["result"]["status"],"SENT");assert_eq!(call("agbrio_execute_action",approval).unwrap(),sent);
+ let writes=std::fs::read_to_string(dir.path().join("native-writes.jsonl")).unwrap();assert_eq!(writes.lines().count(),1);assert!(writes.contains("turn/start"));assert!(writes.contains("Fictional first task"));
+ assert_eq!(core.store.watch_replies(&id).unwrap().len(),1);core.shutdown_owned_adapter();
+}
+
+#[test]
+fn mcp_send_notification_anchor_rejects_another_thread_before_preparing(){
+ let(_dir,core,legacy,_)=fixture();let old=core.store.assistant_grant(&legacy).unwrap();let g=core.store.create_assistant_instance_grant(router_core::store::assistant::InstanceGrantInput{label:"Anchor fixture".into(),rules:old.rules,expires_at:now_ms()+600000}).unwrap();
+ let idle=router_core::store::codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()};
+ for id in ["anchor-first","anchor-other"]{core.store.enable_codex_watch(id,id,"C:/fixture",&idle).unwrap();let w=core.store.codex_chat_context(id).unwrap();core.store.record_codex_watch(id,w.generation,&router_core::store::codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some("fixture-turn".into()),item_id:Some("item".into()),text:"fixture result".into()}).unwrap();}
+ let events=core.store.codex_watch_feed(0).unwrap().events;let target=core.store.codex_chat_context("anchor-first").unwrap();
+ for e in events{let result=crate::assistant_mcp::call(&core,&g.id,"agbrio_prepare_action",json!({"requestId":format!("event-{}",e.sequence),"operation":"SEND_CHAT","input":{"threadId":target.thread_id,"generation":target.generation,"sourceSequence":e.sequence,"text":"fixture"}}));if e.thread_id==target.thread_id{assert!(result.is_ok());}else{assert!(result.unwrap_err().contains("SEND_CHAT.sourceSequence"));}}
+ assert!(core.store.watch_replies(&target.thread_id).unwrap().is_empty());core.shutdown_owned_adapter();
+}
 #[cfg(windows)]
 #[path="assistant_events_http_tests.rs"]
 mod events_contract;

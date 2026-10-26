@@ -1,3 +1,5 @@
+For Claude Code, choose **Claude Code** in Agbrio and copy its dedicated instructions. See [the client connection guide](ASSISTANT_CLIENTS.md#claude-code). The ChatGPT/dot instructions below are for that client only.
+
 # Agbrio assistant setup and delegation — en
 
 WorkBuddy or another MCP assistant: use the [client-specific setup](ASSISTANT_CLIENTS.md) and [development prompt](tutorials/WORKBUDDY_DEVELOPMENT_PROMPT.zh-CN.txt). The ChatGPT/dot workflow below applies to that client only. Source support is separate from the currently released installer and from actual background-wake acceptance.

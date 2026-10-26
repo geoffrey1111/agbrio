@@ -1,3 +1,23 @@
+# 连接你正在使用的助手
+
+在 **Agbrio → 设置 → AI 助手** 先选择客户端，再点 **复制给 AI 助手**。这段指令会使用你自己的 MCP 地址。接入完成要以目标会话实际调用 `agbrio_read_app` 为准。
+
+## Claude Code
+
+1. 在 Agbrio 选择 **Claude Code**，复制专用指令。终端、VS Code、桌面 Code 与云端会话分别验证，不互相代替。
+2. 终端 / VS Code：用 `claude mcp get agbrio` 检查已有配置；缺少时，使用应用里生成的 `claude mcp add --transport http --scope user agbrio ...` 命令。命令返回 Added 仅代表保存配置。
+3. 在交互式 Claude Code 输入 `/mcp`，选择 agbrio 完成本人 OAuth 登录与同意。已有有效登录可以复用，但仍需实际工具验证。
+4. 桌面 Code：输入框旁 **+ → Add connectors**，或 **Settings → Connectors**，添加当前自定义 MCP 地址并授权。必须在真正使用的 Code 会话里看到工具。
+5. 让助手实际调用 `agbrio_read_app`，报告 `scope`、`approvalMode`、到期时间和读取结果。不能只说“已经装好”。
+
+MCP 连接请查看 `/mcp` 或连接器；它不一定出现在插件列表。**用 MCP 管理 Codex** 与 **安装 Claude 桥接插件，让 Agbrio 监听/回复 Claude 或递送原生提醒** 是两项不同功能。后者使用 Agbrio 的 Claude 连接流程，不要求为前者重复安装。
+
+没有登录窗口不一定失败：有效登录可复用。没有工具、未认证和业务参数错误也不能混为一谈。助手须报告真实失败阶段；`WATCH_EVENT_NOT_FOUND` 要查通知引用，不应据此反复重装或重新登录。收到不确定送达回执时，不自动重发。
+
+[Claude Code 官方 MCP 说明](https://code.claude.com/docs/en/mcp) · [桌面连接器说明](https://code.claude.com/docs/en/desktop#connect-external-tools)
+
+---
+
 ## 2026-10-26 — Guidance retains priority over stored queue intent
 
 An exact active STEER may overtake unattempted Codex QUEUE intents; those queue rows and their approved payloads stay unchanged. A physical SENDING/UNKNOWN writer still blocks every subsequent claim. Queued dispatch ignores no in-flight guidance, even when its row was inserted after the FIFO head. read_chat retains every pending queue/writer receipt plus the latest20 settled receipts so a full queue cannot hide its oldest message. Guidance does not change the queue anchor or authorize a second native turn. This closes the distinction between recovering controllableTurnId and actually admitting a guidance request while preserving an existing queue.

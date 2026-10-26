@@ -1,6 +1,19 @@
 import {describe,expect,it} from "vitest";
 import {assistantMcpConfig} from "./assistantClientInstructions";
 import {assistantSetupInstructions,assistantTakeoverInstructions} from "./assistantSetupInstructions";
+import {claudeCodeAddCommand} from "./claudeConnectionInstructions";
+
+it.each(['zh-CN','zh-TW','en'] as const)('Claude setup in %s requires actual installation, authentication and tool evidence',language=>{
+ const prompt=assistantSetupInstructions('https://fixture.invalid/mcp',language,'claude');
+ for(const expected of ['claude --version','claude mcp list','claude mcp get agbrio','claude mcp add --transport http --scope user agbrio','/mcp','agbrio_read_app','approvalMode','expiresAt','Add connectors','sourceSequence','nextActionInput','UNKNOWN'])expect(prompt).toContain(expected);
+ expect(prompt).not.toContain('https://chatgpt.com/plugins');expect(prompt).not.toContain('claude plugin install');
+ if(language==='en')expect(prompt).not.toMatch(/[\u3400-\u9fff]/);
+ expect(assistantTakeoverInstructions(language,'claude')).toContain('sourceSequence');
+});
+it('never produces an executable add command for missing or credential-bearing entrances',()=>{
+ for(const url of [null,'http://fixture.invalid/mcp','https://user:secret@fixture.invalid/mcp','https://fixture.invalid/mcp?token=secret','not-a-url'])expect(claudeCodeAddCommand(url)).toBeNull();
+ expect(claudeCodeAddCommand('https://fixture.invalid/mcp')).toBe("claude mcp add --transport http --scope user agbrio 'https://fixture.invalid/mcp'");
+});
 describe("client-independent connection instructions",()=>{
  it("exports only credential-free standard configuration",()=>{
   expect(JSON.parse(assistantMcpConfig("https://fixture.invalid/mcp")!)).toEqual({mcpServers:{agbrio:{type:"streamableHttp",url:"https://fixture.invalid/mcp"}}});

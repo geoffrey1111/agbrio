@@ -1,3 +1,9 @@
+## 新建 Codex 对话后的第一条消息
+
+`CREATE_CHAT` 创建空对话并监听，不会自动启动模型任务。创建结果的 `nextActionInput` 已包含精确 `threadId`、`generation`、`mode: AUTO` 和空的通知引用；补上已获委托的任务 `text`，再按原有 prepare → review → execute → receipt 流程发送。已有对话可读取 `agbrio_read_chat.sendContext`。
+
+`sourceSequence` 可不传或传 `null`。只有明确回复同一对话的一条现有通知时，才传真实正整数通知编号；不可填 `0`、generation 或猜测的消息索引。不需要先手动贴第一条任务来产生通知。无效编号会在准备阶段明确指出字段问题；原有同一对话校验、审批、哈希与未知送达不重试规则保留。
+
 # Agbrio assistant MCP — whole application
 
 ## 2026-10-17 source update: general MCP clients and WorkBuddy

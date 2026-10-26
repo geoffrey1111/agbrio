@@ -107,7 +107,13 @@ pub(crate) fn validate(core:&RouterCore,op:&Operation)->Result<(),String>{
   Operation::BridgeLifecycle{workstream_id,binding_revision,lifecycle}=>{bridge(core,workstream_id,*binding_revision)?;if !matches!(lifecycle.as_str(),"ACTIVE"|"TRASHED"){return Err("ASSISTANT_LIFECYCLE_INVALID".into());}},
   Operation::PauseGoal{target,expected_goal_fingerprint}|Operation::ResumeGoal{target,expected_goal_fingerprint}=>crate::goal_control::validate(core,&crate::goal_control::GoalInput{target:target.clone(),expected_goal_fingerprint:expected_goal_fingerprint.clone()},if matches!(op,Operation::PauseGoal{..}){"PAUSE_GOAL"}else{"RESUME_GOAL"})?,
   Operation::PauseWatch{thread_id,generation}=>watch(core,thread_id,*generation)?,
-  Operation::SendChat{thread_id,generation,mode,queue_requested,..}=>{if thread_id.starts_with(router_core::store::claude_manual::PREFIX){return Err("CLAUDE_MCP_WRITE_DISABLED".into());}if !matches!(mode.as_str(),"AUTO"|"SEND"|"QUEUE"|"STEER")||(*queue_requested&&mode!="QUEUE"){return Err("REPLY_INPUT_INVALID".into());}chat_context(core,thread_id,*generation)?;},
+  Operation::SendChat{thread_id,generation,source_sequence,mode,queue_requested,..}=>{if thread_id.starts_with(router_core::store::claude_manual::PREFIX){return Err("CLAUDE_MCP_WRITE_DISABLED".into());}if !matches!(mode.as_str(),"AUTO"|"SEND"|"QUEUE"|"STEER")||(*queue_requested&&mode!="QUEUE"){return Err("REPLY_INPUT_INVALID".into());}chat_context(core,thread_id,*generation)?;
+   if let Some(sequence)=source_sequence{
+    let invalid=||"ASSISTANT_ARGUMENTS_INVALID: SEND_CHAT.sourceSequence must be an existing positive notification sequence for this exact thread; omit it or use null for a new conversation or a direct message. It is not generation, turnId or a message index. Read agbrio_read_chat.sendContext before preparing again.".to_string();
+    if *sequence<=0{return Err(invalid());}
+    match core.store.codex_watch_event(*sequence){Ok(event) if event.thread_id==*thread_id=>{},Ok(_)=>return Err(invalid()),Err(e) if e=="WATCH_EVENT_NOT_FOUND"=>return Err(invalid()),Err(e)=>return Err(e)}
+   }
+  },
   Operation::AcknowledgeUnknownChat{thread_id,reply_id,generation}=>{chat_context(core,thread_id,*generation)?;let r=core.store.watch_reply(reply_id)?.ok_or("REPLY_NOT_FOUND")?;if r.thread_id!=*thread_id||r.status!="UNKNOWN"{return Err("ASSISTANT_UNKNOWN_RECEIPT_REQUIRED".into());}},
   Operation::RemoveWatchItem{kind,id,generation,removed}=>{if kind=="WATCH"{let expected=generation.ok_or("ASSISTANT_WATCH_GENERATION_REQUIRED")?;if *removed{watch(core,id,expected)?;}else if core.store.registered_codex_watch(id)?.generation!=expected{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}}else if kind=="EVENT"{core.store.codex_watch_event(id.parse().map_err(|_|"WATCH_SEQUENCE_INVALID")?)?;}else{return Err("WATCH_REMOVAL_INVALID".into());}},
   Operation::MarkNotificationRead{sequence}=>{core.store.codex_watch_event(*sequence)?;},
@@ -128,7 +134,8 @@ pub(crate) fn execute(core:&RouterCore,aid:&str,op:Operation)->Result<Value,Stri
    crate::codex::creation::verify(&created,&requested)?;
    core.store.enable_codex_watch(id,label.as_deref().or(created.pointer("/thread/name").and_then(Value::as_str)).unwrap_or("新 Codex 对话"),&directory,&router_core::store::codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()})?;
    let w=core.store.codex_chat_context(id)?;
-   Ok(json!({"provider":"CODEX","threadId":id,"directory":directory,"settings":settings,"requestedSettings":requested.requested(),"settingsVerification":if ["model","reasoningEffort","serviceTier"].iter().all(|key|created.get(*key).is_some()){"NATIVE_THREAD_START_RESPONSE"}else{"PARTIAL_NATIVE_RESPONSE"},"watch":w,"firstMessageSent":false,"durability":"SESSION_ONLY_UNTIL_FIRST_TURN","nextAction":"SEND_CHAT","automaticRetry":false}))
+   let next_action_input=json!({"threadId":id,"generation":w.generation,"mode":"AUTO","sourceSequence":null,"expectedTurnId":null});
+   Ok(json!({"provider":"CODEX","threadId":id,"directory":directory,"settings":settings,"requestedSettings":requested.requested(),"settingsVerification":if ["model","reasoningEffort","serviceTier"].iter().all(|key|created.get(*key).is_some()){"NATIVE_THREAD_START_RESPONSE"}else{"PARTIAL_NATIVE_RESPONSE"},"watch":w,"firstMessageSent":false,"durability":"SESSION_ONLY_UNTIL_FIRST_TURN","nextAction":"SEND_CHAT","nextActionInput":next_action_input,"nextActionRequiredFields":["text"],"automaticRetry":false}))
   },
   Operation::CreateBridge{name}=>Ok(json!({"workstreamId":crate::role_bridge::create(core,&name)?})),
   Operation::RenameBridge{workstream_id,name,..}=>serde_json::to_value(core.store.rename_workstream(&workstream_id,&name)?).map_err(|_|"ASSISTANT_RESPONSE_UNAVAILABLE".into()),

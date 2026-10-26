@@ -1410,5 +1410,16 @@
   "检查并准备共享连接": "Checking and preparing shared connection",
   "保存启动权限": "Saving launch preference",
   "共享启动进度": "Shared startup progress",
-  "共享窗口启动校验失败。请更新 Agbrio 后重试。": "The shared window failed startup verification. Update Agbrio and try again."
+  "共享窗口启动校验失败。请更新 Agbrio 后重试。": "The shared window failed startup verification. Update Agbrio and try again.",
+  "Claude Code 接入三步": "Connect Claude Code in three steps",
+  "添加 MCP 服务器": "Add the MCP server",
+  "终端或 VS Code：先运行 claude mcp get agbrio 检查；没有这条连接时，再复制下面的 PowerShell 命令。": "Terminal or VS Code: check claude mcp get agbrio first. If the connection is missing, copy the PowerShell command below.",
+  "复制添加命令": "Copy add command",
+  "桌面 Code：输入框旁 + → Add connectors，或 Settings → Connectors，添加自定义 MCP 地址。须在实际使用的对话验证。": "Desktop Code: use + beside the prompt → Add connectors, or Settings → Connectors, to add the custom MCP URL. Verify it in the session you will use.",
+  "终端输入 /mcp，选择 agbrio 完成登录；桌面端在连接器中授权。已有有效登录可以复用，不一定再次弹窗。": "In the terminal, open /mcp and select agbrio to sign in. On Desktop, authorize the connector. A valid existing login may be reused without another popup.",
+  "实际调用才算连接成功": "Verify with an actual tool call",
+  "让助手实际调用 agbrio_read_app，报告权限范围、有效期和读取结果。复制指令、保存配置或已有授权记录，都不等于这个对话已连上。": "Ask the assistant to call agbrio_read_app and report the scope, expiry and read result. Pasting instructions, saving configuration or having a grant does not prove this session is connected.",
+  "MCP 连接请看 /mcp 或连接器，不一定出现在插件列表。管理 Codex 用 MCP；让 Agbrio 监听 Claude 或接收原生提醒，需要另行连接 Claude 桥接插件。": "Find the MCP connection in /mcp or Connectors; it may not appear in Plugins. MCP manages Codex. To monitor Claude in Agbrio or receive native notices, connect the separate Claude bridge plugin.",
+  "Claude Code 官方接入说明": "Official Claude Code connection guide",
+  "先添加授权，再到你要使用的助手中连接 MCP。": "Add a grant, then connect MCP in the assistant you want to use."
 }
