@@ -211,6 +211,6 @@ export async function probeGateway({directory,url}){
 }
 const normalizedEntry=path=>path.replace(/^\\\\\?\\/,'').replaceAll('\\','/').toLowerCase();
 if(process.argv[1]&&normalizedEntry(fileURLToPath(import.meta.url))===normalizedEntry(resolve(process.argv[1]))){
- try{const options=process.argv[2]==='--disable'?{action:'disable',directory:resolve(process.argv[3]),scripts:dirname(fileURLToPath(import.meta.url))}:JSON.parse(await readFile(process.argv[2],'utf8'));const result=await dispatchLifecycle(options);process.stdout.write(JSON.stringify(result));}
+ try{const options=process.argv[2]==='--disable'?{action:'disable',directory:resolve(process.argv[3]),scripts:dirname(fileURLToPath(import.meta.url))}:JSON.parse(await readFile(process.argv[2],'utf8'));const result=await dispatchLifecycle(options,{run:()=>lifecycle(options)});process.stdout.write(JSON.stringify(result));}
  catch(e){process.stderr.write(/^SHARED_[A-Z_]+$/.test(e.message)?e.message:'SHARED_LIFECYCLE_FAILED');process.exitCode=1;}
 }

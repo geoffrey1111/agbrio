@@ -1,12 +1,31 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,unlink,rmdir} from 'node:fs/promises';
-import {resolve,join} from 'node:path';
+import {resolve,join,dirname} from 'node:path';
 import {launchPreference,requiredPrivilege,dispatchEntry,dispatchLifecycle} from '../src-tauri/resources/codex-shared/privilege.mjs';
 import {mkdir} from 'node:fs/promises';
 import {readFile} from 'node:fs/promises';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
+import {rm} from 'node:fs/promises';
+
+test('the real control CLI settles its own readonly lifecycle instead of awaiting its own module',async()=>{
+ const parent=resolve('runtime/shared-cli-recovery-20261026');await mkdir(parent,{recursive:true});const root=await mkdtemp(join(parent,'control-cli-'));
+ const cli=resolve('src-tauri/resources/codex-shared/control.mjs'),input=join(root,'request.json');
+ try{
+  await writeFile(input,JSON.stringify({action:'status',directory:root,scripts:root}));
+  const result=await promisify(execFile)(process.execPath,[cli,input],{windowsHide:true,timeout:10000});
+  assert.equal(JSON.parse(result.stdout).state,'INDEPENDENT');assert.doesNotMatch(result.stderr,/unsettled top-level await/);
+  await writeFile(join(root,'settings.json'),'{invalid');
+  await assert.rejects(promisify(execFile)(process.execPath,[cli,input],{windowsHide:true,timeout:10000}),error=>error.code===1&&error.stderr==='SHARED_SETTINGS_INVALID');
+  await unlink(join(root,'settings.json'));
+  if(process.platform==='win32'){
+   await writeFile(join(root,'desktop-state.ps1'),`'${JSON.stringify({desktop:'C:/fixture/ChatGPT.exe',count:1})}'`);
+   await writeFile(input,JSON.stringify({action:'prepare-check',directory:root,scripts:root}));
+   await assert.rejects(promisify(execFile)(process.execPath,[cli,input],{windowsHide:true,timeout:15000}),error=>error.code===1&&error.stderr==='SHARED_DESKTOP_CLOSE_REQUIRED');
+  }
+ }finally{assert.equal(resolve(dirname(root)),parent);await rm(root,{recursive:true,force:true});}
+});
 test('native UAC wrapper compiles with the correct Win32 structure without requesting elevation',async()=>{
  const text=await readFile(resolve('src-tauri/resources/codex-shared/privilege.ps1'),'utf8');
  const code=text.match(/Add-Type -TypeDefinition @'\r?\n([\s\S]*?)\r?\n'@/)[1];
