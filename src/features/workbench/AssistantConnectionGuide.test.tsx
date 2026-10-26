@@ -10,7 +10,7 @@ function setup(grants:Parameters<typeof AssistantConnectionGuide>[0]["grants"]=[
 }
 it.each(['zh-CN','zh-TW','en'] as const)('offers a distinct Claude Code route and a real completion checklist in %s',language=>{
  setLanguagePreference(language);const a=setup();fireEvent.click(screen.getByRole('button',{name:'Claude Code'}));
- const title=language==='en'?'Connect Claude Code in three steps':'Claude Code 接入三步';const steps=screen.getByRole('region',{name:title});
+ const title=language==='en'?'Connect Claude Code':'Claude Code 完整接入';const steps=screen.getByRole('region',{name:title});
  expect(steps).toHaveTextContent('claude mcp get agbrio');expect(steps).toHaveTextContent('/mcp');expect(steps).toHaveTextContent('agbrio_read_app');
  expect(steps.querySelector('pre')).toHaveTextContent("--scope user agbrio 'https://instance.fixture.invalid/mcp'");
  expect(a.onRouteChange).toHaveBeenLastCalledWith('claude');expect(a.onAddGrant).not.toHaveBeenCalled();expect(a.openHelp).not.toHaveBeenCalled();

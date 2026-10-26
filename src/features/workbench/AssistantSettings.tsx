@@ -1,3 +1,4 @@
+import type {ClaudeConnectionResult} from "./ClaudeSessionPicker";
 import {request} from "../../mobile/api";
 import {useEffect,useRef,useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
@@ -10,9 +11,9 @@ type Bridge={id:string;name:string;bindings:{bindingRevision:number;decision:End
 type Grant={id:string;scope?:"INSTANCE"|"BRIDGE";approvalMode?:"BRIEF_RULES"|"CONVERSATION_REVIEW";workstreamId:string;sourceRole:string;label:string;rules:{id:string;text:string}[];expiresAt:number;revokedAt:number|null};
 type View={bridges:Bridge[];grants:Grant[];mcpUrl:string|null};
 type Input={label:string;expiresAt:number};
-export type AssistantSettingsApi={view:()=>Promise<View>;create:(input:Input)=>Promise<unknown>;revoke:(id:string)=>Promise<unknown>;openHelp?:(page:AssistantHelpPage)=>Promise<void>};
+export type AssistantSettingsApi={view:()=>Promise<View>;create:(input:Input)=>Promise<unknown>;revoke:(id:string)=>Promise<unknown>;openHelp?:(page:AssistantHelpPage)=>Promise<void>;claudeConnect?:()=>Promise<ClaudeConnectionResult>};
 export const mobileAssistantSettingsApi:AssistantSettingsApi={view:()=>request("/assistant/settings"),create:input=>request("/assistant/settings",{method:"POST",body:JSON.stringify(input)}),revoke:id=>request(`/assistant/grants/${encodeURIComponent(id)}/revoke`,{method:"POST",body:"{}"})};
-const desktopApi:AssistantSettingsApi={view:()=>invoke("assistant_settings"),create:input=>invoke("assistant_connect_instance",{input}),revoke:grantId=>invoke("assistant_revoke_grant",{grantId}),openHelp:page=>invoke("assistant_open_help",{page})};
+const desktopApi:AssistantSettingsApi={claudeConnect:()=>invoke("claude_code_connect"),view:()=>invoke("assistant_settings"),create:input=>invoke("assistant_connect_instance",{input}),revoke:grantId=>invoke("assistant_revoke_grant",{grantId}),openHelp:page=>invoke("assistant_open_help",{page})};
 export function AssistantSettings({api=desktopApi}:{api?:AssistantSettingsApi}){
  useLanguage();const[view,setView]=useState<View|null>(null),[form,setForm]=useState(false),[label,setLabel]=useState("Dot"),[busy,setBusy]=useState(false),[error,setError]=useState(""),[status,setStatus]=useState("");const pending=useRef(false),mounted=useRef(true);
  useEffect(()=>{mounted.current=true;void api.view().then(v=>{if(mounted.current){setView(v);}}).catch(()=>{if(mounted.current)setError(t("助手设置暂时不可用，请重试。"));});return()=>{mounted.current=false;};},[api]);
@@ -22,7 +23,7 @@ export function AssistantSettings({api=desktopApi}:{api?:AssistantSettingsApi}){
  const current=view?.grants.filter(g=>!g.revokedAt&&g.expiresAt>Date.now())??[];
  return <div className="r2-assistant-settings">
  {!view&&!error&&<p role="status">{t("加载中…")}</p>}
- {view&&<AssistantConnectionGuide mcpUrl={view.mcpUrl} grants={view.grants} bridges={view.bridges} onAddGrant={()=>setForm(true)} onRouteChange={route=>{if(!form)setLabel(route==="claude"?"Claude Code":route==="local"?"Codex":route==="workbuddy"?"WorkBuddy":route==="generic"?t("AI 助手"):"Dot");}} openHelp={api.openHelp??(async page=>{window.open(page==="CHATGPT_PLUGINS"?"https://chatgpt.com/plugins":"https://developers.openai.com/plugins/build/auth","_blank","noopener,noreferrer");})}/>}
+ {view&&<AssistantConnectionGuide connectClaude={api.claudeConnect} mcpUrl={view.mcpUrl} grants={view.grants} bridges={view.bridges} onAddGrant={()=>setForm(true)} onRouteChange={route=>{if(!form)setLabel(route==="claude"?"Claude Code":route==="local"?"Codex":route==="workbuddy"?"WorkBuddy":route==="generic"?t("AI 助手"):"Dot");}} openHelp={api.openHelp??(async page=>{window.open(page==="CHATGPT_PLUGINS"?"https://chatgpt.com/plugins":"https://developers.openai.com/plugins/build/auth","_blank","noopener,noreferrer");})}/>}
 
  {view&&!form&&<><div className="r2-settings-group">{current.map(g=><div className="r2-assistant-grant" key={g.id}><Bot size={20}/><div><strong>{g.label}</strong><small>{g.scope==="INSTANCE"?t("整个 Agbrio · 包含以后新建的 Bridge"):t("旧版单 Bridge 授权")+" · "+(view.bridges.find(b=>b.id===g.workstreamId)?.name??g.workstreamId)}</small><small>{t("至")} {new Date(g.expiresAt).toLocaleDateString(getLanguage())}</small></div><button type="button" className="r2-icon" disabled={busy} aria-label={t("撤销 {0} 的授权",g.label)} onClick={()=>void act(async()=>{await api.revoke(g.id);setStatus(t("授权已撤销"));})}><ShieldOff size={20}/></button></div>)}</div>{!current.length&&<p className="v4-meta">{t("先添加授权，再到你要使用的助手中连接 MCP。")}</p>}<button type="button" className="r2-action" disabled={busy} onClick={()=>setForm(true)}><Plus size={18}/>{t("添加助手")}</button></>}
  {form&&<form onSubmit={e=>{e.preventDefault();void create();}}><label>{t("助手名称")}<input value={label} maxLength={80} onChange={e=>setLabel(e.target.value)} disabled={busy} required/></label><p className="r2-assistant-target">{t("整个 Agbrio · 包含以后新建的 Bridge")}</p><p className="v4-meta">{t("决策要求直接告诉助手即可。连接有效 30 天，可随时撤销。")}</p><div className="r2-assistant-actions"><button type="button" disabled={busy} onClick={()=>setForm(false)}>{t("取消")}</button><button className="r2-action" type="submit" disabled={busy||!label.trim()}>{busy?t("正在处理…"):t("连接助手")}</button></div></form>}

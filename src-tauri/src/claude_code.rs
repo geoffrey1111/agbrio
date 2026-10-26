@@ -80,26 +80,55 @@ fn connect_admin(core:&RouterCore,host:&crate::HostRuntime,resources:&std::path:
         admin.run(&args(&["plugin","install",id,"--scope","user","--json"]),None)?;
         list=admin.run(&args(&["plugin","list","--json"]),None)?;
     }
-    let installed=list.as_array().and_then(|a|a.iter().find(|p|p["id"]==id&&p["scope"]=="user")).ok_or("CLAUDE_PLUGIN_USER_INSTALL_REQUIRED")?;
+    let required=manifest["version"].as_str().and_then(|v|semver::Version::parse(v).ok()).ok_or("CLAUDE_PLUGIN_VERSION_UNCONFIRMED")?;
     let cache=std::fs::canonicalize(cache_root).map_err(|_|"CLAUDE_PLUGIN_CACHE_UNAVAILABLE")?;
-    let path=installed["installPath"].as_str().and_then(|p|std::fs::canonicalize(p).ok()).filter(|p|p.starts_with(&cache)&&p.join(".claude-plugin/plugin.json").is_file()).ok_or("CLAUDE_PLUGIN_CACHE_UNAVAILABLE")?;
-    let installed_manifest:serde_json::Value=std::fs::read(path.join(".claude-plugin/plugin.json")).ok().and_then(|b|serde_json::from_slice(&b).ok()).ok_or("CLAUDE_OBSERVATION_PLUGIN_NOT_PACKAGED")?;
-    if installed_manifest["name"]!="agbrio-bridge"||installed_manifest["userConfig"]["token"]["sensitive"]!=true {return Err("CLAUDE_OBSERVATION_PLUGIN_NOT_PACKAGED".into());}
-    if installed["enabled"]!=true {admin.run(&args(&["plugin","enable",id,"--scope","user","--json"]),None)?;}
+    let mut checked=None;
+    for attempt in 0..2 {
+        let installed=list.as_array().and_then(|a|a.iter().find(|p|p["id"]==id&&p["scope"]=="user")).ok_or("CLAUDE_PLUGIN_USER_INSTALL_REQUIRED")?;
+        let path=installed["installPath"].as_str().and_then(|p|std::fs::canonicalize(p).ok()).filter(|p|p.starts_with(&cache)&&p.join(".claude-plugin/plugin.json").is_file()).ok_or("CLAUDE_PLUGIN_CACHE_UNAVAILABLE")?;
+        let current:serde_json::Value=std::fs::read(path.join(".claude-plugin/plugin.json")).ok().and_then(|b|serde_json::from_slice(&b).ok()).ok_or("CLAUDE_OBSERVATION_PLUGIN_NOT_PACKAGED")?;
+        if current["name"]!="agbrio-bridge"||current["userConfig"]["token"]["sensitive"]!=true{return Err("CLAUDE_OBSERVATION_PLUGIN_NOT_PACKAGED".into());}
+        let version=current["version"].as_str().and_then(|v|semver::Version::parse(v).ok()).ok_or("CLAUDE_PLUGIN_VERSION_UNCONFIRMED")?;
+        if version<required {
+            if attempt==1{return Err("CLAUDE_PLUGIN_UPDATE_REQUIRED".into());}
+            admin.run(&args(&["plugin","update",id,"--scope","user","--json"]),None)?;
+            list=admin.run(&args(&["plugin","list","--json"]),None)?;
+            continue;
+        }
+        checked=Some((path,installed["enabled"]==true));break;
+    }
+    let(path,enabled)=checked.ok_or("CLAUDE_PLUGIN_UPDATE_REQUIRED")?;
+    if !enabled {
+        admin.run(&args(&["plugin","enable",id,"--scope","user","--json"]),None)?;
+        let confirmed=admin.run(&args(&["plugin","list","--json"]),None)?;
+        if !confirmed.as_array().is_some_and(|rows|rows.iter().any(|p|p["id"]==id&&p["scope"]=="user"&&p["enabled"]==true)){return Err("CLAUDE_PLUGIN_ENABLE_UNCONFIRMED".into());}
+    }
     let path=path.to_string_lossy();
     let identities=[id,"agbrio-bridge@inline"];
     // Claude 2.1.299+: --plugin-dir shadows the installed identity, so only the inline one uses it.
     let scoped=|identity:&str,rest:&[&str]|{let mut v=if identity==id{vec![]}else{vec!["--plugin-dir".to_string(),path.to_string()]};v.extend(["plugin","configure",identity].iter().chain(rest).map(|s|s.to_string()));v};
-    let mut missing=false;
+    let mut missing_token=false;let mut missing_hosts=Vec::new();
     for identity in identities {
         let config=admin.run(&scoped(identity,&["--json"]),None)?;
         if config["pluginId"]!=identity||!config["configured"].is_array()||!config["unconfigured"].is_array(){return Err("CLAUDE_PLUGIN_ADMIN_INVALID_RESULT".into());}
         if let Some(existing)=config["inputs"]["hostUrl"].as_str().filter(|s|!s.is_empty()) {if existing!=origin {return Err("CLAUDE_PLUGIN_DIFFERENT_HOST".into());}}
-        missing|=!["hostUrl","token"].iter().all(|k|config["configured"].as_array().unwrap().iter().any(|v|v==k));
+        missing_token|=!config["configured"].as_array().unwrap().iter().any(|v|v=="token");
+        if !config["configured"].as_array().unwrap().iter().any(|v|v=="hostUrl")||config["inputs"]["hostUrl"].as_str().is_none_or(str::is_empty){missing_hosts.push(identity);}
     }
     // Existing saved credentials remain in their native secure store. Never
     // export them, rotate them on repeat connection, or claim a live publisher.
-    if !missing {return Ok(connection_result("WAITING_SESSION"));}
+    if !missing_token {
+        // Repair only the missing non-secret address; never export/copy/rotate
+        // a saved native credential merely because hostUrl was absent.
+        for identity in missing_hosts {
+            let input=serde_json::to_vec(&serde_json::json!({"hostUrl":origin})).map_err(|_|"CLAUDE_CONNECTION_CONFIGURATION_FAILED")?;
+            let result=admin.run(&scoped(identity,&["--values-stdin","--json"]),Some(&input))?;
+            if result["refused"].is_object()||!result["saved"].as_array().is_some_and(|a|a.iter().any(|v|v=="hostUrl")){return Err("CLAUDE_CONNECTION_CONFIGURATION_FAILED".into());}
+            let checked=admin.run(&scoped(identity,&["--json"]),None)?;
+            if checked["inputs"]["hostUrl"]!=origin||!checked["configured"].as_array().is_some_and(|a|["hostUrl","token"].iter().all(|k|a.iter().any(|v|v==k))){return Err("CLAUDE_CONNECTION_CONFIGURATION_FAILED".into());}
+        }
+        return Ok(connection_result("WAITING_SESSION"));
+    }
     let pairing=core.store.create_claude_connection()?;
     let mut input=serde_json::to_vec(&serde_json::json!({"hostUrl":origin,"token":pairing.token})).map_err(|_|"CLAUDE_CONNECTION_CONFIGURATION_FAILED")?;
     let configured=(||{

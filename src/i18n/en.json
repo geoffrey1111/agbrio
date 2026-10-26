@@ -1421,5 +1421,19 @@
   "让助手实际调用 agbrio_read_app，报告权限范围、有效期和读取结果。复制指令、保存配置或已有授权记录，都不等于这个对话已连上。": "Ask the assistant to call agbrio_read_app and report the scope, expiry and read result. Pasting instructions, saving configuration or having a grant does not prove this session is connected.",
   "MCP 连接请看 /mcp 或连接器，不一定出现在插件列表。管理 Codex 用 MCP；让 Agbrio 监听 Claude 或接收原生提醒，需要另行连接 Claude 桥接插件。": "Find the MCP connection in /mcp or Connectors; it may not appear in Plugins. MCP manages Codex. To monitor Claude in Agbrio or receive native notices, connect the separate Claude bridge plugin.",
   "Claude Code 官方接入说明": "Official Claude Code connection guide",
-  "先添加授权，再到你要使用的助手中连接 MCP。": "Add a grant, then connect MCP in the assistant you want to use."
+  "先添加授权，再到你要使用的助手中连接 MCP。": "Add a grant, then connect MCP in the assistant you want to use.",
+  "Claude Code 完整接入": "Connect Claude Code",
+  "Claude 的通知与手机回复": "Claude notices and phone replies",
+  "要把 Codex 完成通知送回 Claude，或从手机回复 Claude 原对话，需要启用本机连接。MCP 本身仍可用于读取与派发。": "Enable the local connection to send Codex completion notices back to Claude or reply to the original Claude chat from your phone. MCP still handles reads and task dispatch.",
+  "正在配置…": "Configuring…",
+  "检查本机连接": "Check local connection",
+  "启用 Claude 通知与手机回复": "Enable Claude notices and phone replies",
+  "请在电脑端 Agbrio 的同一页面启用本机连接，再回到 Claude 管理对话核对。": "Enable the local connection on this same page in desktop Agbrio, then verify it in the Claude management chat.",
+  "已收到 Claude 连接心跳。还需在管理会话登记具体任务的完成通知。": "A Claude heartbeat was received. Register the specific task notice in the management session before expecting it.",
+  "本机连接已准备。请在空闲的 Claude 管理会话执行 /reload-plugins，再检查连接。": "The local connection is prepared. Run /reload-plugins in the Claude management session when idle, then check the connection.",
+  "需要通知时，让管理助手实际发现 codex_wait：先查看 status，再为已委托的精确轮次登记 wait，拿到 WAITING 回执后才能承诺通知。不会自动监听所有对话。": "For a requested notice, the manager must discover codex_wait, inspect status, then register wait for the exact delegated turn. Require a WAITING receipt before promising notification. Other chats are not subscribed automatically.",
+  "Claude 插件仍是旧版，更新尚未确认。请检查插件更新后重试。": "The Claude plugin is still outdated; its update was not confirmed. Check the plugin update and try again.",
+  "无法确认 Claude 插件版本，尚未启用新的连接。": "The Claude plugin version could not be verified. No new connection was enabled.",
+  "Claude 插件尚未确认启用，请检查插件状态。": "The Claude plugin was not confirmed enabled. Check its status.",
+  "MCP 连接请看 /mcp 或连接器，不一定出现在插件列表。要让完成通知回到 Claude，或从手机回复 Claude 原对话，继续完成下方的本机连接即可。": "Find the MCP connection in /mcp or Connectors; it may not appear in Plugins. Continue with the local connection below for completion notices back to Claude and phone replies to its original chat."
 }

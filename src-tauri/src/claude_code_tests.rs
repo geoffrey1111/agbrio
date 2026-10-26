@@ -178,12 +178,20 @@ struct FakePluginAdmin {
  configured:Mutex<HashMap<String,(String,String)>>,
  calls:Mutex<Vec<Vec<String>>>,
  fail_inline:bool,
+ enabled:Mutex<bool>,
+ update_version:Option<String>,
 }
 impl crate::claude_code_desktop::PluginAdmin for FakePluginAdmin {
  fn run(&self,args:&[String],input:Option<&[u8]>)->Result<serde_json::Value,String>{
   assert!(!args.iter().any(|a|matches!(a.as_str(),"-p"|"--resume"|"--continue"|"--force"|"--fork-session")));
   self.calls.lock().unwrap().push(args.to_vec());
-  if args==["plugin","list","--json"] {return Ok(serde_json::json!([{"id":"agbrio-bridge@agbrio-observation","scope":"user","enabled":true,"installPath":self.path}]));}
+  if args==["plugin","list","--json"] {return Ok(serde_json::json!([{"id":"agbrio-bridge@agbrio-observation","scope":"user","enabled":*self.enabled.lock().unwrap(),"installPath":self.path}]));}
+  if args.get(1).is_some_and(|a|a=="update") {
+   assert_eq!(args,["plugin","update","agbrio-bridge@agbrio-observation","--scope","user","--json"]);
+   if let Some(version)=&self.update_version {let p=self.path.join(".claude-plugin/plugin.json");let mut v:serde_json::Value=serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();v["version"]=serde_json::json!(version);std::fs::write(p,v.to_string()).unwrap();}
+   return Ok(serde_json::json!({"updated":self.update_version.is_some()}));
+  }
+  if args.get(1).is_some_and(|a|a=="enable") {*self.enabled.lock().unwrap()=true;return Ok(serde_json::json!({"enabled":true}));}
   // Claude 2.1.299+: --plugin-dir hides the installed identity; only the inline one takes it.
   let args=if args[0]=="--plugin-dir"{assert_eq!(args[4],"agbrio-bridge@inline");&args[2..]}else{assert_eq!(args[2],"agbrio-bridge@agbrio-observation");args};
   assert_eq!(args[0],"plugin");assert_eq!(args[1],"configure");
@@ -191,11 +199,14 @@ impl crate::claude_code_desktop::PluginAdmin for FakePluginAdmin {
   if let Some(input)=input {
    if self.fail_inline&&identity=="agbrio-bridge@inline" {return Err("CLAUDE_PLUGIN_ADMIN_REFUSED".into());}
    let value:serde_json::Value=serde_json::from_slice(input).unwrap();
-   let token=value["token"].as_str().unwrap();assert_eq!(token.len(),64);assert!(!args.iter().any(|a|a.contains(token)));
-   self.configured.lock().unwrap().insert(identity.clone(),(value["hostUrl"].as_str().unwrap().into(),token.into()));
-   Ok(serde_json::json!({"saved":["hostUrl","token"],"unconfigured":[]}))
-  }else if let Some((host,_))=self.configured.lock().unwrap().get(identity) {
-   Ok(serde_json::json!({"pluginId":identity,"configured":["hostUrl","token"],"unconfigured":[],"inputs":{"hostUrl":host,"token":""}}))
+   if let Some(token)=value["token"].as_str(){assert_eq!(token.len(),64);assert!(!args.iter().any(|a|a.contains(token)));}
+   let old=self.configured.lock().unwrap().get(identity).cloned().unwrap_or_default();
+   self.configured.lock().unwrap().insert(identity.clone(),(value["hostUrl"].as_str().unwrap_or(&old.0).into(),value["token"].as_str().unwrap_or(&old.1).into()));
+   Ok(serde_json::json!({"saved":value.as_object().unwrap().keys().collect::<Vec<_>>(),"unconfigured":[]}))
+  }else if let Some((host,token))=self.configured.lock().unwrap().get(identity) {
+   let configured=[("hostUrl",!host.is_empty()),("token",!token.is_empty())].into_iter().filter_map(|(k,present)|present.then_some(k)).collect::<Vec<_>>();
+   let unconfigured=[("hostUrl",host.is_empty()),("token",token.is_empty())].into_iter().filter_map(|(k,missing)|missing.then_some(k)).collect::<Vec<_>>();
+   Ok(serde_json::json!({"pluginId":identity,"configured":configured,"unconfigured":unconfigured,"inputs":{"hostUrl":host,"token":""}}))
   }else{Ok(serde_json::json!({"pluginId":identity,"configured":[],"unconfigured":["hostUrl","token"],"inputs":{"hostUrl":"","token":""}}))}
  }
 }
@@ -206,8 +217,27 @@ fn connection_fixture(temp:&tempfile::TempDir)->(RouterCore,crate::HostRuntime,s
  let package=temp.path().join("claude-code-plugin/.claude-plugin");let cache=temp.path().join("cache/agbrio-observation/agbrio-bridge/0.1.2/.claude-plugin");
  let manifest=serde_json::json!({"name":"agbrio-bridge","version":"0.1.2","userConfig":{"token":{"sensitive":true}}}).to_string();
  for folder in [&package,&cache] {std::fs::create_dir_all(folder).unwrap();std::fs::write(folder.join("plugin.json"),&manifest).unwrap();}
- let admin=FakePluginAdmin{path:cache.parent().unwrap().into(),configured:Mutex::default(),calls:Mutex::default(),fail_inline:false};
+ let admin=FakePluginAdmin{path:cache.parent().unwrap().into(),configured:Mutex::default(),calls:Mutex::default(),fail_inline:false,enabled:Mutex::new(true),update_version:None};
  (core,host,temp.path().join("cache"),admin)
+}
+#[test]fn explicit_connection_updates_an_old_disabled_plugin_and_checks_the_installed_version(){
+ let temp=tempfile::tempdir().unwrap();let(core,host,cache,mut admin)=connection_fixture(&temp);
+ let package=temp.path().join("claude-code-plugin/.claude-plugin/plugin.json");let mut manifest:serde_json::Value=serde_json::from_slice(&std::fs::read(&package).unwrap()).unwrap();manifest["version"]=serde_json::json!("0.1.3");std::fs::write(package,manifest.to_string()).unwrap();
+ admin.update_version=Some("0.1.3".into());*admin.enabled.lock().unwrap()=false;
+ assert_eq!(connect_admin(&core,&host,temp.path(),&admin,&cache).unwrap().phase,"WAITING_SESSION");
+ let calls=admin.calls.lock().unwrap();assert_eq!(calls.iter().filter(|c|c.get(1).is_some_and(|v|v=="update")).count(),1);assert!(calls.iter().any(|c|c.get(1).is_some_and(|v|v=="enable")));drop(calls);host.shutdown(&core);
+}
+#[test]fn explicit_connection_refuses_to_claim_ready_if_official_update_keeps_the_old_version(){
+ let temp=tempfile::tempdir().unwrap();let(core,host,cache,admin)=connection_fixture(&temp);
+ let package=temp.path().join("claude-code-plugin/.claude-plugin/plugin.json");let mut manifest:serde_json::Value=serde_json::from_slice(&std::fs::read(&package).unwrap()).unwrap();manifest["version"]=serde_json::json!("0.1.3");std::fs::write(package,manifest.to_string()).unwrap();
+ assert_eq!(connect_admin(&core,&host,temp.path(),&admin,&cache).err().unwrap(),"CLAUDE_PLUGIN_UPDATE_REQUIRED");assert!(core.store.claude_connections().unwrap().is_empty());host.shutdown(&core);
+}
+#[test]fn explicit_connection_repairs_missing_host_without_reading_or_rotating_existing_credentials(){
+ let temp=tempfile::tempdir().unwrap();let(core,host,cache,admin)=connection_fixture(&temp);let saved="c".repeat(64);
+ for id in ["agbrio-bridge@agbrio-observation","agbrio-bridge@inline"]{admin.configured.lock().unwrap().insert(id.into(),(String::new(),saved.clone()));}
+ assert_eq!(connect_admin(&core,&host,temp.path(),&admin,&cache).unwrap().phase,"WAITING_SESSION");assert!(core.store.claude_connections().unwrap().is_empty());
+ for(host,token)in admin.configured.lock().unwrap().values(){assert!(host.starts_with("http://127.0.0.1:"));assert_eq!(token,&saved);}
+ let calls=admin.calls.lock().unwrap().len();assert_eq!(connect_admin(&core,&host,temp.path(),&admin,&cache).unwrap().phase,"WAITING_SESSION");assert_eq!(admin.calls.lock().unwrap().len(),calls+3);host.shutdown(&core);
 }
 #[test] fn native_connect_configures_both_identities_via_stdin_and_reuses_saved_config(){
  let temp=tempfile::tempdir().unwrap();let(core,host,cache,admin)=connection_fixture(&temp);
