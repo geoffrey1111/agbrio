@@ -5,11 +5,11 @@
 import{createRequire}from'node:module';import{createServer}from'node:http';import{createServer as tcpServer,connect as tcpConnect}from'node:net';import{spawn,execFile}from'node:child_process';import{readFile}from'node:fs/promises';import{randomBytes,createHash}from'node:crypto';import{dirname,join}from'node:path';
 import {assertNativeCohort} from './native-cohort.mjs';
 import {backendRecovery,verifiedBackendStart} from './backend-recovery.mjs';
-import {verifyProcessPrivilege} from './privilege.mjs';
+import {verifyProcessPrivilege,preferredPowerShell} from './privilege.mjs';
 import {replaceStateFile} from './state-file.mjs';
 const require=createRequire(import.meta.url),{WebSocket,WebSocketServer}=require('./ws/index.js'),configPath=process.argv[2],cfg=JSON.parse(await readFile(configPath,'utf8'));
 if(!cfg.ownerSid?.startsWith('S-1-')||!Number.isInteger(cfg.port)||cfg.port<1024||cfg.port>65535)throw Error('SHARED_CONFIGURATION_INVALID');
-const folder=dirname(configPath),nonce=cfg.instance,readyPath=join(folder,'ready.json'),powershell=join(process.env.WINDIR,'System32/WindowsPowerShell/v1.0/powershell.exe');
+const folder=dirname(configPath),nonce=cfg.instance,readyPath=join(folder,'ready.json'),powershell=preferredPowerShell();
 const activeTurns=new Set(),gatewaySockets=new Set();
 const gateway=createServer(async(req,res)=>{
  if(req.headers.origin||req.socket.remoteAddress!=='127.0.0.1'){res.writeHead(403);return res.end();}

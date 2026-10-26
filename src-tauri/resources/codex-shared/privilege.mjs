@@ -6,10 +6,16 @@ import {join,dirname,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {replaceStateFile} from './state-file.mjs';
 import {randomUUID} from 'node:crypto';
+import {statSync} from 'node:fs';
 const execute=promisify(execFile),source=dirname(fileURLToPath(import.meta.url));
 // Set only after a validated child request, while its Windows wrapper owns the mutation mutex.
 let heldScope=null;
-const windowsPowerShell=()=>join(process.env.WINDIR,'System32/WindowsPowerShell/v1.0/powershell.exe');
+export function preferredPowerShell(environment=process.env,isFile=path=>{try{return statSync(path).isFile();}catch{return false;}}){
+ const root=environment.ProgramW6432||environment.ProgramFiles;
+ const core=root&&join(root,'PowerShell/7/pwsh.exe');
+ return core&&isFile(core)?core:join(environment.WINDIR,'System32/WindowsPowerShell/v1.0/powershell.exe');
+}
+const windowsPowerShell=()=>preferredPowerShell();
 export async function launchPreference(directory){
  let value;try{value=JSON.parse(await readFile(join(directory,'launch-preferences.json'),'utf8'));}catch(e){if(e.code==='ENOENT')return true;throw Error('SHARED_LAUNCH_PREFERENCES_INVALID');}
  if(!value||Object.keys(value).length!==1||typeof value.launchAsAdministrator!=='boolean')throw Error('SHARED_LAUNCH_PREFERENCES_INVALID');

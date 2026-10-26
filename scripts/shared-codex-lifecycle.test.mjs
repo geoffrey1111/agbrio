@@ -4,9 +4,15 @@ import {mkdir,readFile,readdir,unlink,rmdir,lstat} from 'node:fs/promises';
 import {resolve,join} from 'node:path';
 import {EventEmitter} from 'node:events';
 import {randomUUID} from 'node:crypto';
-import {lifecycle,atomic,restoreChanges,sharedUrl,desktopLaunchOptions,readDesktopState,mergeStopSnapshots} from '../src-tauri/resources/codex-shared/control.mjs';
+import {lifecycle,atomic,restoreChanges,sharedUrl,desktopLaunchOptions,desktopLaunchArguments,readDesktopState,mergeStopSnapshots} from '../src-tauri/resources/codex-shared/control.mjs';
 
 const ownedFixtures=new Set();
+test('Windows admin launch retains the consented token without changing standard or non-Windows startup',()=>{
+ assert.deepEqual(desktopLaunchArguments(true,'win32'),['--do-not-de-elevate']);
+ for(const value of [false,undefined,null,'true',1])assert.deepEqual(desktopLaunchArguments(value,'win32'),[]);
+ assert.deepEqual(desktopLaunchArguments(true,'linux'),[]);
+ assert.deepEqual(desktopLaunchArguments(true,'darwin'),[]);
+});
 afterEach(async()=>{for(const directory of ownedFixtures){for(const name of await readdir(directory)){const path=join(directory,name);assert.ok((await lstat(path)).isFile());await unlink(path);}await rmdir(directory);ownedFixtures.delete(directory);}});
 async function fixture(){
  const directory=resolve('runtime/shared-gateway-repair/unit',randomUUID());await mkdir(directory,{recursive:true});
@@ -272,3 +278,13 @@ test('cold Desktop grace remains bounded and does not relaunch a never-connectin
 });
 
 test('a Desktop token mismatch never commits a successful shared launch',async()=>{const f=await fixture();await lifecycle({...f.options,action:'setup'},f.dependencies);f.dependencies.verifyProcessPrivilege=async()=>{throw Error('SHARED_PRIVILEGE_TOKEN_MISMATCH');};await assert.rejects(lifecycle({...f.options,action:'launch'},f.dependencies),/SHARED_PRIVILEGE_TOKEN_MISMATCH/);assert.notEqual(JSON.parse(await readFile(join(f.options.directory,'settings.json'),'utf8')).phase,'ACTIVE');});
+
+test('admin launch forwards the anti-demotion switch and still requires the actual window token',async()=>{
+ const f=await fixture();await lifecycle({...f.options,action:'setup'},f.dependencies);
+ f.dependencies.inspectPrivileges=async()=>({ownerSid:'S-1-5-21-fixture',elevated:true});
+ const spawn=f.dependencies.spawn;let launches=0,verified=0;
+ f.dependencies.spawn=(file,args,opts)=>{launches++;assert.deepEqual(args,desktopLaunchArguments(true));assert.equal(opts.env.CODEX_APP_SERVER_WS_URL,'ws://127.0.0.1:47116/rpc');return spawn(file,[],opts);};
+ f.dependencies.verifyProcessPrivilege=async(pid,sid,image,elevated)=>{verified++;assert.equal(pid,12345);assert.equal(sid,'S-1-5-21-fixture');assert.equal(elevated,true);};
+ assert.equal((await lifecycle({...f.options,action:'launch'},f.dependencies)).state,'SHARED_CONNECTED');
+ assert.equal(launches,1);assert.equal(verified,1);
+});

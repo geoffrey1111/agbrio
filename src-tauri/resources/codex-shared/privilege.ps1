@@ -32,6 +32,8 @@ try {
   exit 0
  }
  $powershell=Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/powershell.exe'
+ $programRoot=if($env:ProgramW6432){$env:ProgramW6432}else{$env:ProgramFiles}
+ if($programRoot){$core=Join-Path $programRoot 'PowerShell/7/pwsh.exe';if(Test-Path -LiteralPath $core -PathType Leaf){$powershell=$core}}
  $arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -File '+(Quote-Argument (Join-Path $PSScriptRoot 'privilege.ps1'))+' -Action Child -Directory '+(Quote-Argument $expected)+' -JobId '+$JobId+' -Mode '+$Mode
  $stage='LAUNCH';if($Mode -eq 'administrator'){
   # Retain the native UAC cancellation code rather than Start-Process's wrapped exception.

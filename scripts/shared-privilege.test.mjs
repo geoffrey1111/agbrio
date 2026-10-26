@@ -2,12 +2,20 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,unlink,rmdir} from 'node:fs/promises';
 import {resolve,join,dirname} from 'node:path';
-import {launchPreference,requiredPrivilege,dispatchEntry,dispatchLifecycle} from '../src-tauri/resources/codex-shared/privilege.mjs';
+import {launchPreference,requiredPrivilege,dispatchEntry,dispatchLifecycle,preferredPowerShell} from '../src-tauri/resources/codex-shared/privilege.mjs';
 import {mkdir} from 'node:fs/promises';
 import {readFile} from 'node:fs/promises';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {rm} from 'node:fs/promises';
+
+test('shared helpers prefer installed PowerShell 7 with a fixed Windows fallback and no PATH search',()=>{
+ const env={ProgramFiles:'C:/Program Files',ProgramW6432:'D:/Program Files',WINDIR:'C:/Windows'};
+ const core=join(env.ProgramW6432,'PowerShell/7/pwsh.exe');
+ assert.equal(preferredPowerShell(env,p=>p===core),core);
+ assert.equal(preferredPowerShell(env,()=>false),join(env.WINDIR,'System32/WindowsPowerShell/v1.0/powershell.exe'));
+ assert.equal(preferredPowerShell({WINDIR:'C:/Windows'},()=>true),join(env.WINDIR,'System32/WindowsPowerShell/v1.0/powershell.exe'));
+});
 
 test('the real control CLI settles its own readonly lifecycle instead of awaiting its own module',async()=>{
  const parent=resolve('runtime/shared-cli-recovery-20261026');await mkdir(parent,{recursive:true});const root=await mkdtemp(join(parent,'control-cli-'));

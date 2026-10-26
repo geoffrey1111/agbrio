@@ -6,7 +6,7 @@ import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
-import {dispatchLifecycle,launchPreference,inspectPrivileges,verifyProcessPrivilege} from './privilege.mjs';
+import {dispatchLifecycle,launchPreference,inspectPrivileges,verifyProcessPrivilege,preferredPowerShell} from './privilege.mjs';
 import {replaceStateFile} from './state-file.mjs';
 const exec=promisify(execFile),sleep=ms=>new Promise(r=>setTimeout(r,ms));
 export async function atomic(path,value){await replaceStateFile(path,value);}
@@ -15,11 +15,17 @@ export function desktopLaunchOptions(url,environment=process.env){
  // Desktop is explicitly requested as a visible, independent user application.
  return {detached:true,windowsHide:false,stdio:'ignore',env:{...environment,CODEX_APP_SERVER_WS_URL:url}};
 }
+export function desktopLaunchArguments(elevated,platform=process.platform){
+ // Owl/Chromium otherwise relaunches through Explorer with a standard token,
+ // losing the process-local shared endpoint. Keep only the token already
+ // granted through the owner-consented wrapper; this switch cannot elevate.
+ return platform==='win32'&&elevated===true?['--do-not-de-elevate']:[];
+}
 export function restoreChanges(snapshot,installed){return Object.entries(installed).map(([name,value])=>({name,installed:value,previous:snapshot[name]??null}));}
 export function sharedUrl(value){try{const u=new URL(value);return ['ws:','wss:'].includes(u.protocol)&&u.hostname==='127.0.0.1'&&u.port==='47116'&&u.pathname==='/rpc'&&!u.username&&!u.password&&!u.search&&!u.hash;}catch{return false;}}
 export async function readDesktopState(scripts,execute=exec){
  try{
-  const ps=join(process.env.WINDIR,'System32/WindowsPowerShell/v1.0/powershell.exe');
+  const ps=preferredPowerShell();
   const result=await execute(ps,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(scripts,'desktop-state.ps1')],{windowsHide:true,timeout:10000,maxBuffer:16384});
   const value=JSON.parse(result.stdout);
   if(!value||!Number.isInteger(value.count)||value.count<0||typeof value.desktop!=='string'||!value.desktop)throw Error('invalid');
@@ -37,7 +43,7 @@ export function mergeStopSnapshots(previous,current){
 export async function lifecycle(options,dependencies={}){
  const persist=dependencies.atomic??atomic,execute=dependencies.exec??exec,createProcess=dependencies.spawn??spawn,request=dependencies.fetch??fetch,pause=dependencies.sleep??sleep,now=dependencies.now??Date.now;
  const {directory,binary,version,desktop,action}=options,settingsPath=join(directory,'settings.json'),configPath=join(directory,'runtime-config.json'),journalPath=join(directory,'environment-journal.json');
- const ps=join(process.env.WINDIR,'System32/WindowsPowerShell/v1.0/powershell.exe'),script=join(options.scripts??join(directory,'runtime'),'environment.ps1');
+ const ps=preferredPowerShell(),script=join(options.scripts??join(directory,'runtime'),'environment.ps1');
  const run=dependencies.run??(async(args)=>JSON.parse((await execute(ps,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',script,...args],{windowsHide:true,timeout:20000,maxBuffer:262144})).stdout));
  const load=async(path)=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(e){if(e.code==='ENOENT')return null;throw Error('SHARED_SETTINGS_INVALID');}};
  let saved=await load(settingsPath),cfg=await load(configPath);
@@ -127,7 +133,8 @@ export async function lifecycle(options,dependencies={}){
   try{
    await progress('LAUNCHING');
    saved.desktop=installed.desktop;saved.phase='CONNECTING';await persist(settingsPath,saved);
-   child=createProcess(saved.desktop,[],desktopLaunchOptions(`ws://127.0.0.1:${cfg.port}/rpc`));
+   const launchIdentity=await(dependencies.inspectPrivileges??inspectPrivileges)();
+   child=createProcess(saved.desktop,desktopLaunchArguments(launchIdentity.elevated),desktopLaunchOptions(`ws://127.0.0.1:${cfg.port}/rpc`));
    child.on('error',()=>{});
    await progress('CONNECTING');
    // Store-updated Desktop may spend over 100 seconds in bootstrap before opening

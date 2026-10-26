@@ -1,4 +1,4 @@
-import {dispatchLifecycle,dispatchEntry} from './privilege.mjs';
+import {dispatchLifecycle,dispatchEntry,preferredPowerShell} from './privilege.mjs';
 import {lifecycle,readDesktopState} from './control.mjs';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -52,7 +52,7 @@ export async function launchEntry(options,dependencies={}){
  // No native retention while an unreachable supervisor may still own work.
  stage='PREPARE_CHECK';await control({...base,action:'prepare-check'});
  const native=dependencies.discover??(async()=>{
-  const p=join(process.env.WINDIR,'System32/WindowsPowerShell/v1.0/powershell.exe');
+  const p=preferredPowerShell();
   const out=await exec(p,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(source,'desktop-runtime.ps1'),'-Directory',directory,'-ProbeNode',node],{windowsHide:true,timeout:120000,maxBuffer:262144});return JSON.parse(out.stdout);
  });
  stage='NATIVE_DISCOVERY';const candidate=await native(); // Entire candidate is checked before old state changes.
