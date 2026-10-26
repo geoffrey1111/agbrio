@@ -1401,5 +1401,14 @@
   "共享启动权限与当前设置不一致。请先完成任务，退出共享 Codex 后停用并重新准备连接。": "The shared runtime uses different privileges. Finish your tasks, exit shared Codex, then disable and prepare the connection again.",
   "启动权限尚未确认，请先检查共享连接状态，不要重复启动。": "Launch permissions are not confirmed. Check the shared connection status before attempting another launch.",
   "当前后台：管理员权限": "Current backend: administrator",
-  "当前后台：普通权限": "Current backend: standard permissions"
+  "当前后台：普通权限": "Current backend: standard permissions",
+  "校验 Codex 组件": "Verifying Codex components",
+  "准备共享后台": "Preparing shared backend",
+  "启动共享后台": "Starting shared backend",
+  "确认后台连接": "Checking backend connection",
+  "共享后台已就绪": "Shared backend is ready",
+  "检查并准备共享连接": "Checking and preparing shared connection",
+  "保存启动权限": "Saving launch preference",
+  "共享启动进度": "Shared startup progress",
+  "共享窗口启动校验失败。请更新 Agbrio 后重试。": "The shared window failed startup verification. Update Agbrio and try again."
 }

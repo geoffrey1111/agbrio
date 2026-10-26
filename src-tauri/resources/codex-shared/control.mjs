@@ -107,11 +107,12 @@ export async function lifecycle(options,dependencies={}){
   if(failures.length)throw Error('SHARED_ROLLBACK_INCOMPLETE');
   await unlink(journalPath).catch(e=>{if(e.code!=='ENOENT')throw e;});
  };
+ const progress=async(step,state='RUNNING',errorCode=null)=>persist(join(directory,'launch-progress.json'),{step,state,errorCode,updatedAt:now()}).catch(()=>{});
  if(action==='status')return status();
  if(action==='prepare-check'){await checkPreparation();return status();}
  if(action==='disable'){await rollback();return status();}
  if(action==='launch'){
-  const progress=async(step,state='RUNNING',errorCode=null)=>persist(join(directory,'launch-progress.json'),{step,state,errorCode,updatedAt:now()}).catch(()=>{});
+
   await progress('CHECKING');
   try{
   if(saved?.format!==2||!['PREPARED','ACTIVE'].includes(saved.phase)||!(await health())?.ready)throw Error('SHARED_NOT_PREPARED');
@@ -177,6 +178,8 @@ export async function lifecycle(options,dependencies={}){
  }
  if(action!=='setup')throw Error('SHARED_ACTION_INVALID');
  await checkPreparation();
+ try{
+ await progress('VERIFYING');
  const verifiedNative=await verifyRuntime(binary,version);
  if(saved?.format===2&&['ACTIVE','PREPARED'].includes(saved.phase)&&(await health())?.ready){
   if(saved.binary!==binary||saved.version!==version)throw Error('SHARED_RUNTIME_UPDATE_PENDING');
@@ -184,6 +187,7 @@ export async function lifecycle(options,dependencies={}){
  }
  // Recovery is idempotent; legacy self-pointers are never saved as originals.
  if(saved||cfg)await rollback();
+ await progress('PREPARING');
  await run(['-Action','Protect','-Directory',directory]);
  const snapshot=await run(['-Action','Snapshot']);if(snapshot.CODEX_APP_SERVER_WS_URL&&!sharedUrl(snapshot.CODEX_APP_SERVER_WS_URL))throw Error('SHARED_OTHER_DESKTOP_ENDPOINT_CONFIGURED');
  if(snapshot.CODEX_APP_SERVER_WS_URL)throw Error('SHARED_STALE_ENDPOINT_REQUIRES_REPAIR');
@@ -193,16 +197,19 @@ export async function lifecycle(options,dependencies={}){
  cfg={...cfg,...dependencies.config};saved={...cfg,originalEnvironment:snapshot};delete saved.controlToken;
  try{
   await persist(settingsPath,saved);await persist(configPath,cfg);
+  await progress('STARTING_BACKEND');
   const child=createProcess(join(directory,'runtime/node.exe'),[join(directory,'runtime/runtime.mjs'),configPath],{detached:true,windowsHide:true,stdio:'ignore'});child.on('error',()=>{});child.unref();
   let ready=false;for(let i=0;i<100;i++){if((await health())?.ready){ready=true;break;}if(child.exitCode!==null)break;await sleep(200);}
   if(!ready)throw Error('SHARED_START_FAILED');
   if((await health())?.elevated!==identity.elevated)throw Error('SHARED_PRIVILEGE_TOKEN_MISMATCH');
   // Prepare only native RPC; never launch a second Desktop. The owner's single
   // Desktop must connect successfully during explicit launch before activation.
+  await progress('CHECKING_BACKEND');
   await (dependencies.probe??probeGateway)({directory,url:`ws://127.0.0.1:${cfg.port}/rpc`});
-  cfg.phase='PREPARED';saved.phase='PREPARED';await persist(configPath,cfg);await persist(settingsPath,saved);
+  cfg.phase='PREPARED';saved.phase='PREPARED';await persist(configPath,cfg);await persist(settingsPath,saved);await progress('PREPARED','DONE');
   return status();
  }catch(e){await rollback();throw e;}
+ }catch(e){await progress('FAILED','FAILED',/^SHARED_[A-Z_]+$/.test(e.message)?e.message:'SHARED_LIFECYCLE_FAILED');throw e;}
 }
 export async function probeGateway({directory,url}){
  const require=createRequire(import.meta.url),{WebSocket}=require(join(directory,'runtime/ws/index.js'));

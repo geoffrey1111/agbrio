@@ -38,6 +38,19 @@ it('polls real launch progress during the pending operation',async()=>{
  expect(screen.getByRole('status')).toHaveTextContent('连接共享后端');expect(screen.getByRole('button',{name:'正在处理…'})).toBeDisabled();await act(async()=>finish({...ready,enabled:true,desktopConnected:true,state:'SHARED_CONNECTED'}));
  expect(screen.getByText('Desktop 已接入共享连接')).toBeVisible();
 });
+it('shows preparation immediately and excludes a previous failed attempt from the new progress',async()=>{
+ let finish!:(s:SharedCodexStatus)=>void;
+ const api={status:vi.fn().mockResolvedValue({...independent,launchProgress:{step:'FAILED',state:'FAILED',updatedAt:1}}),setup:vi.fn(()=>new Promise<SharedCodexStatus>(r=>{finish=r;}))};
+ render(<SharedCodexConnection api={api}/>);fireEvent.click(await screen.findByRole('button',{name:'准备共享连接'}));
+ expect(screen.getByRole('status')).toHaveTextContent('检查并准备共享连接');expect(screen.getByRole('status')).toHaveTextContent('1/4');
+ expect(screen.queryByText('启动未完成')).not.toBeInTheDocument();expect(screen.getByRole('progressbar',{name:'共享启动进度'})).toHaveAttribute('value','0');
+ await act(async()=>finish(ready));expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+});
+it('distinguishes failed window verification from a requested change of backend permissions',async()=>{
+ render(<SharedCodexConnection api={{status:async()=>ready,setup:vi.fn(),launch:vi.fn().mockRejectedValue('SHARED_PRIVILEGE_TOKEN_MISMATCH')}}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'打开共享 Codex'}));
+ expect(await screen.findByRole('alert')).toHaveTextContent('共享窗口启动校验失败');expect(screen.getByRole('alert')).not.toHaveTextContent('当前设置不一致');
+});
 it("requires explicit preparation and a separate launch before reporting shared connection",async()=>{
  const active={...ready,enabled:true,desktopConnected:true,state:"SHARED_CONNECTED"};const api={status:vi.fn().mockResolvedValue(independent),setup:vi.fn().mockResolvedValue(ready),launch:vi.fn().mockResolvedValue(active)};
  render(<SharedCodexConnection api={api}/>);await waitFor(()=>expect(screen.getByRole("button",{name:"准备共享连接"})).toBeEnabled());expect(api.setup).not.toHaveBeenCalled();

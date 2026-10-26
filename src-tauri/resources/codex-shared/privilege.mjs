@@ -1,7 +1,7 @@
 // Owner-local launch-token boundary. No remote API, shell text, credentials or native permission edits.
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {readFile,mkdir,writeFile,open,unlink,rmdir,lstat} from 'node:fs/promises';
+import {readFile,mkdir,writeFile,open,unlink,rmdir,lstat,realpath} from 'node:fs/promises';
 import {join,dirname,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {replaceStateFile} from './state-file.mjs';
@@ -24,10 +24,11 @@ export async function launchPreference(directory){
 export async function inspectPrivileges(executeFile=execute){
  try{const {stdout}=await executeFile(windowsPowerShell(),['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(source,'privilege.ps1'),'-Action','Inspect'],{windowsHide:true,timeout:15000});const v=JSON.parse(stdout);if(!v.ownerSid?.startsWith('S-1-')||typeof v.elevated!=='boolean')throw Error();return v;}catch{throw Error('SHARED_PRIVILEGE_UNCONFIRMED');}
 }
-export async function verifyProcessPrivilege(pid,ownerSid,imagePath,elevated){
- const {stdout}=await execute(windowsPowerShell(),['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(source,'peer-service.ps1'),'-QueryPid',String(pid)],{windowsHide:true,timeout:15000});
- const v=JSON.parse(stdout),canonical=p=>resolve(p.replace(/^\\\\\?\\/,'' )).toLowerCase();
- if(v?.pid!==pid||v.ownerSid!==ownerSid||canonical(v.imagePath)!==canonical(imagePath)||v.elevated!==elevated)throw Error('SHARED_PRIVILEGE_TOKEN_MISMATCH');
+export async function verifyProcessPrivilege(pid,ownerSid,imagePath,elevated,dependencies={}){
+ const {stdout}=await(dependencies.execute??execute)(windowsPowerShell(),['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(source,'peer-service.ps1'),'-QueryPid',String(pid)],{windowsHide:true,timeout:15000});
+ const v=JSON.parse(stdout),canonical=async p=>(await realpath(p)).replace(/^\\\\\?\\/,'').toLowerCase();
+ if(v?.pid!==pid||v.ownerSid!==ownerSid||v.elevated!==elevated)throw Error('SHARED_PRIVILEGE_TOKEN_MISMATCH');
+ try{if(await canonical(v.imagePath)!==await canonical(imagePath))throw Error();}catch{throw Error('SHARED_PRIVILEGE_TOKEN_MISMATCH');}
  return v;
 }
 async function runtimePrivilege(directory,identity){

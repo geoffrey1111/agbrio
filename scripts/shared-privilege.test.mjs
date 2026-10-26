@@ -2,12 +2,24 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,unlink,rmdir} from 'node:fs/promises';
 import {resolve,join,dirname} from 'node:path';
-import {launchPreference,requiredPrivilege,dispatchEntry,dispatchLifecycle,preferredPowerShell} from '../src-tauri/resources/codex-shared/privilege.mjs';
+import {launchPreference,requiredPrivilege,dispatchEntry,dispatchLifecycle,preferredPowerShell,verifyProcessPrivilege} from '../src-tauri/resources/codex-shared/privilege.mjs';
 import {mkdir} from 'node:fs/promises';
 import {readFile} from 'node:fs/promises';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {rm} from 'node:fs/promises';
+import {rm,symlink} from 'node:fs/promises';
+
+test('the same executable through a Windows junction passes while foreign identity and tokens still fail',async()=>{
+ if(process.platform!=='win32')return;
+ const parent=resolve('runtime/shared-cli-recovery-20261026');await mkdir(parent,{recursive:true});const root=await mkdtemp(join(parent,'junction-'));
+ const target=join(root,'actual'),alias=join(root,'registered');await mkdir(target);await writeFile(join(target,'Desktop.exe'),'fixture');await symlink(target,alias,'junction');
+ const identity={pid:42,ownerSid:'S-1-5-fixture',imagePath:join(target,'Desktop.exe'),elevated:true};
+ const verify=v=>verifyProcessPrivilege(42,'S-1-5-fixture',join(alias,'Desktop.exe'),true,{execute:async()=>({stdout:JSON.stringify(v)})});
+ try{
+  assert.equal((await verify(identity)).pid,42);
+  for(const patch of [{pid:43},{ownerSid:'S-1-5-other'},{elevated:false},{imagePath:join(root,'missing.exe')}])await assert.rejects(verify({...identity,...patch}),/SHARED_PRIVILEGE_TOKEN_MISMATCH/);
+ }finally{await unlink(alias);await unlink(join(target,'Desktop.exe'));await rmdir(target);await rmdir(root);}
+});
 
 test('shared helpers prefer installed PowerShell 7 with a fixed Windows fallback and no PATH search',()=>{
  const env={ProgramFiles:'C:/Program Files',ProgramW6432:'D:/Program Files',WINDIR:'C:/Windows'};
