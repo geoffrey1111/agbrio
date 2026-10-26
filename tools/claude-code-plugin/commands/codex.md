@@ -21,7 +21,7 @@ Use the supplied native Codex thread_id or extract it from an exact Codex link. 
 
 ## Sending
 
-The owner's request to send the specified message is the task authorization. Do not fabricate approval or self-approve your own execution result. Preserve the requested text. Read current state before preparing. If idle use SEND; use QUEUE only when the owner requested waiting for the current turn. Never STEER, STOP, change model/effort/permissions, resume a goal or answer a decision merely to make a message go through. If busy and queueing is not authorized, report that condition.
+The owner's request to send the specified message is the task authorization. Do not fabricate approval or self-approve your own execution result. Preserve the requested text. Read current state before preparing. Use AUTO by default: it guides the exact active controllable turn, or sends when idle. Use QUEUE only when the owner explicitly requested waiting. Never STOP, change permissions, resume a goal or answer a decision merely to make a message go through. When guidance is unavailable, explain the actual reason instead of silently queueing. An active STEER inherits its current model/effort; options.model and options.effort apply only to a new idle SEND or an explicit queued next turn. Configure CREATE_CHAT settings before its separate first prompt.
 
 Prepare one action with a fresh requestId and retain it:
 
@@ -51,3 +51,5 @@ The plugin checks only the Host's existing local watch projection on its observa
 If the native tool or compatible Host is missing, say background notification is not active and an update is needed. Only when the owner explicitly requests an active bounded wait may you use at most 10 on-demand reads, spaced at least 15 seconds, stopping after 3 minutes or a terminal result/decision/error. Never replace an unavailable notification with a resident polling process or scheduled job. Preserve all send/wait IDs and writer ownership.
 
 Report the verified destination, delivery state and actual new reply (or the precise unresolved state). Never send a test prompt to a real owner conversation for validation.
+
+For a compact overview use agbrio_read_app({view:"WATCHES"}): bounded cached state/turnId/summary/checkedAt only, not full histories or actions. Read the exact chat before acting. Explicit QUEUE may omit expectedTurnId to anchor to the current turn at acceptance; supplied stale IDs are rejected. Up to32 queued messages per Codex thread run in FIFO order; UNKNOWN/SENDING blocks later delivery. Never merge or replace already queued text.

@@ -227,6 +227,10 @@ struct TurnRegistry {
     terminal:HashMap<(String,String),String>,completed:std::collections::VecDeque<(String,String)>,
 }
 impl TurnRegistry {
+    fn reconcile_shared_current(&mut self,thread:&str,turn:&str){
+        if !self.terminal.contains_key(&(thread.into(),turn.into())){self.observed.entry(thread.into()).or_insert_with(||turn.into());}
+    }
+
     fn acknowledge(&mut self,thread:&str,turn:&str){if self.terminal.contains_key(&(thread.into(),turn.into())){return;}self.owned.insert(thread.into(),turn.into());self.observed.insert(thread.into(),turn.into());}
     fn finish(&mut self,thread:&str,turn:&str,status:&str){
         let key=(thread.to_string(),turn.to_string());if !self.terminal.contains_key(&key){self.completed.push_back(key.clone());}self.terminal.insert(key,status.into());
@@ -534,6 +538,14 @@ impl CodexAdapter {
     }
     pub fn mark_turn_started(&self,thread:&str,turn:&str){if let Ok(mut r)=self.turns.lock(){r.acknowledge(thread,turn);}}
     pub fn latest_turn_diagnostic(&self,thread:&str)->Option<NativeTurnDiagnostic>{self.turns.lock().ok().and_then(|r|r.diagnostics.get(thread).cloned())}
+    /// Reconnect recovery requires both native active metadata and its newest
+    /// inProgress turn; persisted snapshots alone never grant control.
+    pub fn note_live_turn_diagnostic(&self,thread:&str,turn:&Value,native_active:bool){
+        self.note_turn_diagnostic(thread,turn);
+        if native_active&&self.is_shared_subscribed(thread)&&turn["status"]=="inProgress"{
+            if let Some(id)=turn["id"].as_str().filter(|id|!id.is_empty()&&id.len()<=256){if let Ok(mut r)=self.turns.lock(){r.reconcile_shared_current(thread,id);}}
+        }
+    }
     pub fn note_turn_diagnostic(&self,thread:&str,turn:&Value){
         let Some(id)=turn["id"].as_str().filter(|id|!id.is_empty()&&id.len()<=256)else{return};
         let Some(status)=turn["status"].as_str().filter(|s|matches!(*s,"inProgress"|"active"|"pending"|"completed"|"failed"|"interrupted"))else{return};
@@ -1508,6 +1520,24 @@ fn bounded_frame(reader: &mut impl BufRead, limit: u64) -> Result<Option<String>
 
 #[cfg(test)]
 mod tests {
+    #[test]#[ignore="explicit owner-selected loaded shared thread; metadata-only, no prompts or task control"]
+    fn real_mid_turn_subscription_read_only(){
+        let thread=std::env::var("AGBRIO_READONLY_THREAD").unwrap();let url=std::env::var("AGBRIO_READONLY_SHARED_URL").unwrap();assert!(url.starts_with("ws://127.0.0.1:"));
+        let mut command=std::process::Command::new("node");command.arg(std::env::var("AGBRIO_READONLY_TRANSPORT").unwrap()).arg(url);
+        #[cfg(windows)]{use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}
+        let mut a=super::CodexAdapter::start_shared_transport(std::sync::Arc::new(crate::events::NullEventSink),std::sync::Arc::new(|_|{}),command).unwrap();a.initialize().unwrap();
+        let m=a.request("thread/read",serde_json::json!({"threadId":thread,"includeTurns":false})).unwrap();assert_eq!(m["thread"]["id"],thread);assert_eq!(m["thread"]["status"]["type"],"active");let cwd=m["thread"]["cwd"].as_str().unwrap();a.subscribe_shared_thread(&thread,cwd).unwrap();
+        a.begin_latest_turn_observation(&thread).unwrap();let page=a.request("thread/turns/list",serde_json::json!({"threadId":thread,"cursor":null,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"})).unwrap();let turn=&page["data"][0];assert_eq!(turn["status"],"inProgress");a.note_live_turn_diagnostic(&thread,turn,true);
+        assert_eq!(a.observed_turn_id(&thread).as_deref(),turn["id"].as_str());assert!(a.active_turn_id(&thread).is_none());assert!(a.request_counts().keys().all(|m|matches!(m.as_str(),"initialize"|"thread/read"|"thread/resume"|"thread/turns/list")));
+        println!("exactMidTurnControlRecovered=true ownedTurn=false modelCalls=0 taskMutations=0");
+    }
+
+    #[test] fn mid_turn_subscription_recovers_control_without_claiming_ownership_or_reviving_terminal_turns(){
+        let mut r=super::TurnRegistry::default();r.reconcile_shared_current("exact","active");assert_eq!(r.observed.get("exact").map(String::as_str),Some("active"));assert!(r.owned.is_empty());
+        r.observed.insert("exact".into(),"newer".into());r.reconcile_shared_current("exact","active");assert_eq!(r.observed["exact"],"newer");
+        r.finish("exact","newer","completed");r.reconcile_shared_current("exact","newer");assert!(!r.observed.contains_key("exact"));assert!(r.owned.is_empty());
+    }
+
     use super::{
         authorize_guarded_metadata_step, bounded_frame, exact_metadata_response,
         exact_not_loaded_metadata_error, spawn_stdout_reader, PendingCleanup,

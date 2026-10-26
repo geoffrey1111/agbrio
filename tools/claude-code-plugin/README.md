@@ -14,7 +14,7 @@ The command reuses the existing Agbrio MCP tools. If they are missing, connect A
 
 Read first, send once, check the original receipt. Queued means waiting; sent means delivered, not finished. Unknown delivery is never resent automatically.
 
-With a compatible Agbrio Host and plugin 0.1.11, ask “notify this conversation when that Codex turn finishes.” Claude registers a one-shot wait for the exact selected turn. A finished result, decision request or failure returns a short notice to the same open Claude conversation; Claude then reads the full result through your existing MCP authorization. Ask to check or cancel that wait at any time. Cancelling a wait does not stop Codex. Waits expire after one hour by default, at most 24 hours, and require the plugin/session to remain open. An unavailable source or uncertain notification is reported honestly and never automatically resent. Updating this source alone does not update a running installation.
+With a compatible Agbrio Host and plugin 0.1.12, ask “notify this conversation when that Codex turn finishes.” Claude registers a one-shot wait for the exact selected turn. A finished result, decision request or failure returns a short notice to the same open Claude conversation; Claude then reads the full result through your existing MCP authorization. Ask to check or cancel that wait at any time. Cancelling a wait does not stop Codex. Waits expire after one hour by default, at most 24 hours, and require the plugin/session to remain open. An unavailable source or uncertain notification is reported honestly and never automatically resent. Updating this source alone does not update a running installation.
 
 ## Follow Claude conversations in Agbrio
 

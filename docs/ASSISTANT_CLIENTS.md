@@ -1,3 +1,13 @@
+## 2026-10-26 — Codex follow-up control and explicit FIFO queues
+
+A late shared subscriber reconciles the exact native latest inProgress turn without claiming ownership or reviving a confirmed terminal turn. Codex explicit QUEUE supports up to32 independent immutable intents per conversation. Only the FIFO head dispatches; its acknowledged predecessor turn is the only allowed successor anchor. SENDING/UNKNOWN still blocks subsequent writes; changed native generations/foreign turns fail closed. Migration026 changes only the unique index, preserving queued rows and receipts. Claude queue semantics remain unchanged.
+
+QUEUE without expectedTurnId snapshots the current turn at acceptance; a supplied stale ID is rejected. Existing request replay uses its original stored anchor. No implicit queue fallback. Active STEER inherits model/effort; options.model/effort apply only to idle SEND or an explicit queued next turn. CREATE_CHAT accepts its own model/effort/serviceTier settings before the first task.
+
+read_app({view:"WATCHES"}) returns only bounded cached state/turnId/600-character summary/checkedAt/error fields and minimal grant metadata. FULL/omitted retains compatibility. Cached snapshots never prove live control readiness; read the exact chat before acting.
+
+Plugin0.1.12 exposes its actual version in wait status and removes contradictory Never STEER instructions. Existing128-active-wait accounting and settled-history compaction remain: DELIVERED/EXPIRED/CANCELLED do not consume active slots, exact-turn tombstones prevent duplicate notifications, UNKNOWN is never retried. Updating package/cache alone does not reload an open Claude session. Use supported plugin update and reload while idle; do not clear plugin storage, cancel queued messages, or stop native tasks for this fix.
+
 ## 创建 Codex 对话时选择模型
 
 管理助手先调用 `agbrio_list_codex_models`，获取这台电脑实际支持的模型、推理强度和速度。然后通过现有 `agbrio_prepare_action` / `agbrio_execute_action` 审阅并创建：

@@ -45,7 +45,7 @@ export function waitNotice(wait,status){
 export async function handleCodexWait($,state,input){return serial(state,async()=>{
   const waits=await load($,state),now=await $.clock.now();
   for(const w of waits)if(w.status==='WAITING'&&w.expiresAt<=now)w.status='EXPIRED';
-  if(input.action==='status'){await save($,state,waits);return{waits,capacity:{waiting:waits.filter(w=>w.status==='WAITING').length,maxWaiting:MAX_WAITING,unknown:waits.filter(w=>w.status==='UNKNOWN').length}};}
+  if(input.action==='status'){await save($,state,waits);return{pluginVersion:'0.1.12',waits,capacity:{waiting:waits.filter(w=>w.status==='WAITING').length,maxWaiting:MAX_WAITING,unknown:waits.filter(w=>w.status==='UNKNOWN').length}};}
   const t=target(input),saved=await $.store.get(archiveKey(identity(state),t)),old=waits.find(w=>same(w,t))??(saved?.sessionId===state.identity.sessionId&&saved.cwd===state.identity.cwd&&same(saved.wait??{},t)?saved.wait:null);
   if(input.action==='cancel'){
     if(old?.status==='WAITING')old.status='CANCELLED';

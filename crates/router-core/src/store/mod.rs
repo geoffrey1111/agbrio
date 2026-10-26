@@ -81,6 +81,7 @@ const NORMAL_FEATURE_MIGRATIONS: &[(&str, &str)] = &[
     ("claude-owner-requests-v1", include_str!("../../migrations/normal/022_claude_owner_requests.sql")),
     ("child-results-v1", include_str!("../../migrations/normal/021_child_results.sql")),
     ("assistant-oauth-refresh-v1", include_str!("../../migrations/normal/019_assistant_oauth_refresh.sql")),
+    ("codex-reply-fifo-v1", include_str!("../../migrations/normal/026_codex_reply_fifo.sql")),
 ];
 
 const MIGRATIONS: &[(i64, &str)] = &[

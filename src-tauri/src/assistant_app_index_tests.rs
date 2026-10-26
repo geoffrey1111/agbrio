@@ -63,3 +63,12 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  assert_eq!(rpc(&core,&old.id,json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}))["result"]["tools"].as_array().unwrap().len(),8);
  store.revoke_assistant_grant(&g.id).unwrap();assert!(call(&core,&g.id,"agbrio_read_app",json!({})).is_err());
 }
+
+#[test]fn watches_view_is_bounded_and_never_includes_actions_or_transcripts(){
+ let dir=tempfile::tempdir().unwrap();let store=Arc::new(RouterStore::open_at(dir.path().join("fixture.db")).unwrap());let expires=SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as i64+600_000;
+ let g=store.connect_assistant_instance(AssistantConnectionInput{label:"compact fixture".into(),expires_at:expires}).unwrap();
+ store.enable_codex_watch("exact","fixture",&dir.path().to_string_lossy(),&router_core::store::codex_watch::WatchSnapshot{state:"RUNNING".into(),turn_id:Some("turn".into()),item_id:None,text:"字".repeat(10000)}).unwrap();
+ let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};
+ let result=call(&core,&g.id,"agbrio_read_app",json!({"view":"WATCHES"})).unwrap();assert_eq!(result["view"],"WATCHES");assert_eq!(result["watches"][0]["turnId"],"turn");assert_eq!(result["watches"][0]["summary"].as_str().unwrap().chars().count(),600);assert_eq!(result["watches"][0]["summaryTruncated"],true);assert!(result.get("actions").is_none());assert!(result.get("inbox").is_none());assert!(core.session.lock().unwrap().adapter.is_none());
+ assert!(call(&core,&g.id,"agbrio_read_app",json!({"view":"BOGUS"})).is_err());assert!(call(&core,&g.id,"agbrio_read_app",json!({"view":"WATCHES","extra":true})).is_err());
+}
