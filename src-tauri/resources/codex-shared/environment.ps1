@@ -70,7 +70,11 @@ public static class AIWRDesktopVisibility { [DllImport("user32.dll")] public sta
   foreach($sid in @([Security.Principal.WindowsIdentity]::GetCurrent().User.Value,'S-1-5-18','S-1-5-32-544')){
    $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new($sid),[Security.AccessControl.FileSystemRights]::FullControl,([Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit),[Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Allow))
   }
-  [IO.Directory]::SetAccessControl($resolved,$acl);'{"ok":true}'
+  # .NET Core moved this API to FileSystemAclExtensions. Avoid module lookup:
+  # a PowerShell 7 parent can leave an incompatible PSModulePath for 5.1.
+  if($PSVersionTable.PSEdition -eq 'Core'){[IO.FileSystemAclExtensions]::SetAccessControl([IO.DirectoryInfo]::new($resolved),$acl)}
+  else{[IO.Directory]::SetAccessControl($resolved,$acl)}
+  '{"ok":true}'
  }
  'SupervisorState' {
   $path=Join-Path $Directory 'ready.json'

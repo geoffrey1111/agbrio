@@ -17,6 +17,22 @@ test('shared helpers prefer installed PowerShell 7 with a fixed Windows fallback
  assert.equal(preferredPowerShell({WINDIR:'C:/Windows'},()=>true),join(env.WINDIR,'System32/WindowsPowerShell/v1.0/powershell.exe'));
 });
 
+test('real PowerShell hosts apply the same protected owner ACL for preparation',async()=>{
+ if(process.platform!=='win32')return;
+ const parent=resolve('runtime/shared-cli-recovery-20261026');await mkdir(parent,{recursive:true});
+ const root=await mkdtemp(join(parent,'acl-'));
+ try{
+  const hosts=new Set([preferredPowerShell(),join(process.env.WINDIR,'System32/WindowsPowerShell/v1.0/powershell.exe')]);
+  for(const host of hosts){
+   const output=await promisify(execFile)(host,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',resolve('src-tauri/resources/codex-shared/environment.ps1'),'-Action','Protect','-Directory',root],{windowsHide:true,timeout:20000});
+   assert.equal(JSON.parse(output.stdout).ok,true);
+   const path=root.replaceAll("'","''");const query=`$a=if($PSVersionTable.PSEdition -eq 'Core'){[IO.FileSystemAclExtensions]::GetAccessControl([IO.DirectoryInfo]::new('${path}'))}else{[IO.Directory]::GetAccessControl('${path}')};@{protected=$a.AreAccessRulesProtected;rules=@($a.GetAccessRules($true,$false,[Security.Principal.SecurityIdentifier])).Count}|ConvertTo-Json -Compress`;
+   const acl=JSON.parse((await promisify(execFile)(host,['-NoProfile','-NonInteractive','-Command',query],{windowsHide:true,timeout:20000})).stdout);
+   assert.equal(acl.protected,true);assert.equal(acl.rules,3);
+  }
+ }finally{await rmdir(root);}
+});
+
 test('the real control CLI settles its own readonly lifecycle instead of awaiting its own module',async()=>{
  const parent=resolve('runtime/shared-cli-recovery-20261026');await mkdir(parent,{recursive:true});const root=await mkdtemp(join(parent,'control-cli-'));
  const cli=resolve('src-tauri/resources/codex-shared/control.mjs'),input=join(root,'request.json');
