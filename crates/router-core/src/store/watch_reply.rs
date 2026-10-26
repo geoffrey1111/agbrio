@@ -28,7 +28,7 @@ fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<WatchReply> {
 const COLS:&str="id,thread_id,cwd,generation,source_sequence,expected_turn_id,mode,text,options_json,payload_hash,status,turn_id,error_code,created_at,updated_at";
 impl RouterStore {
     pub fn watch_reply(&self,id:&str)->Result<Option<WatchReply>,String>{ self.with_connection(|c| c.query_row(&format!("SELECT {COLS} FROM watch_replies WHERE id=?1"),[id],row).optional().map_err(db_error)) }
-    pub fn watch_replies(&self,thread:&str)->Result<Vec<WatchReply>,String>{self.with_connection(|c|{let mut s=c.prepare(&format!("SELECT {COLS} FROM watch_replies WHERE thread_id=?1 ORDER BY created_at DESC,id DESC LIMIT 20")).map_err(db_error)?;let out=s.query_map([thread],row).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;Ok(out)})}
+    pub fn watch_replies(&self,thread:&str)->Result<Vec<WatchReply>,String>{self.with_connection(|c|{let mut s=c.prepare(&format!("SELECT {COLS} FROM watch_replies WHERE thread_id=?1 AND (status IN ('QUEUED','SENDING','UNKNOWN') OR id IN (SELECT id FROM watch_replies WHERE thread_id=?1 AND status NOT IN ('QUEUED','SENDING','UNKNOWN') ORDER BY created_at DESC,rowid DESC LIMIT 20)) ORDER BY created_at DESC,rowid DESC")).map_err(db_error)?;let out=s.query_map([thread],row).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;Ok(out)})}
     /// Record intent before any external mutation. Duplicate IDs must match bytes.
     pub fn prepare_watch_reply(&self,input:&WatchReply)->Result<WatchReply,String>{
         if Uuid::parse_str(&input.id).is_err()||input.text.trim().is_empty()||input.text.len()>100_000||!matches!(input.mode.as_str(),"SEND"|"QUEUE"|"STEER"){return Err("REPLY_INPUT_INVALID".into());}
@@ -98,7 +98,7 @@ fn setup()->(tempfile::TempDir,RouterStore,WatchReply){let d=tempfile::tempdir()
 #[test]fn queue_capacity_and_different_anchor_do_not_rebase_onto_unrelated_turns(){
  let(_d,s,mut a)=setup();a.mode="QUEUE".into();a.expected_turn_id=Some("first-anchor".into());s.prepare_watch_reply(&a).unwrap();s.claim_watch_reply(&a.id).unwrap();s.finish_watch_reply(&a.id,"SENT",Some("first-ack"),None).unwrap();
  a.expected_turn_id=Some("different-owner-turn".into());a.id=Uuid::new_v4().to_string();s.prepare_watch_reply(&a).unwrap();assert_eq!(s.queued_watch_reply_target(&a.id).unwrap(),a.expected_turn_id);
- for _ in 1..32{a.id=Uuid::new_v4().to_string();s.prepare_watch_reply(&a).unwrap();}a.id=Uuid::new_v4().to_string();assert_eq!(s.prepare_watch_reply(&a).unwrap_err(),"REPLY_QUEUE_LIMIT");let mut guide=a.clone();guide.id=Uuid::new_v4().to_string();guide.mode="STEER".into();s.prepare_watch_reply(&guide).unwrap();s.claim_watch_reply(&guide.id).unwrap();
+ for _ in 1..32{a.id=Uuid::new_v4().to_string();s.prepare_watch_reply(&a).unwrap();}a.id=Uuid::new_v4().to_string();assert_eq!(s.prepare_watch_reply(&a).unwrap_err(),"REPLY_QUEUE_LIMIT");let mut guide=a.clone();guide.id=Uuid::new_v4().to_string();guide.mode="STEER".into();s.prepare_watch_reply(&guide).unwrap();s.claim_watch_reply(&guide.id).unwrap();assert_eq!(s.watch_replies("exact").unwrap().iter().filter(|r|matches!(r.status.as_str(),"QUEUED"|"SENDING"|"UNKNOWN")).count(),33,"all32 queue intents plus active guidance stay inspectable");
 }
 
 #[test]fn guidance_overtakes_unattempted_queue_without_reordering_or_cancelling_it(){

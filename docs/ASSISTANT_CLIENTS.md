@@ -1,6 +1,6 @@
 ## 2026-10-26 — Guidance retains priority over stored queue intent
 
-An exact active STEER may overtake unattempted Codex QUEUE intents; those queue rows and their approved payloads stay unchanged. A physical SENDING/UNKNOWN writer still blocks every subsequent claim. Queued dispatch ignores no in-flight guidance, even when its row was inserted after the FIFO head. Guidance does not change the queue anchor or authorize a second native turn. This closes the distinction between recovering controllableTurnId and actually admitting a guidance request while preserving an existing queue.
+An exact active STEER may overtake unattempted Codex QUEUE intents; those queue rows and their approved payloads stay unchanged. A physical SENDING/UNKNOWN writer still blocks every subsequent claim. Queued dispatch ignores no in-flight guidance, even when its row was inserted after the FIFO head. read_chat retains every pending queue/writer receipt plus the latest20 settled receipts so a full queue cannot hide its oldest message. Guidance does not change the queue anchor or authorize a second native turn. This closes the distinction between recovering controllableTurnId and actually admitting a guidance request while preserving an existing queue.
 
 ## 2026-10-26 — Codex follow-up control and explicit FIFO queues
 
