@@ -5,7 +5,7 @@ import {AssistantConnectionGuide} from "./AssistantConnectionGuide";
 import type {ClaudeConnectionResult} from "./ClaudeSessionPicker";
 afterEach(cleanup);
 it('keeps phone/web read-only and points at the desktop without an administrative action',()=>{
- render(<ClaudeNativeConnection/>);expect(screen.getByText(/请在电脑端 Agbrio/)).toBeVisible();expect(screen.queryByRole('button')).toBeNull();
+ render(<ClaudeNativeConnection/>);expect(screen.getByText(/网页和手机不能安装本机组件/)).toBeVisible();expect(screen.queryByRole('button')).toBeNull();
 });
 it('serializes explicit configuration and distinguishes prepared from loaded',async()=>{
  let finish!:(s:ClaudeConnectionResult)=>void;const connect=vi.fn(()=>new Promise<ClaudeConnectionResult>(r=>{finish=r;}));render(<ClaudeNativeConnection connect={connect}/>);
@@ -23,5 +23,5 @@ it('explains a failed version update without showing a connected state',async()=
 it('selection and copy never invoke native configuration; only its explicit button does',async()=>{
  const connect=vi.fn().mockResolvedValue({phase:'WAITING_SESSION',writesEnabled:false});const add=vi.fn();render(<AssistantConnectionGuide mcpUrl="https://fixture.invalid/mcp" grants={[]} onAddGrant={add} onRouteChange={vi.fn()} openHelp={vi.fn()} connectClaude={connect}/>);
  fireEvent.click(screen.getByRole('button',{name:'Claude Code'}));expect(connect).not.toHaveBeenCalled();
- fireEvent.click(screen.getByRole('button',{name:'启用 Claude 通知与手机回复'}));await waitFor(()=>expect(connect).toHaveBeenCalledTimes(1));expect(add).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'安装并连接 Claude 完整功能'}));await waitFor(()=>expect(connect).toHaveBeenCalledTimes(1));expect(add).not.toHaveBeenCalled();
 });

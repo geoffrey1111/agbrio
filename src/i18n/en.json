@@ -1435,5 +1435,10 @@
   "Claude 插件仍是旧版，更新尚未确认。请检查插件更新后重试。": "The Claude plugin is still outdated; its update was not confirmed. Check the plugin update and try again.",
   "无法确认 Claude 插件版本，尚未启用新的连接。": "The Claude plugin version could not be verified. No new connection was enabled.",
   "Claude 插件尚未确认启用，请检查插件状态。": "The Claude plugin was not confirmed enabled. Check its status.",
-  "MCP 连接请看 /mcp 或连接器，不一定出现在插件列表。要让完成通知回到 Claude，或从手机回复 Claude 原对话，继续完成下方的本机连接即可。": "Find the MCP connection in /mcp or Connectors; it may not appear in Plugins. Continue with the local connection below for completion notices back to Claude and phone replies to its original chat."
+  "MCP 连接请看 /mcp 或连接器，不一定出现在插件列表。要让完成通知回到 Claude，或从手机回复 Claude 原对话，继续完成下方的本机连接即可。": "Find the MCP connection in /mcp or Connectors; it may not appear in Plugins. Continue with the local connection below for completion notices back to Claude and phone replies to its original chat.",
+  "首次使用不用预装插件。点击下方按钮会安装、启用并配置内置 Claude 组件，用于完成通知和手机回复；MCP 读取与派发可以先使用。": "First use needs no preinstalled plugin. The button installs, enables and configures the bundled Claude component for notices and phone replies. MCP reads and dispatch can be used first.",
+  "安装并连接 Claude 完整功能": "Install and connect Claude full features",
+  "网页和手机不能安装本机组件。请打开已安装的 Windows Agbrio 客户端，在本页完成安装；不要先执行 /reload-plugins。": "Web and phone cannot install local components. Open the installed Windows Agbrio client and install on this page; do not run /reload-plugins first.",
+  "安装与配置已完成，尚待当前会话加载。请等 Claude 管理会话空闲后执行 /reload-plugins，再检查连接。": "Installation and configuration are complete; loading in this session is still pending. Run /reload-plugins when the Claude management session is idle, then check the connection.",
+  "MCP 连接请看 /mcp 或连接器，不一定出现在插件列表。要让完成通知回到 Claude，或从手机回复 Claude 原对话，使用上方的安装连接按钮即可。": "Find the MCP connection in /mcp or Connectors; it may not appear in Plugins. Use the install-and-connect button above for completion notices back to Claude and phone replies to its original chat."
 }

@@ -74,7 +74,7 @@ fn connect_admin(core:&RouterCore,host:&crate::HostRuntime,resources:&std::path:
     let id="agbrio-bridge@agbrio-observation";
     let mut list=admin.run(&args(&["plugin","list","--json"]),None)?;
     if !list.is_array(){return Err("CLAUDE_PLUGIN_ADMIN_INVALID_RESULT".into());}
-    if !list.as_array().unwrap().iter().any(|p|p["id"]==id){
+    if !list.as_array().unwrap().iter().any(|p|p["id"]==id&&p["scope"]=="user"){
         let path=package.to_string_lossy();
         admin.run(&args(&["plugin","marketplace","add",&path,"--json"]),None)?;
         admin.run(&args(&["plugin","install",id,"--scope","user","--json"]),None)?;

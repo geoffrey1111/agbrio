@@ -6,7 +6,7 @@ import {claudeCodeAddCommand} from "./claudeConnectionInstructions";
 it.each(['zh-CN','zh-TW','en'] as const)('Claude setup in %s requires actual installation, authentication and tool evidence',language=>{
  const prompt=assistantSetupInstructions('https://fixture.invalid/mcp',language,'claude');
  for(const expected of ['claude --version','claude mcp list','claude mcp get agbrio','claude mcp add --transport http --scope user agbrio','/mcp','agbrio_read_app','approvalMode','expiresAt','Add connectors','sourceSequence','nextActionInput','UNKNOWN'])expect(prompt).toContain(expected);
- expect(prompt).not.toContain('https://chatgpt.com/plugins');expect(prompt).not.toContain('claude plugin install');
+ expect(prompt).not.toContain('https://chatgpt.com/plugins');expect(prompt).toContain('claude plugin install agbrio-bridge@agbrio-observation --scope user --json');expect(prompt).toContain('claude plugin marketplace add');
  if(language==='en')expect(prompt).not.toMatch(/[\u3400-\u9fff]/);
  expect(assistantTakeoverInstructions(language,'claude')).toContain('sourceSequence');
 });

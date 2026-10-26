@@ -180,12 +180,27 @@ struct FakePluginAdmin {
  fail_inline:bool,
  enabled:Mutex<bool>,
  update_version:Option<String>,
+ installed:Mutex<bool>,
+ marketplace_added:Mutex<bool>,
+ fail_first_install:Mutex<bool>,
+ project_only:bool,
 }
 impl crate::claude_code_desktop::PluginAdmin for FakePluginAdmin {
  fn run(&self,args:&[String],input:Option<&[u8]>)->Result<serde_json::Value,String>{
   assert!(!args.iter().any(|a|matches!(a.as_str(),"-p"|"--resume"|"--continue"|"--force"|"--fork-session")));
   self.calls.lock().unwrap().push(args.to_vec());
-  if args==["plugin","list","--json"] {return Ok(serde_json::json!([{"id":"agbrio-bridge@agbrio-observation","scope":"user","enabled":*self.enabled.lock().unwrap(),"installPath":self.path}]));}
+  if args==["plugin","list","--json"] {
+   let mut rows=Vec::new();
+   if *self.installed.lock().unwrap(){rows.push(serde_json::json!({"id":"agbrio-bridge@agbrio-observation","scope":"user","enabled":*self.enabled.lock().unwrap(),"installPath":self.path}));}
+   if self.project_only{rows.push(serde_json::json!({"id":"agbrio-bridge@agbrio-observation","scope":"project","enabled":true,"installPath":self.path}));}
+   return Ok(serde_json::json!(rows));
+  }
+  if args.get(1).is_some_and(|a|a=="marketplace") {assert_eq!(args[2],"add");assert_eq!(args[4],"--json");*self.marketplace_added.lock().unwrap()=true;return Ok(serde_json::json!({"outcome":"ok"}));}
+  if args.get(1).is_some_and(|a|a=="install") {
+   assert_eq!(args,["plugin","install","agbrio-bridge@agbrio-observation","--scope","user","--json"]);assert!(*self.marketplace_added.lock().unwrap());
+   if std::mem::take(&mut *self.fail_first_install.lock().unwrap()){return Err("CLAUDE_PLUGIN_ADMIN_REFUSED".into());}
+   *self.installed.lock().unwrap()=true;return Ok(serde_json::json!({"outcome":"ok"}));
+  }
   if args.get(1).is_some_and(|a|a=="update") {
    assert_eq!(args,["plugin","update","agbrio-bridge@agbrio-observation","--scope","user","--json"]);
    if let Some(version)=&self.update_version {let p=self.path.join(".claude-plugin/plugin.json");let mut v:serde_json::Value=serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();v["version"]=serde_json::json!(version);std::fs::write(p,v.to_string()).unwrap();}
@@ -217,7 +232,7 @@ fn connection_fixture(temp:&tempfile::TempDir)->(RouterCore,crate::HostRuntime,s
  let package=temp.path().join("claude-code-plugin/.claude-plugin");let cache=temp.path().join("cache/agbrio-observation/agbrio-bridge/0.1.2/.claude-plugin");
  let manifest=serde_json::json!({"name":"agbrio-bridge","version":"0.1.2","userConfig":{"token":{"sensitive":true}}}).to_string();
  for folder in [&package,&cache] {std::fs::create_dir_all(folder).unwrap();std::fs::write(folder.join("plugin.json"),&manifest).unwrap();}
- let admin=FakePluginAdmin{path:cache.parent().unwrap().into(),configured:Mutex::default(),calls:Mutex::default(),fail_inline:false,enabled:Mutex::new(true),update_version:None};
+ let admin=FakePluginAdmin{path:cache.parent().unwrap().into(),configured:Mutex::default(),calls:Mutex::default(),fail_inline:false,enabled:Mutex::new(true),update_version:None,installed:Mutex::new(true),marketplace_added:Mutex::new(true),fail_first_install:Mutex::new(false),project_only:false};
  (core,host,temp.path().join("cache"),admin)
 }
 #[test]fn explicit_connection_updates_an_old_disabled_plugin_and_checks_the_installed_version(){
@@ -226,6 +241,21 @@ fn connection_fixture(temp:&tempfile::TempDir)->(RouterCore,crate::HostRuntime,s
  admin.update_version=Some("0.1.3".into());*admin.enabled.lock().unwrap()=false;
  assert_eq!(connect_admin(&core,&host,temp.path(),&admin,&cache).unwrap().phase,"WAITING_SESSION");
  let calls=admin.calls.lock().unwrap();assert_eq!(calls.iter().filter(|c|c.get(1).is_some_and(|v|v=="update")).count(),1);assert!(calls.iter().any(|c|c.get(1).is_some_and(|v|v=="enable")));drop(calls);host.shutdown(&core);
+}
+#[test]fn first_connection_installs_from_an_empty_plugin_list_before_configuring_both_identities(){
+ let temp=tempfile::tempdir().unwrap();let(core,host,cache,admin)=connection_fixture(&temp);*admin.installed.lock().unwrap()=false;*admin.marketplace_added.lock().unwrap()=false;
+ assert_eq!(connect_admin(&core,&host,temp.path(),&admin,&cache).unwrap().phase,"WAITING_SESSION");
+ let calls=admin.calls.lock().unwrap();assert_eq!(calls[0].as_slice(),["plugin","list","--json"]);assert_eq!(calls[1][1],"marketplace");assert_eq!(calls[2][1],"install");assert_eq!(calls[3].as_slice(),["plugin","list","--json"]);drop(calls);
+ assert_eq!(admin.configured.lock().unwrap().len(),2);assert_eq!(core.store.claude_connections().unwrap().len(),1);host.shutdown(&core);
+}
+#[test]fn first_connection_resumes_after_marketplace_added_but_install_refused_without_issuing_early_credentials(){
+ let temp=tempfile::tempdir().unwrap();let(core,host,cache,admin)=connection_fixture(&temp);*admin.installed.lock().unwrap()=false;*admin.marketplace_added.lock().unwrap()=false;*admin.fail_first_install.lock().unwrap()=true;
+ assert_eq!(connect_admin(&core,&host,temp.path(),&admin,&cache).err().unwrap(),"CLAUDE_PLUGIN_ADMIN_REFUSED");assert!(core.store.claude_connections().unwrap().is_empty());
+ assert_eq!(connect_admin(&core,&host,temp.path(),&admin,&cache).unwrap().phase,"WAITING_SESSION");assert_eq!(core.store.claude_connections().unwrap().len(),1);host.shutdown(&core);
+}
+#[test]fn first_user_connection_installs_user_scope_even_if_only_a_project_install_exists(){
+ let temp=tempfile::tempdir().unwrap();let(core,host,cache,mut admin)=connection_fixture(&temp);*admin.installed.lock().unwrap()=false;admin.project_only=true;
+ assert_eq!(connect_admin(&core,&host,temp.path(),&admin,&cache).unwrap().phase,"WAITING_SESSION");assert!(admin.project_only);assert!(*admin.installed.lock().unwrap());host.shutdown(&core);
 }
 #[test]fn explicit_connection_refuses_to_claim_ready_if_official_update_keeps_the_old_version(){
  let temp=tempfile::tempdir().unwrap();let(core,host,cache,admin)=connection_fixture(&temp);
