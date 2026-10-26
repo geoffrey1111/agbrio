@@ -1,3 +1,7 @@
+## 2026-10-26 — Guidance retains priority over stored queue intent
+
+An exact active STEER may overtake unattempted Codex QUEUE intents; those queue rows and their approved payloads stay unchanged. A physical SENDING/UNKNOWN writer still blocks every subsequent claim. Queued dispatch ignores no in-flight guidance, even when its row was inserted after the FIFO head. Guidance does not change the queue anchor or authorize a second native turn. This closes the distinction between recovering controllableTurnId and actually admitting a guidance request while preserving an existing queue.
+
 ## 2026-10-26 — Codex follow-up control and explicit FIFO queues
 
 A late shared subscriber reconciles the exact native latest inProgress turn without claiming ownership or reviving a confirmed terminal turn. Codex explicit QUEUE supports up to32 independent immutable intents per conversation. Only the FIFO head dispatches; its acknowledged predecessor turn is the only allowed successor anchor. SENDING/UNKNOWN still blocks subsequent writes; changed native generations/foreign turns fail closed. Migration026 changes only the unique index, preserving queued rows and receipts. Claude queue semantics remain unchanged.
