@@ -59,7 +59,7 @@ pub(crate) fn connect(core:&RouterCore,host:&crate::HostRuntime,resources:&std::
     if live_publisher(core)? {return Ok(connection_result("CONNECTED"));}
     static CONFIGURE:std::sync::Mutex<()>=std::sync::Mutex::new(());
     let _guard=CONFIGURE.try_lock().map_err(|_|"CLAUDE_CONNECTION_BUSY")?;
-    let executable=crate::claude_code_desktop::engine_at(&crate::claude_code_desktop::data_roots())?;
+    let executable=crate::claude_code_desktop::engine_at(&crate::claude_code_desktop::engine_roots())?;
     let profile=std::env::var_os("USERPROFILE").ok_or("CLAUDE_PLUGIN_CACHE_UNAVAILABLE")?;
     connect_admin(core,host,resources,&crate::claude_code_desktop::OfficialCli{executable},&std::path::PathBuf::from(profile).join(".claude/plugins/cache"))
 }

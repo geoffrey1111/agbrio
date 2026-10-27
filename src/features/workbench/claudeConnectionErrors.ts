@@ -1,6 +1,7 @@
 import {t} from "../../i18n";
 export const connectionError=(error:unknown)=>t(({
- CLAUDE_DESKTOP_ENGINE_NOT_FOUND:"未找到支持观察插件的 Claude Code，请先安装或更新 Claude 桌面应用。",
+ CLAUDE_DESKTOP_ENGINE_NOT_FOUND:"未找到 Claude Code 内置引擎。请先打开 Claude 桌面应用的 Code 本地会话，再重试；若已能使用，请提供 /status 版本和引擎路径。",
+ CLAUDE_DESKTOP_ENGINE_TOO_OLD:"Claude Code 内置引擎版本低于 2.1.286，请更新 Claude 桌面应用后重试。",
  CLAUDE_PLUGIN_DIFFERENT_HOST:"这个插件已连接另一个 Agbrio 地址，请先核对原连接。",
  CLAUDE_CONNECTION_BUSY:"连接正在配置，请稍候。",
  CLAUDE_PLUGIN_ADMIN_TIMEOUT:"配置超时，未确认连接成功。请稍后检查连接。",

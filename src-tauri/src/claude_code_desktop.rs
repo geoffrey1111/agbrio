@@ -15,6 +15,19 @@ pub(crate) fn data_roots() -> Vec<PathBuf> {
     })
 }
 
+// Desktop 3.6556.2 also stores its bundled engine outside the legacy Store
+// roaming-data root. Engine discovery must not widen transcript discovery.
+fn engine_roots_at(mut roots: Vec<PathBuf>, local: Option<&Path>) -> Vec<PathBuf> {
+    if let Some(path) = local.and_then(|p| fs::canonicalize(p.join("Claude-Data/claude_pzs8sxrjxfjjc")).ok()) {
+        if !roots.contains(&path) { roots.push(path); }
+    }
+    roots
+}
+pub(crate) fn engine_roots() -> Vec<PathBuf> {
+    let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+    engine_roots_at(data_roots(), local.as_deref())
+}
+
 // Stop parsing at the title, or earlier at any transcript, MCP configuration or
 // approval data. Other prefix values are skipped without being kept. The sentinel
 // returns the captured prefix without requiring the rest of the JSON.
@@ -149,22 +162,24 @@ pub(crate) fn names(sessions: &[Session]) -> HashMap<String,String> {
 }
 
 pub(crate) fn engine_at(roots: &[PathBuf]) -> Result<PathBuf,String> {
-    let mut engines = Vec::new(); let mut budget = 128;
+    let mut engines = Vec::new(); let mut budget = 128; let mut older_engine = false;
     for root in roots {
         let Ok(boundary) = fs::canonicalize(root.join("claude-code")) else { continue; };
         if !fs::canonicalize(root).is_ok_and(|root| boundary.starts_with(root)) { continue; }
         for version in children(&boundary, &mut budget) {
             let Some(name) = version.file_name().to_str().map(str::to_owned) else { continue; };
             let Ok(version_number) = semver::Version::parse(&name) else { continue; };
-            if version_number < semver::Version::new(2,1,286) { continue; }
             for build in children(&version.path(), &mut budget) {
                 let Ok(executable) = fs::canonicalize(build.path().join("claude.exe")) else { continue; };
-                if executable.is_file() && executable.starts_with(&boundary) { engines.push((version_number.clone(),executable)); }
+                if executable.is_file() && executable.starts_with(&boundary) {
+                    if version_number < semver::Version::new(2,1,286) { older_engine = true; }
+                    else { engines.push((version_number.clone(),executable)); }
+                }
             }
         }
     }
     engines.sort_by(|a,b| a.0.cmp(&b.0));
-    engines.pop().map(|(_,path)| path).ok_or_else(|| "CLAUDE_DESKTOP_ENGINE_NOT_FOUND".into())
+    engines.pop().map(|(_,path)| path).ok_or_else(|| if older_engine { "CLAUDE_DESKTOP_ENGINE_TOO_OLD" } else { "CLAUDE_DESKTOP_ENGINE_NOT_FOUND" }.into())
 }
 
 /// Fixed administrative argv only. Secret values, stdout and stderr are never
@@ -249,6 +264,40 @@ mod tests {
         let temp=tempfile::tempdir().unwrap();
         for version in ["2.1.285","2.1.295","2.1.300"] {let p=temp.path().join(format!("claude-code/{version}/build"));fs::create_dir_all(&p).unwrap();fs::write(p.join("claude.exe"),b"fixture").unwrap();}
         assert!(engine_at(&[temp.path().into()]).unwrap().to_string_lossy().contains("2.1.300"));
+    }
+    #[test] fn engine_discovery_supports_claude_data_without_widening_metadata_roots() {
+        let temp=tempfile::tempdir().unwrap();
+        let local=temp.path().join("Local");
+        let root=local.join("Claude-Data/claude_pzs8sxrjxfjjc");
+        let executable=root.join("claude-code/2.1.308/c17a819afb40/claude.exe");
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();fs::write(&executable,b"fixture").unwrap();
+        // This is the legacy-only lookup which failed on the reported machine.
+        assert_eq!(engine_at(&[]).unwrap_err(),"CLAUDE_DESKTOP_ENGINE_NOT_FOUND");
+        let roots=engine_roots_at(Vec::new(),Some(&local));
+        assert_eq!(engine_at(&roots).unwrap(),fs::canonicalize(&executable).unwrap());
+        assert_eq!(engine_roots_at(roots.clone(),Some(&local)),roots);
+        assert!(engine_roots_at(Vec::new(),Some(temp.path())).is_empty());
+    }
+    #[test] fn engine_discovery_keeps_legacy_roots_and_selects_newest_supported_engine() {
+        let temp=tempfile::tempdir().unwrap();
+        let legacy=temp.path().join("Roaming/Claude");
+        let local=temp.path().join("Local");
+        for root in [&legacy,&local.join("Claude-Data/claude_pzs8sxrjxfjjc")] {
+            let executable=root.join("claude-code/2.1.308/build/claude.exe");
+            fs::create_dir_all(executable.parent().unwrap()).unwrap();fs::write(executable,b"fixture").unwrap();
+        }
+        let newer=legacy.join("claude-code/2.1.309/build/claude.exe");
+        fs::create_dir_all(newer.parent().unwrap()).unwrap();fs::write(&newer,b"fixture").unwrap();
+        let roots=engine_roots_at(vec![fs::canonicalize(&legacy).unwrap()],Some(&local));
+        assert_eq!(roots.len(),2);
+        assert_eq!(engine_at(&roots).unwrap(),fs::canonicalize(newer).unwrap());
+    }
+    #[test] fn engine_discovery_distinguishes_old_runtime_from_missing_runtime() {
+        let temp=tempfile::tempdir().unwrap();
+        assert_eq!(engine_at(&[temp.path().into()]).unwrap_err(),"CLAUDE_DESKTOP_ENGINE_NOT_FOUND");
+        let executable=temp.path().join("claude-code/2.1.285/build/claude.exe");
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();fs::write(executable,b"fixture").unwrap();
+        assert_eq!(engine_at(&[temp.path().into()]).unwrap_err(),"CLAUDE_DESKTOP_ENGINE_TOO_OLD");
     }
     #[test]
     #[ignore = "owner's existing desktop metadata only; no provider call or write"]

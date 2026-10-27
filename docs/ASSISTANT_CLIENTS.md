@@ -144,3 +144,5 @@ WorkBuddy 官方说明：<https://open.workbuddy.cn/docs/connector>。在自定�
 ## 当前证据边界
 
 对方用户的 WorkBuddy 版本、Agbrio 版本、原始错误及授权结果尚未提供；其真实接通和事件运行时未验收。开发中的自动化 HTTP/数据库/UI 测试只能证明各自覆盖的工程路径，不替代实际 WorkBuddy OAuth/工具调用，更不代表任意客户端已支持持续托管。
+
+Windows Claude Desktop engine discovery supports both the legacy roaming/Store cache and the newer LocalAppData/Claude-Data/claude_pzs8sxrjxfjjc engine layout. If discovery still fails, supply the Code session /status version and running native engine path; reinstalling or reauthorizing MCP is not required merely because discovery failed.

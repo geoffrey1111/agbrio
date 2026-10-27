@@ -1440,5 +1440,7 @@
   "安装并连接 Claude 完整功能": "Install and connect Claude full features",
   "网页和手机不能安装本机组件。请打开已安装的 Windows Agbrio 客户端，在本页完成安装；不要先执行 /reload-plugins。": "Web and phone cannot install local components. Open the installed Windows Agbrio client and install on this page; do not run /reload-plugins first.",
   "安装与配置已完成，尚待当前会话加载。请等 Claude 管理会话空闲后执行 /reload-plugins，再检查连接。": "Installation and configuration are complete; loading in this session is still pending. Run /reload-plugins when the Claude management session is idle, then check the connection.",
-  "MCP 连接请看 /mcp 或连接器，不一定出现在插件列表。要让完成通知回到 Claude，或从手机回复 Claude 原对话，使用上方的安装连接按钮即可。": "Find the MCP connection in /mcp or Connectors; it may not appear in Plugins. Use the install-and-connect button above for completion notices back to Claude and phone replies to its original chat."
+  "MCP 连接请看 /mcp 或连接器，不一定出现在插件列表。要让完成通知回到 Claude，或从手机回复 Claude 原对话，使用上方的安装连接按钮即可。": "Find the MCP connection in /mcp or Connectors; it may not appear in Plugins. Use the install-and-connect button above for completion notices back to Claude and phone replies to its original chat.",
+  "未找到 Claude Code 内置引擎。请先打开 Claude 桌面应用的 Code 本地会话，再重试；若已能使用，请提供 /status 版本和引擎路径。": "Could not find the bundled Claude Code engine. Open a local session in the Claude desktop app’s Code tab and retry. If Code already works, provide its /status version and engine path.",
+  "Claude Code 内置引擎版本低于 2.1.286，请更新 Claude 桌面应用后重试。": "The bundled Claude Code engine is older than 2.1.286. Update the Claude desktop app and retry."
 }
