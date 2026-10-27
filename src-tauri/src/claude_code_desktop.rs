@@ -186,6 +186,16 @@ pub(crate) fn engine_at(roots: &[PathBuf]) -> Result<PathBuf,String> {
 /// logged or returned. Only this child may be stopped on a bounded timeout.
 pub(crate) trait PluginAdmin { fn run(&self, args: &[String], input: Option<&[u8]>) -> Result<serde_json::Value,String>; }
 pub(crate) struct OfficialCli { pub executable: PathBuf }
+fn admin_refusal(args: &[String], exit: Option<i32>) -> String {
+    let tail=args.iter().position(|a|a=="plugin").map(|i|&args[i+1..]).unwrap_or(&[]);
+    let stage=match tail.first().map(String::as_str) {
+        Some("list")=>"LIST",Some("install")=>"INSTALL",Some("update")=>"UPDATE",Some("enable")=>"ENABLE",
+        Some("marketplace") if tail.get(1).is_some_and(|a|a=="add")=>"ADD_MARKETPLACE",
+        Some("configure") if tail.iter().any(|a|a=="--values-stdin")=>"SAVE_CONFIGURATION",
+        Some("configure")=>"READ_CONFIGURATION",_=>"UNKNOWN",
+    };
+    format!("CLAUDE_PLUGIN_ADMIN_REFUSED:{stage}:{}",exit.map(|v|v.to_string()).unwrap_or_else(||"UNKNOWN".into()))
+}
 impl PluginAdmin for OfficialCli {
     fn run(&self, args: &[String], input: Option<&[u8]>) -> Result<serde_json::Value,String> {
         let mut command = Command::new(&self.executable);
@@ -208,7 +218,7 @@ impl PluginAdmin for OfficialCli {
             }
         };
         let bytes = reader.join().map_err(|_| "CLAUDE_PLUGIN_ADMIN_UNAVAILABLE")?;
-        if !status.success() { return Err("CLAUDE_PLUGIN_ADMIN_REFUSED".into()); }
+        if !status.success() { return Err(admin_refusal(args,status.code())); }
         serde_json::from_slice(&bytes).or_else(|_| {
             // Some official install commands announce progress before their
             // documented last-line JSON result. Never return that raw output.
@@ -221,6 +231,13 @@ impl PluginAdmin for OfficialCli {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn admin_refusal_reports_fixed_stage_and_exit_without_paths_or_values() {
+        let args=|v:&[&str]|v.iter().map(|v|v.to_string()).collect::<Vec<_>>();
+        assert_eq!(admin_refusal(&args(&["plugin","install","private-id","--scope","user","--json"]),Some(1)),"CLAUDE_PLUGIN_ADMIN_REFUSED:INSTALL:1");
+        assert_eq!(admin_refusal(&args(&["--plugin-dir","private-path","plugin","configure","private-id","--values-stdin","--json"]),Some(125)),"CLAUDE_PLUGIN_ADMIN_REFUSED:SAVE_CONFIGURATION:125");
+        assert_eq!(admin_refusal(&args(&["plugin","marketplace","add","private-path","--json"]),Some(2)),"CLAUDE_PLUGIN_ADMIN_REFUSED:ADD_MARKETPLACE:2");
+        assert_eq!(admin_refusal(&args(&["unexpected","private-value"]),None),"CLAUDE_PLUGIN_ADMIN_REFUSED:UNKNOWN:UNKNOWN");
+    }
     fn session(root: &Path, id: &str) -> Session { Session { session_id:id.into(), instance_id:"fixture".into(), cwd:root.to_string_lossy().into(), version:"2.1.295".into(), state:"SESSION_START".into(), turn_id:None,checked_at:0,lease_until:1,title:None,latest_reply:None } }
     #[test] fn only_exact_registered_identity_and_root_supply_titles_without_reading_transcript() {
         let temp = tempfile::tempdir().unwrap(); let project = temp.path().join("project"); fs::create_dir(&project).unwrap();

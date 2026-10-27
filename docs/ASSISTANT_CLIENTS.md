@@ -146,3 +146,7 @@ WorkBuddy 官方说明：<https://open.workbuddy.cn/docs/connector>。在自定�
 对方用户的 WorkBuddy 版本、Agbrio 版本、原始错误及授权结果尚未提供；其真实接通和事件运行时未验收。开发中的自动化 HTTP/数据库/UI 测试只能证明各自覆盖的工程路径，不替代实际 WorkBuddy OAuth/工具调用，更不代表任意客户端已支持持续托管。
 
 Windows Claude Desktop engine discovery supports both the legacy roaming/Store cache and the newer LocalAppData/Claude-Data/claude_pzs8sxrjxfjjc engine layout. If discovery still fails, supply the Code session /status version and running native engine path; reinstalling or reauthorizing MCP is not required merely because discovery failed.
+
+### If Claude setup needs a manual step
+
+In the installed Windows Agbrio client, a failed connection shows its fixed command step/exit code and the relevant recovery. Copy the manual PowerShell installer only when installation is needed; run it on that same computer with Agbrio open. It uses the bundled plugin, stops on failure and does not request credentials or change permissions. Return to Agbrio for connection configuration. Once configured, wait for the management conversation to be idle and run /reload-plugins. If still not loaded, save work and personally quit/reopen Claude Desktop, then return to the original conversation. Copy the next-step instructions to verify actual MCP tools and opt-in exact task notice registrations. A heartbeat is not a notification subscription, and no tutorial step runs these actions automatically.
