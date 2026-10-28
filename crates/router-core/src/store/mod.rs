@@ -82,6 +82,7 @@ const NORMAL_FEATURE_MIGRATIONS: &[(&str, &str)] = &[
     ("child-results-v1", include_str!("../../migrations/normal/021_child_results.sql")),
     ("assistant-oauth-refresh-v1", include_str!("../../migrations/normal/019_assistant_oauth_refresh.sql")),
     ("codex-reply-fifo-v1", include_str!("../../migrations/normal/026_codex_reply_fifo.sql")),
+    ("watch-visibility-v1", include_str!("../../migrations/normal/027_watch_visibility.sql")),
 ];
 
 const MIGRATIONS: &[(i64, &str)] = &[
@@ -3947,6 +3948,7 @@ mod tests {
                         "watch_replies",
                         "watch_reply_cancellations",
                         "watch_seen_events",
+                        "watch_visibility",
                         "workstream_drafts",
                         "workstreams"
                     ]

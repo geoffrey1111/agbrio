@@ -1,10 +1,11 @@
+import {isQuietWatch,watchStartError} from './watchPresentation';
 import {claudeTaskSummary} from "./ClaudeTaskStatus";
 import {t as uiText,tc,useLanguage,getLanguage} from "../../i18n";
 import {useEffect,useMemo,useRef,useState,type ReactNode} from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {CircleCheck,ChevronLeft,Link2,MessageSquare,Search,X} from "lucide-react";
 import {SwipeDeleteRow} from "./SwipeDeleteRow";
-import {AnimatePresence,LayoutGroup,motion} from "motion/react";
+import {AnimatePresence,LayoutGroup,motion,useReducedMotion} from "motion/react";
 import {avatarFor} from "./avatarPool";
 import {messagePreview} from "./messagePreview";
 import {bridgeReviewAttention,focusedBridgeActivity,type BridgeActivity} from "./bridgeActivity";
@@ -22,10 +23,11 @@ type Filter="ALL"|"RUN"|"WAIT"|"BRIDGE"|"WATCH";
 type ActivityRows=Record<string,{row:BridgeActivity;receivedAt:number}>;
 
 const isClaude=(id:string)=>id.startsWith("claude_code:");
-const spring={type:"spring",stiffness:520,damping:32,mass:.7} as const;
+const spring={type:"spring",stiffness:520,damping:39,mass:.7} as const;
 /** Persistent DiceBear avatar plus a small provider badge. */
 export function ConversationAvatar({id,kind}:{id:string;kind:"bridge"|"codex"|"claude"}){
- return <motion.span className="v6-avatar" aria-hidden initial={{scale:.6,rotate:-8}} animate={{scale:1,rotate:0}} transition={{type:"spring",stiffness:420,damping:16}}><img src={avatarFor(id)} alt="" draggable={false}/><i className={`v6-badge v6-${kind}`}>{kind==="bridge"?<Link2 size={10} strokeWidth={2.6}/>:kind==="claude"?"✳":"C"}</i></motion.span>;
+ const reduced=useReducedMotion();
+ return <motion.span className="v6-avatar" aria-hidden initial={reduced?false:{opacity:.35}} animate={{opacity:1}} transition={{duration:reduced?0:.14}}><img src={avatarFor(id)} alt="" draggable={false}/><i className={`v6-badge v6-${kind}`}>{kind==="bridge"?<Link2 size={10} strokeWidth={2.6}/>:kind==="claude"?"✳":"C"}</i></motion.span>;
 }
 const folder=(path:string)=>path.split(/[\\/]/).filter(Boolean).at(-1)??"";
 const messageTime=(value:number|null|undefined)=>typeof value==="number"&&Number.isFinite(value)&&value>0?value:0;
@@ -64,6 +66,7 @@ export function ConversationHome({onOpenBoard,mode="ALL",bridges,activity,activi
  onOpenBridge:(id:string)=>void;onOpenWatch:(watch:CodexWatch)=>void;onCreateBridge?:(name:string)=>Promise<void>;onDeleteBridge?:(item:WorkbenchItem)=>void;
 }){
  useLanguage();
+ const reduced=useReducedMotion();
  const [hiddenWatches,setHiddenWatches]=useState<string[]>([]);
  const watches=useWatches(watchApi).filter(w=>!hiddenWatches.includes(w.threadId));
  const [undo,setUndo]=useState<CodexWatch|null>(null);
@@ -88,16 +91,21 @@ export function ConversationHome({onOpenBoard,mode="ALL",bridges,activity,activi
  const q=query.trim().toLocaleLowerCase();
  const todo=mode==="TODO";
  const visible=rows.filter(r=>(!todo||r.tone==="wait")&&(filter==="ALL"||filter==="RUN"&&r.tone==="run"||filter==="WAIT"&&r.tone==="wait"||filter===r.kind)&&(!q||`${r.title} ${r.meta}`.toLocaleLowerCase().includes(q)));
- const active=visible.filter(r=>r.tone!=="done"),rest=visible.filter(r=>r.tone==="done");
+ const quietIds=new Set(watches.filter(w=>isQuietWatch(w)).map(w=>w.threadId));
+ const quiet=!q&&!todo?visible.filter(r=>r.watch&&quietIds.has(r.watch.threadId)):[];
+ const collapsed=new Set(quiet.map(r=>r.key));
+ const active=visible.filter(r=>r.tone!=="done"),rest=visible.filter(r=>r.tone==="done"&&!collapsed.has(r.key));
+ const [quietError,setQuietError]=useState<string|null>(null);
+ async function showQuiet(w:CodexWatch){if(!watchApi?.show)return;setQuietError(null);try{await watchApi.show(w.threadId);}catch(e){setQuietError(watchStartError(e));}}
  const open=(r:Row)=>r.bridge?onOpenBridge(r.bridge.id):r.watch&&onOpenWatch(r.watch);
  // data-bridge-id lets useBridgeActivity read status only for rows on screen.
- const item=(r:Row,index:number)=>{const body=<motion.button type="button" whileTap={{scale:.97}} transition={spring} className="v6-row" data-tone={r.tone} data-bridge-id={r.bridge?.id} onClick={()=>open(r)}>
+ const item=(r:Row)=>{const body=<motion.button type="button" whileTap={reduced?undefined:{scale:.97}} transition={spring} className="v6-row" data-tone={r.tone} data-bridge-id={r.bridge?.id} onClick={()=>open(r)}>
    <ConversationAvatar id={r.key} kind={r.kind==="BRIDGE"?"bridge":isClaude(r.watch!.threadId)?"claude":"codex"}/>
-   <span className="v6-row-body"><span className="v6-row-top"><strong>{r.title}</strong>{r.at?<time>{when(r.at)}</time>:null}</span><span className="v6-row-meta">{r.meta}</span>{r.preview&&<span className="v6-row-preview">{r.preview}</span>}{r.state&&<motion.span key={r.state} className="v6-state" data-tone={r.tone} initial={{scale:.7,opacity:.4}} animate={{scale:1,opacity:1}} transition={spring}>{r.tone==="run"&&<i aria-hidden/>}{r.state}</motion.span>}</span>
+   <span className="v6-row-body"><span className="v6-row-top"><strong>{r.title}</strong>{r.at?<time>{when(r.at)}</time>:null}</span><span className="v6-row-meta">{r.meta}</span>{r.preview&&<span className="v6-row-preview">{r.preview}</span>}{r.state&&<motion.span key={r.state} className="v6-state" data-tone={r.tone} initial={reduced?false:{opacity:.5}} animate={{opacity:1}} transition={{duration:reduced?0:.12}}>{r.tone==="run"&&<i aria-hidden/>}{r.state}</motion.span>}</span>
    <AnimatePresence>{r.unread&&<motion.i className="v6-unread" aria-label={uiText("需要你处理")} initial={{scale:0}} animate={{scale:1}} exit={{scale:0}} transition={{type:"spring",stiffness:600,damping:14}}/>}</AnimatePresence>
   </motion.button>;
   const inner=r.bridge&&onDeleteBridge?<SwipeDeleteRow label={r.title} onDelete={()=>onDeleteBridge(r.bridge!)}>{body}</SwipeDeleteRow>:r.watch&&watchApi?.remove?<SwipeDeleteRow label={r.title} onDelete={()=>void stopWatching(r.watch!)}>{body}</SwipeDeleteRow>:body;
-  return <motion.div key={r.key} layout="position" initial={{opacity:.35,y:14,scale:.98}} animate={{opacity:1,y:0,scale:1}} exit={{opacity:0,scale:.96,transition:{duration:.15}}} transition={{...spring,delay:Math.min(index,10)*.03}}>{inner}</motion.div>;};
+  return <motion.div key={r.key} layout="position" initial={reduced?false:{opacity:.35}} animate={{opacity:1}} exit={{opacity:0,transition:{duration:reduced?0:.12}}} transition={reduced?{duration:0}:spring}>{inner}</motion.div>;};
  const chips:[Filter,string,number?][]=[["ALL",uiText("全部")],["RUN",uiText("执行中"),counts.run],["WAIT",uiText("等你"),counts.wait],["BRIDGE","Bridge"],["WATCH",uiText("监听")]];
  return <section className="v6-home" data-mode={mode} aria-label={todo?uiText("需要你处理"):uiText("对话")}>
   {!todo&&<><label className="v6-search"><Search size={16} aria-hidden/><input type="search" aria-label={uiText("搜索对话或项目")} placeholder={uiText("搜索对话或项目")} value={query} onChange={e=>setQuery(e.target.value)}/>{query&&<button type="button" aria-label={uiText("清除搜索")} onClick={()=>setQuery("")}><X size={16}/></button>}</label>
@@ -109,11 +117,12 @@ export function ConversationHome({onOpenBoard,mode="ALL",bridges,activity,activi
     <span className="v6-todo-detail">{r.preview||r.meta}</span>
    </motion.button>;})}</div>}
   {todo&&onOpenBoard&&<motion.button type="button" className="v6-todo-card v6-todo-board" onClick={onOpenBoard} whileTap={{scale:.97}} initial={{opacity:.35,y:16}} animate={{opacity:1,y:0}} transition={{...spring,delay:.12}}><span className="v6-todo-kind" data-tone="wait">{uiText("看板")}</span><span className="v6-todo-title"><strong>{uiText("打开看板审批")}</strong></span><span className="v6-todo-detail">{uiText("角色例会和立绘批复在看板里处理。")}</span></motion.button>}
-  {!todo&&visible.length>0&&<div className="v6-list"><AnimatePresence>{[...active.map(item),...(rest.length?[<motion.small layout="position" key="section" className="v6-section">{active.length?uiText("其他"):uiText("最近")}</motion.small>]:[]),...rest.map((r,i)=>item(r,i+active.length))]}</AnimatePresence></div>}
+  {!todo&&visible.length>0&&<div className="v6-list"><AnimatePresence>{[...active.map(item),...(rest.length?[<motion.small layout="position" key="section" className="v6-section">{active.length?uiText("其他"):uiText("最近")}</motion.small>]:[]),...rest.map(item)]}</AnimatePresence></div>}
+  {!todo&&quiet.length>0&&<details className="v6-quiet-watches"><summary>{uiText("较早的对话")} <span>{quiet.length}</span></summary><p>{uiText("三天未更新的对话收在这里，仍会继续监听。有新进展或手动移回最近后重新显示。")}</p><div className="v6-list">{quiet.map(r=><div className="v6-quiet-item" key={r.key}>{item(r)}{watchApi?.show&&<button type="button" className="v6-quiet-restore" aria-label={uiText("移回最近：{0}",r.title)} onClick={()=>void showQuiet(r.watch!)}>{uiText("移回最近")}</button>}</div>)}</div>{quietError&&<p role="alert">{quietError}</p>}</details>}
   {todo&&!visible.length&&<motion.div className="v6-empty v6-all-clear" initial={{scale:.9,opacity:.4}} animate={{scale:1,opacity:1}} transition={{type:"spring",stiffness:300,damping:18}}><CircleCheck size={30} aria-hidden/><h2>{uiText("没有等你处理的事")}</h2><p>{uiText("有新回复、需要确认或执行失败时，会出现在这里。")}</p></motion.div>}
   {!todo&&!visible.length&&<div className="v6-empty">{rows.length?<p>{uiText("没有符合条件的对话")}</p>:<><MessageSquare size={30} aria-hidden/><h2>{uiText("还没有关注的对话")}</h2><p>{uiText("监听电脑上的 Codex 或 Claude Code 对话，或者把两个对话连成 Bridge。")}</p><button type="button" className="v6-primary" onClick={()=>setSheet("CHOOSE")}>{uiText("开始")}</button></>}</div>}
   <AnimatePresence>{undo&&<motion.div className="v6-toast" role="status" initial={{y:24,opacity:0}} animate={{y:0,opacity:1}} exit={{y:24,opacity:0}} transition={spring}>{uiText("已停止监听")}<button type="button" onClick={()=>void restoreWatch(undo)}>{uiText("撤销")}</button></motion.div>}</AnimatePresence>
-  {!todo&&<AddSheet mode={sheet} setMode={setSheet} watchApi={watchApi} watched={watches} onCreateBridge={onCreateBridge} onWatched={w=>{setSheet(null);onOpenWatch(w);}}/>}
+  {!todo&&<AddSheet mode={sheet} setMode={setSheet} watchApi={watchApi} watched={watches} quietIds={quietIds} onCreateBridge={onCreateBridge} onWatched={w=>{setSheet(null);onOpenWatch(w);}}/>}
  </section>;
 }
 
@@ -131,25 +140,34 @@ function useWatches(api?:NotificationApi){
  return watches;
 }
 
-function AddSheet({mode,setMode,watchApi,watched,onCreateBridge,onWatched}:{mode:"CHOOSE"|"WATCH"|"BRIDGE"|null;setMode:(m:"CHOOSE"|"WATCH"|"BRIDGE"|null)=>void;watchApi?:NotificationApi;watched:CodexWatch[];onCreateBridge?:(name:string)=>Promise<void>;onWatched:(w:CodexWatch)=>void}){
+function AddSheet({mode,setMode,watchApi,watched,quietIds,onCreateBridge,onWatched}:{mode:"CHOOSE"|"WATCH"|"BRIDGE"|null;setMode:(m:"CHOOSE"|"WATCH"|"BRIDGE"|null)=>void;watchApi?:NotificationApi;watched:CodexWatch[];quietIds:Set<string>;onCreateBridge?:(name:string)=>Promise<void>;onWatched:(w:CodexWatch)=>void}){
  useLanguage();
  const [threads,setThreads]=useState<ExistingCodexThreadCandidate[]|null>(null),[query,setQuery]=useState(""),[kind,setKind]=useState<"ALL"|"CODEX"|"CLAUDE">("ALL");
  const [name,setName]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null);
+ const [reload,setReload]=useState(0);
  useEffect(()=>{if(!mode){setQuery("");setKind("ALL");setError(null);setName("");}},[mode]);
  useEffect(()=>{
   if(mode!=="WATCH"||!watchApi)return;let alive=true;setThreads(null);setError(null);
-  void (async()=>{try{await watchApi.connect();const next=await watchApi.threads();if(alive)setThreads(next.threads);}catch(e){if(alive){setThreads([]);setError(String(e).includes("ROUTER_READ_TIMEOUT")?uiText("读取超时，请稍后重试。"):uiText("暂时读不到电脑上的对话。请确认电脑上的 Router 正在运行。"));}}})();
+  void (async()=>{try{if(reload>0){try{await watchApi.refreshWatches?.();}catch{/* retain cached acknowledgements */}}try{await watchApi.connect();}catch{/* Claude catalog remains usable without a Codex transport. */}const next=await watchApi.threads();if(alive)setThreads(next.threads);}catch(e){if(alive){setThreads([]);setError(String(e).includes("ROUTER_READ_TIMEOUT")?uiText("读取超时，请稍后重试。"):uiText("暂时读不到电脑上的对话。请确认电脑上的 Router 正在运行。"));}}})();
   return()=>{alive=false;};
- },[mode,watchApi]);
- const enabled=new Set(watched.filter(w=>w.enabled).map(w=>w.threadId));
+ },[mode,watchApi,reload]);
+ const enabled=new Set(watched.filter(w=>w.enabled&&!(watchApi?.show&&quietIds.has(w.threadId))).map(w=>w.threadId));
  const q=query.trim().toLocaleLowerCase();
  const list=(threads??[]).filter(t=>!enabled.has(t.id)&&(kind==="ALL"||(kind==="CLAUDE")===isClaude(t.id))&&(!q||`${t.label} ${t.projectProvenance??""} ${t.projectLabel??""}`.toLocaleLowerCase().includes(q)))
   .sort((a,b)=>(b.recencyAt??0)-(a.recencyAt??0));
  async function watch(t:ExistingCodexThreadCandidate){
   if(!watchApi||busy)return;setBusy(true);setError(null);
-  try{await watchApi.enable(t.id);const next=await (watchApi.refreshWatches?.()??watchApi.watches());const w=next.find(x=>x.threadId===t.id);if(w)onWatched(w);else setMode(null);}
-  catch(e){setError(String(e).includes("WATCH_ALREADY_IN_BRIDGE")?uiText("这条对话已在 Bridge 中，可直接从 Bridge 打开。"):uiText("没有开始监听，请重试。"));}
-  finally{setBusy(false);}
+  let fallback:CodexWatch|undefined;
+  try{
+   const current=watched.find(w=>w.threadId===t.id&&w.enabled);
+   if(current&&quietIds.has(t.id)&&watchApi.show){const result=await watchApi.show(t.id);fallback={...current,shownAt:result.shownAt};}
+   else await watchApi.enable(t.id);
+  }catch(e){setError(watchStartError(e));setBusy(false);return;}
+  // The write was acknowledged. A later failed read must not turn it into a
+  // fake failure or invite another enable operation.
+  try{const next=await (watchApi.refreshWatches?.()??watchApi.watches());fallback=next.find(x=>x.threadId===t.id)??fallback;}catch{/* normal observation refresh continues */}
+  if(fallback)onWatched(fallback);else setMode(null);
+  setBusy(false);
  }
  async function create(){
   if(!onCreateBridge||busy)return;setBusy(true);setError(null);
@@ -167,7 +185,7 @@ function AddSheet({mode,setMode,watchApi,watched,onCreateBridge,onWatched}:{mode
   {mode==="WATCH"&&<>
    <label className="v6-search"><Search size={16} aria-hidden/><input type="search" aria-label={uiText("搜索标题或项目")} placeholder={uiText("搜索标题或项目")} value={query} onChange={e=>setQuery(e.target.value)}/></label>
    <div className="v6-chips">{([["ALL",uiText("全部")],["CODEX","Codex"],["CLAUDE","Claude Code"]] as const).map(([id,label])=><button key={id} type="button" aria-pressed={kind===id} onClick={()=>setKind(id)}>{label}</button>)}</div>
-   {error&&<p role="alert" className="v6-error">{error}</p>}
+   {error&&<div className="v6-watch-error"><p role="alert" className="v6-error">{error}</p><button type="button" disabled={busy||threads===null} onClick={()=>setReload(n=>n+1)}>{uiText("刷新列表")}</button></div>}
    <div className="v6-sheet-scroll">{threads===null?<p className="v6-muted" role="status">{uiText("正在读取电脑上的对话…")}</p>:list.length?<><small className="v6-section">{uiText("电脑上最近活跃")}</small><div className="v6-list">{list.map((t,i)=><motion.button key={t.id} type="button" className="v6-row" disabled={busy} onClick={()=>void watch(t)} whileTap={{scale:.97}} initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{...spring,delay:Math.min(i,12)*.025}}><ConversationAvatar id={`w:${t.id}`} kind={isClaude(t.id)?"claude":"codex"}/><span className="v6-row-body"><span className="v6-row-top"><strong>{t.label}</strong>{t.recencyAt?<time>{when(t.recencyAt*1000)}</time>:null}</span><span className="v6-row-meta">{isClaude(t.id)?"Claude Code":"Codex"}{t.projectLabel||t.projectProvenance?` · ${t.projectLabel||folder(t.projectProvenance!)}`:""}</span></span></motion.button>)}</div></>:<p className="v6-muted">{uiText("没有找到。这里只列出电脑上还没监听的 Codex 和 Claude Code 对话。")}</p>}</div>
   </>}
   {mode==="BRIDGE"&&<form className="v6-bridge-form" onSubmit={e=>{e.preventDefault();void create();}}>

@@ -1,3 +1,5 @@
+import {useImeSubmitGuard} from "./useImeSubmitGuard";
+import {AttachmentName} from "./AttachmentName";
 import {MessageDelivery} from './MessageDelivery';
 import {NativeTurnActions} from './NativeTurnActions';
 import {ClaudeDecisionCards} from './ClaudeDecisionCards';
@@ -12,7 +14,7 @@ import {recordSheetEvidence} from "./displayDiagnostics";
 import {MarkdownMessage} from "../codex/MarkdownMessage";
 import {messageMedia} from "../codex/messageMedia";
 import {useMemo} from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {ArrowUp,ChevronLeft,Copy,Ellipsis,Plus,ShieldCheck,SlidersHorizontal,X,Square,LoaderCircle} from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import type {ReactNode} from "react";
@@ -43,10 +45,18 @@ export function chatError(error: unknown,provider="Codex"): string {
  if(text.toLowerCase().includes("disconnected"))return uiText(provider==="Claude Code"?"Claude Code 读取连接已断开，请检查原客户端后重试。草稿已保留。":"Codex 读取连接已断开，正在重新连接。已有内容和草稿已保留。");
  return text.includes("Failed to fetch")||text.includes("NetworkError")?uiText(location.pathname.startsWith("/mobile")?"暂时无法连接电脑。已有内容和草稿已保留，请重试。":"暂时无法读取对话，已有内容和草稿已保留。请重试。"):text;
 }
+// A local queued bubble can stay last while fresh native progress arrives.
+// Compare only public content; observation timestamps never trigger the indicator.
+function publicContentChanged(previous:ChatMessage[],next:ChatMessage[]){
+ if(previous===next)return false;
+ const a=previous.filter(m=>m.kind!=='COLLABORATION'),b=next.filter(m=>m.kind!=='COLLABORATION');
+ return a.length!==b.length||a.some((m,i)=>m.id!==b[i]?.id||m.turnId!==b[i]?.turnId||m.text!==b[i]?.text);
+}
 /** Optional watch lifecycle actions offered from the conversation menu. */
 export type WatchControls={enabled:boolean;toggle:()=>Promise<void>;remove:()=>Promise<void>};
 export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知"),controls }: { original: WatchEvent | CodexWatch; api: WatchChatApi; onBack: () => void;backLabel?:string;controls?:WatchControls }) {
  useLanguage();
+ const ime=useImeSubmitGuard();
  const modeGroup=useId();
  const [sendInFlight,setSendInFlight]=useState(false);
  const claude=original.threadId.startsWith("claude_code:");
@@ -209,9 +219,20 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
  const timeline=chatTimeline(history,publicMessages,[...(state?.replies??[]),...(localPending?[localPending]:[])],sourceMessage,historyLoaded,currentMessage,"sequence" in original&&latest?.turnId!==sourceMessage.turnId,currentAttemptIds.current);
  const [historyCoverage,setHistoryCoverage]=useState<string>();
  const [newMessages,setNewMessages]=useState(false);
+ const [awayFromLatest,setAwayFromLatest]=useState(false);
+ const scrollIntent=useRef<"up"|"down"|null>(null),touchY=useRef<number|null>(null);
  const olderPagesLoaded=useRef(false);
  const historyRetry=useRef(false);
  const historyReading=useRef(false),historyRevision=useRef(''),followLatest=useRef(true),initialScroll=useRef(true);
+ function userScroll(direction:'up'|'down'){scrollIntent.current=direction;if(direction==='up'){followLatest.current=false;initialScroll.current=false;}}
+ function readerScrolled(){const scroll=reader.current;if(!scroll)return;const distance=scroll.scrollHeight-scroll.scrollTop-scroll.clientHeight;
+  setAwayFromLatest(distance>72);
+  if(distance>24)followLatest.current=false;
+  else if(scrollIntent.current!=='up')followLatest.current=true;
+  if(followLatest.current)setNewMessages(false);
+  if(!initialScroll.current&&scroll.scrollTop<80&&historyCursor&&!historyReading.current)void readHistory(historyCursor);
+ }
+
  async function readHistory(cursor:string|null=null,force=false){
   if(historyReading.current)return;historyReading.current=true;
   const scroll=reader.current,previousHeight=scroll?.scrollHeight??0,previousTop=scroll?.scrollTop??0;
@@ -226,15 +247,16 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
   if(historyRevision.current===revision||historyReading.current)return;
   historyRevision.current=revision;void readHistory();
  },[state?.watch.snapshot.turnId,state?.watch.snapshot.itemId,state?.watch.snapshot.state,state?.historyRevision,history]);
- const lastVisible=timeline.at(-1),latestVisible=JSON.stringify([lastVisible?.turnId,lastVisible?.id,lastVisible?.text,lastVisible?.receipt?.status]);
- const seenLatest=useRef(latestVisible);
- useEffect(()=>{const changed=seenLatest.current!==latestVisible;seenLatest.current=latestVisible;if(!initialScroll.current&&!followLatest.current){if(changed)setNewMessages(true);return;}setNewMessages(false);const scroll=reader.current;if(scroll){scroll.scrollTop=scroll.scrollHeight;initialScroll.current=false;}},[historyLoaded,history,publicMessages,state?.replies,unconfirmed,latestVisible]);
+ const lastVisible=timeline.at(-1);
+ const latestVisible=JSON.stringify([lastVisible?.turnId,lastVisible?.id,lastVisible?.text,lastVisible?.receipt?.status]);
+ const seenLatest=useRef(latestVisible),seenPublicContent=useRef(publicMessages),seenHistoryContent=useRef(history);
+ useLayoutEffect(()=>{const changed=seenLatest.current!==latestVisible||publicContentChanged(seenPublicContent.current,publicMessages)||publicContentChanged(seenHistoryContent.current,history);seenLatest.current=latestVisible;seenPublicContent.current=publicMessages;seenHistoryContent.current=history;if(!initialScroll.current&&!followLatest.current){if(changed)setNewMessages(true);return;}setNewMessages(false);const scroll=reader.current;if(scroll){scroll.scrollTop=scroll.scrollHeight;initialScroll.current=false;}},[historyLoaded,history,publicMessages,state?.replies,unconfirmed,latestVisible]);
  const readWarning=stateReadError??historyReadError?.text;
  if(childConversation)return <WatchChat key={childConversation.threadId} original={childConversation} api={api} onBack={()=>setChildConversation(null)} backLabel={uiText('返回主对话')}/>;
  return <section ref={shell} className="v4-watch-chat v6-chat" aria-label={uiText("通知原对话与回复")} onFocus={()=>syncViewport.current()} onBlur={()=>queueMicrotask(()=>syncViewport.current())}>
   <header className="v4-chat-header"><button type="button" className="v4-chat-back" aria-label={`‹ ${backLabel}`} onClick={onBack}><ChevronLeft size={24} aria-hidden="true"/><span className="v4-chat-desktop-label">{backLabel}</span></button><ConversationAvatar id={`w:${original.threadId}`} kind={claude?"claude":"codex"}/><div className="v4-chat-identity"><h2 ref={heading} tabIndex={-1}>{childNotification?(state?.watch.label??original.label):original.label}</h2><p className="v4-meta">{original.cwd.split(/[\\/]/).filter(Boolean).at(-1)} · {state?.host ?? uiText("这台电脑")}</p></div><button type="button" className="v4-chat-more" aria-label={uiText("对话信息")} onClick={()=>setInfoOpen(true)}><Ellipsis size={24} aria-hidden="true"/></button></header>
   <div className="v4-chat-live" role="status" aria-live="polite" data-active={!statusUnconfirmed&&(active||Boolean(state?.taskTree?.running))}>{!statusUnconfirmed&&(active||Boolean(state?.taskTree?.running))&&<LoaderCircle size={14} aria-hidden="true"/>}<span>{statusUnconfirmed?uiText("状态待确认"):claude&&state?.taskTree&&(!active||state.taskTree.attention>0)&&claudeTaskSummary(state.taskTree)?claudeTaskSummary(state.taskTree):pendingRequests.length?uiText("等待确认"):active?(state?.activity==="THINKING"?uiText("正在思考"):uiText("正在执行")):(claude&&(latest?.state??original.snapshot.state)==="RESULT_READY"?uiText("本轮已结束"):(states[latest?.state??original.snapshot.state]??uiText("状态待确认")))}</span>{claude&&state?.taskTree&&(state.taskTree.nodes.length>0||state.taskTree.limited)&&<button type="button" aria-label={uiText('查看子对话')} onClick={()=>{setSelectedChild(null);setTaskSheetOpen(true);}}>{uiText('查看子对话')} ›</button>}{pendingRequests.length>0&&<button type="button" onClick={()=>{const card=reader.current?.querySelector(".v4-question-card");if(card)card.scrollIntoView({block:"end"});else setPermissionsOpen(true);}}>{uiText(pendingRequests.some(r=>r.kind==="USER_INPUT")?"回答问题":"查看")}</button>}</div>
-  <div className="v4-chat-reader" ref={reader} onScroll={()=>{const scroll=reader.current;if(scroll){followLatest.current=scroll.scrollHeight-scroll.scrollTop-scroll.clientHeight<80;if(followLatest.current)setNewMessages(false);if(!initialScroll.current&&scroll.scrollTop<80&&historyCursor&&!historyReading.current)void readHistory(historyCursor);}}}>
+  <div className="v4-chat-reader" ref={reader} onScroll={readerScrolled} onPointerDown={e=>{if(e.target===e.currentTarget)scrollIntent.current=null;}} onWheel={e=>{if(e.deltaY)userScroll(e.deltaY<0?'up':'down');}} onTouchStart={e=>{touchY.current=e.touches[0]?.clientY??null;}} onTouchMove={e=>{const y=e.touches[0]?.clientY;if(y!==undefined&&touchY.current!==null&&Math.abs(y-touchY.current)>2){userScroll(y>touchY.current?'up':'down');touchY.current=y;}}} onKeyDown={e=>{if(['ArrowUp','PageUp','Home'].includes(e.key))userScroll('up');if(['ArrowDown','PageDown','End'].includes(e.key))userScroll('down');}}>
    {(error||readWarning) && <p role="alert" className="v4-chat-alert">{uiText(error??readWarning)}<button type="button" disabled={busy} onClick={() => void act(()=>refresh(true))}>{uiText("检查状态")}</button></p>}
 
    {childNotification&&<details className="v4-chat-collaboration" open><summary>{uiText('子对话结果')} · {original.label}</summary><MarkdownMessage text={original.snapshot.text}/></details>}
@@ -253,14 +275,14 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
 
   </div>
   <div className="v4-chat-dock">
-   {newMessages&&<button type="button" className="v4-chat-new-messages" onClick={()=>{followLatest.current=true;setNewMessages(false);reader.current?.scrollTo({top:reader.current.scrollHeight,behavior:"instant"});}}>{uiText("回到最新消息")}</button>}
+   {(newMessages||awayFromLatest)&&<button type="button" className="v4-chat-new-messages" onClick={()=>{scrollIntent.current='down';followLatest.current=true;setNewMessages(false);setAwayFromLatest(false);reader.current?.scrollTo({top:reader.current.scrollHeight,behavior:"instant"});}}>{uiText("回到最新消息")}</button>}
    {notice&&!error&&!pending&&!unconfirmed&&<p role="status" className="v4-chat-feedback">{uiText(notice)}</p>}
    {claude&&state?.ownerRequests&&<ClaudeDecisionCards requests={state.ownerRequests} api={api} threadId={original.threadId} generation={state.watch.generation} refresh={refresh}/>}
    {state?.goal&&<CodexGoalController goal={state.goal} controls={state.goalControls} diagnostic={state.latestTurn} api={api} checkedAt={state.checkedAt} disabled={busy||blocked} refresh={refresh}/>}
 
    {queueNext&&<div className="v6-followup"><div className="v4-followup-toggle agbrio-segmented" role="group" aria-label={uiText("运行中跟进方式")}><button type="button" aria-pressed={followupMode==="STEER"} disabled={busy||!controlTurn} onClick={()=>setFollowupMode("STEER")}><SelectionIndicator group={modeGroup} active={followupMode==="STEER"}/>{uiText("引导")}</button><button type="button" aria-pressed={followupMode==="QUEUE"} disabled={busy} onClick={()=>setFollowupMode("QUEUE")}><SelectionIndicator group={modeGroup} active={followupMode==="QUEUE"}/>{uiText("排队")}</button></div><span>{followupMode==="QUEUE"?uiText("等这一轮结束再发"):!controlTurn?uiText(claudeNotReady?"发送连接尚未就绪，可选择排队":"当前暂不支持引导，可选择排队"):uiText("立刻插入当前这一轮")}</span></div>}<form className="v4-chat-composer" aria-busy={busy} onSubmit={e => { e.preventDefault(); void act(() => send(nextMode)); }}>
-   <label htmlFor="watch-chat-reply">{uiText(claude?"回复这个 Claude Code 对话":"回复这个 Codex 对话")}</label><textarea id="watch-chat-reply" ref={input} placeholder={queueNext?(nextMode==="STEER"?uiText("告诉它现在要怎么调整"):uiText("写下一条，完成后自动发送")):uiText("回复 {0}", childNotification?(state?.watch.label??original.label):original.label)} value={draft.text} maxLength={100000} rows={2} onChange={e => setDraft(d => ({ ...d, text: e.target.value }))} onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); if (!busy) void act(() => send(nextMode)); } }} />
-   {draft.files.length > 0 && <ul className="v4-chat-files">{draft.files.map(f => <li key={f.id}>{f.name} · {Math.ceil(f.size / 1024)} KB <button type="button" aria-label={uiText("移除 {0}", f.name)} disabled={busy} onClick={() => setDraft(d => ({ ...d, files: d.files.filter(v => v.id !== f.id) }))}>{uiText("移除")}</button></li>)}</ul>}
+   <label htmlFor="watch-chat-reply">{uiText(claude?"回复这个 Claude Code 对话":"回复这个 Codex 对话")}</label><textarea id="watch-chat-reply" ref={input} placeholder={queueNext?(nextMode==="STEER"?uiText("告诉它现在要怎么调整"):uiText("写下一条，完成后自动发送")):uiText("回复 {0}", childNotification?(state?.watch.label??original.label):original.label)} value={draft.text} maxLength={100000} rows={2} onChange={e => setDraft(d => ({ ...d, text: e.target.value }))} onCompositionStart={ime.onCompositionStart} onCompositionEnd={ime.onCompositionEnd} onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !ime.blocks(e.nativeEvent)) { e.preventDefault(); if (!busy) void act(() => send(nextMode)); } }} />
+   {draft.files.length > 0 && <ul className="v4-chat-files">{draft.files.map(f => <li key={f.id}><AttachmentName name={f.name}/><small className="v4-file-size">{Math.ceil(f.size / 1024)} KB</small><button type="button" aria-label={uiText("移除 {0}", f.name)} disabled={busy} onClick={() => setDraft(d => ({ ...d, files: d.files.filter(v => v.id !== f.id) }))}>{uiText("移除")}</button></li>)}</ul>}
    <div className="v4-chat-composer-tools"><input ref={fileInput} type="file" multiple hidden onChange={e => { const fs = e.currentTarget.files; void act(() => upload(fs)); e.currentTarget.value = ""; }} /><input ref={photoInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden onChange={e=>{const fs=e.currentTarget.files;void act(()=>upload(fs));e.currentTarget.value="";}}/><button type="button" className="v4-chat-icon" aria-label={uiText("＋ 附件")} disabled={busy || draft.files.length >= 4} onClick={() => {if(window.matchMedia?.("(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1100px)").matches)setAttachmentOpen(true);else fileInput.current?.click();}}><Plus size={24} aria-hidden="true"/><span className="v4-chat-desktop-label">{uiText("附件")}</span></button><button type="button" className="v4-chat-icon v4-chat-permissions" aria-label={uiText("权限与执行请求{0}", pendingRequests.length?uiText("，{0}条待处理", pendingRequests.length):"")} onClick={()=>setPermissionsOpen(true)}><ShieldCheck size={24} aria-hidden="true"/>{pendingRequests.length>0&&<span className="v4-chat-request-count" aria-hidden="true">{pendingRequests.length}</span>}</button><span className="v4-chat-tool-space"/><button type="button" className="v4-chat-icon" aria-label={uiText("对话选项")} aria-expanded={optionsOpen} disabled={busy} onClick={() => { setOptionsOpen(v => !v); if (!models) void act(async () => { const v = await command<{ models: ChatModel[] }>("OPTIONS"); if (mounted.current) setModels(v.models); }); }}><SlidersHorizontal size={24} aria-hidden="true"/><span className="v4-chat-desktop-label">{uiText("对话选项")}</span></button>{controlTurn&&!draft.text.trim()?<button type="button" className="v4-chat-send" aria-label={uiText("停止本次执行")} disabled={busy} onClick={()=>void act(async()=>{await command("STOP",{turnId:controlTurn});setNotice(uiText("已请求停止，等待 Codex 确认。"));await refresh();})}><Square size={24} aria-hidden="true"/></button>:<button type="submit" className="v3-primary v4-chat-send" aria-label={nextMode==="STEER"?uiText("调整当前任务"):queueNext?uiText("排队，完成后发送"):uiText("发送回复")} disabled={busy || !state || !draft.text.trim() || blocked || steerUnavailable}>{busy?<LoaderCircle size={24} className="v4-progress-spinner" aria-hidden="true"/>:<ArrowUp size={24} aria-hidden="true"/>}<span className="v4-chat-desktop-label">{busy?uiText("正在处理…"):nextMode==="STEER"?uiText("调整当前任务"):queueNext?uiText("排队，完成后发送"):uiText("发送回复")}</span></button>}</div>
   </form></div>
   {claude&&state?.taskTree&&<ChatSheet title={selectedChild?.title??uiText('子对话')} open={taskSheetOpen} onOpenChange={open=>{if(!open&&selectedChild)setSelectedChild(null);else setTaskSheetOpen(open);}}>{selectedChild?<><button type="button" onClick={()=>setSelectedChild(null)}>‹ {uiText('返回子对话列表')}</button><ClaudeChildReader key={selectedChild.sessionId} standalone node={state.taskTree.nodes.find(n=>n.sessionId===selectedChild.sessionId)??selectedChild} tree={state.taskTree} api={api} threadId={original.threadId} generation={state.watch.generation}/></>:<ClaudeTaskStatus expanded tree={state.taskTree} api={api} threadId={original.threadId} generation={state.watch.generation} notificationsEnabled={state.childResultsEnabled??false} onNotificationsChanged={refresh} onOpenChild={node=>void openChildConversation(node)}/>}</ChatSheet>}

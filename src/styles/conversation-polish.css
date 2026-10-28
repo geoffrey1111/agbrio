@@ -1,0 +1,16 @@
+/* Incumbent v6 surfaces and tokens; no new visual theme. */
+.v6-quiet-watches{margin-top:24px;padding-top:8px;border-top:1px solid var(--awr-line)}
+.v6-quiet-watches>summary{min-height:44px;padding:12px 4px;cursor:pointer;color:var(--awr-ink);font-size:14px}
+.v6-quiet-watches>p{font-size:13px;line-height:1.7;color:var(--awr-ink);margin:4px 4px 12px}
+.v6-quiet-item{min-width:0}.v6-quiet-restore{margin:0 16px 12px 76px;min-height:40px;padding:8px 12px;background:transparent;border:0;border-radius:12px;color:var(--awr-accent);font:inherit;cursor:pointer}
+.v6-watch-error{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.v6-watch-error>p{flex:1;min-width:180px}.v6-watch-error>button{min-height:44px;padding:8px 12px;border:0;border-radius:12px;background:var(--awr-shell);color:var(--awr-ink);font:inherit;cursor:pointer}
+.v6-quiet-watches summary>span,.v6-row time,.v6-chips button,.v4-chat-live,.v4-file-size{font-variant-numeric:tabular-nums}
+.v6-sheet .v6-chips button[aria-pressed=true]{background:var(--awr-ink);color:var(--awr-canvas)}
+.v4-file-name{display:inline-flex;min-width:0;max-width:100%;vertical-align:middle}.v4-file-stem{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.v4-file-extension{flex:none;white-space:nowrap}
+.v4-chat-files li{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%}.v4-chat-files .v4-file-name{flex:1}.v4-file-size{flex:none;white-space:nowrap}.v4-chat-files button{flex:none}
+.v6-chat .v4-chat-composer:focus-within{box-shadow:0 0 0 1px var(--awr-accent),0 0 0 4px var(--awr-accent-soft);transition:box-shadow 140ms ease-out}
+.v4-chat-message p{text-wrap:pretty}
+.v5-panel-divider{touch-action:none}.v5-panel-divider[data-dragging=true]{cursor:col-resize}
+body:has(.v5-panel-divider[data-dragging=true]){cursor:col-resize;user-select:none}body:has(.v5-panel-divider[data-dragging=true]) iframe{pointer-events:none}
+@media(hover:hover) and (pointer:fine){.v6-quiet-restore:hover{background:var(--awr-shell)}}
+@media(prefers-reduced-motion:reduce){.v6-chat .v4-chat-composer:focus-within{transition:none}}

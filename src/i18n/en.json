@@ -1471,5 +1471,14 @@
   "执行插件命令": "Run plugin command",
   "退出码": "Exit code",
   "插件已找到，失败发生在连接配置。保持 Agbrio 运行，再点击连接按钮；仍失败时保留上方步骤和退出码，请助手排查。不要反复安装或手动填写令牌。": "The plugin was found; connection configuration failed. Keep Agbrio running and retry the connection button. If it still fails, keep the step and exit code for troubleshooting. Do not repeatedly reinstall or enter tokens manually.",
-  "Claude 插件命令未完成，尚未确认连接成功。": "The Claude plugin command did not complete. The connection is not confirmed."
+  "Claude 插件命令未完成，尚未确认连接成功。": "The Claude plugin command did not complete. The connection is not confirmed.",
+  "较早的对话": "Earlier conversations",
+  "三天未更新的对话收在这里，仍会继续监听。有新进展或手动移回最近后重新显示。": "Conversations without updates for three days are folded here and remain watched. New progress or Show in recent brings them back.",
+  "移回最近": "Show in recent",
+  "移回最近：{0}": "Show in recent: {0}",
+  "监听数量已达到当前上限，请先暂停不需要的监听，再添加。": "The current watch limit has been reached. Pause a watch you no longer need before adding another.",
+  "这条 Claude Code 对话暂时不可读取。请在电脑的 Claude 中打开原对话，再刷新列表。": "This Claude Code conversation cannot be read yet. Open the original conversation in Claude on the computer, then refresh the list.",
+  "Claude Code 对话位置已变化，请刷新列表后重新选择。": "The Claude Code conversation location changed. Refresh the list and select it again.",
+  "没有确认监听是否成功，请检查电脑连接后刷新列表；不会自动重复添加。": "Watch creation has not been confirmed. Check the computer connection and refresh the list before adding again.",
+  "没有开始监听。请检查电脑端的连接状态，再刷新列表重试。": "Watching did not start. Check the connection on the computer, then refresh the list and retry."
 }

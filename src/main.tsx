@@ -21,3 +21,4 @@ import "./styles/native-router.css";
 import "./styles/interaction-motion.css";
 import "./styles/conversation-v6.css";
 import "./styles/agbrio-v6-theme.css";
+import "./styles/conversation-polish.css";

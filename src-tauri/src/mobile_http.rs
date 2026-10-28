@@ -579,7 +579,31 @@ async fn watch_no_store(mut response:axum::response::Response)->axum::response::
 
 #[derive(Deserialize)]
 #[serde(tag="action",rename_all="SCREAMING_SNAKE_CASE")]
-enum WatchCommand { MarkSeen {sequence:i64},MarkRead {sequence:i64}, Remove {kind:String,id:String,removed:bool}, Enable { #[serde(rename="threadId")] thread_id:String }, Pause { #[serde(rename="threadId")] thread_id:String }, Threads, Connect }
+enum WatchCommand { Show { #[serde(rename="threadId")] thread_id:String }, MarkSeen {sequence:i64},MarkRead {sequence:i64}, Remove {kind:String,id:String,removed:bool}, Enable { #[serde(rename="threadId")] thread_id:String }, Pause { #[serde(rename="threadId")] thread_id:String }, Threads, Connect }
+
+#[cfg(test)]#[test]
+fn owner_http_can_watch_claude_after_twenty_and_resurface_without_a_native_task(){
+    let scratch=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("runtime/watch-polish-20261028");std::fs::create_dir_all(&scratch).unwrap();
+    let dir=tempfile::tempdir_in(scratch).unwrap();std::fs::write(dir.path().join("index.html"),"fixture").unwrap();
+    let core=RouterCore{store:Arc::new(crate::RouterStore::open_at(dir.path().join("router.db")).unwrap()),chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default()};
+    let cwd=dir.path().to_string_lossy().to_string();let baseline=router_core::store::codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()};
+    for i in 0..20{core.store.enable_codex_watch(&format!("fixture-{i}"),"fixture",&cwd,&baseline).unwrap();}
+    let sid="10000000-0000-4000-8000-000000000021";let key=format!("claude_code:{sid}");let _pair=core.store.create_claude_connection().unwrap();core.store.apply_claude_transcript(sid,&cwd,"RUNNING",Some("claude_turn:fixture"),None).unwrap();
+    let auth=Arc::new(crate::web_auth::WebAuth::open(None).unwrap());let token=auth.exchange(&auth.issue().unwrap().code,"fixture",false).unwrap();let cookie=format!("{}={token}",crate::web_auth::COOKIE);
+    let rt=tokio::runtime::Runtime::new().unwrap();let host=crate::HostRuntime::default();
+    let config=MobileHttpConfig{port:0,allowed_host:"watch.fixture.invalid".into(),allowed_origin:"https://watch.fixture.invalid".into(),access_issuer:"https://unused.invalid".into(),access_audience:"unused".into(),access_jwks_url:"https://unused.invalid/keys".into(),static_dir:dir.path().into()};
+    let server=rt.block_on(start_with_web_auth(core.clone(),config,host.clone(),auth)).unwrap();let base=format!("http://{}/v1/mobile/codex-watches",server.address);
+    let client=reqwest::blocking::Client::builder().timeout(std::time::Duration::from_secs(15)).build().unwrap();
+    let post=|action:&str,origin:&str,cookie:&str|client.post(&base).header("host","watch.fixture.invalid").header("origin",origin).header("cookie",cookie).json(&serde_json::json!({"action":action,"threadId":key})).send().unwrap();
+    assert_eq!(post("ENABLE","https://watch.fixture.invalid",&cookie).status(),StatusCode::OK);
+    assert_eq!(core.store.codex_watches().unwrap().len(),21);let before=core.store.registered_codex_watch(&key).unwrap();
+    assert_eq!(post("SHOW","https://other.invalid",&cookie).status(),StatusCode::FORBIDDEN);
+    assert_eq!(post("SHOW","https://watch.fixture.invalid","").status(),StatusCode::UNAUTHORIZED);
+    let result=post("SHOW","https://watch.fixture.invalid",&cookie);assert_eq!(result.status(),StatusCode::OK);assert!(result.json::<serde_json::Value>().unwrap()["shownAt"].as_i64().unwrap()>0);
+    let after=core.store.registered_codex_watch(&key).unwrap();assert_eq!(before.generation,after.generation);assert_eq!(before.snapshot,after.snapshot);assert_eq!(before.checked_at,after.checked_at);
+    assert!(core.store.codex_watch_feed(0).unwrap().events.is_empty());assert!(!core.session.lock().unwrap().adapter.as_ref().is_some_and(|a|!a.is_closed()));
+    rt.block_on(server.shutdown());drop(client);drop(host);drop(rt);
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all="camelCase")]
@@ -659,6 +683,7 @@ async fn codex_watch_command(State(state):State<MobileHttpState>,headers:HeaderM
     Ok(Json(run_core_blocking("Codex watch",move||{
         match input {
             WatchCommand::Enable{thread_id}=>{crate::codex_watch::enable(&core,&thread_id)?;Ok(serde_json::json!({"ok":true}))},
+            WatchCommand::Show{thread_id}=>Ok(serde_json::json!({"shownAt":core.store.show_codex_watch(&thread_id)?})),
             WatchCommand::Remove{kind,id,removed}=>{core.store.set_watch_item_removed(&kind,&id,removed)?;Ok(serde_json::json!({"ok":true}))},
             WatchCommand::MarkSeen{sequence}=>{core.store.mark_codex_watch_event_seen(sequence)?;Ok(serde_json::json!({"ok":true}))},
               WatchCommand::MarkRead{sequence}=>{core.store.acknowledge_codex_watch_event(sequence)?;Ok(serde_json::json!({"ok":true}))},

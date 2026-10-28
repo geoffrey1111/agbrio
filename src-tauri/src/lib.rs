@@ -96,6 +96,7 @@ fn assistant_create_instance_grant(input:router_core::store::assistant::Instance
 #[tauri::command]
 fn assistant_revoke_grant(grant_id:String,state:tauri::State<'_,RouterState>)->Result<(),String>{state.store.revoke_assistant_grant(&grant_id)}
 mod codex_watch;
+mod observer_batch;
 mod watch_notifications;
 mod watch_chat;
 mod goal_control;
@@ -189,6 +190,8 @@ fn codex_watch_candidates(state:State<'_,RouterState>)->Result<ExistingCodexThre
 fn codex_watch_list(state:State<'_,RouterState>)->Result<Vec<crate::claude_chat::WatchView>,String>{crate::claude_chat::list(&state)}
 #[tauri::command]
 fn codex_watch_enable(thread_id:String,state:State<'_,RouterState>)->Result<(),String>{codex_watch::enable(state.inner(),&thread_id)}
+#[tauri::command]
+fn codex_watch_show(thread_id:String,state:State<'_,RouterState>)->Result<serde_json::Value,String>{state.store.show_codex_watch(&thread_id).map(|shown_at|serde_json::json!({"shownAt":shown_at}))}
 #[tauri::command]
 fn codex_watch_pause(thread_id:String,state:State<'_,RouterState>)->Result<(),String>{state.store.pause_codex_watch(&thread_id)}
 #[tauri::command]
@@ -1559,7 +1562,7 @@ pub fn run() {
         claude_code_sessions,claude_code_connections,claude_code_setup,claude_code_connect,claude_code_revoke,
         desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,hosted_connection_trial,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_set_launch_administrator, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
-        claude_watch_chat,claude_watch_chat_command,codex_watch_candidates,codex_watch_list, codex_watch_enable, codex_watch_pause, codex_watch_remove, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
+        claude_watch_chat,claude_watch_chat_command,codex_watch_candidates,codex_watch_list, codex_watch_enable, codex_watch_show, codex_watch_pause, codex_watch_remove, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
         codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
         workspace_snapshot,
         workstream_snapshot,
@@ -1649,7 +1652,7 @@ pub fn run() {
         desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,hosted_connection_trial,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_set_launch_administrator, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
         read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
-        claude_watch_chat,claude_watch_chat_command,codex_watch_candidates,codex_watch_list, codex_watch_enable, codex_watch_pause, codex_watch_remove, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
+        claude_watch_chat,claude_watch_chat_command,codex_watch_candidates,codex_watch_list, codex_watch_enable, codex_watch_show, codex_watch_pause, codex_watch_remove, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
         workspace_snapshot,
         workstream_snapshot,
         native_window_monitor_evidence,

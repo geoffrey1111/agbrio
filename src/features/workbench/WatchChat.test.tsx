@@ -6,6 +6,21 @@ import type { ChatMessage, WatchChatApi, WatchChatState, WatchReply } from "./wa
 const original={sequence:17,threadId:"exact-original",label:"原对话",cwd:"D:\\project-a",snapshot:{state:"RESULT_READY",turnId:"turn-a",itemId:"item-a",text:"完整原文"},observedAt:1};
 const state:WatchChatState={watch:{...original,enabled:true,generation:2,checkedAt:1,errorCode:null},host:"电脑A",ownedTurnId:null,externalBusy:false,replies:[],requests:[],goal:null};
 const response=(id:string,status:WatchReply["status"]="SENT"):WatchReply=>({id,threadId:original.threadId,sourceSequence:17,expectedTurnId:"turn-a",mode:"SEND",text:"第一条回复",status,turnId:"turn-b",errorCode:null,createdAt:1,options:{attachments:[]}});
+it('does not send a composing Chinese candidate through the keyboard shortcut',async()=>{
+ const command=vi.fn(async()=>({messages:[],nextCursor:null}));render(<WatchChat original={original} api={{state:async()=>state,command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
+ const input=screen.getByRole('textbox');fireEvent.change(input,{target:{value:'还在选字'}});await waitFor(()=>expect(screen.getByRole('button',{name:'发送回复'})).toBeEnabled());fireEvent.compositionStart(input);fireEvent.keyDown(input,{key:'Enter',ctrlKey:true,isComposing:false});fireEvent.compositionEnd(input);fireEvent.keyDown(input,{key:'Enter',ctrlKey:true,keyCode:229});
+ expect(command.mock.calls.filter(args=>(args as unknown as [{action:string}])[0]?.action==='SEND')).toHaveLength(0);
+});
+it('releases follow immediately on upward wheel and keeps the reading position until explicit return',async()=>{
+ const message=(id:string,text:string):ChatMessage=>({id,turnId:'turn-a',role:'assistant',text});
+ const makeApi=(messages:ChatMessage[]):WatchChatApi=>({state:async()=>({...state,publicMessages:messages}),command:async()=>({messages:[],nextCursor:null}) as never});
+ const view=render(<WatchChat original={original} api={makeApi([message('one','第一段')])} onBack={()=>{}}/>);await screen.findByText('第一段');
+ const reader=view.container.querySelector<HTMLElement>('.v4-chat-reader')!;let height=1000;Object.defineProperties(reader,{scrollHeight:{configurable:true,get:()=>height},clientHeight:{configurable:true,value:300}});reader.scrollTop=700;fireEvent.scroll(reader);
+ fireEvent.wheel(reader,{deltaY:-5});reader.scrollTop=695;fireEvent.scroll(reader);height=1100;
+ view.rerender(<WatchChat original={original} api={makeApi([message('one','第一段'),message('two','第二段')])} onBack={()=>{}}/>);await screen.findByText('第二段');expect(reader.scrollTop).toBe(695);
+ reader.scrollTo=vi.fn(({top}:ScrollToOptions)=>{reader.scrollTop=top??0;}) as typeof reader.scrollTo;fireEvent.click(screen.getByRole('button',{name:'回到最新消息'}));expect(reader.scrollTo).toHaveBeenCalled();height=1200;
+ view.rerender(<WatchChat original={original} api={makeApi([message('one','第一段'),message('two','第二段'),message('three','第三段')])} onBack={()=>{}}/>);await screen.findByText('第三段');expect(reader.scrollTop).toBe(1200);
+});
 it('shows child execution and collapses coordination without exposing it as an owner bubble',async()=>{
  const native={...original,threadId:'claude_code:10000000-0000-4000-8000-000000000001'};
  const taskTree={nodes:[{sessionId:'child',parentSessionId:'root',title:'执行子对话',depth:1,state:'RUNNING',updatedAt:1},{sessionId:'grandchild',parentSessionId:'child',title:'孙对话',depth:2,state:'TURN_ENDED',updatedAt:1}],running:1,attention:0,unknown:0,limited:false};

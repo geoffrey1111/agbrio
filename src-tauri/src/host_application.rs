@@ -4341,6 +4341,7 @@ pub(crate) fn run_codex_existing_thread_observer(
     observer_epoch: u64,
 ) {
     let mut activity_cursor=0;
+    let mut watch_cursor=None;
     'observer: loop {
         match resident_observer_connection(&session,observer_epoch){
             ObserverConnection::Stopped=>return,
@@ -4354,7 +4355,10 @@ pub(crate) fn run_codex_existing_thread_observer(
         };
         match resident_observer_connection(&session,observer_epoch){ObserverConnection::Stopped=>return,ObserverConnection::Borrowed=>continue,ObserverConnection::Ready=>{}}
         if let Ok(watches) = store.codex_watches() {
-            for watch in watches.into_iter().filter(|w|w.enabled && w.retry_after<=rollover_now().unwrap_or(0)*1000) {
+            let now=rollover_now().unwrap_or(0)*1000;
+            let due:Vec<_>=watches.into_iter().filter(|w|w.enabled&&!w.thread_id.starts_with(router_core::store::claude_manual::PREFIX)&&w.retry_after<=now).collect();
+            let selected=crate::observer_batch::next_ids(due.iter().map(|w|w.thread_id.as_str()),&mut watch_cursor,crate::observer_batch::WATCH_READS_PER_PASS);
+            for watch in due.into_iter().filter(|w|selected.contains(&w.thread_id)) {
                 // Pause/Resume generation is checked again when the native read commits.
                 let _ = crate::codex_watch::poll(&store,&session,&watch,observer_epoch);
             }

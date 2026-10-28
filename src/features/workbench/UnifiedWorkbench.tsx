@@ -778,7 +778,7 @@ export function LegacyWorkbench(props: UnifiedWorkbenchProps) {
   if (showStart) return <main className="unified-workbench v3-surface-start" aria-label="AI Work Router 统一工作台">{props.globalActions && <div key="global-actions" className="v4-global-shortcuts">{props.globalActions}</div>}{props.criticalNotice}<StartFocus onSurfaceChange={onSurfaceChange} /></main>;
   return <main className={`unified-workbench v5-shell ${focused?"v5-focused":""} v3-surface-${surface.toLowerCase()}`} style={{"--v5-rail-width":`${railWidth}px`} as React.CSSProperties} aria-label="AI Work Router 统一工作台">
     <header className="v5-global-navigation"><button type="button" onClick={()=>onSurfaceChange("BRIDGES")}><ArrowLeft size={18}/>Bridge</button><div><button type="button" aria-label={focused?"显示列表":"专注阅读"} onClick={()=>setFocused(!focused)}>{focused?<PanelLeftOpen size={18}/>:<PanelLeftClose size={18}/>}</button><button type="button" onClick={()=>onSurfaceChange("INBOX")}>待办</button>{props.globalActions}<button type="button" aria-label="设置" title="设置" onClick={()=>onSurfaceChange("SETTINGS")}><Settings size={18}/></button>{roleNavigation}</div></header>
-    {!focused&&<PanelDivider value={railWidth} onChange={setWidth}/>}
+    {!focused&&<PanelDivider value={railWidth} resetValue={240} onChange={setWidth}/>}
     <WorkbenchRail {...props} surface={surface} onSurfaceChange={onSurfaceChange} />
     <section className="v3-workbench-main">{props.criticalNotice}<div hidden={surface !== "WORKSPACE"}>{props.bridgePanel}</div>{props.roleCompatible && surface === "WORKSPACE" ? null : focusPanel ?? (surface === "INBOX" ? inbox : workspace)}</section>
   </main>;

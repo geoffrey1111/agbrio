@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 #[derive(Default)]
-pub(crate) struct Watcher { seen: HashMap<String, (u64, SystemTime)>, paths: HashMap<String, PathBuf> }
+pub(crate) struct Watcher { seen: HashMap<String, (u64, SystemTime)>, paths: HashMap<String, PathBuf>, cursor:Option<String> }
 
 /// Sessions whose state matters: bound in an active Bridge, or watched.
 pub(crate) fn targets(core: &RouterCore) -> Result<HashMap<String, Option<String>>, String> {
@@ -35,8 +35,10 @@ impl Watcher {
         let targets = targets(core)?;
         let live: HashSet<&String> = targets.keys().collect();
         self.seen.retain(|k, _| live.contains(k));
+        self.paths.retain(|k,_|live.contains(k));
+        let selected=crate::observer_batch::next_ids(targets.keys().map(String::as_str),&mut self.cursor,crate::observer_batch::WATCH_READS_PER_PASS);
         let mut changed = 0;
-        for (session, cwd) in &targets {
+        for (session, cwd) in targets.iter().filter(|(id,_)|selected.contains(*id)) {
             let path = match self.paths.get(session).filter(|p| p.is_file()) {
                 Some(p) => p.clone(),
                 None => { let Some(p) = crate::claude_transcript::find(&root, session) else { continue }; self.paths.insert(session.clone(), p.clone()); p }
@@ -47,7 +49,7 @@ impl Watcher {
             if self.seen.get(session) == Some(&stamp) && !recovering { continue; }
             if let Err(code) = observe(core, &path, session, cwd.as_deref()) { crate::claude_event_log::record(session, "TRANSCRIPT", &code); } else { self.seen.insert(session.clone(), stamp); changed += 1; }
         }
-        for session in targets.keys(){let _=crate::claude_chat::observe_children(core,&format!("claude_code:{session}"));}
+        for session in &selected{let _=crate::claude_chat::observe_children(core,&format!("claude_code:{session}"));}
         Ok(changed)
     }
 }
