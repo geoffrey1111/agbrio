@@ -344,6 +344,7 @@ export const mobileApi = {
   createBridge: (name:string)=>request<string>("/bridges",{method:"POST",body:JSON.stringify({name})}),
   renameBridge:(id:string,name:string)=>request<void>(`/bridges/${encodeURIComponent(id)}/rename`,{method:"POST",body:JSON.stringify({name})}),
   workstreams: () => request<MobileWorkstream[]>("/workstreams"),
+  refreshWorkstreams:()=>readModels.refresh("directory:mobile",()=>liveRequest<MobileWorkstream[]>("/workstreams"),5000,{supersede:true}),
   workstream: (workstreamId: string) => request<MobileWorkstreamSnapshot>(`/workstreams/${encodeURIComponent(workstreamId)}`),
   projectLinks: (workstreamId: string) => request<MobileExternalProjectLink[]>(`/workstreams/${encodeURIComponent(workstreamId)}/project-links`),
   confirmChatGptAuthenticationCompleted: () => request<void>("/chatgpt-browser/authentication-completed", { method: "POST" }),

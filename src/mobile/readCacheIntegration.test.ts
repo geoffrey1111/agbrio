@@ -1,3 +1,5 @@
+import {mobileApi} from './api';
+import {cachedBridgeActivity} from '../features/workbench/bridgeActivity';
 import {cachedWatchChatApi} from '../features/workbench/watchChatApi';
 import {afterEach,expect,it,vi} from "vitest";
 import {readModels} from "../features/workbench/readModelCache";
@@ -15,4 +17,11 @@ it('conversation navigation stays warm while explicit status and history retry f
  readModels.clear();let version=1;const state=vi.fn(async()=>({watch:{threadId:'exact',cwd:'D:/fixture',generation:1,snapshot:{turnId:'t',itemId:'m',state:'RUNNING'}},historyRevision:String(version)}) as any),command=vi.fn(async()=>({messages:[{id:String(version),turnId:'t',role:'assistant',text:'fixture'}],nextCursor:null}) as any);
  const api=cachedWatchChatApi({state,command});await api.state('exact');await api.command({action:'HISTORY',threadId:'exact'});version=2;await api.state('exact');expect(state).toHaveBeenCalledTimes(1);
  await api.refreshState!('exact');expect(state).toHaveBeenCalledTimes(2);const page=await api.refreshHistory!('exact');expect(page.messages[0].id).toBe('2');expect(command).toHaveBeenCalledTimes(2);expect(command.mock.calls.every(c=>(c as any)[0].action==='HISTORY')).toBe(true);
+});
+
+it('manual list refresh bypasses warm directory and bridge-activity values',async()=>{
+ readModels.clear();let revision=1;const fetch=vi.fn(async()=>new Response(JSON.stringify([{id:'exact',name:'version'+revision}])));vi.stubGlobal('fetch',fetch);
+ expect((await mobileApi.workstreams())[0].name).toBe('version1');revision=2;expect((await mobileApi.workstreams())[0].name).toBe('version1');expect(fetch).toHaveBeenCalledTimes(1);
+ expect((await mobileApi.refreshWorkstreams())[0].name).toBe('version2');expect(fetch).toHaveBeenCalledTimes(2);
+ let state=1;const loader=vi.fn(async()=>[{workstreamId:'exact',bindingRevision:state,sides:[]}]);const api=cachedBridgeActivity(loader);expect((await api(['exact']))[0].bindingRevision).toBe(1);state=2;expect((await api(['exact']))[0].bindingRevision).toBe(1);expect((await api.refresh!(['exact']))[0].bindingRevision).toBe(2);expect(loader).toHaveBeenCalledTimes(2);
 });

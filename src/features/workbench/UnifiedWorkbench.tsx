@@ -22,6 +22,7 @@ import type {
 export type WorkbenchSurface = "BOARD" | "NOTIFICATIONS" | "SETTINGS" | "BRIDGES" | "NEW_BRIDGE" | "INBOX" | "WORKSPACE" | "DISCUSSION" | "PROJECT_HOME" | "PROJECT" | "NEW_WORK" | "GOAL" | "RUNTIME" | "PROVIDER_RUN_STATUS" | "CHATGPT_DIAGNOSTICS" | "HANDOFF_SELECTION" | "HANDOFF_REVIEW" | "HANDOFF_STATUS" | "EXIT_IMPACT" | "INSTALL" | "RECYCLE" | "PURGE_CONFIRM" | "TEST_CLEANUP" | "CODEX_HISTORY" | "CHATGPT_RESULTS" | "CODEX_RESULTS" | "CODEX_ATTACHMENTS" | "CODEX_FEEDBACK" | "CODEX_REQUEST";
 
 export interface UnifiedWorkbenchProps {
+  onRefreshConversationDirectory?:()=>Promise<unknown>;
   bridgeActivityApi?:import("./bridgeActivity").BridgeActivityApi;
   onManageBindings?:()=>void;
   onRenameBridge?:(id:string,name:string)=>Promise<void>;

@@ -1,3 +1,4 @@
+import {PullToRefresh} from './PullToRefresh';
 import {isQuietWatch,watchStartError} from './watchPresentation';
 import {claudeTaskSummary} from "./ClaudeTaskStatus";
 import {t as uiText,tc,useLanguage,getLanguage} from "../../i18n";
@@ -60,7 +61,8 @@ function bridgeTone(row:BridgeActivity|undefined,age:number,item:WorkbenchItem):
  return["done",""];
 }
 
-export function ConversationHome({onOpenBoard,mode="ALL",bridges,activity,activityClock,watchApi,quotaPanel,addRequest,onOpenBridge,onOpenWatch,onCreateBridge,onDeleteBridge}:{
+export function ConversationHome({onOpenBoard,mode="ALL",bridges,activity,activityClock,watchApi,quotaPanel,addRequest,onOpenBridge,onOpenWatch,onCreateBridge,onDeleteBridge,onRefreshList,scrollContainer}:{
+ onRefreshList?:()=>Promise<unknown>;scrollContainer?:import("react").RefObject<HTMLElement|null>;
  mode?:"ALL"|"TODO";onOpenBoard?:()=>void;
  bridges:WorkbenchItem[];activity:ActivityRows;activityClock:number;watchApi?:NotificationApi;quotaPanel?:ReactNode;addRequest:number;
  onOpenBridge:(id:string)=>void;onOpenWatch:(watch:CodexWatch)=>void;onCreateBridge?:(name:string)=>Promise<void>;onDeleteBridge?:(item:WorkbenchItem)=>void;
@@ -68,7 +70,8 @@ export function ConversationHome({onOpenBoard,mode="ALL",bridges,activity,activi
  useLanguage();
  const reduced=useReducedMotion();
  const [hiddenWatches,setHiddenWatches]=useState<string[]>([]);
- const watches=useWatches(watchApi).filter(w=>!hiddenWatches.includes(w.threadId));
+ const [watched,refreshWatches]=useWatches(watchApi);
+ const watches=watched.filter(w=>!hiddenWatches.includes(w.threadId));
  const [undo,setUndo]=useState<CodexWatch|null>(null);
  useEffect(()=>{if(!undo)return;const timer=setTimeout(()=>setUndo(null),6000);return()=>clearTimeout(timer);},[undo]);
  // Swiping a watched conversation only stops Agbrio's tracking; the chat itself is untouched and can be restored.
@@ -107,7 +110,8 @@ export function ConversationHome({onOpenBoard,mode="ALL",bridges,activity,activi
   const inner=r.bridge&&onDeleteBridge?<SwipeDeleteRow label={r.title} onDelete={()=>onDeleteBridge(r.bridge!)}>{body}</SwipeDeleteRow>:r.watch&&watchApi?.remove?<SwipeDeleteRow label={r.title} onDelete={()=>void stopWatching(r.watch!)}>{body}</SwipeDeleteRow>:body;
   return <motion.div key={r.key} layout="position" initial={reduced?false:{opacity:.35}} animate={{opacity:1}} exit={{opacity:0,transition:{duration:reduced?0:.12}}} transition={reduced?{duration:0}:spring}>{inner}</motion.div>;};
  const chips:[Filter,string,number?][]=[["ALL",uiText("全部")],["RUN",uiText("执行中"),counts.run],["WAIT",uiText("等你"),counts.wait],["BRIDGE","Bridge"],["WATCH",uiText("监听")]];
- return <section className="v6-home" data-mode={mode} aria-label={todo?uiText("需要你处理"):uiText("对话")}>
+ async function refreshList(){const results=await Promise.allSettled([refreshWatches(),onRefreshList?.()]);if(results.some(r=>r.status==="rejected"))throw Error("LIST_REFRESH_INCOMPLETE");}
+ return <PullToRefresh enabled={Boolean(onRefreshList)&&!todo} onRefresh={refreshList} scrollContainer={scrollContainer}><section className="v6-home" data-mode={mode} aria-label={todo?uiText("需要你处理"):uiText("对话")}>
   {!todo&&<><label className="v6-search"><Search size={16} aria-hidden/><input type="search" aria-label={uiText("搜索对话或项目")} placeholder={uiText("搜索对话或项目")} value={query} onChange={e=>setQuery(e.target.value)}/>{query&&<button type="button" aria-label={uiText("清除搜索")} onClick={()=>setQuery("")}><X size={16}/></button>}</label>
   <LayoutGroup id="v6-chips"><div className="v6-chips" role="group" aria-label={uiText("筛选")}>{chips.map(([id,label,n])=><motion.button key={id} type="button" whileTap={{scale:.92}} aria-pressed={filter===id} onClick={()=>setFilter(id)}>{filter===id&&<motion.span className="v6-chip-fill" layoutId="v6-chip-fill" transition={spring}/>}<span>{label}{n?<b>{n}</b>:null}</span></motion.button>)}</div></LayoutGroup></>}
   {todo&&visible.length>0&&<div className="v6-todo-stack">{visible.map((r,i)=>{const kind=r.kind==="BRIDGE"?(r.state===uiText("等你确认")?uiText("等你确认"):uiText("待转发")):r.watch?.snapshot.state==="FAILED"?uiText("执行失败"):uiText("等你确认");const tone=r.watch?.snapshot.state==="FAILED"?"danger":r.kind==="BRIDGE"?"accent":"wait";
@@ -123,7 +127,7 @@ export function ConversationHome({onOpenBoard,mode="ALL",bridges,activity,activi
   {!todo&&!visible.length&&<div className="v6-empty">{rows.length?<p>{uiText("没有符合条件的对话")}</p>:<><MessageSquare size={30} aria-hidden/><h2>{uiText("还没有关注的对话")}</h2><p>{uiText("监听电脑上的 Codex 或 Claude Code 对话，或者把两个对话连成 Bridge。")}</p><button type="button" className="v6-primary" onClick={()=>setSheet("CHOOSE")}>{uiText("开始")}</button></>}</div>}
   <AnimatePresence>{undo&&<motion.div className="v6-toast" role="status" initial={{y:24,opacity:0}} animate={{y:0,opacity:1}} exit={{y:24,opacity:0}} transition={spring}>{uiText("已停止监听")}<button type="button" onClick={()=>void restoreWatch(undo)}>{uiText("撤销")}</button></motion.div>}</AnimatePresence>
   {!todo&&<AddSheet mode={sheet} setMode={setSheet} watchApi={watchApi} watched={watches} quietIds={quietIds} onCreateBridge={onCreateBridge} onWatched={w=>{setSheet(null);onOpenWatch(w);}}/>}
- </section>;
+ </section></PullToRefresh>;
 }
 
 /** Reads the existing watch projection: cached first, then the live list. */
@@ -137,7 +141,10 @@ function useWatches(api?:NotificationApi){
   document.addEventListener("visibilitychange",wake);void poll();
   return()=>{alive=false;clearTimeout(timer);unsubscribe?.();document.removeEventListener("visibilitychange",wake);};
  },[api]);
- return watches;
+ const activeApi=useRef(api);activeApi.current=api;
+ const alive=useRef(true);useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
+ const refresh=async()=>{if(!api)return;const rows=await(api.refreshWatches?.()??api.watches());if(alive.current&&activeApi.current===api)setWatches(rows);};
+ return [watches,refresh] as const;
 }
 
 function AddSheet({mode,setMode,watchApi,watched,quietIds,onCreateBridge,onWatched}:{mode:"CHOOSE"|"WATCH"|"BRIDGE"|null;setMode:(m:"CHOOSE"|"WATCH"|"BRIDGE"|null)=>void;watchApi?:NotificationApi;watched:CodexWatch[];quietIds:Set<string>;onCreateBridge?:(name:string)=>Promise<void>;onWatched:(w:CodexWatch)=>void}){

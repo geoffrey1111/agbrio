@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([Parameter(Mandatory=$true)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$')][string]$Version,[string]$NotesFile='',[ValidateSet('lzma','zlib')][string]$Compression='lzma',[string]$HostedControlOrigin=$env:AGBRIO_HOSTED_CONTROL_ORIGIN,[switch]$SelfHostedOnly,[string]$SigningCredentialsDirectory='')
+param([Parameter(Mandatory=$true)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$')][string]$Version,[string]$NotesFile='',[ValidateSet('lzma','zlib')][string]$Compression='lzma',[string]$HostedControlOrigin=$env:AGBRIO_HOSTED_CONTROL_ORIGIN,[switch]$SelfHostedOnly,[string]$SigningCredentialsDirectory='',[switch]$BundleOnly,[ValidatePattern('^[a-fA-F0-9]{64}$')][string]$ExpectedExecutableSha256)
 $ErrorActionPreference='Stop'
 $baseVersion=[version]($Version.Split('-')[0])
 if($baseVersion -lt [version]'0.1.1'){throw 'The first signed update must use version 0.1.1 or higher; installed 0.1.0 clients cannot update to a 0.1.0 prerelease'}
@@ -15,6 +15,12 @@ $repoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 # target tree. Relative Cargo paths depend on its child cwd, so reject ambiguity.
 if($env:CARGO_TARGET_DIR -and ![IO.Path]::IsPathRooted($env:CARGO_TARGET_DIR)){throw 'CARGO_TARGET_DIR must be absolute for signed artifact readback'}
 $buildTarget=if($env:CARGO_TARGET_DIR){[IO.Path]::GetFullPath($env:CARGO_TARGET_DIR)}else{Join-Path $repoRoot 'src-tauri/target'}
+if($BundleOnly){
+ if(!$ExpectedExecutableSha256){throw 'BundleOnly requires the independently verified existing executable SHA256'}
+ $existingExecutable=Join-Path $buildTarget 'release/ai-work-router.exe'
+ if(!(Test-Path -LiteralPath $existingExecutable) -or (Get-FileHash -LiteralPath $existingExecutable).Hash.ToLowerInvariant() -cne $ExpectedExecutableSha256.ToLowerInvariant()){throw 'Existing executable identity mismatch; no bundling permitted'}
+ if((Get-Item -LiteralPath $existingExecutable).VersionInfo.ProductVersion -cne $Version){throw 'Existing executable version differs; build the new native version first'}
+}
 $releaseRoot=Join-Path $repoRoot ('runtime/signed-release-'+$Version)
 if(Test-Path -LiteralPath $releaseRoot){throw 'Preserve the existing release directory; choose a new version'}
 New-Item -ItemType Directory -Path $releaseRoot | Out-Null
@@ -35,8 +41,9 @@ try{
  @{version=$Version;bundle=@{createUpdaterArtifacts=$true;windows=@{nsis=@{compression=$Compression}}}} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $overlay -Encoding utf8
  Push-Location $repoRoot
  try{
-  & npm run build:windows -- --config $overlay
+  if($BundleOnly){& npm run tauri -- bundle --bundles nsis --config $overlay}else{& npm run build:windows -- --config $overlay}
   if($LASTEXITCODE -ne 0){throw 'Signed build failed; nothing was published'}
+  if($BundleOnly -and (Get-FileHash -LiteralPath $existingExecutable).Hash.ToLowerInvariant() -cne $ExpectedExecutableSha256.ToLowerInvariant()){throw 'Bundling changed the native executable; inspect instead of publishing'}
   $installer=Join-Path $buildTarget ('release/bundle/nsis/Agbrio_'+$Version+'_x64-setup.exe')
   if(!(Test-Path -LiteralPath ($installer+'.sig'))){throw 'No updater signature was generated; do not publish as an in-app update'}
   Copy-Item -LiteralPath $installer,($installer+'.sig') -Destination $releaseRoot

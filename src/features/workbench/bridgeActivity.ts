@@ -4,6 +4,7 @@ import type {BridgeRole,RoleActivity,AssistantProcessed} from "./RoleBridgePanel
 import {readModels, type ReadModelCache} from "./readModelCache";
 export type BridgeActivity={lastMessageAt?:number|null;assistantProcessed?:AssistantProcessed|null;workstreamId:string;bindingRevision:number;unreadCount?:number;latestRole?:BridgeRole|null;sides:RoleActivity[]};
 export type BridgeActivityApi=((workstreamIds:string[])=>Promise<BridgeActivity[]>) & {
+ refresh?:(ids:string[])=>Promise<BridgeActivity[]>;
  cached?:(ids:string[])=>BridgeActivity[]|undefined;
  observedAt?:(ids:string[])=>number;
  subscribe?:(ids:string[],listener:()=>void)=>()=>void;
@@ -11,6 +12,7 @@ export type BridgeActivityApi=((workstreamIds:string[])=>Promise<BridgeActivity[
 export function cachedBridgeActivity(loader:BridgeActivityApi, cache:ReadModelCache=readModels):BridgeActivityApi{
  const key=(ids:string[])=>`bridge-activity:${JSON.stringify([...new Set(ids)].sort())}`;
  return Object.assign((ids:string[])=>cache.read(key(ids),()=>loader(ids),5000),{
+  refresh:(ids:string[])=>cache.refresh(key(ids),()=>loader(ids),5000,{supersede:true}),
   cached:(ids:string[])=>cache.peek<BridgeActivity[]>(key(ids)),
   observedAt:(ids:string[])=>cache.observedAt(key(ids)),
   subscribe:(ids:string[],listener:()=>void)=>cache.subscribe(key(ids),listener),

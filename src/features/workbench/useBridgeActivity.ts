@@ -4,6 +4,7 @@ import type {BridgeActivity,BridgeActivityApi} from "./bridgeActivity";
  * warm batch; the foreground cache clock owns network synchronization. */
 export function useBridgeActivity(ids:string[],api:BridgeActivityApi|undefined,enabled:boolean){
  const [rows,setRows]=useState<Record<string,{row:BridgeActivity;receivedAt:number}>>({}),[clock,setClock]=useState(Date.now);
+ const manual=useRef<()=>Promise<unknown>>(async()=>{});
  const key=ids.join("\n"),latest=useRef(ids);latest.current=ids;
  useEffect(()=>{
   if(!enabled||!api||!key)return;
@@ -14,17 +15,18 @@ export function useBridgeActivity(ids:string[],api:BridgeActivityApi|undefined,e
    setRows(old=>({...Object.fromEntries(Object.entries(old).filter(([id])=>latest.current.includes(id))),...Object.fromEntries(data.filter(r=>requested.includes(r.workstreamId)).map(row=>[row.workstreamId,{row,receivedAt:at}]))}));
    setClock(Date.now());
   }
-  async function selectVisible(){
+  async function selectVisible(force=false){
    if(!alive||document.visibilityState==="hidden")return;
    const shown=new Set([...document.querySelectorAll<HTMLElement>("[data-bridge-id]")].filter(n=>{const r=n.getBoundingClientRect();return r.height>0&&r.bottom>0&&r.top<innerHeight&&r.right>0&&r.left<innerWidth;}).map(n=>n.dataset.bridgeId!));
    const requested=latest.current.filter(id=>shown.has(id)).slice(0,20),batch=JSON.stringify([...requested].sort());
-   if(!requested.length||activityApi.subscribe&&batch===selected)return;
+   if(!requested.length||!force&&activityApi.subscribe&&batch===selected)return;
    selected=batch;const current=++generation;stop?.();stop=undefined;
    const publish=()=>{if(!alive||generation!==current)return;const data=activityApi.cached?.(requested);if(data)apply(requested,data,activityApi.observedAt?.(requested)??0);else if(activityApi.cached)setRows(old=>Object.fromEntries(Object.entries(old).filter(([id])=>!requested.includes(id))));};
    stop=activityApi.subscribe?.(requested,publish);publish();
-   try{const data=await activityApi(requested);if(alive&&generation===current)apply(requested,data,activityApi.observedAt?.(requested)??Date.now());}
-   catch{/* Retain old readings with their real age; never invent fresh status. */}
+   try{const data=await(force&&activityApi.refresh?activityApi.refresh(requested):activityApi(requested));if(alive&&generation===current)apply(requested,data,activityApi.observedAt?.(requested)??Date.now());}
+   catch(error){if(force)throw error;/* Retain old readings with their real age; never invent fresh status. */}
   }
+  manual.current=()=>selectVisible(true);
   void selectVisible();
   // Legacy injected APIs keep their clock. Production APIs use one shared clock.
   const timer=activityApi.subscribe?undefined:setInterval(()=>void selectVisible(),5000),expire=setInterval(()=>setClock(Date.now()),1000);
@@ -33,5 +35,5 @@ export function useBridgeActivity(ids:string[],api:BridgeActivityApi|undefined,e
   const visible=()=>{if(document.visibilityState!=="hidden")void selectVisible();};document.addEventListener("visibilitychange",visible);window.addEventListener("focus",visible);
   return()=>{alive=false;generation++;stop?.();clearTimeout(scrollTimer);document.removeEventListener("scroll",scroll,true);window.removeEventListener("resize",scroll);clearInterval(timer);clearInterval(expire);document.removeEventListener("visibilitychange",visible);window.removeEventListener("focus",visible);};
  },[key,api,enabled]);
- return {rows,clock};
+ return {rows,clock,refresh:()=>manual.current()};
 }

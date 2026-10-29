@@ -1532,5 +1532,11 @@
   "已取消系统确认，预警设置未改变。": "Administrator consent cancelled. Alert settings were not changed.",
   "应用结果尚未确认，请先刷新当前设置，不要重复保存。": "Application is unconfirmed. Refresh current settings before saving again.",
   "未能应用监测设置，请刷新状态后重试。": "Could not apply monitoring settings. Refresh the status before retrying.",
-  "正在应用…": "Applying…"
+  "正在应用…": "Applying…",
+  "下拉刷新": "Pull to refresh",
+  "松开刷新": "Release to refresh",
+  "正在刷新列表…": "Refreshing conversations…",
+  "列表已更新": "Conversations updated",
+  "刷新未完成，当前列表已保留。": "Refresh incomplete. Current conversations are kept.",
+  "刷新对话列表": "Refresh conversations"
 }

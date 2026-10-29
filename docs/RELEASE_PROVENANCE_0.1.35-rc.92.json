@@ -1,0 +1,13 @@
+{
+  "backendAndEmbeddedDesktopSource": "9d65a25f0c4a174e20268ad535b70d7c69314d1a",
+  "phoneSource": "v0.1.35-rc.92 release tag",
+  "backendVersion": "0.1.35-rc.92",
+  "embeddedDesktopUI": "2026.10.29-110",
+  "servedPhoneUI": "2026.10.29-111",
+  "pluginVersion": "0.1.17",
+  "installedNSISExeSHA256": "5f833479eda2b597c038484a51ae7c2eef9628e9ee270c0e8d619e3199a89051",
+  "genericExeSHA256": "e1cdfacb03c11e1b9a7d5d2aa3905cb1a0ace4712b8b4ea378e6f332d6e31577",
+  "packaging": "Official tauri bundle of verified existing native92 executable; phone111 static assets; six public110 compatibility files retained",
+  "nativeRecompiledForPhoneGesture": false,
+  "note": "Generic and NSIS-staged executable differ only at the SDK bundle-type marker UNK/NSS; publisher checks each identity separately."
+}
