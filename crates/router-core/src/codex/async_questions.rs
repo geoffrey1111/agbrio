@@ -19,7 +19,7 @@ pub fn read(path:&Path,root:&Path,thread:&str)->Vec<Value>{
 }
 fn project(bytes:&[u8])->Vec<Value>{
  let mut turn=String::new();let mut cards:Vec<Value>=vec![];let mut answered=std::collections::HashSet::new();
- for line in bytes.split(|b|*b==b'\n').filter(|l|l.len()<=2*1024*1024){let Ok(v)=serde_json::from_slice::<Value>(line)else{continue};let p=&v["payload"];
+ for line in bytes.split(|b|*b==b'\n').filter(|l|l.len()<=2*1024*1024){let Ok(text)=std::str::from_utf8(line)else{continue};if !text.contains("turn_context")&&!text.contains("request_user_input_async")&&!text.contains("send_user_message_question_reply"){continue;}let Ok(v)=serde_json::from_slice::<Value>(line)else{continue};let p=&v["payload"];
   if v["type"]=="turn_context"{turn=p["turn_id"].as_str().unwrap_or_default().into();continue}
   if v["type"]!="response_item"{continue}
   if p["type"]=="function_call"&&p["name"]=="request_user_input_async"{

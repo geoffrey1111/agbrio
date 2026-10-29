@@ -5,6 +5,8 @@ pub mod assistant_actions;
 pub mod assistant_processed;
 pub mod assistant_report;
 pub mod goal_control;
+pub mod local_safety;
+pub mod codex_notices;
 pub mod mcp_events;
 pub mod dispatch;
 pub mod migration;
@@ -41,6 +43,9 @@ const MAX_REPLY_OBSERVATION_BYTES: usize = 1_000_000;
 const MAX_WORKSTREAM_DRAFT_BYTES: usize = 100_000;
 
 const NORMAL_FEATURE_MIGRATIONS: &[(&str, &str)] = &[
+    ("codex-notices-v1", include_str!("../../migrations/normal/030_codex_notices.sql")),
+    ("local-safety-fallback-v1", include_str!("../../migrations/normal/029_local_safety_fallback.sql")),
+    ("local-safety-v1", include_str!("../../migrations/normal/028_local_safety.sql")),
     ("conversation-message-time-v1", include_str!("../../migrations/normal/024_conversation_message_time.sql")),
     ("assistant-delegation-v1", include_str!("../../migrations/normal/012_assistant_delegation.sql")),
     ("reply-completion-v1", include_str!("../../migrations/normal/013_reply_completion.sql")),
@@ -3906,6 +3911,7 @@ mod tests {
                         "assistant_sent_handoffs",
                         "child_result_baselines", "child_result_events", "child_result_preferences",
                         "claude_bridge_commands", "claude_child_contexts",
+                        "claude_codex_notices", "claude_codex_subscriptions",
                         "claude_connections", "claude_control_leases",
                         "claude_event_journal", "claude_manual_commands", "claude_owner_requests",
                         "claude_sessions",
@@ -3920,6 +3926,10 @@ mod tests {
                         "goal_control_actions",
                         "handoff_attachments",
                         "handoffs",
+                        "local_safety_attempts",
+                        "local_safety_receiver_leases",
+                        "local_safety_resource_events",
+                        "local_safety_settings",
                         "mcp_event_actions",
                         "mcp_event_deliveries",
                         "mcp_event_initial_observations",

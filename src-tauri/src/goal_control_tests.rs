@@ -9,8 +9,8 @@ fn fixture(status:&str,mode:&str)->(tempfile::TempDir,RouterCore,String){
  let d=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap());
  let p=store.create_project("Goal fixture".into(),None).unwrap();let w=store.create_workstream(&p.id,"fixture".into()).unwrap();
  let side=|id:&str|RoleBindingInput{provider:"CODEX".into(),external_id:id.into(),label:"fictional".into(),cwd:Some(d.path().to_string_lossy().into())};
- store.bind_role_bridge(&w.id,0,side("goal-source-fixture"),side("goal-target-fixture")).unwrap();
- let script=r#"const fs=require('node:fs'),rl=require('node:readline').createInterface({input:process.stdin});const root=process.argv[1],mode=process.argv[3];let goal={threadId:'goal-target-fixture',objective:'Keep the same approved objective',status:process.argv[2],tokenBudget:null,tokensUsed:43,timeUsedSeconds:21,createdAt:1,updatedAt:2};rl.on('line',line=>{const r=JSON.parse(line);if(r.id===undefined)return;fs.appendFileSync(root+'/rpc.jsonl',JSON.stringify(r)+'\n');let v={};if(r.method==='thread/read'||r.method==='thread/resume')v={thread:{id:r.params.threadId,cwd:root,status:{type:mode==='BUSY'?'active':'idle'}}};else if(r.method==='thread/goal/get')v={goal};else if(r.method==='thread/goal/set'){if(JSON.stringify(Object.keys(r.params).sort())!==JSON.stringify(['origin','status','threadId'])||r.params.origin!=='user'||r.params.threadId!=='goal-target-fixture')throw Error('Goal identity or status-only contract violated');goal={...goal,status:r.params.status,updatedAt:goal.updatedAt+1};v={goal:mode==='WRONG_GOAL'?{...goal,objective:'wrong objective'}:goal};}else if(r.method==='turn/start')v={turn:{id:'fixture-supplement-turn'}};else if(r.method==='thread/turns/list')v={data:[],nextCursor:null};else if(r.method!=='initialize'){process.stdout.write(JSON.stringify({id:r.id,error:{code:-32600,message:'unexpected fixture method'}})+'\n');return;}process.stdout.write(JSON.stringify({id:r.id,result:v})+'\n');});"#;
+ if mode!="SAFETY_FAILURE"{store.bind_role_bridge(&w.id,0,side("goal-source-fixture"),side("goal-target-fixture")).unwrap();}
+ let script=r#"const fs=require('node:fs'),rl=require('node:readline').createInterface({input:process.stdin});const root=process.argv[1],mode=process.argv[3];let goal={threadId:'goal-target-fixture',objective:'Keep the same approved objective',status:process.argv[2],tokenBudget:null,tokensUsed:43,timeUsedSeconds:21,createdAt:1,updatedAt:2};rl.on('line',line=>{const r=JSON.parse(line);if(r.id===undefined)return;fs.appendFileSync(root+'/rpc.jsonl',JSON.stringify(r)+'\n');let v={};if(r.method==='thread/read'||r.method==='thread/resume')v={thread:{id:r.params.threadId,cwd:root,status:{type:mode==='BUSY'?'active':'idle'}}};else if(r.method==='thread/goal/get'){if(mode==='MODEL_FAILURE'||mode==='SAFETY_FAILURE')process.stdout.write(JSON.stringify({method:'turn/completed',params:{threadId:r.params.threadId,turn:{id:'failed-model-turn',status:'failed',error:{codexErrorInfo:'serverOverloaded'}}}})+'\n');v={goal};}else if(r.method==='thread/goal/set'){if(JSON.stringify(Object.keys(r.params).sort())!==JSON.stringify(['origin','status','threadId'])||r.params.origin!=='user'||r.params.threadId!=='goal-target-fixture')throw Error('Goal identity or status-only contract violated');goal={...goal,status:r.params.status,updatedAt:goal.updatedAt+1};v={goal:mode==='WRONG_GOAL'?{...goal,objective:'wrong objective'}:goal};}else if(r.method==='turn/start')v={turn:{id:'fixture-supplement-turn'}};else if(r.method==='thread/turns/list')v={data:[],nextCursor:null};else if(r.method!=='initialize'){process.stdout.write(JSON.stringify({id:r.id,error:{code:-32600,message:'unexpected fixture method'}})+'\n');return;}process.stdout.write(JSON.stringify({id:r.id,result:v})+'\n');});"#;
  let mut command=std::process::Command::new("node");command.args(["-e",script]).arg(d.path()).arg(status).arg(mode);
  let mut adapter=crate::codex::adapter::CodexAdapter::start_shared_validation(command,Arc::new(|_|{})).unwrap();adapter.initialize().unwrap();
  let core=RouterCore{store,session:Arc::new(Mutex::new(Session{adapter:Some(adapter),..Default::default()})),chatgpt:Arc::default(),completed_chatgpt_responses:Arc::default()};(d,core,w.id)
@@ -83,4 +83,28 @@ fn real_shared_native_goal_control_once(){
  {let mut s=c.session.lock().unwrap();let a=s.adapter.as_mut().unwrap();a.clear_goal(&id).unwrap();assert!(a.get_goal(&id).unwrap()["goal"].is_null());}
  proof["isolatedGoalCleared"]=json!(true);fs::write(root.join("native-goal-control-proof.json"),serde_json::to_vec_pretty(&proof).unwrap()).unwrap();fs::write(root.parent().unwrap().join("current-native-goal-control-case.txt"),root.to_string_lossy().as_bytes()).unwrap();
  assert!(result.is_ok(),"Native Goal resume did not pass; isolated Goal cleaned up");assert_eq!(proof["resumeReceipt"],"APPLIED");assert_eq!(proof["sameObjective"],true);assert_eq!(proof["budgetRetained"],true);
+}
+
+#[test]fn automatic_model_recovery_is_exact_and_cannot_wake_a_user_paused_goal(){
+ for status in ["blocked","paused"]{
+  let(d,c,_)=fixture(status,"MODEL_FAILURE");let i=input(&c);let id=uuid::Uuid::new_v4().to_string();
+  let result=recover_model_failure(&c,&id,i.clone(),"failed-model-turn");
+  if status=="blocked"{assert_eq!(result.unwrap().status,"APPLIED");assert_eq!(recover_model_failure(&c,&id,i,"failed-model-turn").unwrap().status,"APPLIED");assert_eq!(sets(&d).len(),1);}
+  else{assert!(result.is_err());assert!(sets(&d).is_empty());}
+ }
+ let(d,c,_)=fixture("blocked","MODEL_FAILURE");let i=input(&c);assert!(recover_model_failure(&c,&uuid::Uuid::new_v4().to_string(),i,"different-turn").is_err());assert!(sets(&d).is_empty());
+}
+
+#[test]fn host_safety_pass_uses_the_real_durable_goal_pipeline_once(){
+ let(d,c,_)=fixture("blocked","SAFETY_FAILURE");let at=crate::local_safety::now();
+ let snap=router_core::store::codex_watch::WatchSnapshot{state:"RUNNING".into(),turn_id:Some("running".into()),item_id:None,text:String::new()};
+ c.store.enable_codex_watch("goal-target-fixture","fixture",d.path().to_str().unwrap(),&snap).unwrap();
+ let mut failed=snap;failed.state="FAILED".into();failed.turn_id=Some("failed-model-turn".into());
+ let w=c.store.registered_codex_watch("goal-target-fixture").unwrap();c.store.record_codex_watch(&w.thread_id,w.generation,&failed).unwrap();
+ read_codex_goal_from_session(&mut c.session.lock().unwrap(),&w.thread_id).unwrap();
+ crate::local_safety::recover(&c,at).unwrap();assert!(sets(&d).is_empty());
+ rusqlite::Connection::open(d.path().join("router.db")).unwrap().execute("UPDATE codex_watches SET checked_at=?1",[at+61000]).unwrap();
+ crate::local_safety::recover(&c,at+61000).unwrap();assert_eq!(sets(&d).len(),1);
+ crate::local_safety::recover(&c,at+122000).unwrap();assert_eq!(sets(&d).len(),1);
+ assert_eq!(c.store.local_safety_recent().unwrap()[0].status,"APPLIED");
 }

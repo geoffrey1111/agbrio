@@ -16,7 +16,7 @@ export function goalControlError(error:unknown){
 }
 export function nativeTurnErrorText(diagnostic?:NativeTurnDiagnostic|null){
  if(!diagnostic||diagnostic.status!=="failed")return null;
- const labels:Record<string,string>={serverOverloaded:"服务暂时繁忙",rateLimitExceeded:"请求频率受限",usageLimitExceeded:"使用量受限",sessionBudgetExceeded:"本次预算受限",contextWindowExceeded:"对话上下文已满",httpConnectionFailed:"服务连接中断",responseStreamConnectionFailed:"回复连接中断",responseStreamDisconnected:"回复连接中断",unauthorized:"需要检查服务授权"};
+ const labels:Record<string,string>={modelCapacity:"所选模型暂时满载",serverOverloaded:"服务暂时繁忙",rateLimitExceeded:"请求频率受限",usageLimitExceeded:"使用量受限",sessionBudgetExceeded:"本次预算受限",contextWindowExceeded:"对话上下文已满",httpConnectionFailed:"服务连接中断",responseStreamConnectionFailed:"回复连接中断",responseStreamDisconnected:"回复连接中断",unauthorized:"需要检查服务授权"};
  return t(labels[diagnostic.errorCode??""]??"这一轮执行失败，具体原因未提供");
 }
 export function CodexGoalController({goal,controls,api,checkedAt,diagnostic,disabled=false,refresh}:{goal:MobileCodexGoal;controls?:GoalControls|null;api:WatchChatApi;checkedAt?:number;diagnostic?:NativeTurnDiagnostic|null;disabled?:boolean;refresh:()=>Promise<void>}){

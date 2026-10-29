@@ -132,6 +132,7 @@ impl HostRuntime {
         let stop=self.shared_stop.clone();*worker=Some(std::thread::spawn(move||{
             let mut delay=5;while !stop.load(std::sync::atomic::Ordering::Acquire){
                 for _ in 0..delay*10{if stop.load(std::sync::atomic::Ordering::Acquire){return;}std::thread::sleep(std::time::Duration::from_millis(100));}
+                crate::local_safety::maintain(&core);
                 if !crate::shared_codex::enabled(){delay=5;continue;}
                 let disconnected=core.session.lock().is_ok_and(|s|!s.connecting&&!s.codex_adapter_borrowed&&s.adapter.as_ref().is_none_or(|a|a.is_closed()));
                 if disconnected{crate::host_application::connect_codex_for_resident_host(sink.clone(),&core);delay=(delay*2).min(60);}else{delay=5;}
@@ -146,7 +147,7 @@ impl HostRuntime {
     fn start_setup_requests(&self,core:RouterCore){
         let Ok(mut worker)=self.setup_worker.lock()else{return;};if worker.is_some(){return;}
         let stop=self.shared_stop.clone();let host=self.clone();*worker=Some(std::thread::spawn(move||{
-            while !stop.load(std::sync::atomic::Ordering::Acquire){crate::mobile_connection::process_setup_request(&core,&host);crate::hosted_relay::ensure(&host);crate::attachment_cache::maintain(&core);for _ in 0..20{if stop.load(std::sync::atomic::Ordering::Acquire){return;}std::thread::sleep(std::time::Duration::from_millis(100));}}
+            while !stop.load(std::sync::atomic::Ordering::Acquire){crate::mobile_connection::process_setup_request(&core,&host);crate::hosted_relay::ensure(&host);crate::attachment_cache::maintain(&core);crate::local_safety::maintain(&core);for _ in 0..20{if stop.load(std::sync::atomic::Ordering::Acquire){return;}std::thread::sleep(std::time::Duration::from_millis(100));}}
         }));
     }
     /// Explicit human intent only. AUTH_REQUIRED opens native human-only

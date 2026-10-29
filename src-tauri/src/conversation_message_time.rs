@@ -11,6 +11,25 @@ pub(crate) fn claude(id:&str,cwd:&str)->Option<i64>{
 fn last_public_at(page:&crate::claude_transcript::Page)->Option<i64>{page.turns.iter().flat_map(|t|t.messages.iter()).filter(|m|m.kind=="PUBLIC").max_by_key(|m|m.order).map(|m|m.at).filter(|at|*at>0)}
 #[cfg(test)]mod tests{
  use super::*;
+ #[test]#[ignore="Explicit read-only installed-clock audit; never sends, pairs or changes provider state"]
+ fn installed_claude_message_times_match_native_public_projection(){
+  let root=std::path::PathBuf::from(std::env::var_os("USERPROFILE").unwrap()).join(".claude/projects");
+  let before=crate::claude_transcript::TEST_PROJECTS.lock().unwrap().replace(root);
+  let db=std::path::PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap()).join("AIWorkRouter/data/router.db");
+  use rusqlite::OptionalExtension;
+  let c=rusqlite::Connection::open_with_flags(db,rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+  let rows:Vec<(String,String)>=c.prepare("SELECT thread_id,cwd FROM codex_watches WHERE enabled=1 AND thread_id LIKE 'claude_code:%'").unwrap().query_map([],|r|Ok((r.get(0)?,r.get(1)?))).unwrap().collect::<Result<_,_>>().unwrap();assert!(!rows.is_empty());
+  for (id,cwd) in &rows{
+   let mut exact=false;
+   for _ in 0..3{
+    let at=claude(id.strip_prefix("claude_code:").unwrap(),cwd);
+    let stored:Option<i64>=c.query_row("SELECT message_at FROM conversation_message_times WHERE thread_id=?1 AND cwd=?2",rusqlite::params![id,cwd],|r|r.get(0)).optional().unwrap();
+    if at.is_some()&&stored==at{exact=true;break;}std::thread::sleep(std::time::Duration::from_secs(3));
+   }assert!(exact,"stored clock must match exact native public projection after bounded observation catch-up");
+  }
+  *crate::claude_transcript::TEST_PROJECTS.lock().unwrap()=before;
+  println!("INSTALLED_CLAUDE_MESSAGE_TIME_READ_ONLY_PASS sources={}",rows.len());
+ }
  #[test]fn collaboration_does_not_bump_the_parent_conversation(){
   use crate::claude_transcript::{Message,Turn,Page};
   let message=|kind,at,order|Message{id:format!("{order}"),role:"assistant",text:"fixture".into(),kind,card:None,at,order};

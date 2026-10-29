@@ -302,6 +302,8 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         .route("/v1/mobile/claude-code/sessions", get(claude_code_sessions))
         .route("/v1/claude-code/events", post(claude_code_event))
         .route("/v1/claude-code/codex-wait", post(claude_codex_wait))
+        .route("/v1/claude-code/codex-notices", post(claude_codex_notices))
+        .route("/v1/claude-code/resource-notice", post(claude_resource_notice))
         .route("/v1/claude-code/receipts", post(claude_code_receipt))
         .route("/v1/mobile/claude-code/chat/{thread_id}", get(claude_chat_state))
         .route("/v1/mobile/claude-code/chat", post(claude_chat_command).layer(axum::extract::DefaultBodyLimit::max(crate::watch_chat::UPLOAD_BODY_LIMIT)))
@@ -1391,7 +1393,17 @@ async fn claude_code_event(State(state):State<MobileHttpState>,headers:HeaderMap
 fn permanent_claude_rejection(code:&str)->bool{matches!(code,"CLAUDE_EVENT_IDENTITY_INVALID"|"CLAUDE_EVENT_KIND_UNSUPPORTED"|"CLAUDE_RUNNING_TURN_ID_REQUIRED"|"CLAUDE_COMPLETE_REPLY_UNPROVEN"|"CLAUDE_NONTERMINAL_CONTENT_REJECTED"|"CLAUDE_ROOT_UNAVAILABLE"|"CLAUDE_ROOT_CHANGED"|"CLAUDE_EVENT_OUT_OF_ORDER"|"CLAUDE_COMPLETE_TURN_MISMATCH"|"CLAUDE_EVENT_REPLAY_CONFLICT"|"CLAUDE_SESSION_NOT_REGISTERED")}
 async fn claude_codex_wait(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<router_core::store::claude_codex_wait::WaitProbe>)->Result<axum::response::Response,ApiError>{
  let token=claude_adapter_token(&headers)?;
- let value=state.core.store.claude_codex_wait_probe(&token,&input).map_err(core_error)?;
+ let reconcile_native=headers.get("x-agbrio-wait-version").and_then(|v|v.to_str().ok())==Some("2");let core=state.core.clone();let value=run_core_blocking("Codex wait metadata",move||crate::codex_notices::legacy_probe(&core,&token,&input,reconcile_native)).await?;
+ let mut response=Json(value).into_response();response.headers_mut().insert("cache-control",HeaderValue::from_static("no-store"));Ok(response)
+}
+async fn claude_codex_notices(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<router_core::store::codex_notices::Command>)->ApiResult<serde_json::Value>{
+ let token=claude_adapter_token(&headers)?;let core=state.core.clone();run_core_blocking("Codex notification metadata",move||{
+  match input.action.as_str(){"REGISTER"=>crate::codex_notices::register(&core,&token,&input),"CANCEL"=>{core.store.cancel_codex_notice(&token,&input)?;Ok(serde_json::json!({"accepted":true}))},_=>core.store.codex_notice_sync(&token,&input)}
+ }).await.map(Json)
+}
+async fn claude_resource_notice(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<router_core::store::local_safety::NoticeProbe>)->Result<axum::response::Response,ApiError>{
+ let token=claude_adapter_token(&headers)?;
+ let value=state.core.store.local_safety_notice(&token,&input).map_err(core_error)?;
  let mut response=Json(value).into_response();response.headers_mut().insert("cache-control",HeaderValue::from_static("no-store"));Ok(response)
 }
 async fn claude_code_receipt(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<router_core::store::claude_manual::ManualReceipt>)->ApiResult<serde_json::Value>{

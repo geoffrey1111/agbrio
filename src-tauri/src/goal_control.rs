@@ -58,12 +58,21 @@ pub(crate) fn validate(core:&RouterCore,input:&GoalInput,operation:&str)->Result
  let mut s=core.session.lock().map_err(|_|"GOAL_SESSION_UNAVAILABLE")?;checked(core,&mut s,input,operation).map(|_|())
 }
 pub(crate) fn apply(core:&RouterCore,id:&str,input:GoalInput,operation:&str,allow_usage_resume:bool)->Result<GoalControlReceipt,String>{
+ apply_inner(core,id,input,operation,allow_usage_resume,None)
+}
+pub(crate) fn recover_model_failure(core:&RouterCore,id:&str,input:GoalInput,failed_turn:&str)->Result<GoalControlReceipt,String>{
+ apply_inner(core,id,input,"RESUME_GOAL",false,Some(failed_turn))
+}
+fn apply_inner(core:&RouterCore,id:&str,input:GoalInput,operation:&str,allow_usage_resume:bool,failed_turn:Option<&str>)->Result<GoalControlReceipt,String>{
  let hash=format!("{:x}",Sha256::digest(serde_json::to_vec(&json!([operation,input])).map_err(|_|"GOAL_ARGUMENTS_INVALID")?));
  let old=core.store.prepare_goal_control(&input.target.thread_id,id,&hash)?;
  if old.status!="READY"{return Ok(old);}
  let mut s=core.session.lock().map_err(|_|"GOAL_SESSION_UNAVAILABLE")?;
  let prepared:Result<MobileCodexGoal,String>=(||{
   let current=checked(core,&mut s,&input,operation)?;
+  if let Some(turn)=failed_turn{
+   if current.status!="blocked" || !s.adapter.as_ref().and_then(|a|a.latest_turn_diagnostic(&input.target.thread_id)).is_some_and(|d|d.turn_id==turn&&crate::local_safety::recoverable(&d)){return Err("GOAL_MODEL_FAILURE_CHANGED".into());}
+  }
   if operation=="RESUME_GOAL"&&current.status=="usageLimited"&&!allow_usage_resume{return Err("GOAL_LIMIT_REQUIRES_OWNER_ANSWER".into());}
   // Resume acquires an already paused/stopped native thread. Never start a chat,
   // recreate an objective, replay a handoff or change budget/settings.
@@ -78,6 +87,7 @@ pub(crate) fn apply(core:&RouterCore,id:&str,input:GoalInput,operation:&str,allo
    s.ready_threads.insert(input.target.thread_id.clone());
   }
   let rechecked=checked(core,&mut s,&input,operation)?;
+  if let Some(turn)=failed_turn{if rechecked.status!="blocked" || !s.adapter.as_ref().and_then(|a|a.latest_turn_diagnostic(&input.target.thread_id)).is_some_and(|d|d.turn_id==turn&&crate::local_safety::recoverable(&d)){return Err("GOAL_MODEL_FAILURE_CHANGED".into());}}
   if rechecked.fingerprint!=current.fingerprint{return Err("GOAL_CHANGED_REFRESH".into());}Ok(current)
  })();
  let before=match prepared{Ok(g)=>g,Err(code)=>{let fixed=if code.starts_with("GOAL_")||code.starts_with("REPLY_"){code.clone()}else{"GOAL_PRECHECK_FAILED".into()};core.store.finish_goal_control(&input.target.thread_id,id,"REJECTED",None,Some(&fixed))?;return Err(fixed);}};

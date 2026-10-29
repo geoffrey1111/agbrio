@@ -37,6 +37,14 @@ fn watch(core:&RouterCore,id:&str)->Result<CodexWatch,String>{core.store.codex_c
 pub(crate) fn default_reply_mode(running:bool,controllable:bool)->Result<&'static str,String>{
  if !running{Ok("SEND")}else if controllable{Ok("STEER")}else{Err("REPLY_STEER_UNAVAILABLE_CHOOSE_QUEUE".into())}
 }
+pub(crate) fn resource_notice_preflight(core:&RouterCore,id:&str)->Result<(CodexWatch,String,Option<String>),String>{
+ let view=state(core,id)?;
+ if view.goal.as_ref().is_some_and(|g|matches!(g.status.as_str(),"usageLimited"|"paused"|"blocked")){return Err("SAFETY_RECEIVER_GOAL_UNAVAILABLE".into());}
+ if !view.requests.is_empty()||view.async_questions.iter().any(|q|q["responseSent"]!=true){return Err("SAFETY_DECISION_PENDING".into());}
+ let mode=default_reply_mode(view.external_busy||view.owned_turn_id.is_some(),view.controllable_turn_id.is_some())?;
+ let turn=if mode=="STEER"{view.controllable_turn_id}else{view.watch.snapshot.turn_id.clone()};
+ Ok((view.watch,mode.into(),turn))
+}
 pub(crate) fn automatic_reply_target(core:&RouterCore,id:&str,generation:i64,expected:Option<String>)->Result<(String,Option<String>),String>{
  let view=state(core,id)?;
  if view.watch.generation!=generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}

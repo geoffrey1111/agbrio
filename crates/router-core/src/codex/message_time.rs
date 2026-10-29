@@ -34,6 +34,13 @@ fn project(bytes:&[u8])->Option<String>{
 }
 #[cfg(test)]mod tests{
  use super::*;use serde_json::json;
+ #[test]#[ignore="Explicit metadata-only audit of owner-selected native paths; no provider calls or writes"]
+ fn owner_selected_native_message_times(){
+  let path=std::env::var_os("AGBRIO_MESSAGE_TIME_AUDIT").expect("explicit local source audit");
+  let rows:Vec<Value>=serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();assert!(!rows.is_empty());
+  for row in &rows{assert!(read(Path::new(row["path"].as_str().unwrap()),row["thread"].as_str().unwrap(),row["cwd"].as_str().unwrap()).is_some(),"exact native source has no readable public message time");}
+  println!("NATIVE_MESSAGE_TIME_READ_ONLY_PASS sources={}",rows.len());
+ }
  #[test]fn only_native_public_messages_move_time(){
   let row=|role:&str,phase:&str,at:&str|json!({"type":"response_item","timestamp":at,"payload":{"type":"message","role":role,"phase":phase,"content":[{"type":"output_text","text":"fixture"}]}}).to_string()+"\n";
   let input=row("user","","2026-10-23T00:01:00Z")+&row("assistant","commentary","2026-10-23T00:02:00Z")+&row("assistant","analysis","2026-10-23T00:09:00Z")+"{\"type\":\"event_msg\",\"timestamp\":\"2026-10-23T00:10:00Z\"}\n";

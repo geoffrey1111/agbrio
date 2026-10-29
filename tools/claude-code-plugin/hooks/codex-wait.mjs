@@ -1,4 +1,5 @@
 // Native Mods APIs only. A notice is metadata, never a provider reply or an owner instruction.
+import {registerTaskWait,cancelTaskWait,taskWaitStatus} from './codex-notices.mjs';
 const TOOL='mcp__agbrio-bridge__codex_wait';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const TERMINAL=['RESULT_READY','ACTION_REQUIRED','FAILED','INTERRUPTED'];
@@ -33,7 +34,7 @@ function target(input){
 }
 function same(a,b){return a.threadId===b.threadId&&a.generation===b.generation&&a.turnId===b.turnId;}
 export async function probeCodexWait($,state,wait){
-  const response=await $.http.fetch(`${state.origin}/v1/claude-code/codex-wait`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${state.token}`},body:JSON.stringify({...identity(state),instanceId:state.instanceId,...target(wait)})});
+  const response=await $.http.fetch(`${state.origin}/v1/claude-code/codex-wait`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${state.token}`,'x-agbrio-wait-version':'2'},body:JSON.stringify({...identity(state),instanceId:state.instanceId,...target(wait)})});
   if(!response.ok)throw Error(response.status===404?'AGBRIO_WAIT_HOST_UPDATE_REQUIRED':'AGBRIO_WAIT_SOURCE_UNAVAILABLE');
   const value=JSON.parse(response.text||'{}');
   if(!same(value,wait)||!['IDLE','RUNNING','RESULT_PENDING','INCOMPLETE','UNKNOWN',...TERMINAL].includes(value.state))throw Error('AGBRIO_WAIT_RESPONSE_INVALID');
@@ -43,9 +44,11 @@ export function waitNotice(wait,status){
   return `Agbrio Codex notice (metadata only)\nthreadId: ${wait.threadId}\nturnId: ${wait.turnId}\ngeneration: ${wait.generation}\nstate: ${status}\nRead this exact conversation through the authorized Agbrio MCP before reporting its result. This notice contains no reply body, approval, or permission to send another message. Follow only the owner's previously delegated task; ask the owner for any missing decision.`;
 }
 export async function handleCodexWait($,state,input){return serial(state,async()=>{
+  if(input.action==='wait'&&input.followGoal===true)return registerTaskWait($,state,input);
+  if(input.action==='cancel'&&input.subscriptionId)return cancelTaskWait($,state,input);
   const waits=await load($,state),now=await $.clock.now();
   for(const w of waits)if(w.status==='WAITING'&&w.expiresAt<=now)w.status='EXPIRED';
-  if(input.action==='status'){await save($,state,waits);return{pluginVersion:'0.1.12',waits,capacity:{waiting:waits.filter(w=>w.status==='WAITING').length,maxWaiting:MAX_WAITING,unknown:waits.filter(w=>w.status==='UNKNOWN').length}};}
+  if(input.action==='status'){await save($,state,waits);return{persistentSubscriptions:state.taskSubscriptions??[],pluginVersion:'0.1.15',waits,capacity:{waiting:waits.filter(w=>w.status==='WAITING').length,maxWaiting:MAX_WAITING,unknown:waits.filter(w=>w.status==='UNKNOWN').length}};}
   const t=target(input),saved=await $.store.get(archiveKey(identity(state),t)),old=waits.find(w=>same(w,t))??(saved?.sessionId===state.identity.sessionId&&saved.cwd===state.identity.cwd&&same(saved.wait??{},t)?saved.wait:null);
   if(input.action==='cancel'){
     if(old?.status==='WAITING')old.status='CANCELLED';
@@ -68,6 +71,7 @@ export async function tickCodexWaits($,state){return serial(state,async()=>{
   if(now<(state.codexWaitNextAt??0))return;
   state.codexWaitNextAt=now+5000;
   const waits=await load($,state);
+  for(const w of waits)if(w.status==='WAITING'&&state.taskSubscriptions?.some(s=>s.mode==='GOAL'&&['ACTIVE','DONE'].includes(s.status)&&s.threadId===w.threadId&&s.generation===w.generation))w.status='CANCELLED';
   if(!waits.length)return;
   for(const wait of waits){
     if(wait.status!=='WAITING')continue;
@@ -90,7 +94,7 @@ async function submitWaitNotice($,state,wait){
 }
 export async function initCodexWait($,state){
     state.codexWaitReady=false;
-    try{await $.tool.register({name:'codex_wait',description:'Only when the owner asks to wait for a specific Codex turn: register one metadata notification back to this same Claude session, cancel it, or inspect status. First read the exact target with authorized Agbrio MCP. Does not read bodies, send to Codex, or approve further work. Requires the Agbrio Host with codex-wait support; open session and live plugin required. Settled history is compacted without losing exact-turn deduplication. Up to128 concurrent waits; status reports capacity. UNKNOWN is never retried.',inputSchema:{type:'object',properties:{action:{type:'string',enum:['wait','status','cancel']},threadId:{type:'string'},generation:{type:'integer'},turnId:{type:'string'},ttlSeconds:{type:'integer',minimum:30,maximum:86400}},required:['action'],additionalProperties:false}});state.codexWaitReady=true;}catch{}
+    try{await $.tool.register({name:'codex_wait',description:'Only for an owner-delegated Codex task: use followGoal:true to follow the same native Goal across intermediate turns. Receive new-question metadata and final/blocked Goal metadata separately, without progress spam. Host-persisted subscriptions survive reloads. Set followGoal:false or omit it for legacy exact-turn one-shot waiting. Cancel a durable subscription by subscriptionId, or inspect status. First read the exact target with authorized Agbrio MCP. Does not read bodies, send to Codex, or approve further work. Requires the Agbrio Host with codex-wait support; open session and live plugin required. Settled history is compacted without losing exact-turn deduplication. Up to128 concurrent waits; status reports capacity. UNKNOWN is never retried.',inputSchema:{type:'object',properties:{action:{type:'string',enum:['wait','status','cancel']},followGoal:{type:'boolean'},subscriptionId:{type:'string'},threadId:{type:'string'},generation:{type:'integer'},turnId:{type:'string'},ttlSeconds:{type:'integer',minimum:30,maximum:86400}},required:['action'],additionalProperties:false}});state.codexWaitReady=true;}catch{}
 }
 export function registerCodexWait(on,state){
   on('tool.call',{tool:TOOL},async($,e)=>{

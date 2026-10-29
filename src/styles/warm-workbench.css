@@ -374,3 +374,18 @@
 .v3-role-dialog.v4-role-review-dialog > footer { position: static; flex: 0 0 auto; margin: 0; padding: 16px 24px max(16px, env(safe-area-inset-bottom)); border-top: 1px solid var(--awr-line); }
 .v4-role-review-body > p { font-size: 14px; line-height: 26px; }
 @media (max-width: 600px) { .v3-role-dialog.v4-role-review-dialog { top: max(12px, env(safe-area-inset-top)); max-height: calc(100dvh - 24px); } }
+
+/* Reuse the existing runtime card and native form language for local protection. */
+.local-safety-settings>label{display:flex;align-items:center;gap:10px;min-height:44px}
+.local-safety-settings select{width:100%;min-width:0;max-width:100%;min-height:44px;padding:10px 12px;margin-block:4px 16px;border:1px solid var(--awr-border,#ddd4c8);border-radius:12px;background:var(--awr-paper);color:inherit;font:inherit;font-size:16px;text-overflow:ellipsis}
+.local-safety-settings details{margin-top:16px}.local-safety-settings summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
+.local-safety-settings li{overflow-wrap:anywhere;margin-block:8px;font-size:14px}.local-safety-settings time{font-variant-numeric:tabular-nums}
+
+.local-safety-targets{list-style:none;margin:8px 0 16px;padding:0}.local-safety-target{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--awr-border,#ddd4c8)}
+.local-safety-target>span{min-width:0;flex:1}.local-safety-target strong,.local-safety-target small{display:block;overflow-wrap:anywhere}.local-safety-target small{font-size:12px;color:var(--r2-muted,var(--awr-muted));line-height:1.6}.local-safety-target strong{font-size:14px;line-height:1.6}
+.local-safety-target>div{display:flex;flex-shrink:0;gap:2px}.r2-router .local-safety-target button,.local-safety-target button{display:inline-flex;align-items:center;justify-content:center;min-width:44px;width:44px;min-height:44px;margin:0;padding:0;border:0;background:transparent}
+@media(max-width:420px){.local-safety-target{gap:6px}.local-safety-target>div{gap:0}}
+
+.resource-monitor-settings{margin-block:20px}.resource-monitor-settings>summary{font-weight:600}.resource-monitor-settings h3{font-size:15px;margin:24px 0 10px}.resource-monitor-settings label{display:flex;align-items:center;gap:10px;min-height:44px}
+.resource-threshold{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;margin-block:12px 20px}.resource-threshold label{font-size:14px}.resource-threshold output{font-variant-numeric:tabular-nums;align-self:center}.resource-threshold input[type=range]{grid-column:1/-1;width:100%;min-height:44px;accent-color:var(--awr-accent,#bd6844);margin:0;cursor:pointer}.resource-threshold small{grid-column:1/-1;font-size:12px;color:var(--r2-muted,var(--awr-muted))}
+.resource-disk{padding-block:8px;border-top:1px solid var(--awr-border,#ddd4c8)}.resource-disk>label small{margin-left:auto;white-space:nowrap;font-variant-numeric:tabular-nums}.resource-monitor-settings .resource-monitor-note{font-size:12px;color:var(--r2-muted,var(--awr-muted));line-height:1.7}

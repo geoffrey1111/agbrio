@@ -1,4 +1,15 @@
 mod attachment_cache;
+mod local_safety;
+mod codex_notices;
+mod resource_monitor;
+#[tauri::command]
+async fn resource_monitor_read()->Result<serde_json::Value,String>{tauri::async_runtime::spawn_blocking(resource_monitor::read).await.map_err(|_|"RESOURCE_MONITOR_UNAVAILABLE")?}
+#[tauri::command]
+async fn resource_monitor_apply(config:resource_monitor::Config)->Result<serde_json::Value,String>{tauri::async_runtime::spawn_blocking(move||resource_monitor::apply(config)).await.map_err(|_|"RESOURCE_MONITOR_UNAVAILABLE")?}
+#[tauri::command]
+async fn local_safety_status(state:tauri::State<'_,RouterState>)->Result<local_safety::Status,String>{let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||local_safety::status(&core)).await.map_err(|_|"SAFETY_UNAVAILABLE")?}
+#[tauri::command]
+async fn local_safety_save(state:tauri::State<'_,RouterState>,settings:router_core::store::local_safety::Settings)->Result<local_safety::Status,String>{let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||local_safety::save(&core,settings)).await.map_err(|_|"SAFETY_UNAVAILABLE")?}
 #[tauri::command]
 async fn app_cache_status(state:tauri::State<'_,RouterState>)->Result<attachment_cache::Report,String>{let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||attachment_cache::inspect(&core,false)).await.map_err(|_|"CACHE_UNAVAILABLE")?}
 #[tauri::command]
@@ -1558,7 +1569,7 @@ pub fn run() {
     let builder = builder.setup(|app| configure_host(app));
     #[cfg(debug_assertions)]
     let builder = builder.invoke_handler(tauri::generate_handler![
-        app_cache_status,app_cache_cleanup,published_boards_list,published_board_publish,published_board_snapshot,published_board_asset,app_capabilities,app_diagnostics,character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
+        resource_monitor_read,resource_monitor_apply,local_safety_status,local_safety_save,app_cache_status,app_cache_cleanup,published_boards_list,published_board_publish,published_board_snapshot,published_board_asset,app_capabilities,app_diagnostics,character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
         claude_code_sessions,claude_code_connections,claude_code_setup,claude_code_connect,claude_code_revoke,
         desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,hosted_connection_trial,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_set_launch_administrator, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
@@ -1647,7 +1658,7 @@ pub fn run() {
     ]);
     #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(tauri::generate_handler![
-        app_cache_status,app_cache_cleanup,published_boards_list,published_board_publish,published_board_snapshot,published_board_asset,app_capabilities,app_diagnostics,character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
+        resource_monitor_read,resource_monitor_apply,local_safety_status,local_safety_save,app_cache_status,app_cache_cleanup,published_boards_list,published_board_publish,published_board_snapshot,published_board_asset,app_capabilities,app_diagnostics,character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
         claude_code_sessions,claude_code_connections,claude_code_setup,claude_code_connect,claude_code_revoke,
         desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,hosted_connection_trial,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_set_launch_administrator, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,

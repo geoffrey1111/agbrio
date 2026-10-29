@@ -1,1 +1,10 @@
-{"version": "0.1.35-rc.88", "bundle": {"windows": {"nsis": {"compression": "zlib"}}}}
+{
+  "version": "0.1.35-rc.91",
+  "bundle": {
+    "windows": {
+      "nsis": {
+        "compression": "zlib"
+      }
+    }
+  }
+}

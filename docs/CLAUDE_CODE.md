@@ -297,3 +297,10 @@ claude plugin update agbrio-bridge@agbrio-observation --scope user
 ```
 
 Then use Claude Code’s official `/reload-plugins` when the conversation is idle. Never stop a running task merely to update a plugin. The CLI cache version does not prove an already-open session adopted it.
+
+
+## 持续接收 Codex 任务提醒
+
+加载 Agbrio 插件0.1.15后，管理助手可对已经明确委托的 Codex 原生目标使用 `codex_wait` 的 `followGoal: true`。新问题单独提醒，目标最终完成或受阻另行提醒，中间普通进度不打扰。订阅由电脑Host持久保存，重载插件后继续核对，不必每轮重新注册。目标发生替换时只提醒原订阅范围已变，不自动跟随新目标。
+
+MCP连接可读写获授权的Codex对话，但不等于Claude原生通知组件已加载。更新后打开原管理会话；会话仍使用旧插件时，待空闲执行 `/reload-plugins`。重载不等于安装，首次使用请在应用内完成「安装并连接 Claude 完整功能」。原生会话和电脑都需在线；提示已待发不代表实际送达或助手已处理。UNKNOWN不自动重试，只有对应原生用户行回执证明送达。原生提问的回答、任务控制和其他写权限仍受原有授权约束。

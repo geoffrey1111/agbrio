@@ -4342,12 +4342,14 @@ pub(crate) fn run_codex_existing_thread_observer(
 ) {
     let mut activity_cursor=0;
     let mut watch_cursor=None;
+    let mut notice_cursor=None;
     'observer: loop {
         match resident_observer_connection(&session,observer_epoch){
             ObserverConnection::Stopped=>return,
             ObserverConnection::Borrowed=>{std::thread::sleep(Duration::from_millis(200));continue;}
             ObserverConnection::Ready=>{}
         }
+        crate::codex_notices::poll(&store,&session,observer_epoch,&mut notice_cursor);
         crate::role_bridge::refresh_resident_activity(&store,&session,observer_epoch,&mut activity_cursor);
         let active_workstream_ids = match active_initialized_codex_observer_workstreams(&store) {
             Ok(workstream_ids) => workstream_ids,

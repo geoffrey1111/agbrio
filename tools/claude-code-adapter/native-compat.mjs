@@ -11,8 +11,8 @@ await mkdir(path.join(fixture,'.claude-plugin'));await mkdir(path.join(fixture,'
 const manifest=JSON.parse(await readFile(path.join(plugin,'.claude-plugin/plugin.json'),'utf8'));
 manifest.userConfig.hostUrl.default='http://127.0.0.1:12345';manifest.userConfig.token.default='a'.repeat(64);
 await writeFile(path.join(fixture,'.claude-plugin/plugin.json'),JSON.stringify(manifest));
-for(const file of ['register.mjs','owner-requests.mjs','codex-wait.mjs','hooks.json'])await copyFile(path.join(plugin,'hooks',file),path.join(fixture,'hooks',file));
-for(const file of mode==='wait'?['native-wait.test.ts']:['native-compat.test.ts','native-wait.test.ts'])await copyFile(path.join(import.meta.dirname,file),path.join(fixture,file));
+for(const file of ['register.mjs','owner-requests.mjs','codex-wait.mjs','codex-notices.mjs','resource-notice.mjs','hooks.json'])await copyFile(path.join(plugin,'hooks',file),path.join(fixture,'hooks',file));
+for(const file of mode==='wait'?['native-wait.test.ts','native-task-notices.test.ts']:['native-compat.test.ts','native-wait.test.ts','native-task-notices.test.ts'])await copyFile(path.join(import.meta.dirname,file),path.join(fixture,file));
 const result=spawnSync(path.resolve(engine),['plugin','test',fixture],{windowsHide:true,encoding:'utf8'});
 process.stdout.write(result.stdout??'');process.stderr.write(result.stderr??'');
 process.stdout.write(JSON.stringify({fixture,realProviderCalls:0,mode:'NATIVE_ENGINE_TEST_KIT_ONLY',status:result.status})+'\n');

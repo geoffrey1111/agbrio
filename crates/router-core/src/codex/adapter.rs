@@ -216,9 +216,17 @@ fn exact_not_loaded_metadata_error(error: &str, expected_thread: &str) -> bool {
 pub struct NativeTurnDiagnostic{pub thread_id:String,pub turn_id:String,pub status:String,pub error_code:Option<String>,pub will_retry:Option<bool>,pub confirmed_terminal:bool}
 fn native_error_code(error:&Value)->Option<String>{
  let info=&error["codexErrorInfo"];
+ // Fixed native capacity messages may arrive as `other` (including remote
+ // compaction). Retain a bounded classification, never arbitrary error text.
+ let message=error["message"].as_str().unwrap_or("");
+ if message.len()<4096 && message.contains("Selected model is at capacity. Please try a different model.") && (info.is_null()||info.as_str()==Some("other")||info.as_object().is_some_and(|o|o.len()==1&&o.contains_key("other"))) {return Some("modelCapacity".into());}
  const LABELS:&[&str]=&["contextWindowExceeded","sessionBudgetExceeded","usageLimitExceeded","rateLimitExceeded","flexUnavailable","serverOverloaded","cyberPolicy","misalignmentPolicyViolation","tooManyDenials","internalServerError","unauthorized","badRequest","threadRollbackFailed","sandboxError","other","httpConnectionFailed","responseStreamConnectionFailed","responseStreamDisconnected","responseTooManyFailedAttempts"];
  let value=info.as_str().or_else(||info.as_object().and_then(|o|o.keys().find(|k|LABELS.contains(&k.as_str())).map(String::as_str)));
  value.filter(|v|LABELS.contains(v)).map(str::to_owned)
+}
+#[cfg(test)]mod local_safety_error_tests{
+ use super::*;
+ #[test]fn exact_native_capacity_message_is_classified_but_cannot_override_policy_or_quota(){let message="Error running remote compact task: Selected model is at capacity. Please try a different model.";assert_eq!(native_error_code(&serde_json::json!({"message":message,"codexErrorInfo":"other"})).as_deref(),Some("modelCapacity"));assert_eq!(native_error_code(&serde_json::json!({"message":message,"codexErrorInfo":{"other":null}})).as_deref(),Some("modelCapacity"));for code in ["cyberPolicy","usageLimitExceeded","unauthorized"]{assert_eq!(native_error_code(&serde_json::json!({"message":message,"codexErrorInfo":code})).as_deref(),Some(code));}assert_ne!(native_error_code(&serde_json::json!({"message":"a tool failed","codexErrorInfo":"other"})).as_deref(),Some("modelCapacity"));}
 }
 #[derive(Default)]
 struct TurnRegistry {

@@ -217,6 +217,21 @@ pub(crate) fn status(path: &Path, session: &str) -> Option<Status> {
     if start==0 && state.is_none() && !skipped_large {local_turn.map(|turn|Status{turn,state:"EMPTY",reply:None,completed_at:0,cwd})}else{None}
 }
 const RECEIPT_SCAN: u64 = 16 * 1024 * 1024;
+/// A delivered resource notice may fail over only when this exact stored
+/// native user row belongs to the latest failed turn. A later turn, generic
+/// quota guess, lost submission response or missing row is not evidence.
+pub(crate) fn resource_notice_failed(path:&Path,session:&str,cwd:&str,message:&str)->bool{
+ let Some(current)=status(path,session)else{return false};
+ if current.state!="FAILED"||!current.cwd.as_ref().is_some_and(|root|router_core::claude_code::same_root(root,cwd)){return false;}
+ let Ok(mut f)=File::open(path)else{return false};let Ok(meta)=f.metadata()else{return false};
+ if f.seek(SeekFrom::Start(meta.len().saturating_sub(STATUS_SCAN))).is_err(){return false;}
+ let mut bytes=Vec::new();if f.take(STATUS_SCAN).read_to_end(&mut bytes).is_err(){return false;}
+ for line in bytes.split(|b|*b==b'\n').rev().filter(|b|b.len()<=MAX_LINE){let Ok(v)=serde_json::from_slice::<Value>(line)else{continue};
+  if v["sessionId"]!=session||v["type"]!="user"||v["uuid"]!=message||v["isSidechain"]==true||v["isCompactSummary"]==true{continue;}
+  let turn=v["promptId"].as_str().filter(|p|!p.is_empty()).unwrap_or(message);
+  return current.turn==format!("claude_turn:{turn}");
+ }false
+}
 pub(crate) fn awaiting_reply(session:&str,turn:&str)->bool{
  latest(session).is_some_and(|p|p.turns.iter().any(|t|t.id==turn)&&page_awaiting_reply(&p))
 }
@@ -327,6 +342,16 @@ mod tests {
     use super::*;
     use serde_json::json;
     const S: &str = "10000000-0000-4000-8000-000000000001";
+    #[test]fn resource_failover_requires_the_exact_delivered_row_in_the_current_failed_turn(){
+      let d=tempfile::tempdir().unwrap();let path=d.path().join("notice.jsonl");let cwd=d.path().to_str().unwrap();let message="20000000-0000-4000-8000-000000000001";
+      let prompt=json!({"type":"user","sessionId":S,"uuid":message,"promptId":"notice-turn","cwd":cwd,"message":{"role":"user","content":"Agbrio 本机资源告警（只读，提醒）"}});
+      let error=json!({"type":"assistant","sessionId":S,"cwd":cwd,"isApiErrorMessage":true,"message":{"stop_reason":"stop_sequence","content":[{"type":"text","text":"rate limit"}]}});
+      std::fs::write(&path,format!("{prompt}\n{error}\n")).unwrap();assert!(resource_notice_failed(&path,S,cwd,message));assert!(!resource_notice_failed(&path,S,cwd,"different-row"));
+      let later=json!({"type":"user","sessionId":S,"uuid":"later-row","promptId":"later-turn","cwd":cwd,"message":{"role":"user","content":"new task"}});
+      std::fs::write(&path,format!("{prompt}\n{error}\n{later}\n{error}\n")).unwrap();assert!(!resource_notice_failed(&path,S,cwd,message));
+      let complete=json!({"type":"assistant","sessionId":S,"cwd":cwd,"message":{"stop_reason":"end_turn","content":[{"type":"text","text":"done"}]}});std::fs::write(&path,format!("{prompt}\n{complete}\n")).unwrap();assert!(!resource_notice_failed(&path,S,cwd,message));
+    }
+
     fn user(prompt: &str, id: &str, text: &str) -> String { json!({"type":"user","sessionId":S,"promptId":prompt,"uuid":id,"cwd":"D:\\p","message":{"role":"user","content":text}}).to_string() }
     fn reply(msg: &str, text: &str) -> String { json!({"type":"assistant","sessionId":S,"uuid":format!("u-{msg}-{}",text.len()),"message":{"id":msg,"content":[{"type":"text","text":text}]}}).to_string() }
     #[test]
