@@ -23,3 +23,12 @@ it('ignores a late response from a replaced API instance',async()=>{
 it('closes a hidden quota sheet while retaining its last reading and refresh clock',async()=>{
  const api={read:vi.fn().mockResolvedValue(native)};const{rerender}=render(<CodexQuota api={api} active/>);await screen.findByText('每周剩余 64%');fireEvent.click(screen.getByRole('button',{name:'查看 Codex 额度'}));expect(screen.getByRole('dialog')).toBeVisible();rerender(<CodexQuota api={api} active={false}/>);expect(screen.queryByRole('dialog')).toBeNull();rerender(<CodexQuota api={api} active/>);expect(screen.getByText('每周剩余 64%')).toBeVisible();expect(api.read).toHaveBeenCalledTimes(1);
 });
+
+it('shows Claude Desktop subscription percentages independently of token counts',async()=>{
+ const data:CodexQuotaSnapshot={status:'AVAILABLE',reason:'DESKTOP_APP',observedAt:1793244008338,buckets:[{id:'claude',windows:[{slot:'primary',usedPercent:5,remainingPercent:95,windowDurationMins:300,resetsAt:null},{slot:'secondary',usedPercent:15,remainingPercent:85,windowDurationMins:10080,resetsAt:null}]}]};
+ render(<CodexQuota provider="Claude Code" api={{read:async()=>data}}/>);
+ await screen.findByText('5 小时剩余 95%');
+ fireEvent.click(screen.getByRole('button',{name:'查看 Claude Code 额度'}));
+ expect(screen.getAllByRole('meter').map(m=>m.getAttribute('aria-valuenow'))).toEqual(['95','85']);
+ expect(screen.queryByText(/在终端或 IDE/)).toBeNull();
+});

@@ -46,12 +46,26 @@ fn status_line() -> Option<Quota> {
 /// itself records; otherwise an estimate from Claude Code's own logs.
 pub(crate) fn read() -> Quota {
     if let Some(exact) = status_line() { return exact; }
+    // Use the adapter's verified Desktop roots, including the Store app's
+    // redirected LocalCache. Read only its bounded usage file, never credentials.
+    let roots = crate::claude_code_desktop::data_roots();
+    if let Some(desktop) = desktop_at(&roots, None, now()) { return desktop; }
     let logs = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(|h| PathBuf::from(h).join(".claude").join("projects"));
-    let local = logs.as_deref().map(|root| estimate(root, now()));
-    let desktop = std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("Claude").join("plan-usage-history.json"))
-        .and_then(|path| { let meta = std::fs::metadata(&path).ok()?; (meta.is_file() && meta.len() <= MAX_HISTORY_BYTES).then_some(())?; serde_json::from_slice::<Value>(&std::fs::read(&path).ok()?).ok() })
-        .and_then(|history| desktop_history(&history, local.as_ref(), now()));
-    desktop.or(local).unwrap_or_else(|| unavailable("NOT_ENABLED"))
+    logs.as_deref().map(|root| estimate(root, now())).unwrap_or_else(|| unavailable("NOT_ENABLED"))
+}
+
+fn desktop_at(roots: &[PathBuf], local: Option<&Quota>, now_ms: i64) -> Option<Quota> {
+    roots.iter().filter_map(|root| {
+        let path = root.join("plan-usage-history.json");
+        let meta = std::fs::metadata(&path).ok()?;
+        if !meta.is_file() || meta.len() > MAX_HISTORY_BYTES { return None; }
+        let file = std::fs::File::open(path).ok()?;
+        use std::io::Read;
+        let mut bytes = Vec::new();
+        file.take(MAX_HISTORY_BYTES + 1).read_to_end(&mut bytes).ok()?;
+        if bytes.len() as u64 > MAX_HISTORY_BYTES { return None; }
+        desktop_history(&serde_json::from_slice::<Value>(&bytes).ok()?, local, now_ms)
+    }).max_by_key(|quota| quota.observed_at)
 }
 
 const MAX_HISTORY_BYTES: u64 = 4 * 1024 * 1024;
@@ -179,5 +193,30 @@ mod tests {
         assert_eq!(project(&json!({"observedAt":1,"fiveHour":{"usedPercentage":140}})).status, "UNAVAILABLE");
         assert_eq!(project(&json!({"fiveHour":{"usedPercentage":10}})).status, "UNAVAILABLE");
         assert_eq!(project(&json!({})).reason, Some("NO_USAGE_WINDOWS"));
+    }
+}
+
+#[cfg(test)]
+mod desktop_path_tests {
+    use super::*;
+    #[test]
+    fn store_history_is_used_when_legacy_history_is_absent_or_older() {
+        let dir = tempfile::tempdir().unwrap();
+        let legacy = dir.path().join("Roaming/Claude");
+        let store = dir.path().join("Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude");
+        std::fs::create_dir_all(&store).unwrap();
+        let now = 1_793_244_008_338_i64;
+        let history = |at| serde_json::json!({"samples":[{"t":at,"u":{"fh":5,"sd":15}}]}).to_string();
+        std::fs::write(store.join("plan-usage-history.json"), history(now)).unwrap();
+        let roots = vec![legacy.clone(), store.clone()];
+        let actual = desktop_at(&roots, None, now).unwrap();
+        assert_eq!(actual.buckets[0].windows[0].remaining_percent, 95.0);
+        assert_eq!(actual.buckets[0].windows[1].remaining_percent, 85.0);
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("plan-usage-history.json"), history(now - 1000)).unwrap();
+        assert_eq!(desktop_at(&roots, None, now).unwrap().observed_at, now);
+        assert!(desktop_at(&roots, None, now + DESKTOP_FRESH_MS + 1).is_none());
+        std::fs::write(store.join("plan-usage-history.json"), "invalid").unwrap();
+        assert_eq!(desktop_at(&roots, None, now).unwrap().observed_at, now - 1000);
     }
 }

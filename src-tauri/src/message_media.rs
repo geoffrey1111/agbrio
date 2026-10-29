@@ -114,3 +114,50 @@ fn read_file(root:&str,text:&str,source:&str,user_requested:bool)->Result<MediaF
  assert!(transcript_item(&path,sid,"X:/foreign","claude_turn:p0","claude_msg:m0").is_err());assert!(transcript_item(&path,sid,d.path().to_str().unwrap(),"claude_turn:p1","claude_msg:m0").is_err());
  }
 }
+
+#[cfg(test)]
+mod gif_tests {
+    use super::*;
+    #[test]
+    fn presented_gif_bytes_are_preserved_for_animation() {
+        let root = tempfile::tempdir().unwrap();
+        let bytes = b"GIF89a exact animated bytes";
+        std::fs::write(root.path().join("animation.gif"), bytes).unwrap();
+        let media = read_file(root.path().to_str().unwrap(), "![animation](<animation.gif>)", "animation.gif", false).unwrap();
+        assert_eq!(media.mime, "image/gif");
+        assert_eq!(Base64::decode_vec(&media.data).unwrap(), bytes);
+        assert!(read_file(root.path().to_str().unwrap(), "other message", "animation.gif", false).is_err());
+    }
+}
+
+#[cfg(test)]
+mod owner_presentation_acceptance {
+    use super::*;
+    #[test]
+    #[ignore = "read-only exact owner transcript/file acceptance; explicit environment required"]
+    fn exact_native_file_card_resolves_existing_rasters() {
+        let path = std::path::PathBuf::from(std::env::var_os("AGBRIO_MEDIA_TRANSCRIPT").expect("exact transcript"));
+        let session = std::env::var("AGBRIO_MEDIA_SESSION").unwrap();
+        let item = std::env::var("AGBRIO_MEDIA_ITEM").unwrap();
+        let mut before = None;
+        for _ in 0..32 {
+            let page = crate::claude_transcript::page(&path, &session, before).unwrap();
+            if let Some((turn, message)) = page.turns.iter().find_map(|turn| turn.messages.iter().find(|m| m.id == item).map(|m| (turn, m))) {
+                let root = page.cwd.as_ref().unwrap();
+                let exact = transcript_item(&path, &session, root, &turn.id, &message.id).unwrap();
+                let sources: Vec<_> = exact.split("](<").skip(1).filter_map(|v| v.split_once(">)").map(|(source,_)| source)).collect();
+                assert!(!sources.is_empty(), "native file card absent");
+                for source in sources {
+                    let media = read_file(root, &exact, source, false).unwrap();
+                    assert!(media.mime.starts_with("image/"));
+                    let bytes = Base64::decode_vec(&media.data).unwrap();
+                    assert!(!bytes.is_empty());
+                    eprintln!("native presentation accepted: {} bytes, {}", bytes.len(), media.mime);
+                }
+                return;
+            }
+            match page.next { Some(next) if Some(next) != before => before = Some(next), _ => break }
+        }
+        panic!("exact native item not found");
+    }
+}

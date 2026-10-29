@@ -1539,5 +1539,7 @@
   "列表已更新": "Conversations updated",
   "刷新未完成，当前列表已保留。": "Refresh incomplete. Current conversations are kept.",
   "刷新对话列表": "Refresh conversations",
-  "Windows 拒绝执行已验证的 Codex 缓存。请保留诊断并检查系统执行限制，不要修改文件权限或关闭防护。": "Windows refused the verified Codex cache. Keep diagnostics and check execution restrictions; do not change file permissions or disable protection."
+  "Windows 拒绝执行已验证的 Codex 缓存。请保留诊断并检查系统执行限制，不要修改文件权限或关闭防护。": "Windows refused the verified Codex cache. Keep diagnostics and check execution restrictions; do not change file permissions or disable protection.",
+  "按这台电脑上的对话记录统计已用 tokens，不代表订阅额度百分比。打开 Claude 桌面 App 的「使用情况」更新额度后，可在这里刷新读取。": "Tokens counted from conversation logs on this computer are not a subscription percentage. Open Usage in the Claude desktop app, then refresh here to read its latest quota.",
+  "还没有读到用量。请打开 Claude 桌面 App 的「使用情况」后刷新；只有本机取得真实额度时才显示百分比。": "No usage data yet. Open Usage in the Claude desktop app, then refresh. Percentages appear only when actual quota data is available on this computer."
 }

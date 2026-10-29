@@ -28,3 +28,14 @@ it("retains the opened image snapshot when a later reply removes the thumbnail",
 it("copies only code bytes and reports an unavailable clipboard without throwing",async()=>{const original=navigator.clipboard;Object.defineProperty(navigator,"clipboard",{configurable:true,value:undefined});render(<MarkdownMessage text={'```text\nconst owner = "$literal";\n```'}/>);fireEvent.click(screen.getByRole("button",{name:"复制代码"}));expect(await screen.findByRole("status")).toHaveTextContent("复制未成功");cleanup();const writeText=vi.fn().mockResolvedValue(undefined);Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText}});render(<MarkdownMessage text={'```text\nconst owner = "$literal";\n```'}/>);fireEvent.click(screen.getByRole("button",{name:"复制代码"}));await screen.findByRole("button",{name:"已复制代码"});expect(writeText).toHaveBeenCalledWith('const owner = "$literal";\n');Object.defineProperty(navigator,"clipboard",{configurable:true,value:original});});
 
 it("magnifies a small image beyond its intrinsic size and restores its fit",async()=>{render(<MarkdownMessage text="![small](https://example.invalid/image.png)"/>);fireEvent.click(screen.getByRole("button",{name:"查看图片：small"}));const img=within(screen.getByRole("dialog")).getByRole("img");Object.defineProperty(img,"naturalWidth",{value:100});Object.defineProperty(img,"naturalHeight",{value:50});fireEvent.load(img);expect(img).toHaveStyle({width:"100px",height:"50px"});fireEvent.click(screen.getByRole("button",{name:"放大图片"}));expect(img).toHaveStyle({width:"150px",height:"75px"});fireEvent.click(screen.getByRole("button",{name:"适应屏幕"}));expect(img).toHaveStyle({width:"100px",height:"50px"});});
+
+it("keeps a native file card GIF animated in thumbnail and enlarged preview",async()=>{
+ const data="R0lGODlhAQABAIABAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==";
+ const media=vi.fn().mockResolvedValue({filename:"效果.gif",mime:"image/gif",data});
+ render(<MarkdownMessage text="![效果.gif](<D:/out/效果.gif>)" media={media}/>);
+ const thumbnail=await screen.findByRole('img',{name:'效果.gif'});
+ expect(thumbnail).toHaveAttribute('src',`data:image/gif;base64,${data}`);
+ expect(media).toHaveBeenCalledWith('D:/out/%E6%95%88%E6%9E%9C.gif');
+ fireEvent.click(screen.getByRole('button',{name:'查看图片：效果.gif'}));
+ expect(within(screen.getByRole('dialog')).getByRole('img')).toHaveAttribute('src',`data:image/gif;base64,${data}`);
+});

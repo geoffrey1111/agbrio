@@ -81,6 +81,29 @@ fn prompt_text(content: &Value) -> Option<String> {
     Some(text)
 }
 
+/// Native Desktop's user-facing file presentation. Only this exact built-in
+/// is public; Read/Bash/tool results and arbitrary tool inputs stay private.
+fn presented_files(items: &[Value]) -> String {
+    let mut out = Vec::new();
+    for block in items.iter().filter(|b| b["type"] == "tool_use" && b["name"] == "SendUserFile") {
+        let Some(files) = block.pointer("/input/files").and_then(Value::as_array) else { continue };
+        for file in files.iter().take(12).filter_map(Value::as_str) {
+            if file.len() > 4096 || file.chars().any(|c| c.is_control() || matches!(c, '<' | '>')) { continue; }
+            let path = file.replace('\\', "/");
+            let extension = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+            if !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp") { continue; }
+            // Encode Markdown/URL delimiters, retaining exact local source identity.
+            let source: String = path.bytes().map(|byte| {
+                if byte.is_ascii_alphanumeric() || b"-._~/:".contains(&byte) { (byte as char).to_string() }
+                else { format!("%{byte:02X}") }
+            }).collect();
+            let label = path.rsplit('/').next().unwrap_or("图片").replace(['[', ']'], "");
+            out.push(format!("![{label}](<{source}>)"));
+        }
+    }
+    out.join("\n\n")
+}
+
 /// One line, newest-first walk. Returns the parsed role for the caller's turn builder.
 enum Line { Prompt { turn: String, id: String, text: String, cwd: Option<String>, kind: &'static str, at: i64 }, Reply { id: String, text: String, card:Option<Value>, at: i64 }, Skip }
 #[cfg(test)]
@@ -115,7 +138,9 @@ fn classify(line: &[u8], session: &str) -> Line {
             let wrap=v["message"]["content"].as_array().and_then(|items|items.iter().find(|b|b["type"]=="tool_use"&&b["name"]=="mcp__ccd_turn__wrap_up"));
             let card=wrap.map(|b|{let input=&b["input"];let actions=input["actions"].as_array().map(|a|a.iter().take(12).filter_map(|a|Some(serde_json::json!({"label":a["label"].as_str()?.chars().take(2000).collect::<String>(),"message":a["message"].as_str()?.chars().take(100000).collect::<String>()}))).collect::<Vec<_>>()).unwrap_or_default();serde_json::json!({"id":b["id"],"question":input["ask"].as_str(),"actions":actions})});
             let recap=wrap.and_then(|b|b["input"]["recap"].as_str()).unwrap_or("");
-            let text=if text.trim().is_empty(){recap.to_owned()}else{text};
+            let mut text=if text.trim().is_empty(){recap.to_owned()}else{text};
+            let files = v["message"]["content"].as_array().map(|items| presented_files(items)).unwrap_or_default();
+            if !files.is_empty() { if !text.is_empty() { text.push_str("\n\n"); } text.push_str(&files); }
             if text.trim().is_empty()&&card.is_none() { return Line::Skip; }
             let id = v["message"]["id"].as_str().map(|m| format!("claude_msg:{m}")).unwrap_or(uuid);
             Line::Reply { id, text, card, at }
@@ -529,5 +554,27 @@ This is how Claude Code surfaces a prompt a plugin submits between turns.";
       for field in ["sessionId","uuid"]{let mut wrong=row.clone();wrong[field]="wrong".into();std::fs::write(&path,wrong.to_string()).unwrap();assert!(find_tool_result(&path,S,"exact-call").is_none());}
       let mut side=row.clone();side["isSidechain"]=true.into();std::fs::write(&path,side.to_string()).unwrap();assert!(find_tool_result(&path,S,"exact-call").is_none());
       std::fs::write(&path,row.to_string()).unwrap();assert_eq!(find_tool_result(&path,S,"exact-call").as_deref(),Some(uuid));assert!(find_tool_result(&path,S,"other-call").is_none());
+    }
+}
+
+#[cfg(test)]
+mod presentation_tests {
+    use super::*;
+    #[test]
+    fn native_file_cards_project_only_public_rasters_not_tool_data() {
+        let session = "10000000-0000-4000-8000-000000000001";
+        let row = serde_json::json!({"type":"assistant","sessionId":session,"message":{"id":"files","content":[
+            {"type":"tool_use","name":"Read","input":{"file_path":"D:/private.png"}},
+            {"type":"tool_use","name":"SendUserFile","input":{"files":["D:/out/图 #1.png","D:/out/animate.gif","D:/secret.txt"],"caption":"not arbitrary tool data"}}
+        ]}});
+        let bytes = serde_json::to_vec(&row).unwrap();
+        let Line::Reply { id, text, .. } = classify(&bytes, session) else { panic!("public files missing") };
+        assert_eq!(id, "claude_msg:files");
+        assert!(text.contains("D:/out/%E5%9B%BE%20%231.png"));
+        assert!(text.contains("![animate.gif](<D:/out/animate.gif>)"));
+        assert!(!text.contains("private") && !text.contains("secret") && !text.contains("arbitrary"));
+        assert!(matches!(classify(&bytes, "foreign-session"), Line::Skip));
+        let mut side = row; side["isSidechain"] = Value::Bool(true);
+        assert!(matches!(classify(&serde_json::to_vec(&side).unwrap(), session), Line::Skip));
     }
 }
