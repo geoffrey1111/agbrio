@@ -1,6 +1,6 @@
 //! Fixed, owner-enabled model recovery and resource metadata notices. No process actions.
 use crate::host_application::{RouterCore,read_codex_goal_from_session};
-use router_core::store::local_safety::{Settings,Target,Attempt};
+use router_core::store::local_safety::{Settings,Target,Attempt,resource_fresh,resource_deadline};
 use serde::{Deserialize,Serialize};
 use serde_json::{json,Value};
 use sha2::{Digest,Sha256};
@@ -131,6 +131,8 @@ fn handling_failed(core:&RouterCore,a:&Attempt)->bool{
   s.adapter.as_ref().and_then(|v|v.latest_turn_diagnostic(&a.thread_id)).is_some_and(|d|d.confirmed_terminal&&d.status=="failed"&&r.turn_id.as_deref()==Some(d.turn_id.as_str()))
  }
 }
+fn local_sample_label_at_offset(text:&str,at:i64,offset:time::UtcOffset,local:bool)->String{let Ok(stamp)=time::OffsetDateTime::from_unix_timestamp(at/1000)else{return text.into()};let Ok(label)=stamp.to_offset(offset).format(&time::format_description::well_known::Rfc3339)else{return text.into()};let Some((head,tail))=text.split_once("\n采样时间：")else{return text.into()};let Some((_,rest))=tail.split_once('\n')else{return text.into()};format!("{head}\n采样时间：{label}（{}）\n{rest}",if local{"本机时间"}else{"UTC；本机时区不可用"})}
+fn local_sample_label(text:&str,at:i64)->String{let Ok(stamp)=time::OffsetDateTime::from_unix_timestamp(at/1000)else{return text.into()};let offset=time::UtcOffset::local_offset_at(stamp);local_sample_label_at_offset(text,at,offset.unwrap_or(time::UtcOffset::UTC),offset.is_ok())}
 fn route_resources(core:&RouterCore,settings:&Settings,at:i64)->Result<(),String>{
  let list=settings.ordered_targets();if list.is_empty(){return Ok(())}
  for event in core.store.resource_events(at)?{
@@ -148,7 +150,7 @@ fn route_resources(core:&RouterCore,settings:&Settings,at:i64)->Result<(),String
   let Some((index,t))=selected else{continue;};
   let suffix=native_request_id(&serde_json::to_string(t).map_err(|_|"SAFETY_TARGET_INVALID")?);let id=format!("{}:{suffix}",event.id);
   if core.store.local_safety_attempt(&id)?.is_some(){continue;}
-  let mut payload=event.payload.clone();payload["resourceEventId"]=json!(event.id);payload["destinationPriority"]=json!(index+1);
+  let mut payload=event.payload.clone();if let Some(text)=payload["text"].as_str(){payload["text"]=json!(local_sample_label(text,event.created_at));}payload["resourceEventId"]=json!(event.id);payload["destinationPriority"]=json!(index+1);
   if index>0||!prior.is_empty(){let text=payload["text"].as_str().ok_or("SAFETY_PAYLOAD_INVALID")?;payload["text"]=json!(format!("{text}\n\n备用接收（第 {} 顺位）：前一接收对话不可用或已确认本轮失败，可能已看到告警。请先核对现状，避免重复安排处理。",index+1));}
   core.store.prepare_local_safety(&id,"RESOURCE",t,&payload,event.created_at)?;
  }
@@ -184,12 +186,13 @@ fn send_codex_notice(core:&RouterCore,t:&Target,at:i64)->Result<(),String>{
   let request=native_request_id(&item.id);
   if item.status=="UNKNOWN"{if let Some(r)=core.store.watch_reply(&request)?{if r.status=="SENT"{core.store.finish_local_safety(&item.id,"SENT",None,at)?;}}continue;}
   if item.status!="READY"{continue;}
-  if at-item.created_at>600000{core.store.finish_local_safety(&item.id,"HISTORICAL",None,at)?;continue;}
+  if !resource_fresh(&item.payload,item.created_at,now()){core.store.finish_local_safety(&item.id,"HISTORICAL",None,at)?;continue;}
   let(w,mode,expected_turn_id)=match crate::watch_chat::resource_notice_preflight(core,&t.thread_id){Ok(v)=>v,Err(_)=>{core.store.finish_local_safety(&item.id,"REJECTED",None,at)?;continue;}};
   if w.generation!=t.generation||w.cwd!=t.cwd{return Err("SAFETY_TARGET_CHANGED".into());}
-  if !core.store.claim_local_safety(&item.id,"RESOURCE",t,at)?{continue;}
+  if !core.store.claim_local_safety(&item.id,"RESOURCE",t,now())?{continue;}
   let text=item.payload["text"].as_str().ok_or("SAFETY_PAYLOAD_INVALID")?.to_string();
-  let result=crate::watch_chat::command(core,crate::watch_chat::ChatCommand::Send{thread_id:t.thread_id.clone(),id:request.clone(),generation:t.generation,source_sequence:None,expected_turn_id,mode,queue_requested:false,text,options:Default::default()});
+  let result=crate::watch_chat::resource_notice_command(core,crate::watch_chat::ChatCommand::Send{thread_id:t.thread_id.clone(),id:request.clone(),generation:t.generation,source_sequence:None,expected_turn_id,mode,queue_requested:false,text,options:Default::default()},resource_deadline(&item.payload,item.created_at));
+  if result.as_ref().is_err_and(|e|e=="SAFETY_NOTICE_EXPIRED"){core.store.finish_local_safety(&item.id,"HISTORICAL",None,now())?;continue;}
   if let Some(r)=core.store.watch_reply(&request)?{if r.status=="SENT"{core.store.finish_local_safety(&item.id,"SENT",None,at)?;}else if r.status=="FAILED"{core.store.finish_local_safety(&item.id,"REJECTED",None,at)?;}}else if result.is_err(){core.store.finish_local_safety(&item.id,"REJECTED",None,at)?;}
  }
  Ok(())
@@ -197,7 +200,7 @@ fn send_codex_notice(core:&RouterCore,t:&Target,at:i64)->Result<(),String>{
 pub(crate) fn maintain(core:&RouterCore){let at=now();let Ok(mut pass)=PASS.get_or_init(Mutex::default).try_lock()else{return};if at-pass.0<30000{return;}pass.0=at;drop(pass);
  // File ingestion/receipt reconciliation never waits behind a native Codex
  // RPC. A slow recovery must not starve new critical Claude notifications.
- let _=reconcile(core,at);crate::codex_notices::reconcile(core);let Ok(s)=core.store.local_safety_settings()else{return};
+ let _=core.store.expire_resource_notices(at);let _=reconcile(core,at);crate::codex_notices::reconcile(core);let Ok(s)=core.store.local_safety_settings()else{return};
  if !s.ordered_targets().is_empty(){let _=import(core,at);let _=route_resources(core,&s,at);}
  let Ok(mut pass)=PASS.get().unwrap().try_lock()else{return};if pass.1{return;}pass.1=true;let core=core.clone();
  // A bounded blocking job from the existing Host heartbeat; never block
@@ -211,6 +214,7 @@ pub(crate) fn maintain(core:&RouterCore){let at=now();let Ok(mut pass)=PASS.get_
 
 #[cfg(test)]mod tests{
  use super::*;
+ #[test]fn resource_sampling_label_is_explicit_local_time_and_keeps_metrics_immutable(){let raw="Agbrio 本机资源告警（只读，提醒）\n采样时间：2026-10-29T02:20:34.1234567+00:00\nmetric bytes unchanged";let at=time::OffsetDateTime::parse("2026-10-29T02:20:34Z",&time::format_description::well_known::Rfc3339).unwrap().unix_timestamp()*1000;let text=local_sample_label_at_offset(raw,at,time::UtcOffset::from_hms(8,0,0).unwrap(),true);assert!(text.contains("2026-10-29T10:20:34+08:00（本机时间）"));assert!(text.ends_with("metric bytes unchanged"));assert!(local_sample_label_at_offset(raw,at,time::UtcOffset::UTC,false).contains("UTC；本机时区不可用"));}
  #[test]fn existing_native_receipts_use_stable_valid_uuid_ids(){let a=native_request_id("resource:exact-event");assert!(valid_uuid(&a));assert_eq!(a,native_request_id("resource:exact-event"));assert_ne!(a,native_request_id("recovery:exact-event"));}
  fn event()->Value{json!({"schemaVersion":1,"eventId":"10000000-0000-4000-8000-000000000001","eventType":"local_resource_pressure","observedUtc":"2026-10-28T00:00:00Z","host":"fixture","isTest":false,"severity":"warning","conditions":["physical_memory_low"],"metrics":{"availableBytes":1024,"physicalBytes":32768,"committedBytes":30000,"commitLimitBytes":32768,"commitPercent":91.5,"commitHeadroomBytes":2768,"diskDFreeBytes":5000000000_u64},"topProcesses":[{"name":"bad\nprocess","pid":123,"privateBytes":1024,"workingSetBytes":1024}],"policy":{"observeOnly":true,"processActionsAllowed":false}})}
  #[test]fn resource_schema_rejects_tests_foreign_hosts_zero_examples_oversize_and_actions(){let e=event();let at=1793145660000;assert!(parse(&serde_json::to_vec(&e).unwrap(),"fixture",at).is_ok());for (field,value) in [("isTest",json!(true)),("host",json!("other")),("schemaVersion",json!(3))]{let mut v=e.clone();v[field]=value;assert!(parse(&serde_json::to_vec(&v).unwrap(),"fixture",at).is_err());}let mut v=e.clone();v["metrics"]["physicalBytes"]=json!(0);assert!(parse(&serde_json::to_vec(&v).unwrap(),"fixture",at).is_err());let mut v=e;v["policy"]["processActionsAllowed"]=json!(true);assert!(parse(&serde_json::to_vec(&v).unwrap(),"fixture",at).is_err());assert!(parse(&vec![b' ';65537],"fixture",at).is_err());}

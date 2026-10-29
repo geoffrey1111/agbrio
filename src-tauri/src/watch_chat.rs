@@ -135,7 +135,7 @@ fn validate_options(a:&mut crate::codex::adapter::CodexAdapter,o:&ReplyOptions)-
  let m=models["data"].as_array().and_then(|ms|ms.iter().find(|m|o.model.as_deref()==m["id"].as_str()||o.model.as_deref()==m["model"].as_str())).ok_or("REPLY_MODEL_UNAVAILABLE")?;
  if let Some(e)=&o.effort{if !m["supportedReasoningEfforts"].as_array().is_some_and(|es|es.iter().any(|v|v["reasoningEffort"].as_str()==Some(e))){return Err("REPLY_EFFORT_UNAVAILABLE".into());}}Ok(())
 }
-fn dispatch(core:&RouterCore,s:&mut Session,w:&CodexWatch,r:&WatchReply)->Result<WatchReply,String>{
+fn dispatch(core:&RouterCore,s:&mut Session,w:&CodexWatch,r:&WatchReply,resource_deadline:Option<i64>)->Result<WatchReply,String>{
  let (owned,busy,latest,loaded_shared)={let a=s.adapter.as_mut().filter(|a|!a.is_closed()).ok_or("Codex backend disconnected")?;let m=metadata(a,w)?;let (_,_,snap)=crate::codex_watch::inspect(a,&w.thread_id)?;(a.active_turn_id(&w.thread_id),m.pointer("/thread/status/type").and_then(Value::as_str)==Some("active"),snap,a.is_shared()&&m.pointer("/thread/status/type").and_then(Value::as_str)==Some("idle"))};
  if r.mode=="STEER" {if !(owned.is_some()&&owned.as_deref()==r.expected_turn_id.as_deref()||s.adapter.as_ref().is_some_and(|a|a.is_shared_subscribed(&w.thread_id))&&busy&&s.adapter.as_ref().and_then(|a|a.observed_turn_id(&w.thread_id))==r.expected_turn_id&&r.expected_turn_id.is_some()){return Err("REPLY_TURN_CHANGED_REFRESH".into());}}
  else {if owned.is_some()||busy||latest.state=="RUNNING"{return Err("REPLY_TARGET_ALREADY_RUNNING".into());}
@@ -153,6 +153,7 @@ fn dispatch(core:&RouterCore,s:&mut Session,w:&CodexWatch,r:&WatchReply)->Result
  input.insert(0,json!({"type":"text","text":format!("{}{}",r.text,extra)}));
  let mut params=json!({"threadId":w.thread_id,"input":input});
  if r.mode=="STEER"{params["expectedTurnId"]=json!(r.expected_turn_id);params["clientUserMessageId"]=json!(r.id);}else{if let Some(m)=o.model{params["model"]=json!(m);}if let Some(e)=o.effort{params["effort"]=json!(e);}}
+ if resource_deadline.is_some_and(|deadline|crate::local_safety::now()>deadline){return Err("SAFETY_NOTICE_EXPIRED".into());}
  core.store.claim_watch_reply(&r.id)?;
  let a=s.adapter.as_mut().unwrap();let response=a.request(if r.mode=="STEER"{"turn/steer"}else{"turn/start"},params);
  match response {Ok(v)=>{let t=reply_ack_turn(&r,&v);
@@ -196,7 +197,9 @@ pub(crate) fn assistant_response_command(core:&RouterCore,thread:&str,request:&s
  if let Some(prior)=core.store.watch_reply(&id)?{if prior.thread_id!=thread||prior.text!=text{return Err("REPLY_ID_REUSED_WITH_DIFFERENT_CONTENT".into());}if matches!(prior.status.as_str(),"SENDING"|"UNKNOWN"){return Err("REPLY_PREVIOUS_PENDING_CHECK_FIRST".into());}}
  Ok(ChatCommand::AsyncRespond{thread_id:thread.into(),id,request_id:request.into(),revision:input.revision as i64,answers})
 }
-pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{let _cache=if matches!(&c,ChatCommand::Send{..}|ChatCommand::Upload{..}){Some(crate::attachment_cache::guard()?)}else{None};match c{
+pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{command_with_deadline(core,c,None)}
+pub(crate) fn resource_notice_command(core:&RouterCore,c:ChatCommand,deadline:i64)->Result<Value,String>{if !matches!(&c,ChatCommand::Send{mode,..}if mode!="QUEUE"){return Err("SAFETY_NOTICE_MODE_INVALID".into())}command_with_deadline(core,c,Some(deadline))}
+fn command_with_deadline(core:&RouterCore,c:ChatCommand,resource_deadline:Option<i64>)->Result<Value,String>{let _cache=if matches!(&c,ChatCommand::Send{..}|ChatCommand::Upload{..}){Some(crate::attachment_cache::guard()?)}else{None};match c{
  ChatCommand::ChildOpen{..}|ChatCommand::ClaudeDecision{..}|ChatCommand::ChildHistory{..}|ChatCommand::ChildNotifications{..}=>Err("CLAUDE_OPERATION_NOT_SUPPORTED".into()),
  ChatCommand::GoalControl{thread_id,id,operation,input,confirmed}=>{require_goal_confirmation(confirmed)?;if input.target.thread_id!=thread_id{return Err("GOAL_TARGET_CHANGED".into());}serde_json::to_value(crate::goal_control::apply(core,&id,input,&operation,true)?).map_err(|_|"GOAL_RESPONSE_INVALID".into())},
  ChatCommand::GoalReceipt{thread_id,id}=>{watch(core,&thread_id)?;serde_json::to_value(core.store.goal_control_receipt(&thread_id,&id)?).map_err(|_|"GOAL_RESPONSE_INVALID".into())},
@@ -224,7 +227,7 @@ pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{let 
   let input=WatchReply{id,thread_id,cwd:w.cwd.clone(),generation,source_sequence,expected_turn_id,mode,text,options:serde_json::to_value(options).map_err(|_|"REPLY_OPTIONS_INVALID")?,payload_hash:String::new(),status:String::new(),turn_id:None,error_code:None,created_at:0,updated_at:0};
   if prior.is_none()&&input.mode=="QUEUE"&&!queue_requested{return Err("REPLY_EXPLICIT_QUEUE_REQUIRED: 排队需要明确选择，请重新打开对话后重试。".into());}let r=core.store.prepare_watch_reply(&input)?;if prior.is_some(){return serde_json::to_value(r).map_err(|_|"REPLY_RESPONSE_INVALID".into());}
   if r.mode=="QUEUE" {let outcome=(||{let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;let a=s.adapter.as_mut().ok_or("Codex backend disconnected")?;let (_,cwd,snap)=crate::codex_watch::inspect(a,&w.thread_id)?;let owned=a.active_turn_id(&w.thread_id);if cwd!=w.cwd||r.expected_turn_id.as_deref()!=owned.as_deref().or(snap.turn_id.as_deref()){return Err("REPLY_TURN_CHANGED_REFRESH".to_string());}serde_json::to_value(&r).map_err(|_|"REPLY_RESPONSE_INVALID".into())})();if outcome.is_err(){let _=core.store.finish_watch_reply(&r.id,"FAILED",None,Some("REPLY_QUEUE_PREWRITE_FAILED"));}return outcome;}
-  let outcome=(||{let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;dispatch(core,&mut s,&w,&r)})();match outcome{Ok(r)=>serde_json::to_value(r).map_err(|_|"REPLY_RESPONSE_INVALID".into()),Err(e)=>{let status=core.store.watch_reply(&r.id)?.map(|r|r.status);let _=core.store.finish_watch_reply(&r.id,if status.as_deref()==Some("SENDING"){"UNKNOWN"}else{"FAILED"},None,Some("REPLY_PREWRITE_FAILED"));Err(e)}}
+  let outcome=(||{let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;dispatch(core,&mut s,&w,&r,resource_deadline)})();match outcome{Ok(r)=>serde_json::to_value(r).map_err(|_|"REPLY_RESPONSE_INVALID".into()),Err(e)=>{let status=core.store.watch_reply(&r.id)?.map(|r|r.status);let _=core.store.finish_watch_reply(&r.id,if status.as_deref()==Some("SENDING"){"UNKNOWN"}else{"FAILED"},None,Some("REPLY_PREWRITE_FAILED"));Err(e)}}
  }
 }}
 pub(crate) fn start_queue(core:RouterCore){let _=core.store.recover_watch_replies();std::thread::spawn(move||loop{std::thread::sleep(Duration::from_secs(3));dispatch_queue_once(&core);});}
@@ -232,7 +235,7 @@ fn dispatch_queue_once(core:&RouterCore){let Ok(rs)=core.store.queued_watch_repl
  let Ok(mut s)=core.session.lock()else{continue};let Some(a)=s.adapter.as_mut().filter(|a|!a.is_closed())else{continue};let Ok(m)=metadata(a,&w)else{continue};let Ok((_,_,snap))=crate::codex_watch::inspect(a,&w.thread_id)else{continue};if a.is_turn_active(&w.thread_id)||m.pointer("/thread/status/type").and_then(Value::as_str)==Some("active"){continue;}
  let Ok(expected)=core.store.queued_watch_reply_target(&r.id)else{continue};if snap.turn_id==expected&&w.generation==r.generation&&matches!(snap.state.as_str(),"INCOMPLETE"|"UNKNOWN"|"RUNNING"|"RESULT_PENDING"){continue;}
  if snap.turn_id!=expected||w.generation!=r.generation||!matches!(snap.state.as_str(),"RESULT_READY"|"IDLE"){let _=core.store.finish_watch_reply(&r.id,"FAILED",None,Some("REPLY_QUEUE_TARGET_CHANGED"));continue;}
- if dispatch(&core,&mut s,&w,&r).is_err(){let _=core.store.finish_watch_reply(&r.id,"FAILED",None,Some("REPLY_QUEUE_PREWRITE_FAILED"));}
+ if dispatch(&core,&mut s,&w,&r,None).is_err(){let _=core.store.finish_watch_reply(&r.id,"FAILED",None,Some("REPLY_QUEUE_PREWRITE_FAILED"));}
  }}
 
 #[cfg(test)]mod tests{
@@ -256,7 +259,8 @@ import readline from 'node:readline';const cwd=process.argv[2];readline.createIn
   let generation=core.store.codex_chat_context("exact").unwrap().generation;
   let enqueue=|id:String,expected:Option<String>|command(&core,ChatCommand::Send{thread_id:"exact".into(),id,generation,source_sequence:None,expected_turn_id:expected,mode:"QUEUE".into(),queue_requested:true,text:"fictional queued message".into(),options:Default::default()});
   let first=Uuid::new_v4().to_string();assert_eq!(enqueue(first.clone(),None).unwrap()["expectedTurnId"],"live-turn");assert_eq!(enqueue(first,None).unwrap()["status"],"QUEUED");assert_eq!(enqueue(Uuid::new_v4().to_string(),None).unwrap()["status"],"QUEUED");assert!(enqueue(Uuid::new_v4().to_string(),Some("stale".into())).unwrap_err().contains("TURN_CHANGED"));assert_eq!(core.store.queued_watch_replies().unwrap().len(),1);
-  let protected=core.store.queued_watch_replies().unwrap()[0].clone();let guide=command(&core,ChatCommand::Send{thread_id:"exact".into(),id:Uuid::new_v4().to_string(),generation,source_sequence:None,expected_turn_id:Some("live-turn".into()),mode:"STEER".into(),queue_requested:false,text:"fictional immediate guidance".into(),options:Default::default()}).unwrap();assert_eq!(guide["status"],"SENT");assert_eq!(guide["turnId"],"live-turn");assert_eq!(serde_json::to_value(core.store.watch_reply(&protected.id).unwrap().unwrap()).unwrap(),serde_json::to_value(protected).unwrap());assert!(core.session.lock().unwrap().adapter.as_ref().unwrap().active_turn_id("exact").is_none());core.shutdown_owned_adapter();
+  let protected=core.store.queued_watch_replies().unwrap()[0].clone();let guide=command(&core,ChatCommand::Send{thread_id:"exact".into(),id:Uuid::new_v4().to_string(),generation,source_sequence:None,expected_turn_id:Some("live-turn".into()),mode:"STEER".into(),queue_requested:false,text:"fictional immediate guidance".into(),options:Default::default()}).unwrap();assert_eq!(guide["status"],"SENT");assert_eq!(guide["turnId"],"live-turn");assert_eq!(serde_json::to_value(core.store.watch_reply(&protected.id).unwrap().unwrap()).unwrap(),serde_json::to_value(protected).unwrap());assert!(core.session.lock().unwrap().adapter.as_ref().unwrap().active_turn_id("exact").is_none());
+  let before=core.session.lock().unwrap().adapter.as_ref().unwrap().request_counts();let late_id=Uuid::new_v4().to_string();let late=resource_notice_command(&core,ChatCommand::Send{thread_id:"exact".into(),id:late_id.clone(),generation,source_sequence:None,expected_turn_id:Some("live-turn".into()),mode:"STEER".into(),queue_requested:false,text:"expired fixed resource notice fixture".into(),options:Default::default()},0);assert_eq!(late.unwrap_err(),"SAFETY_NOTICE_EXPIRED");assert_eq!(core.store.watch_reply(&late_id).unwrap().unwrap().status,"FAILED");let after=core.session.lock().unwrap().adapter.as_ref().unwrap().request_counts();assert_eq!(before.get("turn/steer"),after.get("turn/steer"));core.shutdown_owned_adapter();
  }
 
  use super::*;use std::sync::{Arc,Mutex};use router_core::store::codex_watch::WatchSnapshot;

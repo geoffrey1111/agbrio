@@ -33,7 +33,7 @@ test('observation registration sends metadata only; no control handler or model 
  let passed=0;const next=async e=>{passed++;return e;};
  await callbacks.get('session.start')($,{},next);await heartbeat();
  assert.equal(posted[0].event.kind,'SESSION_START');assert.equal(posted[1].event.kind,'HEARTBEAT');assert.equal(posted[0].event.instanceId,posted[1].event.instanceId);assert.equal(passed,1);
- assert(!callbacks.has('prompt.submit'));assert(callbacks.has('command.run'));assert(!('model' in $));
+ assert(callbacks.has('prompt.submit'));let ordinary=0;await callbacks.get('prompt.submit')($,{text:'ordinary owner words',origin:{kind:'user'}},async e=>{ordinary++;return e;});assert.equal(ordinary,1);assert.equal(posted[0].event.kind,'SESSION_START');assert(callbacks.has('command.run'));assert(!('model' in $));
 });
 test('concurrent duplicates submit once; reused request identity cannot change payload',async()=>{
  const $=api();const replies=await Promise.all([executeReviewedCommand($,command,context,{writesEnabled:true}),executeReviewedCommand($,command,context,{writesEnabled:true})]);

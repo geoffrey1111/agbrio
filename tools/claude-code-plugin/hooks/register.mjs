@@ -1,6 +1,6 @@
 import {registerOwnerRequests,flushOwnerReceipts,releaseOwnerRequests} from './owner-requests.mjs';
 import {registerCodexWait,initCodexWait,tickCodexWaits,appendCodexWait} from './codex-wait.mjs';
-import {tickResourceNotice,appendResourceNotice} from './resource-notice.mjs';
+import {tickResourceNotice,appendResourceNotice,registerResourceExpiry} from './resource-notice.mjs';
 import {tickTaskNotices,appendTaskNotice} from './codex-notices.mjs';
 // Official Claude Code Mods API. This module imports no Node/process/model APIs.
 // It is NOT installed or enabled by building Agbrio.
@@ -11,7 +11,7 @@ export function hostOrigin(value) {
   return u.origin;
 }
 function diagnostic(state) {
-  return JSON.stringify({pluginVersion:'0.1.15',mode:'OWNER_MANUAL_INPUT',phase:state.phase,error:state.error,httpStatus:state.httpStatus,identityReady:!!state.identity,pendingEvents:state.pending.length,deliveredEvents:state.delivered,writesEnabled:false,manualInputProtocol:1,codexWaitProtocol:state.codexWaitReady?1:null,resourceNoticeProtocol:2,taskNoticeProtocol:1,taskSubscriptions:state.taskSubscriptions?.length??0,taskNoticeError:state.taskNoticeError??null});
+  return JSON.stringify({pluginVersion:'0.1.17',mode:'OWNER_MANUAL_INPUT',phase:state.phase,error:state.error,httpStatus:state.httpStatus,identityReady:!!state.identity,pendingEvents:state.pending.length,deliveredEvents:state.delivered,writesEnabled:false,manualInputProtocol:1,codexWaitProtocol:state.codexWaitReady?1:null,resourceNoticeProtocol:2,taskNoticeProtocol:1,taskSubscriptions:state.taskSubscriptions?.length??0,taskNoticeError:state.taskNoticeError??null});
 }
 function noteError(state, error) {
   const message=typeof error?.message==='string' ? error.message : '';
@@ -28,7 +28,7 @@ async function flush($, state) {
   while (state.pending.length) {
     state.phase='HTTP';
     let response;
-    try { response = await $.http.fetch(`${state.origin}/v1/claude-code/events`, {method: 'POST', headers: {'content-type': 'application/json', authorization: `Bearer ${state.token}`, 'x-agbrio-control-version':'1','x-agbrio-plugin-version':'0.1.15'}, body: JSON.stringify(state.pending[0])}); } catch {throw new Error('AGBRIO_HTTP_UNAVAILABLE');}
+    try { response = await $.http.fetch(`${state.origin}/v1/claude-code/events`, {method: 'POST', headers: {'content-type': 'application/json', authorization: `Bearer ${state.token}`, 'x-agbrio-control-version':'1','x-agbrio-plugin-version':'0.1.17'}, body: JSON.stringify(state.pending[0])}); } catch {throw new Error('AGBRIO_HTTP_UNAVAILABLE');}
     state.httpStatus=Number.isInteger(response.status) ? response.status : null;
     if (!response.ok) throw new Error('AGBRIO_ADAPTER_DELIVERY_UNCONFIRMED');
     const recovered=state.error!==null;state.pending.shift();state.delivered++;state.phase='CONNECTED';state.error=null;state.reported=null;if(recovered)await report($,state);
@@ -60,6 +60,7 @@ export function register(on, options) {
   const origin = hostOrigin(options.hostUrl);
   if (!/^[0-9a-f]{64}$/.test(options.token ?? '')) throw new Error('AGBRIO_ADAPTER_TOKEN_REQUIRED');
   const state = {origin, token: options.token, instanceId: crypto.randomUUID(), identity: null, sequence: 0, turnId: null, stopped: false, queue: Promise.resolve(), pending: [],phase:'REGISTERED',error:null,httpStatus:null,delivered:0,reported:null};
+  registerResourceExpiry(on,state);
   registerManual(on,state);
   registerOwnerRequests(on,state);
   registerCodexWait(on,state);
@@ -82,12 +83,12 @@ export function register(on, options) {
   on('turn.start', async ($, e, next) => {
     if (e.agentId) return next(e);
     if (!nativeId(e.turnId)) throw new Error('AGBRIO_TURN_ID_MISSING');
-    state.turnId = e.turnId; void emit($, state, 'RUNNING').catch(async error => {noteError(state,error);await report($,state);}); return next(e);
+    state.resourceBusy=true;state.turnId = e.turnId; void emit($, state, 'RUNNING').catch(async error => {noteError(state,error);await report($,state);}); return next(e);
   });
   on('turn.complete', async ($, e, next) => {
     const result = await next(e);
     if (e.agentId) return result;
-    await releaseOwnerRequests($,state);
+    state.resourceBusy=false;await releaseOwnerRequests($,state);
     if (e.reason === 'answer' && !e.isAborted) {
       if (!nativeId(e.turnId) || e.turnId!==state.turnId || typeof e.answer!=='string') {void emit($, state,'RESULT_PENDING').catch(async error=>{noteError(state,error);await report($,state);});}
       else if (!e.answer.trim()) {void emit($, state,'EMPTY').catch(async error=>{noteError(state,error);await report($,state);});}
