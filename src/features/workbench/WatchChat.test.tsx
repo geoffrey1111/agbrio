@@ -344,3 +344,17 @@ it('explicit retry bypasses cached reads, preserves the draft and clears only re
  render(<WatchChat original={original} api={api} onBack={vi.fn()}/>);const warning=await screen.findByRole('alert');expect(warning).toHaveTextContent('Codex 读取连接已断开');expect(screen.getAllByText('状态待确认').length).toBeGreaterThan(0);
  const input=screen.getByRole('textbox');fireEvent.change(input,{target:{value:'preserved draft'}});fireEvent.click(screen.getByRole('button',{name:'检查状态'}));await screen.findByText('fresh recovered history');await waitFor(()=>expect(screen.queryByRole('alert')).toBeNull());expect(api.refreshState).toHaveBeenCalledOnce();expect(api.refreshHistory).toHaveBeenCalledOnce();expect(input).toHaveValue('preserved draft');expect((api.command as any).mock.calls.every((c:any)=>c[0].action==='HISTORY')).toBe(true);
 });
+
+it('shows the list snapshot immediately instead of an older cached detail while background refresh waits',async()=>{
+ const newer={threadId:original.threadId,label:original.label,cwd:original.cwd,enabled:true,generation:2,checkedAt:20,errorCode:null,snapshot:{state:'RESULT_READY',turnId:'turn-new',itemId:'item-new',text:'列表已经拿到的最新消息'}};
+ const cached={...state,watch:{...state.watch,checkedAt:10,snapshot:{...state.watch.snapshot,text:'旧详情缓存'}}};const refreshState=vi.fn(()=>new Promise<WatchChatState>(()=>{}));
+ render(<WatchChat original={newer} api={{cachedState:()=>cached,cachedHistory:()=>({messages:[{id:'old-history',turnId:'turn-old',role:'assistant',text:'较早的完整历史'}],nextCursor:null}),refreshState,state:async()=>cached,command:async()=>({messages:[],nextCursor:null}) as never}} onBack={()=>{}}/>);
+ expect(screen.getByText('列表已经拿到的最新消息')).toBeVisible();expect(screen.getByText('较早的完整历史')).toBeVisible();await waitFor(()=>expect(refreshState).toHaveBeenCalledOnce());expect([...document.querySelectorAll('.v4-chat-message-row')].at(-1)).toHaveTextContent('列表已经拿到的最新消息');
+});
+
+it('updates a cached same-id streaming item with the newer directory text without adding a duplicate',async()=>{
+ const watch={threadId:original.threadId,label:original.label,cwd:original.cwd,enabled:true,generation:2,checkedAt:20,errorCode:null,snapshot:{...state.watch.snapshot,text:'同一条消息的新内容'}};
+ const cached={...state,watch:{...state.watch,checkedAt:10}};
+ render(<WatchChat original={watch} api={{cachedState:()=>cached,cachedHistory:()=>({messages:[{id:'item-a',turnId:'turn-a',role:'assistant',text:'旧流式正文',order:1}],nextCursor:null}),refreshState:()=>new Promise(()=>{}),state:async()=>cached,command:async()=>({messages:[],nextCursor:null}) as never}} onBack={()=>{}}/>);
+ expect(screen.getByText('同一条消息的新内容')).toBeVisible();expect(screen.queryByText('旧流式正文')).toBeNull();expect(document.querySelectorAll('.v4-chat-message-row')).toHaveLength(1);
+});

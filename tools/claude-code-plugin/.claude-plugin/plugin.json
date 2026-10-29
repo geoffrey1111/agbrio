@@ -1,6 +1,6 @@
 {
   "name": "agbrio-bridge",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "description": "Follow exact Claude Code sessions in Agbrio, and message an owner-selected Codex conversation through the authorized Agbrio MCP connection.",
   "author": {
     "name": "Agbrio"

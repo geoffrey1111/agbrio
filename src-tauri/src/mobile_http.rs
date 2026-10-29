@@ -301,6 +301,7 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         .route("/v1/mobile/workstreams", get(workstreams))
         .route("/v1/mobile/claude-code/sessions", get(claude_code_sessions))
         .route("/v1/claude-code/events", post(claude_code_event))
+        .route("/v1/claude-code/usage", post(claude_usage).layer(axum::extract::DefaultBodyLimit::max(8192)))
         .route("/v1/claude-code/codex-wait", post(claude_codex_wait))
         .route("/v1/claude-code/codex-notices", post(claude_codex_notices))
         .route("/v1/claude-code/resource-notice", post(claude_resource_notice))
@@ -1361,6 +1362,7 @@ fn claude_adapter_token(headers:&HeaderMap)->Result<String,ApiError>{
  let token=headers.get("authorization").and_then(|h|h.to_str().ok()).and_then(|v|v.strip_prefix("Bearer ")).ok_or_else(||ApiError(StatusCode::UNAUTHORIZED,"CLAUDE_CONNECTION_UNAUTHORIZED".into()))?.to_owned();
  Ok(token)
 }
+async fn claude_usage(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<crate::claude_quota::NativeUsage>)->ApiResult<serde_json::Value>{let token=claude_adapter_token(&headers)?;crate::claude_quota::record_native(&state.core,&token,input).map_err(core_error)?;Ok(Json(serde_json::json!({"accepted":true})))}
 async fn claude_code_event(State(state):State<MobileHttpState>,headers:HeaderMap,Json(event):Json<router_core::claude_code::Event>)->ApiResult<serde_json::Value>{
  // Dedicated observation-only credential. No mobile/OAuth/Cloudflare grants
  // permit publishing adapter state. Refuse browser and public proxy traffic.
