@@ -12,12 +12,15 @@ try{
  try{$ErrorActionPreference='Continue';$output=& $node (Join-Path $PSScriptRoot 'launch-entry.mjs') $PSScriptRoot 2>&1;$nativeExit=$LASTEXITCODE}finally{$ErrorActionPreference=$savedPreference}
  if($nativeExit -ne 0){throw 'SHARED_LAUNCH_NOT_COMPLETED'}
 }catch{
+ # Native work has returned; a modal error must not keep the operation lock.
+ if($held){$mutex.ReleaseMutex();$held=$false}
  Add-Type -AssemblyName System.Windows.Forms
  $code=[regex]::Match(([string]$output+' '+$_.Exception.Message),'SHARED_[A-Z_]+').Value
  $zh=[Globalization.CultureInfo]::CurrentUICulture.Name.StartsWith('zh')
  $message=if($zh){'共享 Codex 未打开。当前 Codex 保持原状，没有重发消息。'}else{'Shared Codex was not opened. Current Codex is unchanged; no messages were resent.'}
  switch -Wildcard ($code){
   'SHARED_DESKTOP_CLOSE_REQUIRED' {$message=if($zh){'普通 Codex 仍在运行，未启动第二个窗口。完成当前任务后，可退出它，再使用这个独立入口打开。'}else{'Ordinary Codex is still running. No second window was started. Finish your work, exit it, then use this independent entry.'}}
+  'SHARED_NATIVE*EXECUTION_DENIED' {$message=if($zh){'Windows 拒绝执行已验证的 Codex 缓存，共享连接未启动。请保留诊断并核对系统执行策略；不要修改文件权限或关闭防护。'}else{'Windows refused the verified Codex cache. Shared mode was not started. Keep diagnostics and check execution policy; do not change file permissions or disable protection.'}}
   'SHARED_NATIVE_*' {$message=if($zh){'Codex 本地工具验证失败，未切换连接。请继续使用普通 Codex。'}else{'Codex local tool verification failed. The connection was not changed. Keep using ordinary Codex.'}}
   'SHARED_START_UNAVAILABLE' {$message=if($zh){'另一个连接操作正在进行，请等待它完成。当前 Codex 保持原状。'}else{'Another connection operation is in progress. Wait for it to finish. Current Codex is unchanged.'}}
   'SHARED_CONNECTION_UNCERTAIN' {$message=if($zh){'无法确认共享后台状态，未结束进程。请继续使用普通 Codex。'}else{'The shared backend state could not be verified. No process was stopped. Keep using ordinary Codex.'}}

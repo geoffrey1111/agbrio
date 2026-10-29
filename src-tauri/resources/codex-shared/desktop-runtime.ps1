@@ -14,15 +14,15 @@ $backends=@(Get-CimInstance Win32_Process -Filter "Name='codex.exe'" | Where-Obj
 })
 if($backends.Count -gt 1){throw 'SHARED_DESKTOP_BACKEND_UNRESOLVED'}
 if($backends.Count -eq 1){$binary=$backends[0].ExecutablePath}else{$binary=Join-Path $apps[0].InstallLocation 'app/resources/codex.exe'}
-$inspection=& (Join-Path $PSScriptRoot 'native-runtime.ps1') -Action Inspect -Binary $binary | ConvertFrom-Json
-$version=$inspection.version
+if($Directory -and !$ProbeNode){throw 'SHARED_NATIVE_PROBE_REQUIRED'}
+# Pin authenticates readable source bytes, then executes the ordinary retained set.
+# Inspecting the encrypted package first made the compatibility copy unreachable.
+$mode=if($Directory){'Pin'}else{'Inspect'}
+$inspection=& (Join-Path $PSScriptRoot 'native-runtime.ps1') -Action $mode -Binary $binary -Directory $Directory | ConvertFrom-Json
+if(!$inspection.binary -or !$inspection.version){throw 'SHARED_NATIVE_BINARY_UNVERIFIED'}
+$binary=$inspection.binary;$version=$inspection.version
 if($ProbeNode){
  $proof=& $ProbeNode (Join-Path $PSScriptRoot 'code-mode-probe.mjs') (Join-Path (Split-Path -Parent $binary) 'codex-code-mode-host.exe') | ConvertFrom-Json
  if($LASTEXITCODE -ne 0 -or $proof.javascriptCellsExecuted -ne 2 -or !$proof.persistentStoreVerified -or $proof.delegateCalls -ne 0){throw 'SHARED_NATIVE_TOOL_HOST_EXEC_FAILED'}
-}
-if($Directory){
- if(!$ProbeNode){throw 'SHARED_NATIVE_PROBE_REQUIRED'}
- $pinned=& (Join-Path $PSScriptRoot 'native-runtime.ps1') -Action Pin -Binary $binary -Version $version -Directory $Directory | ConvertFrom-Json
- $binary=$pinned.binary;$version=$pinned.version
 }
 @{binary=$binary;version=$version;desktop=$desktop}|ConvertTo-Json -Compress

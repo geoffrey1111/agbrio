@@ -1538,5 +1538,6 @@
   "正在刷新列表…": "Refreshing conversations…",
   "列表已更新": "Conversations updated",
   "刷新未完成，当前列表已保留。": "Refresh incomplete. Current conversations are kept.",
-  "刷新对话列表": "Refresh conversations"
+  "刷新对话列表": "Refresh conversations",
+  "Windows 拒绝执行已验证的 Codex 缓存。请保留诊断并检查系统执行限制，不要修改文件权限或关闭防护。": "Windows refused the verified Codex cache. Keep diagnostics and check execution restrictions; do not change file permissions or disable protection."
 }
