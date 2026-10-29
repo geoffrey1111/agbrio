@@ -32,3 +32,8 @@ it('shows Claude Desktop subscription percentages independently of token counts'
  expect(screen.getAllByRole('meter').map(m=>m.getAttribute('aria-valuenow'))).toEqual(['95','85']);
  expect(screen.queryByText(/在终端或 IDE/)).toBeNull();
 });
+
+it('explains unavailable Claude percentages instead of presenting token counts as quota',async()=>{
+ render(<CodexQuota provider="Claude Code" api={{read:async()=>({status:'AVAILABLE',reason:'LOCAL_ESTIMATE',observedAt:1,buckets:[{id:'claude',windows:[{slot:'primary',usedPercent:0,remainingPercent:0,usedTokens:1000,windowDurationMins:300,resetsAt:null}]}]})}}/>);
+ await screen.findByText('等待 Claude 更新额度');fireEvent.click(screen.getByRole('button',{name:'查看 Claude Code 额度'}));expect(screen.getByText(/尚未读到 Claude 的最新额度/)).toBeVisible();expect(screen.queryByRole('meter')).toBeNull();
+});
