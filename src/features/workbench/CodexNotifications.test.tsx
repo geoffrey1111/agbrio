@@ -131,3 +131,19 @@ it('seen cards do not contribute to the badge or return on a fresh Recent visit'
  render(<CodexNotifications api={api} standalone onCountChange={count}/>);await waitFor(()=>expect(count).toHaveBeenLastCalledWith(0));expect(screen.queryByRole('button',{name:'查看完整通知 #1'})).toBeNull();
  expect(await screen.findByText('有新结果时，会出现在这里')).toBeVisible();
 });
+
+it("accepts a warm watch intent and immediately shows cached content while the exact read is pending",async()=>{
+ const api=fixture();let receive!:(e:MessageEvent)=>void;
+ const add=vi.fn((name:string,handler:any)=>{if(name==='message')receive=handler;});
+ vi.stubGlobal('navigator',{...navigator,serviceWorker:{addEventListener:add,removeEventListener:vi.fn()}});
+ let finish!:(v:unknown)=>void;api.event.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+ render(<CodexNotifications api={{...api,cachedFeed:()=>({events:[{...event,snapshot:{...event.snapshot,text:'cached notification body'}}],nextCursor:1,hasMore:false})}} standalone/>);
+ const ack=vi.fn();act(()=>receive({data:{type:'AGBRIO_OPEN_WATCH',target:'/mobile/notifications?event=1'},origin:location.origin,ports:[{postMessage:ack,close:vi.fn()}]} as unknown as MessageEvent));
+ expect(ack).toHaveBeenCalledWith({accepted:true});expect(screen.getByText('cached notification body')).toBeVisible();expect(api.event).toHaveBeenCalledOnce();
+ await act(async()=>finish({...event,snapshot:{...event.snapshot,text:'fresh notification body'}}));expect(screen.getByText('fresh notification body')).toBeVisible();
+ history.replaceState(null,'','/');
+});
+
+it('rejects foreign watch navigation without acknowledging it',()=>{
+ let receive!:(e:MessageEvent)=>void;vi.stubGlobal('navigator',{...navigator,serviceWorker:{addEventListener:(n:string,h:any)=>{if(n==='message')receive=h;},removeEventListener:vi.fn()}});const api=fixture();render(<CodexNotifications api={api} standalone/>);const ack=vi.fn();act(()=>receive({data:{type:'AGBRIO_OPEN_WATCH',target:'https://other.invalid/mobile/notifications?event=1'},origin:location.origin,ports:[{postMessage:ack}]} as unknown as MessageEvent));expect(ack).not.toHaveBeenCalled();expect(api.event).not.toHaveBeenCalled();
+});

@@ -1,3 +1,4 @@
+import {WATCH_NOTIFICATION_MESSAGE,watchNotificationRoute} from "../../mobile/watchNotificationRoute";
 import {claudeTaskSummary} from "./ClaudeTaskStatus";
 import {SelectionIndicator} from "./InteractionMotion";
 import {useId} from "react";
@@ -26,7 +27,7 @@ export type WatchSnapshot = { state:string; turnId:string|null; itemId:string|nu
 export type CodexWatch = { shownAt?:number; changedAt?:number; lastMessageAt?:number|null; taskTree?:import("./watchChatApi").ClaudeTaskTree; threadId:string; label:string; cwd:string; enabled:boolean; generation:number; snapshot:WatchSnapshot; checkedAt:number; errorCode:string|null;sendCount?:number };
 export type WatchEvent = { sequence:number; threadId:string; label:string; cwd:string; snapshot:WatchSnapshot; observedAt:number;seenAt?:number|null };
 export type WatchFeed = { events:WatchEvent[]; nextCursor:number; hasMore:boolean; hiddenSequences?:number[] };
-export interface NotificationApi { cachedWatches?():CodexWatch[]|undefined; cachedFeed?():WatchFeed|undefined; subscribe?(listener:()=>void):()=>void; markSeen?(sequence:number):Promise<unknown>; markRead?(sequence:number):Promise<unknown>; remove?(kind:"WATCH"|"EVENT",id:string,removed:boolean):Promise<unknown>; watches():Promise<CodexWatch[]>; refreshWatches?():Promise<CodexWatch[]>; connect():Promise<unknown>; threads():Promise<ExistingCodexThreadCatalog>; enable(id:string):Promise<unknown>; show?(id:string):Promise<{shownAt:number}>; pause(id:string):Promise<unknown>; feed(after:number):Promise<WatchFeed>; event(sequence:number):Promise<WatchEvent>; webUrl():Promise<string|null>; delivery?:DeliveryApi; chat?:WatchChatApi; onOpen?:(callback:(sequence:number)=>void)=>Promise<()=>void> }
+export interface NotificationApi { cachedEvent?(sequence:number):WatchEvent|undefined; cachedWatches?():CodexWatch[]|undefined; cachedFeed?():WatchFeed|undefined; subscribe?(listener:()=>void):()=>void; markSeen?(sequence:number):Promise<unknown>; markRead?(sequence:number):Promise<unknown>; remove?(kind:"WATCH"|"EVENT",id:string,removed:boolean):Promise<unknown>; watches():Promise<CodexWatch[]>; refreshWatches?():Promise<CodexWatch[]>; connect():Promise<unknown>; threads():Promise<ExistingCodexThreadCatalog>; enable(id:string):Promise<unknown>; show?(id:string):Promise<{shownAt:number}>; pause(id:string):Promise<unknown>; feed(after:number):Promise<WatchFeed>; event(sequence:number):Promise<WatchEvent>; webUrl():Promise<string|null>; delivery?:DeliveryApi; chat?:WatchChatApi; onOpen?:(callback:(sequence:number)=>void)=>Promise<()=>void> }
 
 const states:Record<string,string>={get IDLE(){return uiText("尚无任务");},get RUNNING(){return uiText("正在执行");},get ACTION_REQUIRED(){return uiText("需要你确认或回答");},get RESULT_READY(){return uiText("结果已到达");},get RESULT_PENDING(){return uiText("结果尚未读到");},get FAILED(){return uiText("执行失败");},get INTERRUPTED(){return uiText("已中断");},get INCOMPLETE(){return uiText("任务未完成（执行中或已中断）");},get UNKNOWN(){return uiText("状态未确定");}};
 const time=(value:number)=>new Date(value).toLocaleString(getLanguage());
@@ -53,7 +54,7 @@ export function CodexNotifications({api,standalone=false,workbenchPage,onCountCh
  useBackLayer(Boolean(catalog),()=>setCatalog(null));
  const [error,setError]=useState<string|null>(null),[busy,setBusy]=useState(false);
  const[watchLoading,setWatchLoading]=useState(()=>!api.cachedWatches?.()),[watchError,setWatchError]=useState<string|null>(null);
- const [detail,setDetail]=useState<WatchEvent|null>(null),[current,setCurrent]=useState<CodexWatch|null>(null),[linkNotice,setLinkNotice]=useState<string|null>(null);
+ const [detail,setDetail]=useState<WatchEvent|null>(()=>{const route=watchNotificationRoute(location.href,location.origin);return route?(api.cachedEvent?.(route.sequence)??api.cachedFeed?.()?.events.find(e=>e.sequence===route.sequence)??null):null;}),[current,setCurrent]=useState<CodexWatch|null>(null),[linkNotice,setLinkNotice]=useState<string|null>(null);
  const [keptThisVisit,setKeptThisVisit]=useState<Set<number>>(()=>new Set());
  const recentActive=Boolean((workbenchPage?workbenchPage.active:open||standalone)&&view==="RECENT"&&!detail&&!current);
  useLayoutEffect(()=>{
@@ -84,10 +85,19 @@ export function CodexNotifications({api,standalone=false,workbenchPage,onCountCh
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;epoch.current++;};},[]);
  useEffect(()=>{
   let active=true,request=0,dispose:(()=>void)|undefined;
-  function show(sequence:number){if(!active)return;pageNavigation.current?.open();const ticket=++request;setOpen(true);setView("RECENT");setDetail(null);setCurrent(null);setLinkNotice(null);if(sequence>0)void api.event(sequence).then(async e=>{if(active&&ticket===request){setDetail(e);setCurrent(null);await markViewed(e);}}).catch(e=>{if(active&&ticket===request)setLinkNotice(notificationError(e));});}
+  function show(sequence:number){if(!active)return;pageNavigation.current?.open();const ticket=++request;setOpen(true);setView("RECENT");setDetail(api.cachedEvent?.(sequence)??api.cachedFeed?.()?.events.find(e=>e.sequence===sequence)??null);setCurrent(null);setLinkNotice(null);if(sequence>0)void api.event(sequence).then(async e=>{if(active&&ticket===request){setDetail(e);setCurrent(null);await markViewed(e);}}).catch(e=>{if(active&&ticket===request)setLinkNotice(notificationError(e));});}
   const value=new URL(location.href).searchParams.get("event");if(value&&/^\d+$/.test(value)&&Number.isSafeInteger(Number(value)))show(Number(value));
+  const receive=(event:MessageEvent)=>{
+   if(event.data?.type!==WATCH_NOTIFICATION_MESSAGE||typeof event.data.target!=="string"||(event.origin&&event.origin!==location.origin))return;
+   const route=watchNotificationRoute(event.data.target,location.origin);if(!route||!active)return;
+   // ACK means this mounted reader accepted the intent, not that the data is
+   // fresh or that any decision has been confirmed. Do not wait for the network.
+   show(route.sequence);history.replaceState(history.state,"",route.url);
+   event.ports?.[0]?.postMessage({accepted:true});event.ports?.[0]?.close?.();
+  };
+  navigator.serviceWorker?.addEventListener("message",receive);
   void api.onOpen?.(show).then(fn=>{if(active)dispose=fn;else fn();}).catch(()=>{if(active)setError(uiText("通知点击入口暂时不可用；仍可从通知列表查看内容。"));});
-  return()=>{active=false;dispose?.();};
+  return()=>{active=false;dispose?.();navigator.serviceWorker?.removeEventListener("message",receive);};
  },[api]);
  useEffect(()=>{
   let active=true,polling=false,timer:ReturnType<typeof setTimeout>;
