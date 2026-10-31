@@ -136,3 +136,7 @@
 
 .list-pull-indicator>span{max-width:100%;padding-inline:4px;line-height:1.45}.list-pull-indicator{font-size:13px}
 html:has(.list-pull-refresh),body:has(.list-pull-refresh){overscroll-behavior-y:none}
+.v6-pi-child-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;width:calc(100% - 76px);margin:0 16px 8px 60px;padding:8px 12px;border:0;border-radius:10px;background:transparent;color:var(--text-muted,#857d75);font:inherit;font-size:13px;text-align:left;cursor:pointer}
+.v6-pi-child-toggle:hover{background:var(--surface-muted,#f2f0ed)}
+.v6-pi-child-list{margin:0 12px 12px 40px;padding:0 0 0 8px;border-inline-start:1px solid var(--border-subtle,#e9e5e0)}
+.v6-pi-child-list .v6-row{padding-inline:12px}

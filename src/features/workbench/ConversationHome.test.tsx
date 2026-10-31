@@ -8,6 +8,16 @@ const messageEpoch=Date.now()-60000;
 const watch=(id:string,at:number,state='RESULT_READY'):CodexWatch=>({threadId:id,label:id,cwd:'C:/fixture',lastMessageAt:at?messageEpoch+at:0,checkedAt:Date.now(),enabled:true,generation:1,errorCode:null,snapshot:{state,turnId:'turn',itemId:'message',text:'fixture'}});
 function fixture(initial:CodexWatch[]){let rows=initial;let notify=()=>{};const api={connect:vi.fn(),threads:vi.fn(),enable:vi.fn(),pause:vi.fn(),feed:vi.fn(),event:vi.fn(),webUrl:vi.fn(),cachedWatches:()=>rows,watches:vi.fn(async()=>rows),show:vi.fn(async(id:string)=>{const shownAt=Date.now();rows=rows.map(w=>w.threadId===id?{...w,shownAt}:w);notify();return{shownAt};}),subscribe:(listener:()=>void)=>{notify=listener;return()=>{};}} as NotificationApi;return{api,push:(next:CodexWatch[])=>{rows=next;notify();}};}
 const order=()=>[...document.querySelectorAll('.v6-list .v6-row strong')].map(n=>n.textContent);
+it('folds Pi under its native manager, promotes child activity and retains an all-Pi lookup',async()=>{
+ const parent=watch('claude_code:manager',1);
+ const child={...watch('pi:child',3,'RUNNING'),piParent:{provider:'CLAUDE_CODE',externalId:'manager',cwd:parent.cwd}};
+ const a=fixture([parent,child,watch('ordinary',2)]),open=vi.fn();
+ render(<ConversationHome bridges={[]} activity={{}} activityClock={Date.now()} watchApi={a.api} addRequest={0} onOpenBridge={vi.fn()} onOpenWatch={open}/>);
+ await screen.findByText('Pi 子任务执行中 · 1 项');expect(order()).toEqual(['claude_code:manager','ordinary']);
+ fireEvent.click(screen.getByRole('button',{name:'Pi 子任务 · 1 项'}));expect(screen.getByText('pi:child')).toBeVisible();
+ fireEvent.click(screen.getByText('pi:child'));expect(open).toHaveBeenCalledWith(child);
+ fireEvent.click(screen.getByRole('button',{name:'Pi'}));await waitFor(()=>expect(order()).toEqual(['pi:child']));
+});
 it('folds three-day quiet watches without pausing and resurfaces actual new messages',async()=>{
  const old={...watch('quiet',1),lastMessageAt:Date.now()-QUIET_WATCH_AGE-1000};const a=fixture([old,watch('running',1,'RUNNING')]);
  render(<ConversationHome bridges={[]} activity={{}} activityClock={Date.now()} watchApi={a.api} addRequest={0} onOpenBridge={vi.fn()} onOpenWatch={vi.fn()}/>);

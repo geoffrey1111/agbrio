@@ -8,6 +8,9 @@ fn id(v: &Value) -> Result<String, String> {
         .map(str::to_owned)
         .ok_or("WATCH_PROTOCOL_INVALID".into())
 }
+pub(crate) fn source_availability(thread:&str,cwd:&str)->Result<(),String>{
+ use router_core::codex::source_index::{self,Availability};match source_index::current(thread,cwd){Ok(Some(Availability::Archived))=>Err("WATCH_THREAD_ARCHIVED".into()),Ok(Some(Availability::FileMissing))=>Err("WATCH_SOURCE_FILE_MISSING".into()),Ok(Some(Availability::ProjectChanged))=>Err("WATCH_PROJECT_CHANGED".into()),_=>Ok(())}
+}
 pub(crate) fn inspect(adapter: &mut crate::codex::adapter::CodexAdapter, thread_id: &str) -> Result<(String,String,WatchSnapshot),String> {
     let (label,cwd,snapshot,_,_)=inspect_live(adapter,thread_id)?;Ok((label,cwd,snapshot))
 }
@@ -30,7 +33,20 @@ pub(crate) fn inspect_live(
         .filter(|p| std::path::Path::new(p).is_absolute())
         .ok_or("WATCH_PROJECT_UNAVAILABLE")?
         .to_owned();
+    source_availability(thread_id,&cwd)?;
+    if thread["archived"]==true||thread["path"].as_str().is_some_and(|p|p.replace('\\',"/").split('/').any(|v|v=="archived_sessions")){return Err("WATCH_THREAD_ARCHIVED".into());}
     adapter.observe_message_time(thread_id,&cwd,thread["path"].as_str());
+    if let Some(mut runtime)=crate::native_runtime::codex(thread){
+        if let Some(model)=runtime["model"].as_str().map(str::to_owned){
+            static LABELS:std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String,String>>>=std::sync::OnceLock::new();
+            let labels=LABELS.get_or_init(Default::default);let mut labels=labels.lock().map_err(|_|"WATCH_RUNTIME_BUSY")?;
+            if !labels.contains_key(&model){if let Ok(catalog)=adapter.request_with_timeout("model/list",json!({"limit":100,"cursor":null}),CODEX_OBSERVER_REQUEST_TIMEOUT){for m in catalog["data"].as_array().into_iter().flatten(){if let(Some(id),Some(name))=(m["model"].as_str().or(m["id"].as_str()),m["displayName"].as_str()){labels.insert(id.into(),name.into());}}}}
+            labels.entry(model.clone()).or_default();
+            runtime["modelLabel"]=json!(labels.get(&model).filter(|name|!name.is_empty()));
+        }
+        router_core::store::codex_watch::record_runtime(thread_id,&cwd,runtime);
+    }
+
     // Subscribe only to an already loaded native conversation. Loading a cold
     // thread (potentially with a persisted Goal) is a separate write-readiness
     // action; a passive watch must not cause that lifecycle transition.
@@ -110,7 +126,8 @@ fn public_messages(rows:&[Value],turn:&str)->Result<Vec<Value>,String>{
         if row["turnId"].as_str()!=Some(turn){return Err("WATCH_TURN_MISMATCH".into());}
         let item=&row["item"];
         if item["type"]!="agentMessage"||!matches!(item["phase"].as_str(),Some("commentary"|"final_answer")){continue;}
-        let text=item["text"].as_str().filter(|t|!t.trim().is_empty()&&t.len()<=1_000_000).ok_or("WATCH_MESSAGE_INVALID")?;
+        let Some(text)=item["text"].as_str().filter(|t|!t.trim().is_empty()) else {continue};
+        if text.len()>1_000_000{return Err("WATCH_PUBLIC_MESSAGE_TOO_LARGE".into());}
         messages.push(json!({"id":id(&item["id"])?,"turnId":turn,"role":"assistant","text":text}));
     }Ok(messages)
 }
@@ -132,10 +149,8 @@ fn select_message(
         {
             continue;
         }
-        let text = item["text"]
-            .as_str()
-            .filter(|t| !t.trim().is_empty() && t.len() <= 1_000_000)
-            .ok_or("WATCH_MESSAGE_INVALID")?;
+        let Some(text) = item["text"].as_str().filter(|t| !t.trim().is_empty()) else { continue };
+        if text.len()>1_000_000{return Err("WATCH_PUBLIC_MESSAGE_TOO_LARGE".into());}
         return Ok(Some((id(&item["id"])?, text.into())));
     }
     Ok(None)
@@ -175,8 +190,9 @@ pub(crate) fn poll(
     watch: &CodexWatch,
     epoch: u64,
 ) -> Result<bool, String> {
-    if watch.thread_id.starts_with(router_core::store::claude_manual::PREFIX){return Ok(false);}
+    if watch.thread_id.starts_with(router_core::store::claude_manual::PREFIX)||watch.thread_id.starts_with("pi:"){return Ok(false);}
     let outcome = (|| {
+        source_availability(&watch.thread_id,&watch.cwd)?;
         let mut s = session.lock().map_err(|_| "Router session unavailable")?;
         if s.codex_observer_epoch != epoch {
             return Ok(false);
@@ -198,8 +214,9 @@ pub(crate) fn poll(
         if let Some(a)=s.adapter.as_ref(){crate::conversation_message_time::codex(store,a,&watch.thread_id,&cwd);}
         store.record_codex_watch(&watch.thread_id, watch.generation, &snapshot)
     })();
-    if outcome.is_err() {
-        let _ = store.codex_watch_unavailable(&watch.thread_id, watch.generation);
+    if let Err(code)=&outcome {
+        let reason=match code.as_str(){"WATCH_THREAD_ARCHIVED"|"WATCH_SOURCE_FILE_MISSING"|"WATCH_PROJECT_CHANGED"=>code.as_str(),_=>"WATCH_READ_UNAVAILABLE"};
+        let _ = store.codex_watch_unavailable_reason(&watch.thread_id, watch.generation,reason);
     }
     outcome
 }
@@ -222,6 +239,13 @@ mod tests {
             "result"
         );
         assert!(select_message(&rows, "wrong", true).is_err());
+    }
+    #[test]
+    fn streaming_empty_native_messages_do_not_block_observation_or_send_preflight(){
+        let rows=vec![json!({"turnId":"t","item":{"id":"stream","type":"agentMessage","phase":"commentary","text":""}}),json!({"turnId":"t","item":{"id":"final","type":"agentMessage","phase":"final_answer","text":"ready"}})];
+        assert_eq!(public_messages(&rows,"t").unwrap().len(),1);
+        assert_eq!(select_message(&rows,"t",false).unwrap().unwrap().1,"ready");
+        assert!(public_messages(&rows,"wrong").is_err());
     }
     #[test]
     fn public_live_reports_are_chronological_and_private_items_never_leave_projection(){

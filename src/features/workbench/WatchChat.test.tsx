@@ -6,6 +6,18 @@ import type { ChatMessage, WatchChatApi, WatchChatState, WatchReply } from "./wa
 const original={sequence:17,threadId:"exact-original",label:"原对话",cwd:"D:\\project-a",snapshot:{state:"RESULT_READY",turnId:"turn-a",itemId:"item-a",text:"完整原文"},observedAt:1};
 const state:WatchChatState={watch:{...original,enabled:true,generation:2,checkedAt:1,errorCode:null},host:"电脑A",ownedTurnId:null,externalBusy:false,replies:[],requests:[],goal:null};
 const response=(id:string,status:WatchReply["status"]="SENT"):WatchReply=>({id,threadId:original.threadId,sourceSequence:17,expectedTurnId:"turn-a",mode:"SEND",text:"第一条回复",status,turnId:"turn-b",errorCode:null,createdAt:1,options:{attachments:[]}});
+it('renders a native Pi image once without a contradictory unavailable attachment preview',async()=>{
+ const media=vi.spyOn(mediaModule,'messageMedia').mockImplementation(()=>Object.assign(vi.fn(async()=>({filename:'input.jpg',mime:'image/jpeg',data:''})),{scopeKey:'pi-image-fixture'}));
+ const native={...original,threadId:'pi:exact-session'};
+ const message:ChatMessage={id:'native-input',turnId:'pi-session:exact-session',role:'user',clientId:'image-request',text:'识别图片\n\n![Pi 图片](pi-media/native-input/0.jpg)'};
+ const receipt={...response('image-request'),threadId:native.threadId,text:'识别图片',nativeMessageId:message.id,turnId:message.turnId,options:{attachments:['upload-id']}};
+ const current:WatchChatState={...state,provider:'PI',watch:{...state.watch,threadId:native.threadId},publicMessages:[message],replies:[receipt]};
+ render(<WatchChat original={native} api={{state:async()=>current,command:async()=>({messages:[message],nextCursor:null}) as never}} onBack={()=>{}}/>);
+ await screen.findByRole('button',{name:'查看图片：Pi 图片'});
+ expect(screen.queryByText('附件预览暂不可用。')).not.toBeInTheDocument();
+ expect(screen.getAllByRole('button',{name:'查看图片：Pi 图片'})).toHaveLength(1);
+ media.mockRestore();
+});
 it('does not send a composing Chinese candidate through the keyboard shortcut',async()=>{
  const command=vi.fn(async()=>({messages:[],nextCursor:null}));render(<WatchChat original={original} api={{state:async()=>state,command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
  const input=screen.getByRole('textbox');fireEvent.change(input,{target:{value:'还在选字'}});await waitFor(()=>expect(screen.getByRole('button',{name:'发送回复'})).toBeEnabled());fireEvent.compositionStart(input);fireEvent.keyDown(input,{key:'Enter',ctrlKey:true,isComposing:false});fireEvent.compositionEnd(input);fireEvent.keyDown(input,{key:'Enter',ctrlKey:true,keyCode:229});
@@ -339,10 +351,10 @@ it('does not describe a desktop provider disconnect or read timeout as an unreac
  expect(chatError(Error('Codex backend disconnected'))).toContain('Codex 读取连接已断开');expect(chatError(Error('ROUTER_READ_TIMEOUT'))).toContain('读取对话超时');expect(chatError(Error('ROUTER_READ_TIMEOUT'))).not.toContain('连不上');
 });
 it('explicit retry bypasses cached reads, preserves the draft and clears only recovered read errors',async()=>{
- const fresh={...state,watch:{...state.watch,snapshot:{...state.watch.snapshot,state:'RUNNING'}}};
- const api:WatchChatApi={state:vi.fn().mockResolvedValue(fresh),command:vi.fn().mockRejectedValue(Error('Codex backend disconnected')),refreshState:vi.fn().mockResolvedValue(fresh),refreshHistory:vi.fn().mockResolvedValue({messages:[{id:'recovered',turnId:'turn-a',role:'assistant',text:'fresh recovered history'}],nextCursor:null})};
- render(<WatchChat original={original} api={api} onBack={vi.fn()}/>);const warning=await screen.findByRole('alert');expect(warning).toHaveTextContent('Codex 读取连接已断开');expect(screen.getAllByText('状态待确认').length).toBeGreaterThan(0);
- const input=screen.getByRole('textbox');fireEvent.change(input,{target:{value:'preserved draft'}});fireEvent.click(screen.getByRole('button',{name:'检查状态'}));await screen.findByText('fresh recovered history');await waitFor(()=>expect(screen.queryByRole('alert')).toBeNull());expect(api.refreshState).toHaveBeenCalledOnce();expect(api.refreshHistory).toHaveBeenCalledOnce();expect(input).toHaveValue('preserved draft');expect((api.command as any).mock.calls.every((c:any)=>c[0].action==='HISTORY')).toBe(true);
+ let recovered=false;const fresh={...state,watch:{...state.watch,snapshot:{...state.watch.snapshot,state:'RUNNING'}}};
+ const api:WatchChatApi={state:vi.fn().mockResolvedValue(fresh),command:vi.fn().mockRejectedValue(Error('Codex backend disconnected')),refreshState:vi.fn().mockResolvedValue(fresh),refreshHistory:vi.fn(async()=>{if(!recovered)throw Error('Codex backend disconnected');return {messages:[{id:'recovered',turnId:'turn-a',role:'assistant' as const,text:'fresh recovered history'}],nextCursor:null};})};
+ render(<WatchChat original={original} api={api} onBack={vi.fn()}/>);const warning=await screen.findByRole('alert');expect(warning).toHaveTextContent('Codex 读取连接已断开');
+ const input=screen.getByRole('textbox');fireEvent.change(input,{target:{value:'preserved draft'}});const beforeHistory=(api.refreshHistory as any).mock.calls.length;recovered=true;fireEvent.click(screen.getByRole('button',{name:'检查状态'}));await screen.findByText('fresh recovered history');await waitFor(()=>expect(screen.queryByRole('alert')).toBeNull());expect(api.refreshState).toHaveBeenCalledTimes(2);expect((api.refreshHistory as any).mock.calls.length).toBeGreaterThan(beforeHistory);expect(input).toHaveValue('preserved draft');expect((api.command as any).mock.calls.every((c:any)=>c[0].action==='HISTORY')).toBe(true);
 });
 
 it('shows the list snapshot immediately instead of an older cached detail while background refresh waits',async()=>{
@@ -357,4 +369,19 @@ it('updates a cached same-id streaming item with the newer directory text withou
  const cached={...state,watch:{...state.watch,checkedAt:10}};
  render(<WatchChat original={watch} api={{cachedState:()=>cached,cachedHistory:()=>({messages:[{id:'item-a',turnId:'turn-a',role:'assistant',text:'旧流式正文',order:1}],nextCursor:null}),refreshState:()=>new Promise(()=>{}),state:async()=>cached,command:async()=>({messages:[],nextCursor:null}) as never}} onBack={()=>{}}/>);
  expect(screen.getByText('同一条消息的新内容')).toBeVisible();expect(screen.queryByText('旧流式正文')).toBeNull();expect(document.querySelectorAll('.v4-chat-message-row')).toHaveLength(1);
+});
+
+it('rechecks both current state and latest history on foreground without resending or clearing a draft',async()=>{
+ const live={...state,watch:{...state.watch,snapshot:{...state.watch.snapshot,text:'current foreground'}}};
+ const api:WatchChatApi={state:vi.fn().mockResolvedValue(state),cachedState:()=>state,cachedHistory:()=>({messages:[],nextCursor:null}),refreshState:vi.fn().mockResolvedValue(live),refreshHistory:vi.fn().mockResolvedValue({messages:[],nextCursor:null}),command:vi.fn()};
+ render(<WatchChat original={original} api={api} onBack={()=>{}}/>);await waitFor(()=>expect(api.refreshState).toHaveBeenCalledOnce());const input=screen.getByRole('textbox');fireEvent.change(input,{target:{value:'foreground draft'}});await waitFor(()=>expect(api.refreshHistory).toHaveBeenCalled());
+ const reads=(api.refreshHistory as any).mock.calls.length;await act(async()=>{window.dispatchEvent(new Event('pageshow'));});expect(api.refreshState).toHaveBeenCalledTimes(2);expect((api.refreshHistory as any).mock.calls.length).toBeGreaterThan(reads);expect(input).toHaveValue('foreground draft');expect(api.command).not.toHaveBeenCalled();
+});
+
+it('an unsent Codex queue does not block guidance while unknown delivery still blocks it',async()=>{
+ const queued={...response('old-queue','QUEUED'),mode:'QUEUE' as const,text:'queued earlier',expectedTurnId:'old-turn'};
+ let current={...state,externalBusy:true,controllableTurnId:'live-turn',watch:{...state.watch,snapshot:{...state.watch.snapshot,state:'RUNNING',turnId:'live-turn'}},replies:[queued]};let notify=()=>{};
+ const api:WatchChatApi={state:async()=>current,cachedState:()=>current,subscribe:(_id,fn)=>{notify=fn;return()=>{};},command:async()=>({messages:[],nextCursor:null}) as never};
+ render(<WatchChat original={original} api={api} onBack={()=>{}}/>);const input=screen.getByRole('textbox');fireEvent.change(input,{target:{value:'guide current work'}});await waitFor(()=>expect(screen.getByRole('button',{name:'调整当前任务'})).toBeEnabled());
+ current={...current,replies:[{...queued,status:'UNKNOWN'}]};act(()=>notify());expect(screen.getByRole('button',{name:'调整当前任务'})).toBeDisabled();expect(input).toHaveValue('guide current work');
 });

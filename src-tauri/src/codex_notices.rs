@@ -4,16 +4,24 @@ use router_core::store::{codex_notices::{Binding,Command,Question},RouterStore};
 use serde_json::{json,Value};use sha2::{Digest,Sha256};
 use std::{sync::{Arc,Mutex},time::Duration};
 pub(crate) fn goal_key(thread:&str,g:&crate::host_application::MobileCodexGoal)->String{format!("{:x}",Sha256::digest(serde_json::to_vec(&json!([thread,g.objective,g.created_at,g.token_budget])).unwrap_or_default()))}
+pub(crate) fn reconcile_legacy(core:&RouterCore,token:&str,p:&Command)->Result<Value,String>{
+ core.store.codex_notice_auth(token,p)?;let waits=p.legacy_waits.as_ref().filter(|v|v.len()<=32).ok_or("CLAUDE_NOTICE_RECEIPT_INVALID")?;
+ let mut texts=Vec::new();let mut selected=Vec::new();for w in waits{let Ok(source)=core.store.codex_chat_context(&w.thread_id)else{continue};if source.generation!=w.generation{continue;}if uuid::Uuid::parse_str(&w.thread_id).is_err()||uuid::Uuid::parse_str(&w.turn_id).is_err()||!matches!(w.source_state.as_str(),"RESULT_READY"|"ACTION_REQUIRED"|"FAILED"|"INTERRUPTED"){return Err("CLAUDE_NOTICE_RECEIPT_INVALID".into());}
+ selected.push(w);texts.push(format!("Agbrio Codex notice (metadata only)\nthreadId: {}\nturnId: {}\ngeneration: {}\nstate: {}\nRead this exact conversation through the authorized Agbrio MCP before reporting its result. This notice contains no reply body, approval, or permission to send another message. Follow only the owner's previously delegated task; ask the owner for any missing decision.",w.thread_id,w.turn_id,w.generation,w.source_state));}
+ let Some(path)=crate::claude_transcript::projects_root().and_then(|root|crate::claude_transcript::find(&root,&p.session_id))else{return Ok(json!({"receipts":[]}))};
+ let found=crate::claude_transcript::find_plugin_prompt_batch(&path,&p.session_id,&texts);let receipts:Vec<_>=selected.into_iter().zip(found).filter_map(|(w,id)|id.map(|id|json!({"threadId":w.thread_id,"generation":w.generation,"turnId":w.turn_id,"messageId":id}))).collect();Ok(json!({"receipts":receipts}))
+}
 pub(crate) fn register(core:&RouterCore,token:&str,p:&Command)->Result<Value,String>{
  core.store.codex_notice_auth(token,p)?;
- let thread=p.thread_id.as_deref().ok_or("CLAUDE_NOTICE_TARGET_INVALID")?;let generation=p.generation.ok_or("CLAUDE_NOTICE_TARGET_INVALID")?;let turn=p.turn_id.as_deref().ok_or("CLAUDE_NOTICE_TARGET_INVALID")?;let ttl=p.ttl_seconds.unwrap_or(3600);if !(30..=86400).contains(&ttl){return Err("CLAUDE_NOTICE_TTL_INVALID".into());}
+ let thread=p.thread_id.as_deref().ok_or("CLAUDE_NOTICE_TARGET_INVALID")?;let generation=p.generation.ok_or("CLAUDE_NOTICE_TARGET_INVALID")?;let turn=p.turn_id.as_deref().ok_or("CLAUDE_NOTICE_TARGET_INVALID")?;let ttl=p.ttl_seconds.unwrap_or(86400);if !(30..=86400).contains(&ttl){return Err("CLAUDE_NOTICE_TTL_INVALID".into());}
  let w=core.store.codex_chat_context(thread)?;if !w.enabled||w.generation!=generation{return Err("CLAUDE_NOTICE_SOURCE_CHANGED".into());}
  let key=if p.follow_goal==Some(true){let mut s=core.session.lock().map_err(|_|"CLAUDE_NOTICE_SOURCE_BUSY")?;let a=s.adapter.as_mut().ok_or("CLAUDE_NOTICE_SOURCE_UNAVAILABLE")?;let m=a.request_with_timeout("thread/read",json!({"threadId":thread,"includeTurns":false}),Duration::from_secs(3))?;if m.pointer("/thread/id").and_then(Value::as_str)!=Some(thread)||m.pointer("/thread/cwd").and_then(Value::as_str)!=Some(w.cwd.as_str()){return Err("CLAUDE_NOTICE_SOURCE_CHANGED".into());}let response=a.request_with_timeout("thread/goal/get",json!({"threadId":thread}),Duration::from_secs(3))?;let g=crate::host_application::codex_goal_from_response(thread,&response)?.ok_or("CLAUDE_NOTICE_GOAL_REQUIRED")?;if g.created_at.as_ref().and_then(Value::as_i64).is_none()||g.objective.trim().is_empty(){return Err("CLAUDE_NOTICE_GOAL_IDENTITY_INCOMPLETE".into());}Some(goal_key(thread,&g))}else{None};
- let b=Binding{receiver_sid:p.session_id.clone(),receiver_cwd:p.cwd.clone(),thread_id:thread.into(),generation,source_cwd:w.cwd,anchor_turn:turn.into(),mode:if key.is_some(){"GOAL"}else{"TURN"}.into(),goal_key:key,expires_at:crate::local_safety::now()+ttl*1000};let sub=core.store.register_codex_notice(&b)?;
+ let b=Binding{receiver_sid:p.session_id.clone(),receiver_cwd:p.cwd.clone(),thread_id:thread.into(),generation,source_cwd:w.cwd,anchor_turn:turn.into(),mode:if key.is_some(){"GOAL"}else if p.follow_task==Some(true){"TASK"}else{"TURN"}.into(),goal_key:key,expires_at:if p.follow_task==Some(true){253402300799000}else{crate::local_safety::now()+ttl*1000}};let sub=core.store.register_codex_notice(&b)?;
  Ok(json!({"subscription":sub,"wait":{"threadId":thread,"generation":generation,"turnId":sub.binding.anchor_turn,"status":if sub.status=="ACTIVE"{"WAITING"}else{sub.status.as_str()},"followGoal":b.mode=="GOAL","subscriptionId":sub.id,"expiresAt":b.expires_at}}))
 }
 pub(crate) fn poll(store:&Arc<RouterStore>,session:&Arc<Mutex<Session>>,epoch:u64,cursor:&mut Option<String>){
- let Ok(sources)=store.codex_notice_sources(None)else{return};let ids=crate::observer_batch::next_ids(sources.iter().map(|s|s.binding.thread_id.as_str()),cursor,crate::observer_batch::WATCH_READS_PER_PASS);
+ let _=store.observe_pi_manager_notices();
+ let Ok(sources)=store.codex_notice_sources(None)else{return};let ids=crate::observer_batch::next_ids(sources.iter().filter(|s|!s.binding.thread_id.starts_with("pi:")).map(|s|s.binding.thread_id.as_str()),cursor,crate::observer_batch::WATCH_READS_PER_PASS);
  for thread in ids{
   let Ok(w)=store.codex_chat_context(&thread)else{continue};if !w.enabled{continue;}
   let Ok(mut s)=session.try_lock()else{continue};if s.codex_observer_epoch!=epoch{return;}
@@ -31,9 +39,13 @@ pub(crate) fn poll(store:&Arc<RouterStore>,session:&Arc<Mutex<Session>>,epoch:u6
  }
 }
 pub(crate) fn reconcile(core:&RouterCore){
- let Ok(rows)=core.store.pending_codex_native_receipts()else{return};
+ static CURSOR:std::sync::Mutex<Option<String>>=std::sync::Mutex::new(None);
+ let Ok(mut cursor)=CURSOR.try_lock()else{return};
+ let Ok(mut rows)=core.store.pending_codex_native_receipts_page(cursor.as_deref())else{return};
+ if rows.is_empty(){*cursor=None;rows=core.store.pending_codex_native_receipts_page(None).unwrap_or_default();}
+ *cursor=rows.last().map(|(n,_)|n.id.clone());drop(cursor);
  // Native append may have succeeded while a callback/HTTP acknowledgement was lost.
- for(n,s)in rows.into_iter().take(4){if crate::claude_code::observed_session(core,&s.binding.receiver_sid,Some(&s.binding.receiver_cwd)).is_err(){continue;}let Some(path)=crate::claude_transcript::projects_root().and_then(|root|crate::claude_transcript::find(&root,&s.binding.receiver_sid))else{continue};if let Some(id)=crate::claude_transcript::find_plugin_prompt(&path,&s.binding.receiver_sid,&n.text,n.created_at){let _=core.store.reconcile_codex_notice(&n.id,&id);}}
+ for(n,s)in rows.into_iter().take(16){if crate::claude_code::observed_session(core,&s.binding.receiver_sid,Some(&s.binding.receiver_cwd)).is_err(){continue;}let Some(path)=crate::claude_transcript::projects_root().and_then(|root|crate::claude_transcript::find(&root,&s.binding.receiver_sid))else{continue};if let Some(id)=crate::claude_transcript::find_plugin_prompt(&path,&s.binding.receiver_sid,&n.text,n.created_at){let _=core.store.reconcile_codex_notice(&n.id,&id);}}
 }
 /// Compatibility for precise-turn registrations whose UI event was pruned or missed.
 pub(crate) fn legacy_probe(core:&RouterCore,token:&str,p:&router_core::store::claude_codex_wait::WaitProbe,reconcile_native:bool)->Result<Value,String>{
@@ -56,7 +68,7 @@ pub(crate) fn legacy_probe(core:&RouterCore,token:&str,p:&router_core::store::cl
   adapter.begin_latest_turn_observation("another-watch").unwrap();adapter.request("thread/turns/list",json!({"threadId":"another-watch","cursor":null,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"})).unwrap();
   let session=Arc::new(Mutex::new(Session{adapter:Some(adapter),..Default::default()}));let core=RouterCore{store:store.clone(),session:session.clone(),chatgpt:Default::default(),completed_chatgpt_responses:Default::default()};
   let w=store.registered_codex_watch("20000000-0000-4000-8000-000000000002").unwrap();store.register_codex_notice(&Binding{receiver_sid:sid.clone(),receiver_cwd:root.clone(),thread_id:w.thread_id.clone(),generation:w.generation,source_cwd:root.clone(),anchor_turn:"old-anchor".into(),mode:"GOAL".into(),goal_key:Some(goal_key(&w.thread_id,&goal)),expires_at:crate::local_safety::now()+3600000}).unwrap();
-  let p:Command=serde_json::from_value(json!({"sessionId":sid,"instanceId":instance,"cwd":root,"action":"SYNC"})).unwrap();poll(&store,&session,0,&mut None);assert!(store.codex_notice_sync(&pair.token,&p).unwrap()["notice"].is_null());
+  let p:Command=serde_json::from_value(json!({"sessionId":sid,"instanceId":instance,"cwd":root,"action":"SYNC"})).unwrap();core.store.observe_pi_manager_notices().unwrap();poll(&store,&session,0,&mut None);assert!(store.codex_notice_sync(&pair.token,&p).unwrap()["notice"].is_null());
   std::fs::write(d.path().join("stage.json"),r#"{"status":"blocked","turn":"next-turn"}"#).unwrap();poll(&store,&session,0,&mut None);let result=store.codex_notice_sync(&pair.token,&p).unwrap();assert_eq!(result["notice"]["sourceState"],"blocked");assert_eq!(result["notice"]["turnId"],"next-turn");assert!(!result["notice"]["text"].as_str().unwrap().contains("Never relay this private objective"));
   let probe=router_core::store::claude_codex_wait::WaitProbe{session_id:sid,instance_id:instance,cwd:root,thread_id:w.thread_id,generation:w.generation,turn_id:"old-anchor".into()};assert!(legacy_probe(&core,&pair.token,&probe,false).is_err());assert_eq!(legacy_probe(&core,&pair.token,&probe,true).unwrap()["state"],"RESULT_READY");
   let requests=std::fs::read_to_string(d.path().join("rpc.jsonl")).unwrap();assert!(!requests.contains("turn/start"));assert!(!requests.contains("thread/resume"));assert!(!requests.contains("thread/goal/set"));assert!(!requests.contains("thread/items/list"));

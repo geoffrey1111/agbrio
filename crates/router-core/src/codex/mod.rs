@@ -9,3 +9,5 @@ pub mod result;
 pub mod platform;
 
 pub(crate) mod async_questions;
+
+pub mod source_index;

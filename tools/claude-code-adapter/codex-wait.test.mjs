@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {handleCodexWait,tickCodexWaits,registerCodexWait,waitNotice,appendCodexWait} from '../claude-code-plugin/hooks/codex-wait.mjs';
 const sid='10000000-0000-4000-8000-000000000001',tid='20000000-0000-4000-8000-000000000001',turn='30000000-0000-4000-8000-000000000001';
-const input={action:'wait',threadId:tid,generation:1,turnId:turn};
+const input={action:'wait',followTask:false,threadId:tid,generation:1,turnId:turn};
 function fixture(){
  let time=100000,status='RUNNING',failure=false,submits=0,calls=0;const data=new Map(),hooks={};
  const state={identity:{sessionId:sid,cwd:'D:\\fixture'},instanceId:sid,origin:'http://127.0.0.1:12345',token:'a'.repeat(64),stopped:false};
@@ -26,7 +26,7 @@ test('store failure before reservation produces no prompt',async()=>{
  const f=fixture();await f.wait();f.status('RESULT_READY');f.$.store.set=async()=>{throw Error('disk');};await assert.rejects(f.tick);assert.equal(f.submits(),0);
 });
 test('cancel and expiry stop notices; uncertain attempts cannot be unlocked by cancel',async()=>{
- for(const mode of ['cancel','expire']){const f=fixture();await f.wait();if(mode==='cancel')await handleCodexWait(f.$,f.state,{...input,action:'cancel'});else f.time(3800000);f.status('RESULT_READY');await f.tick();assert.equal(f.submits(),0);}
+ for(const mode of ['cancel','expire']){const f=fixture();await f.wait();if(mode==='cancel')await handleCodexWait(f.$,f.state,{...input,action:'cancel'});else f.time(86501000);f.status('RESULT_READY');await f.tick();assert.equal(f.submits(),0);}
  const f=fixture();await f.wait();f.status('RESULT_READY');await f.tick();assert.equal((await handleCodexWait(f.$,f.state,{...input,action:'cancel'})).wait.status,'UNKNOWN');
 });
 test('mismatched source and offline responses never wake; recovery resumes waiting only',async()=>{
@@ -74,3 +74,9 @@ test('more than eight live waits are accepted while an actual bounded active lim
  assert.equal((await handleCodexWait(f.$,f.state,{action:'status'})).capacity.waiting,128);
  await assert.rejects(handleCodexWait(f.$,f.state,{...input,turnId:'60000000-0000-4000-8000-000000000001'}),/AGBRIO_WAIT_ACTIVE_LIMIT/);
 });
+
+test('explicit expired exact turn renewal revalidates without unlocking uncertain sends',async()=>{const f=fixture();await handleCodexWait(f.$,f.state,{...input,ttlSeconds:30});f.time(140000);let r=await handleCodexWait(f.$,f.state,{...input,ttlSeconds:86400});assert.equal(r.wait.status,'WAITING');assert.equal(r.wait.expiresAt,140000+86400000);f.status('RESULT_READY');await f.tick();r=await handleCodexWait(f.$,f.state,{...input,ttlSeconds:86400});assert.equal(r.wait.status,'UNKNOWN');assert.equal(f.submits(),1);});
+
+test('legacy UNKNOWN with an independent native receipt settles without a second submission',async()=>{const f=fixture();await f.wait();f.status('RESULT_READY');await f.tick();assert.equal(f.submits(),1);const fetch=f.$.http.fetch;f.$.http.fetch=async(u,o)=>JSON.parse(o.body).action==='RECONCILE_LEGACY'?{ok:true,text:JSON.stringify({receipts:[{...input,messageId:sid}]})}:fetch(u,o);f.time(140000);await f.tick();assert.equal((await handleCodexWait(f.$,f.state,{action:'status'})).waits[0].status,'DELIVERED');assert.equal(f.submits(),1);});
+
+test('native stored user envelope also acknowledges only the exact plugin notice',async()=>{const f=fixture();await f.wait();f.status('RESULT_READY');await f.tick();const r={type:'user',uuid:sid,message:{role:'user',content:waitNotice(input,'RESULT_READY')}};await appendCodexWait(f.$,f.state,{door:'delivery',origin:{kind:'plugin',name:'agbrio-bridge'}},r);assert.equal((await handleCodexWait(f.$,f.state,{action:'status'})).waits[0].status,'DELIVERED');assert.equal(f.submits(),1);});

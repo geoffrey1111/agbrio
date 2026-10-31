@@ -1,5 +1,7 @@
 pub mod control;
 pub mod assistant;
+pub mod pi;
+pub mod pi_policy;
 pub mod assistant_oauth;
 pub mod assistant_actions;
 pub mod assistant_processed;
@@ -43,6 +45,10 @@ const MAX_REPLY_OBSERVATION_BYTES: usize = 1_000_000;
 const MAX_WORKSTREAM_DRAFT_BYTES: usize = 100_000;
 
 const NORMAL_FEATURE_MIGRATIONS: &[(&str, &str)] = &[
+    ("claude-notice-claims-v2", include_str!("../../migrations/normal/034_notice_claims.sql")),
+    ("pi-owner-questions-v1", include_str!("../../migrations/normal/033_pi_questions.sql")),
+    ("pi-workspaces-v1", include_str!("../../migrations/normal/032_pi_workspaces.sql")),
+    ("pi-executor-v1", include_str!("../../migrations/normal/031_pi_executor.sql")),
     ("codex-notices-v1", include_str!("../../migrations/normal/030_codex_notices.sql")),
     ("local-safety-fallback-v1", include_str!("../../migrations/normal/029_local_safety_fallback.sql")),
     ("local-safety-v1", include_str!("../../migrations/normal/028_local_safety.sql")),
@@ -3911,7 +3917,7 @@ mod tests {
                         "assistant_sent_handoffs",
                         "child_result_baselines", "child_result_events", "child_result_preferences",
                         "claude_bridge_commands", "claude_child_contexts",
-                        "claude_codex_notices", "claude_codex_subscriptions",
+                        "claude_codex_notice_claims", "claude_codex_notices", "claude_codex_subscriptions",
                         "claude_connections", "claude_control_leases",
                         "claude_event_journal", "claude_manual_commands", "claude_owner_requests",
                         "claude_sessions",
@@ -3940,6 +3946,8 @@ mod tests {
                         "mcp_events",
                         "mobile_chatgpt_inbound_reviews",
                         "mobile_codex_outbound_reviews",
+                        "pi_command_tombstones", "pi_commands", "pi_directory_scopes",
+                        "pi_owner_questions", "pi_public_items", "pi_scope_policies", "pi_task_access", "pi_tasks", "pi_tool_decisions",
                         "projects",
                         "provider_run_feedback_sources",
                         "provider_runs",

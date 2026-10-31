@@ -10,17 +10,30 @@ pub(crate) struct WatchView {
     #[serde(flatten)] pub watch:router_core::store::codex_watch::CodexWatch,
     #[serde(skip_serializing_if="Option::is_none")] pub task_tree:Option<crate::claude_task_tree::TaskTree>,
     pub last_message_at:Option<i64>,
+    #[serde(skip_serializing_if="Option::is_none")] pub pi_parent:Option<router_core::store::pi::Parent>,
 }
 /// Directory projection; a child's activity is not a parent sending state.
 pub(crate) fn list(core:&RouterCore)->Result<Vec<WatchView>,String>{
-    Ok(core.store.codex_watches()?.into_iter().map(|mut watch|{
+    let mut watches=core.store.codex_watches()?;
+    for task in core.store.pi_tasks()?{if let Ok(watch)=crate::pi::presentation::watch(&task){if !watches.iter().any(|w|w.thread_id==watch.thread_id){watches.push(watch);}}}
+    Ok(watches.into_iter().map(|mut watch|{
         let mut tree=None;
+        if watch.thread_id.starts_with("pi:"){
+            if let Ok(task)=core.store.pi_task(&watch.thread_id){
+                if let Ok(view)=crate::pi::presentation::watch(&task){watch.runtime=view.runtime;watch.snapshot=view.snapshot;watch.snapshot.text=watch.snapshot.text.chars().take(6000).collect();watch.error_code=task.error_code.clone();}
+                let loaded=core.session.lock().ok().is_some_and(|s|s.pi.loaded(&task.id));
+                if !loaded&&matches!(task.state.as_str(),"RUNNING"|"WAITING_DECISION"){watch.snapshot.state="UNKNOWN".into();}
+                let last_message_at=core.store.pi_public_history_page(&task.id,None,1).ok().and_then(|p|p.first().cloned()).and_then(|v|v["timestamp"].as_str().and_then(|s|time::OffsetDateTime::parse(s,&time::format_description::well_known::Rfc3339).ok()).map(|t|(t.unix_timestamp_nanos()/1_000_000)as i64));
+                return WatchView{watch,task_tree:None,last_message_at,pi_parent:Some(task.parent)};
+            }
+        }
         if watch.enabled {if let Ok(sid)=native_id(&watch.thread_id){
+            watch.runtime=crate::native_runtime::claude(sid);if let Some(v)=watch.runtime.clone(){router_core::store::codex_watch::record_runtime(&watch.thread_id,&watch.cwd,v);}
             if let Ok(s)=crate::claude_code::observed_session(core,sid,Some(&watch.cwd)){watch.snapshot=snapshot(&s);watch.checked_at=s.checked_at;}
             tree=Some(crate::claude_task_tree::read(core,sid,&watch.cwd));
         }}
         let last_message_at=core.store.conversation_message_at(&watch.thread_id,&watch.cwd).ok().flatten();
-        WatchView{watch,task_tree:tree,last_message_at}
+        WatchView{watch,task_tree:tree,last_message_at,pi_parent:None}
     }).collect())
 }
 
@@ -41,7 +54,7 @@ pub(crate) fn enable(core:&RouterCore,key:&str)->Result<(),String>{
 }
 pub(crate) fn state(core:&RouterCore,key:&str)->Result<Value,String>{
     core.store.expire_claude_manual_offers()?;
-    let mut watch=core.store.codex_chat_context(key)?;
+    let mut watch=core.store.codex_chat_context(key)?;watch.runtime=crate::native_runtime::claude(native_id(key)?);
     // Before the conversation reports, the watch shows what it has and input stays off.
     let session=crate::claude_code::observed_session(core,native_id(key)?,Some(&watch.cwd)).ok();
     if let Some(s)=&session {watch.snapshot=snapshot(s);watch.checked_at=s.checked_at;}
@@ -53,7 +66,7 @@ pub(crate) fn state(core:&RouterCore,key:&str)->Result<Value,String>{
     let history_revision={use std::hash::{Hash,Hasher};let mut hash=std::collections::hash_map::DefaultHasher::new();json!(messages).to_string().hash(&mut hash);format!("{:x}",hash.finish())};
     let native_ids=core.store.claude_manual_message_ids(key)?;
     let replies=core.store.watch_replies(key)?.into_iter().map(|r|{let native=native_ids.get(&r.id);let mut row=json!(r);if let Some(id)=native{row["nativeMessageId"]=json!(id);}row}).collect::<Vec<_>>();
-    Ok(json!({"watch":watch,"provider":"CLAUDE_CODE","inputReady":ready,"host":std::env::var("COMPUTERNAME").unwrap_or_default(),"ownedTurnId":null,"controllableTurnId":null,"externalBusy":matches!(state,"RUNNING"|"WAITING_DECISION"),"replies":replies,"requests":[],"goal":null,"publicMessages":messages,"historyRevision":history_revision,"taskTree":task_tree,"ownerRequests":core.store.claude_owner_requests(key,watch.generation,native_id(key)?)?,"childResultsEnabled":core.store.child_results_enabled(key)?,"activity":if state=="RUNNING"{Some("EXECUTING")}else{None},"checkedAt":session.as_ref().map(|s|s.checked_at).unwrap_or(watch.checked_at)}))
+    Ok(json!({"runtime":crate::native_runtime::claude(native_id(key)?),"piChildren":crate::pi::presentation::children(core,key,&watch.cwd)?,"watch":watch,"provider":"CLAUDE_CODE","inputReady":ready,"host":std::env::var("COMPUTERNAME").unwrap_or_default(),"ownedTurnId":null,"controllableTurnId":null,"externalBusy":matches!(state,"RUNNING"|"WAITING_DECISION"),"replies":replies,"requests":[],"goal":null,"publicMessages":messages,"historyRevision":history_revision,"taskTree":task_tree,"ownerRequests":core.store.claude_owner_requests(key,watch.generation,native_id(key)?)?,"childResultsEnabled":core.store.child_results_enabled(key)?,"activity":if state=="RUNNING"{Some("EXECUTING")}else{None},"checkedAt":session.as_ref().map(|s|s.checked_at).unwrap_or(watch.checked_at)}))
 }
 pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{
     let _cache=if matches!(&c,ChatCommand::Send{..}|ChatCommand::Upload{..}){Some(crate::attachment_cache::guard()?)}else{None};
@@ -85,7 +98,7 @@ pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{
             encode(r)
         },
         ChatCommand::Upload{thread_id,name,data}=>crate::watch_chat::upload(core,&thread_id,&name,&data),
-        ChatCommand::AsyncRespond{..}=>Err("CLAUDE_OPERATION_NOT_SUPPORTED".into()),
+        ChatCommand::Restore{..}|ChatCommand::AsyncRespond{..}=>Err("CLAUDE_OPERATION_NOT_SUPPORTED".into()),
         ChatCommand::ChildOpen{thread_id,generation,child_id}=>crate::claude_child_contexts::open(core,&thread_id,generation,&child_id),
         ChatCommand::ClaudeDecision{thread_id,generation,child_id,id,revision,answer}=>crate::claude_owner_requests::answer(core,&thread_id,generation,child_id.as_deref(),&id,revision,&answer),
         ChatCommand::ChildHistory{thread_id,generation,child_id,cursor}=>{
@@ -156,6 +169,7 @@ pub(crate) fn update_watch(core:&RouterCore,sid:&str)->Result<(),String>{
     let Ok(w)=core.store.registered_codex_watch(&key)else{return Ok(())};
     if !w.enabled{return Ok(());}
     let s=crate::claude_code::observed_session(core,sid,Some(&w.cwd))?;
+    if let Some(v)=crate::native_runtime::claude(sid){router_core::store::codex_watch::record_runtime(&key,&w.cwd,v);}
     core.store.record_codex_watch(&key,w.generation,&snapshot(&s))?;Ok(())
 }
 

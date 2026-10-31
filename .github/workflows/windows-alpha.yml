@@ -26,7 +26,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 55
     env:
-      VITE_AGBRIO_APP_VERSION: 0.1.35-rc.96
+      VITE_AGBRIO_APP_VERSION: 0.1.35-rc.102
       AGBRIO_HOSTED_CONTROL_ORIGIN: https://agbrio-connect.geoffreygroup.cc
     steps:
       - uses: actions/checkout@v4
@@ -57,6 +57,10 @@ jobs:
           node --test tools/claude-code-adapter/adapter.test.mjs tools/claude-code-adapter/manual.test.mjs tools/claude-code-adapter/queue.test.mjs tools/claude-code-adapter/codex-wait.test.mjs tools/claude-code-adapter/codex-notices.test.mjs tools/claude-code-adapter/resource-notice.test.mjs
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           pwsh -NoProfile -File tools/resource-monitor/ResourceMonitor.ps1 -Mode SelfTest
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          node --test tools/pi-adapter/guard.test.mjs
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          pwsh -NoProfile -File tools/pi-adapter/launch-tools.test.ps1
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           node --test services/hosted-relay/worker.test.mjs
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}

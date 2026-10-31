@@ -1400,7 +1400,7 @@ async fn claude_codex_wait(State(state):State<MobileHttpState>,headers:HeaderMap
 }
 async fn claude_codex_notices(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<router_core::store::codex_notices::Command>)->ApiResult<serde_json::Value>{
  let token=claude_adapter_token(&headers)?;let core=state.core.clone();run_core_blocking("Codex notification metadata",move||{
-  match input.action.as_str(){"REGISTER"=>crate::codex_notices::register(&core,&token,&input),"CANCEL"=>{core.store.cancel_codex_notice(&token,&input)?;Ok(serde_json::json!({"accepted":true}))},_=>core.store.codex_notice_sync(&token,&input)}
+  match input.action.as_str(){"RECONCILE_LEGACY"=>crate::codex_notices::reconcile_legacy(&core,&token,&input),"REGISTER"=>crate::codex_notices::register(&core,&token,&input),"CANCEL"=>{core.store.cancel_codex_notice(&token,&input)?;Ok(serde_json::json!({"accepted":true}))},_=>core.store.codex_notice_sync(&token,&input)}
  }).await.map(Json)
 }
 async fn claude_resource_notice(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<router_core::store::local_safety::NoticeProbe>)->Result<axum::response::Response,ApiError>{

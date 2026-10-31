@@ -27,7 +27,7 @@ fn dispatch(core:&RouterCore,host:&HostRuntime,bytes:&[u8],seen:&mut HashMap<Str
         "REGISTER_CODEX_NOTICES" if r.expected_instance.as_deref()==Some(host.instance_id())=>{
             if seen.len()>=128{return failure("APP_CONTROL_REQUEST_LIMIT");}
             let Some(binding)=r.notice_binding.as_ref()else{return failure("CLAUDE_NOTICE_BINDING_INVALID")};
-            match core.store.register_codex_notice(binding){Ok(v)=>(json!(v),false),Err(code)=>return failure(&code)}
+            match core.store.register_codex_notice(binding){Ok(v)=>{if binding.mode=="PI"{if let Err(code)=core.store.observe_pi_manager_notice_target(Some(&binding.thread_id)){return failure(&code);}}(json!(v),false)},Err(code)=>return failure(&code)}
         },
         "REGISTER_CODEX_NOTICES"=>return failure("APP_CONTROL_EXPECTED_INSTANCE_REQUIRED"),
         "SHUTDOWN" if r.expected_instance.as_deref()==Some(host.instance_id())=>(json!({"state":"SHUTTING_DOWN","instanceId":host.instance_id(),"pid":std::process::id()}),true),
@@ -44,14 +44,18 @@ fn dispatch(core:&RouterCore,host:&HostRuntime,bytes:&[u8],seen:&mut HashMap<Str
 }
 
 #[cfg(windows)]
+pub(crate) fn process_owner_sid(process:windows::Win32::Foundation::HANDLE)->Result<String,String>{pipe::sid_for_process(process)}
+
+#[cfg(windows)]
 mod pipe {
     use super::*;
     use sha2::{Digest,Sha256};
     use tokio::{io::{AsyncReadExt,AsyncWriteExt},net::windows::named_pipe::{NamedPipeServer,ServerOptions}};
     use windows::{core::{PCWSTR,PWSTR},Win32::{Foundation::{CloseHandle,HANDLE,HLOCAL,LocalFree},Security::{Authorization::{ConvertSidToStringSidW,ConvertStringSecurityDescriptorToSecurityDescriptorW},GetTokenInformation,TokenUser,TOKEN_QUERY,TOKEN_USER,PSECURITY_DESCRIPTOR,SECURITY_ATTRIBUTES},System::Threading::{GetCurrentProcess,OpenProcessToken}}};
 
-    fn sid()->Result<String,String>{unsafe{
-        let mut token=HANDLE::default();OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY,&mut token).map_err(|_|"APP_CONTROL_IDENTITY_UNAVAILABLE")?;
+    fn sid()->Result<String,String>{sid_for_process(unsafe{GetCurrentProcess()})}
+    pub(super) fn sid_for_process(process:HANDLE)->Result<String,String>{unsafe{
+        let mut token=HANDLE::default();OpenProcessToken(process,TOKEN_QUERY,&mut token).map_err(|_|"APP_CONTROL_IDENTITY_UNAVAILABLE")?;
         let result=(||{
             let mut needed=0;let _=GetTokenInformation(token,TokenUser,None,0,&mut needed);
             if needed==0||needed>65536{return Err("APP_CONTROL_IDENTITY_UNAVAILABLE".into());}

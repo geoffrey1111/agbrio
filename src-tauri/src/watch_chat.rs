@@ -13,6 +13,7 @@ pub(crate) struct ReplyOptions { pub model:Option<String>,pub effort:Option<Stri
 #[derive(Deserialize)]
 #[serde(tag="action",rename_all="SCREAMING_SNAKE_CASE",deny_unknown_fields)]
 pub(crate) enum ChatCommand {
+ Restore { #[serde(rename="threadId")]thread_id:String,generation:i64 },
  GoalControl { #[serde(rename="threadId")]thread_id:String,id:String,operation:String,input:crate::goal_control::GoalInput,confirmed:bool },
  GoalReceipt { #[serde(rename="threadId")]thread_id:String,id:String },
  Send { #[serde(rename="threadId")]thread_id:String,id:String,generation:i64,#[serde(rename="sourceSequence")]source_sequence:Option<i64>,#[serde(rename="expectedTurnId")]expected_turn_id:Option<String>,mode:String,#[serde(default,rename="queueRequested")]queue_requested:bool,text:String,#[serde(default)]options:ReplyOptions },
@@ -31,9 +32,11 @@ pub(crate) enum ChatCommand {
  History { #[serde(rename="threadId")]thread_id:String,cursor:Option<String> },
  Upload { #[serde(rename="threadId")]thread_id:String,name:String,data:String },
 }
+
+impl ChatCommand { pub(crate) fn thread_id(&self)->&str {match self {Self::Restore{thread_id,..}|Self::GoalControl{thread_id,..}|Self::GoalReceipt{thread_id,..}|Self::Send{thread_id,..}|Self::Cancel{thread_id,..}|Self::Abandon{thread_id,..}|Self::Receipt{thread_id,..}|Self::AcknowledgeUnknown{thread_id,..}|Self::Stop{thread_id,..}|Self::AsyncRespond{thread_id,..}|Self::Respond{thread_id,..}|Self::Options{thread_id,..}|Self::ChildOpen{thread_id,..}|Self::ClaudeDecision{thread_id,..}|Self::ChildHistory{thread_id,..}|Self::ChildNotifications{thread_id,..}|Self::History{thread_id,..}|Self::Upload{thread_id,..}=>thread_id}}}
 #[derive(Serialize)]#[serde(rename_all="camelCase")]
-pub(crate) struct ChatState {latest_turn:Option<router_core::codex::adapter::NativeTurnDiagnostic>, pub(crate) watch:CodexWatch,host:String,owned_turn_id:Option<String>,controllable_turn_id:Option<String>,external_busy:bool,replies:Vec<WatchReply>,requests:Vec<MobileCodexRequest>,async_questions:Vec<Value>,goal:Option<MobileCodexGoal>,goal_controls:Option<crate::goal_control::GoalControls>,public_messages:Vec<Value>,activity:Option<String>,checked_at:i64 }
-fn watch(core:&RouterCore,id:&str)->Result<CodexWatch,String>{core.store.codex_chat_context(id)}
+pub(crate) struct ChatState {runtime:Option<Value>,#[serde(skip_serializing_if="Option::is_none")]provider:Option<&'static str>,#[serde(skip_serializing_if="Option::is_none")]input_ready:Option<bool>,#[serde(skip_serializing_if="Option::is_none")]pi_task:Option<Value>,#[serde(skip_serializing_if="Option::is_none")]history_revision:Option<String>,#[serde(skip_serializing_if="Option::is_none")]pi_children:Option<Vec<Value>>,latest_turn:Option<router_core::codex::adapter::NativeTurnDiagnostic>, pub(crate) watch:CodexWatch,host:String,owned_turn_id:Option<String>,controllable_turn_id:Option<String>,external_busy:bool,replies:Vec<WatchReply>,requests:Vec<MobileCodexRequest>,async_questions:Vec<Value>,goal:Option<MobileCodexGoal>,goal_controls:Option<crate::goal_control::GoalControls>,public_messages:Vec<Value>,activity:Option<String>,checked_at:i64 }
+fn watch(core:&RouterCore,id:&str)->Result<CodexWatch,String>{if id.starts_with("pi:"){crate::pi::presentation::watch(&core.store.pi_task(id)?)}else{core.store.codex_chat_context(id)}}
 pub(crate) fn default_reply_mode(running:bool,controllable:bool)->Result<&'static str,String>{
  if !running{Ok("SEND")}else if controllable{Ok("STEER")}else{Err("REPLY_STEER_UNAVAILABLE_CHOOSE_QUEUE".into())}
 }
@@ -45,8 +48,20 @@ pub(crate) fn resource_notice_preflight(core:&RouterCore,id:&str)->Result<(Codex
  let turn=if mode=="STEER"{view.controllable_turn_id}else{view.watch.snapshot.turn_id.clone()};
  Ok((view.watch,mode.into(),turn))
 }
+fn read_failure_message(error:&str)->String{match error{
+ "WATCH_THREAD_ARCHIVED"=>"REPLY_THREAD_ARCHIVED_NOT_SENT: The original Codex conversation is archived. Restore it in Codex, then refresh this exact conversation and prepare a new action. No message was sent.".into(),
+ "WATCH_SOURCE_FILE_MISSING"=>"REPLY_THREAD_SOURCE_MISSING_NOT_SENT: The native index exists but its original history file is missing. Restore the original file or choose the correct existing conversation; no replacement or resend was attempted.".into(),
+ _=>format!("REPLY_TARGET_READ_UNAVAILABLE_NOT_SENT: {}; refresh the exact chat, then prepare a new reviewed action after recovery; do not replay or silently queue",error.chars().take(160).collect::<String>())}}
+fn prepare_cold_send(core:&RouterCore,w:&CodexWatch)->Result<(),String>{
+ if let Err(code)=crate::codex_watch::source_availability(&w.thread_id,&w.cwd){let _=core.store.codex_watch_unavailable_reason(&w.thread_id,w.generation,&code);return Err(read_failure_message(&code));}
+ let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;let a=s.adapter.as_mut().ok_or("Codex backend disconnected")?;let m=metadata(a,w).map_err(|e|{let _=core.store.codex_watch_unavailable(&w.thread_id,w.generation);read_failure_message(&e)})?;
+ if m.pointer("/thread/status/type").and_then(Value::as_str)==Some("notLoaded"){
+  a.resume_unloaded_for_send(&w.thread_id,&w.cwd).map_err(|e|format!("REPLY_THREAD_LOAD_FAILED_NOT_SENT: {}; reconnect the same backend and reread this conversation before preparing a new action",e.chars().take(160).collect::<String>()))?;s.ready_threads.insert(w.thread_id.clone());
+ }Ok(())
+}
 pub(crate) fn automatic_reply_target(core:&RouterCore,id:&str,generation:i64,expected:Option<String>)->Result<(String,Option<String>),String>{
- let view=state(core,id)?;
+ let target=watch(core,id)?;if target.generation!=generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}prepare_cold_send(core,&target)?;
+ let view=state(core,id).map_err(|e|read_failure_message(&e))?;
  if view.watch.generation!=generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}
  let running=view.external_busy||view.owned_turn_id.is_some()||view.watch.snapshot.state=="RUNNING";
  let mode=default_reply_mode(running,view.controllable_turn_id.is_some())?;
@@ -55,13 +70,17 @@ pub(crate) fn automatic_reply_target(core:&RouterCore,id:&str,generation:i64,exp
  Ok((mode.into(),turn))
 }
 pub(crate) fn metadata(a:&mut crate::codex::adapter::CodexAdapter,w:&CodexWatch)->Result<Value,String>{
+ crate::codex_watch::source_availability(&w.thread_id,&w.cwd)?;
  let v=a.request_with_timeout("thread/read",json!({"threadId":w.thread_id,"includeTurns":false}),CODEX_OBSERVER_REQUEST_TIMEOUT)?;
  if v.pointer("/thread/id").and_then(Value::as_str)!=Some(&w.thread_id)||v.pointer("/thread/cwd").and_then(Value::as_str)!=Some(&w.cwd){return Err("REPLY_TARGET_CHANGED_REFRESH".into());}Ok(v)
 }
 pub(crate) fn state(core:&RouterCore,id:&str)->Result<ChatState,String>{
- let mut w=watch(core,id)?;let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;
+ if id.starts_with("pi:"){return pi_state(core,id);}
+ let mut w=watch(core,id)?;if let Err(code)=crate::codex_watch::source_availability(id,&w.cwd){let _=core.store.codex_watch_unavailable_reason(id,w.generation,&code);return Err(code);}
+ let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;
  let a=s.adapter.as_mut().filter(|a|!a.is_closed()).ok_or("Codex backend disconnected. Use Reconnect first.")?;
- let m=metadata(a,&w)?;let (_,cwd,snapshot,mut public_messages,mut activity)=crate::codex_watch::inspect_live(a,id)?;if cwd!=w.cwd{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}
+ let m=metadata(a,&w).map_err(|e|{let _=core.store.codex_watch_unavailable(&w.thread_id,w.generation);e})?;let (_,cwd,snapshot,mut public_messages,mut activity)=crate::codex_watch::inspect_live(a,id)?;if cwd!=w.cwd{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}
+ w.runtime=router_core::store::codex_watch::observed_runtime(id,&w.cwd);
  let owned=a.active_turn_id(id);let busy=m.pointer("/thread/status/type").and_then(Value::as_str)==Some("active");w.snapshot=snapshot;if owned.is_some(){if w.snapshot.turn_id!=owned{w.snapshot.item_id=None;w.snapshot.text.clear();public_messages.clear();}w.snapshot.state="RUNNING".into();w.snapshot.turn_id=owned.clone();}else if !busy && w.snapshot.turn_id.as_deref().and_then(|t|a.terminal_turn_status(id,t)).as_deref()==Some("interrupted"){w.snapshot.state="INTERRUPTED".into();}
  if owned.is_some()&&activity.is_none(){activity=Some("EXECUTING".into());}
  let controllable=owned.clone().or_else(||(a.is_shared_subscribed(id)&&busy).then(||a.observed_turn_id(id)).flatten());
@@ -70,7 +89,18 @@ pub(crate) fn state(core:&RouterCore,id:&str)->Result<ChatState,String>{
  let latest_turn=a.latest_turn_diagnostic(id).filter(|d|w.snapshot.turn_id.as_deref()==Some(&d.turn_id));
  let goal=read_codex_goal_from_session(&mut s,id)?;let requests:Vec<MobileCodexRequest>=s.pending_codex_requests.values().filter(|r|r.thread_id==id&&(shared||owned.as_deref()==Some(&r.turn_id))).filter_map(mobile_codex_request_projection).collect();
  let goal_controls=goal.as_ref().map(|g|crate::goal_control::controls(core,g,busy,!requests.is_empty())).transpose()?;
- Ok(ChatState{latest_turn,watch:w,host:std::env::var("COMPUTERNAME").unwrap_or_else(|_|"这台电脑".into()),owned_turn_id:owned,controllable_turn_id:controllable,external_busy:busy,replies:core.store.watch_replies(id)?,requests,async_questions,goal,goal_controls,public_messages,activity,checked_at:std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64})
+ let children=crate::pi::presentation::children(core,id,&w.cwd)?;let pi_children=(!children.is_empty()).then_some(children);
+ Ok(ChatState{runtime:w.runtime.clone(),provider:None,input_ready:None,pi_task:None,history_revision:None,pi_children,latest_turn,watch:w,host:std::env::var("COMPUTERNAME").unwrap_or_else(|_|"这台电脑".into()),owned_turn_id:owned,controllable_turn_id:controllable,external_busy:busy,replies:core.store.watch_replies(id)?,requests,async_questions,goal,goal_controls,public_messages,activity,checked_at:std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64})
+}
+fn pi_state(core:&RouterCore,id:&str)->Result<ChatState,String>{
+ let observed=crate::pi::application::read(core,id,None)?;let task=core.store.pi_task(id)?;let pi=core.session.lock().map_err(|_|"PI_SERVICE_UNAVAILABLE")?.pi.clone();let loaded=pi.loaded(&task.id)&&observed["coverage"]=="LIVE";
+ let mut watch=crate::pi::presentation::watch(&task)?;let running=loaded&&observed["nativeBusy"]==true;
+ if !loaded&&matches!(task.state.as_str(),"RUNNING"|"WAITING_DECISION"){watch.snapshot.state="UNKNOWN".into();watch.error_code=None;}
+ if task.error_code.as_deref()==Some("PI_NATIVE_BRANCH_CHANGED"){watch.snapshot.text.clear();watch.snapshot.item_id=None;}
+ let replies=serde_json::from_value(serde_json::to_value(core.store.pi_reply_views(&task.id)?).map_err(|_|"PI_RECEIPT_INVALID")?).map_err(|_|"PI_RECEIPT_INVALID")?;
+ let page=core.store.pi_public_history_page(&task.id,None,50)?;let group=format!("pi-session:{}",task.native_session_id.as_deref().unwrap_or_default());let messages=page.iter().enumerate().map(|(i,e)|crate::pi::presentation::message(e,&group,i)).collect();
+ let branch=core.store.pi_branch_info(&task.id)?;let can_restore=task.native_session_file.as_ref().is_some_and(|p|Path::new(p).is_file());
+ Ok(ChatState{runtime:watch.runtime.clone(),provider:Some("PI"),input_ready:Some(loaded),history_revision:Some(format!("{}:{}",branch["revision"],branch["leafId"])),pi_task:Some(json!({"nativeBranch":branch,"taskId":task.id,"parent":task.parent,"settings":task.selected,"selectionSource":task.selection_source,"state":task.state,"loaded":loaded,"canRestore":can_restore,"executionEpoch":task.runtime_epoch,"execution":observed["execution"]})),pi_children:None,latest_turn:None,watch,host:std::env::var("COMPUTERNAME").unwrap_or_default(),owned_turn_id:running.then(||task.runtime_epoch.clone()).flatten(),controllable_turn_id:running.then(||task.runtime_epoch.clone()).flatten(),external_busy:running,replies,requests:Vec::new(),async_questions:Vec::new(),goal:None,goal_controls:None,public_messages:messages,activity:running.then(||"EXECUTING".into()),checked_at:task.updated_at})
 }
 fn safe_dir(root:&str,parts:&[&str])->Result<PathBuf,String>{
  let root=std::fs::canonicalize(root).map_err(|_|"REPLY_PROJECT_UNAVAILABLE")?;let mut p=root.clone();
@@ -88,14 +118,21 @@ pub(crate) const MAX_ATTACHMENT_TOTAL:usize=40*1024*1024;
 pub(crate) const UPLOAD_BODY_LIMIT:usize=((MAX_ATTACHMENT_BYTES+2)/3)*4+65536;
 pub(crate) fn upload(core:&RouterCore,id:&str,name:&str,data:&str)->Result<Value,String>{
  let w=watch(core,id)?;
+ if id.starts_with("pi:"){let task=core.store.pi_task(id)?;let scope=core.store.pi_scope(&task.scope_id)?;if !scope.enabled||scope.generation!=task.scope_generation{return Err("PI_SCOPE_CHANGED".into());}}
  if name.is_empty()||name.len()>150||name.contains(['/', '\\',':'])||name.chars().any(char::is_control)||name=="."||name==".."||name.ends_with(['.',' '])||data.len()>((MAX_ATTACHMENT_BYTES+2)/3)*4{return Err("REPLY_ATTACHMENT_INVALID".into());}
  use base64ct::{Base64,Encoding};let bytes=Base64::decode_vec(data).map_err(|_|"REPLY_ATTACHMENT_INVALID")?;if bytes.is_empty()||bytes.len()>MAX_ATTACHMENT_BYTES{return Err("REPLY_ATTACHMENT_TOO_LARGE".into());}
+ if id.starts_with("pi:")&&!matches!(image::guess_format(&bytes),Ok(image::ImageFormat::Png|image::ImageFormat::Jpeg)){return Err("PI_IMAGE_REQUIRES_PNG_OR_JPEG".into());}
  let uuid=Uuid::new_v4().to_string();let dir=safe_dir(&w.cwd,&[".aiwr","watch-replies",&uuid])?;
  let meta=Upload{id:uuid,thread_id:id.into(),cwd:w.cwd,name:name.into(),size:bytes.len(),sha256:format!("{:x}",Sha256::digest(&bytes))};
  // Non-executable opaque filenames; the original name is presentation metadata.
  std::fs::write(dir.join("content.bin"),bytes).map_err(|_|"REPLY_ATTACHMENT_WRITE_FAILED")?;
  std::fs::write(dir.join("manifest.json"),serde_json::to_vec(&meta).map_err(|_|"REPLY_ATTACHMENT_INVALID")?).map_err(|_|"REPLY_ATTACHMENT_WRITE_FAILED")?;
  Ok(json!({"id":meta.id,"name":meta.name,"size":meta.size}))
+}
+pub(crate) fn pi_attachment_images(w:&CodexWatch,options:&ReplyOptions)->Result<Vec<Value>,String>{
+ let(images,_)=files(w,options)?;if images.len()!=options.attachments.len(){return Err("PI_IMAGE_REQUIRES_PNG_OR_JPEG".into());}
+ use base64ct::{Base64,Encoding};let mut result=Vec::new();
+ for image in images{let path=PathBuf::from(image["path"].as_str().ok_or("REPLY_ATTACHMENT_INVALID")?);let bytes=std::fs::read(&path).map_err(|_|"REPLY_ATTACHMENT_UNAVAILABLE")?;let mime=match image::guess_format(&bytes){Ok(image::ImageFormat::Png)=>"image/png",Ok(image::ImageFormat::Jpeg)=>"image/jpeg",_=>return Err("PI_IMAGE_REQUIRES_PNG_OR_JPEG".into())};let id=path.parent().and_then(Path::file_name).and_then(|s|s.to_str()).ok_or("REPLY_ATTACHMENT_INVALID")?;result.push(json!({"type":"image","mimeType":mime,"data":Base64::encode_string(&bytes),"agbrioAttachmentId":id}));}Ok(result)
 }
 fn files(w:&CodexWatch,options:&ReplyOptions)->Result<(Vec<Value>,String),String>{
  if options.attachments.len()>4{return Err("REPLY_ATTACHMENT_LIMIT".into());}let mut input=vec![];let mut extra=String::new();let mut total=0;
@@ -136,7 +173,7 @@ fn validate_options(a:&mut crate::codex::adapter::CodexAdapter,o:&ReplyOptions)-
  if let Some(e)=&o.effort{if !m["supportedReasoningEfforts"].as_array().is_some_and(|es|es.iter().any(|v|v["reasoningEffort"].as_str()==Some(e))){return Err("REPLY_EFFORT_UNAVAILABLE".into());}}Ok(())
 }
 fn dispatch(core:&RouterCore,s:&mut Session,w:&CodexWatch,r:&WatchReply,resource_deadline:Option<i64>)->Result<WatchReply,String>{
- let (owned,busy,latest,loaded_shared)={let a=s.adapter.as_mut().filter(|a|!a.is_closed()).ok_or("Codex backend disconnected")?;let m=metadata(a,w)?;let (_,_,snap)=crate::codex_watch::inspect(a,&w.thread_id)?;(a.active_turn_id(&w.thread_id),m.pointer("/thread/status/type").and_then(Value::as_str)==Some("active"),snap,a.is_shared()&&m.pointer("/thread/status/type").and_then(Value::as_str)==Some("idle"))};
+ let (owned,busy,latest,loaded_shared)={let a=s.adapter.as_mut().filter(|a|!a.is_closed()).ok_or("Codex backend disconnected")?;let mut m=metadata(a,w)?;if m.pointer("/thread/status/type").and_then(Value::as_str)==Some("notLoaded"){if r.mode!="SEND"{return Err("REPLY_THREAD_NOT_LOADED_USE_AUTO_NOT_SENT".into());}a.resume_unloaded_for_send(&w.thread_id,&w.cwd)?;s.ready_threads.insert(w.thread_id.clone());m=metadata(a,w)?;}let (_,_,snap)=crate::codex_watch::inspect(a,&w.thread_id).map_err(|e|format!("REPLY_TARGET_READ_UNAVAILABLE_NOT_SENT: {e}; refresh this exact chat and prepare a new reviewed request after recovery; do not replay this action or silently queue"))?;(a.active_turn_id(&w.thread_id),m.pointer("/thread/status/type").and_then(Value::as_str)==Some("active"),snap,a.is_shared()&&m.pointer("/thread/status/type").and_then(Value::as_str)==Some("idle"))};
  if r.mode=="STEER" {if !(owned.is_some()&&owned.as_deref()==r.expected_turn_id.as_deref()||s.adapter.as_ref().is_some_and(|a|a.is_shared_subscribed(&w.thread_id))&&busy&&s.adapter.as_ref().and_then(|a|a.observed_turn_id(&w.thread_id))==r.expected_turn_id&&r.expected_turn_id.is_some()){return Err("REPLY_TURN_CHANGED_REFRESH".into());}}
  else {if owned.is_some()||busy||latest.state=="RUNNING"{return Err("REPLY_TARGET_ALREADY_RUNNING".into());}
   if matches!(latest.state.as_str(),"UNKNOWN"|"RESULT_PENDING"|"INCOMPLETE")&&!latest.turn_id.as_deref().is_some_and(|t|s.adapter.as_ref().unwrap().terminal_turn_status(&w.thread_id,t).is_some()){return Err("REPLY_EXTERNAL_STATE_UNCONFIRMED".into());}
@@ -197,9 +234,10 @@ pub(crate) fn assistant_response_command(core:&RouterCore,thread:&str,request:&s
  if let Some(prior)=core.store.watch_reply(&id)?{if prior.thread_id!=thread||prior.text!=text{return Err("REPLY_ID_REUSED_WITH_DIFFERENT_CONTENT".into());}if matches!(prior.status.as_str(),"SENDING"|"UNKNOWN"){return Err("REPLY_PREVIOUS_PENDING_CHECK_FIRST".into());}}
  Ok(ChatCommand::AsyncRespond{thread_id:thread.into(),id,request_id:request.into(),revision:input.revision as i64,answers})
 }
-pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{command_with_deadline(core,c,None)}
+pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{if c.thread_id().starts_with("pi:"){return crate::pi::presentation::command(core,c);}command_with_deadline(core,c,None)}
 pub(crate) fn resource_notice_command(core:&RouterCore,c:ChatCommand,deadline:i64)->Result<Value,String>{if !matches!(&c,ChatCommand::Send{mode,..}if mode!="QUEUE"){return Err("SAFETY_NOTICE_MODE_INVALID".into())}command_with_deadline(core,c,Some(deadline))}
 fn command_with_deadline(core:&RouterCore,c:ChatCommand,resource_deadline:Option<i64>)->Result<Value,String>{let _cache=if matches!(&c,ChatCommand::Send{..}|ChatCommand::Upload{..}){Some(crate::attachment_cache::guard()?)}else{None};match c{
+ ChatCommand::Restore{..}=>Err("PI_OPERATION_ONLY".into()),
  ChatCommand::ChildOpen{..}|ChatCommand::ClaudeDecision{..}|ChatCommand::ChildHistory{..}|ChatCommand::ChildNotifications{..}=>Err("CLAUDE_OPERATION_NOT_SUPPORTED".into()),
  ChatCommand::GoalControl{thread_id,id,operation,input,confirmed}=>{require_goal_confirmation(confirmed)?;if input.target.thread_id!=thread_id{return Err("GOAL_TARGET_CHANGED".into());}serde_json::to_value(crate::goal_control::apply(core,&id,input,&operation,true)?).map_err(|_|"GOAL_RESPONSE_INVALID".into())},
  ChatCommand::GoalReceipt{thread_id,id}=>{watch(core,&thread_id)?;serde_json::to_value(core.store.goal_control_receipt(&thread_id,&id)?).map_err(|_|"GOAL_RESPONSE_INVALID".into())},
@@ -227,18 +265,25 @@ fn command_with_deadline(core:&RouterCore,c:ChatCommand,resource_deadline:Option
   let input=WatchReply{id,thread_id,cwd:w.cwd.clone(),generation,source_sequence,expected_turn_id,mode,text,options:serde_json::to_value(options).map_err(|_|"REPLY_OPTIONS_INVALID")?,payload_hash:String::new(),status:String::new(),turn_id:None,error_code:None,created_at:0,updated_at:0};
   if prior.is_none()&&input.mode=="QUEUE"&&!queue_requested{return Err("REPLY_EXPLICIT_QUEUE_REQUIRED: 排队需要明确选择，请重新打开对话后重试。".into());}let r=core.store.prepare_watch_reply(&input)?;if prior.is_some(){return serde_json::to_value(r).map_err(|_|"REPLY_RESPONSE_INVALID".into());}
   if r.mode=="QUEUE" {let outcome=(||{let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;let a=s.adapter.as_mut().ok_or("Codex backend disconnected")?;let (_,cwd,snap)=crate::codex_watch::inspect(a,&w.thread_id)?;let owned=a.active_turn_id(&w.thread_id);if cwd!=w.cwd||r.expected_turn_id.as_deref()!=owned.as_deref().or(snap.turn_id.as_deref()){return Err("REPLY_TURN_CHANGED_REFRESH".to_string());}serde_json::to_value(&r).map_err(|_|"REPLY_RESPONSE_INVALID".into())})();if outcome.is_err(){let _=core.store.finish_watch_reply(&r.id,"FAILED",None,Some("REPLY_QUEUE_PREWRITE_FAILED"));}return outcome;}
-  let outcome=(||{let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;dispatch(core,&mut s,&w,&r,resource_deadline)})();match outcome{Ok(r)=>serde_json::to_value(r).map_err(|_|"REPLY_RESPONSE_INVALID".into()),Err(e)=>{let status=core.store.watch_reply(&r.id)?.map(|r|r.status);let _=core.store.finish_watch_reply(&r.id,if status.as_deref()==Some("SENDING"){"UNKNOWN"}else{"FAILED"},None,Some("REPLY_PREWRITE_FAILED"));Err(e)}}
+  let outcome=(||{let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;dispatch(core,&mut s,&w,&r,resource_deadline)})();match outcome{Ok(r)=>serde_json::to_value(r).map_err(|_|"REPLY_RESPONSE_INVALID".into()),Err(e)=>{let e=if matches!(e.as_str(),"WATCH_THREAD_ARCHIVED"|"WATCH_SOURCE_FILE_MISSING"|"WATCH_PROJECT_CHANGED"){let _=core.store.codex_watch_unavailable_reason(&w.thread_id,w.generation,&e);read_failure_message(&e)}else if e.to_ascii_lowercase().contains("thread not found"){let _=core.store.codex_watch_unavailable(&w.thread_id,w.generation);read_failure_message(&e)}else{e};let status=core.store.watch_reply(&r.id)?.map(|r|r.status);let _=core.store.finish_watch_reply(&r.id,if status.as_deref()==Some("SENDING"){"UNKNOWN"}else{"FAILED"},None,Some(if status.as_deref()==Some("SENDING"){"REPLY_SUBMISSION_UNCONFIRMED"}else{e.as_str()}));Err(e)}}
  }
 }}
 pub(crate) fn start_queue(core:RouterCore){let _=core.store.recover_watch_replies();std::thread::spawn(move||loop{std::thread::sleep(Duration::from_secs(3));dispatch_queue_once(&core);});}
 fn dispatch_queue_once(core:&RouterCore){let Ok(rs)=core.store.queued_watch_replies()else{return};for r in rs{if r.thread_id.starts_with(router_core::store::claude_manual::PREFIX){continue;}let Ok(w)=watch(&core,&r.thread_id)else{let _=core.store.finish_watch_reply(&r.id,"FAILED",None,Some("REPLY_QUEUE_TARGET_CHANGED"));continue;};
- let Ok(mut s)=core.session.lock()else{continue};let Some(a)=s.adapter.as_mut().filter(|a|!a.is_closed())else{continue};let Ok(m)=metadata(a,&w)else{continue};let Ok((_,_,snap))=crate::codex_watch::inspect(a,&w.thread_id)else{continue};if a.is_turn_active(&w.thread_id)||m.pointer("/thread/status/type").and_then(Value::as_str)==Some("active"){continue;}
- let Ok(expected)=core.store.queued_watch_reply_target(&r.id)else{continue};if snap.turn_id==expected&&w.generation==r.generation&&matches!(snap.state.as_str(),"INCOMPLETE"|"UNKNOWN"|"RUNNING"|"RESULT_PENDING"){continue;}
+ let Ok(mut s)=core.session.lock()else{continue};let Some(a)=s.adapter.as_mut().filter(|a|!a.is_closed())else{continue};let Ok(m)=metadata(a,&w)else{continue};let Ok((_,_,snap))=crate::codex_watch::inspect(a,&w.thread_id)else{continue};let Ok(expected)=core.store.queued_watch_reply_target(&r.id)else{continue};if w.generation!=r.generation||(snap.turn_id.is_some()&&snap.turn_id!=expected){let _=core.store.finish_watch_reply(&r.id,"FAILED",None,Some("REPLY_QUEUE_TARGET_CHANGED"));continue;}
+ if a.is_turn_active(&w.thread_id)||m.pointer("/thread/status/type").and_then(Value::as_str)==Some("active"){continue;}
+ if snap.turn_id==expected&&w.generation==r.generation&&matches!(snap.state.as_str(),"INCOMPLETE"|"UNKNOWN"|"RUNNING"|"RESULT_PENDING"){continue;}
  if snap.turn_id!=expected||w.generation!=r.generation||!matches!(snap.state.as_str(),"RESULT_READY"|"IDLE"){let _=core.store.finish_watch_reply(&r.id,"FAILED",None,Some("REPLY_QUEUE_TARGET_CHANGED"));continue;}
  if dispatch(&core,&mut s,&w,&r,None).is_err(){let _=core.store.finish_watch_reply(&r.id,"FAILED",None,Some("REPLY_QUEUE_PREWRITE_FAILED"));}
  }}
 
 #[cfg(test)]mod tests{
+ #[test]fn explicit_send_loads_a_known_cold_thread_once_but_observation_never_loads_it(){
+  let d=tempfile::tempdir().unwrap();let cwd=d.path().to_str().unwrap();let log=d.path().join("calls.jsonl");
+  let script=r#"const fs=require('node:fs');const cwd=process.argv[1],log=process.argv[2];let loaded=false;require('node:readline').createInterface({input:process.stdin}).on('line',line=>{const q=JSON.parse(line);if(q.id===undefined)return;fs.appendFileSync(log,q.method+'\n');let result={};if(q.method==='thread/read')result={thread:{id:'cold',cwd,status:{type:loaded?'idle':'notLoaded'}}};else if(q.method==='thread/resume'){loaded=true;result={thread:{id:'cold',cwd,status:{type:'idle'}}};}else if(q.method==='thread/turns/list')result={data:[{id:'old',status:'completed',itemsView:'notLoaded'}],nextCursor:null};else if(q.method==='thread/items/list')result={data:[{turnId:'old',item:{id:'final',type:'agentMessage',phase:'final_answer',text:'previous'}}],nextCursor:null};else if(q.method==='thread/goal/get'){if(!loaded){process.stdout.write(JSON.stringify({id:q.id,error:{code:-32600,message:'thread not found'}})+'\n');return;}result={goal:null};}else if(q.method==='turn/start')result={turn:{id:'new'}};else if(q.method!=='initialize')throw Error('unexpected '+q.method);process.stdout.write(JSON.stringify({id:q.id,result})+'\n');});"#;
+  let mut backend=std::process::Command::new("node");backend.args(["-e",script,cwd,log.to_str().unwrap()]);let mut a=crate::codex::adapter::CodexAdapter::start_shared_validation(backend,std::sync::Arc::new(|_|{})).unwrap();a.initialize().unwrap();let store=std::sync::Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap());store.enable_codex_watch("cold","cold",cwd,&router_core::store::codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some("old".into()),item_id:Some("final".into()),text:"previous".into()}).unwrap();let w=store.registered_codex_watch("cold").unwrap();let core=RouterCore{store,session:std::sync::Arc::new(std::sync::Mutex::new(Session{adapter:Some(a),..Default::default()})),chatgpt:Default::default(),completed_chatgpt_responses:Default::default()};
+  crate::codex_watch::poll(&core.store,&core.session,&w,0).unwrap();assert!(!std::fs::read_to_string(&log).unwrap().contains("thread/resume"));let(mode,turn)=automatic_reply_target(&core,"cold",w.generation,None).unwrap();assert_eq!(mode,"SEND");let id=uuid::Uuid::new_v4().to_string();let make=||ChatCommand::Send{thread_id:"cold".into(),id:id.clone(),generation:w.generation,source_sequence:None,expected_turn_id:turn.clone(),mode:mode.clone(),queue_requested:false,text:"owned transport fixture".into(),options:Default::default()};command(&core,make()).unwrap();command(&core,make()).unwrap();let calls=std::fs::read_to_string(log).unwrap();assert_eq!(calls.lines().filter(|m|*m=="thread/resume").count(),1);assert_eq!(calls.lines().filter(|m|*m=="turn/start").count(),1);core.shutdown_owned_adapter();
+ }
  #[test]fn fifo_dispatch_waits_for_completion_and_lost_ack_blocks_later_messages(){
   let(d,core)=fixture();let stage=d.path().join("native.json");let calls=d.path().join("calls.json");std::fs::write(&stage,r#"{"turn":"owner-turn","active":true}"#).unwrap();let script=d.path().join("fifo-native.mjs");
   std::fs::write(&script,r#"
@@ -246,6 +291,9 @@ import fs from 'node:fs';import readline from 'node:readline';const [cwd,stage,c
 if(q.method==='initialize')result={};else if(q.method==='thread/read'||q.method==='thread/resume')result={thread:{id:'exact',cwd,status:{type:current.active?'active':'idle'}}};else if(q.method==='thread/turns/list')result={data:[{id:current.turn,status:current.active?'inProgress':'completed',itemsView:'notLoaded'}],nextCursor:null};else if(q.method==='thread/items/list')result={data:current.active?[]:[{turnId:current.turn,item:{id:'final-'+current.turn,type:'agentMessage',phase:'final_answer',text:'fictional completed result'}}],nextCursor:null};else if(q.method==='thread/goal/get')result={goal:null};else if(q.method==='turn/start'){count++;const log=fs.existsSync(calls)?JSON.parse(fs.readFileSync(calls)):[];log.push(q.params.input[0].text);fs.writeFileSync(calls,JSON.stringify(log));if(count===2){out({id:q.id,error:{code:-32000,message:'fixture acknowledgement lost'}});return;}fs.writeFileSync(stage,JSON.stringify({turn:'first-ack',active:true}));result={turn:{id:'first-ack'}};}else throw Error('unexpected '+q.method);out({id:q.id,result});});
 "#).unwrap();let mut cmd=std::process::Command::new("node");cmd.arg(script).arg(d.path()).arg(&stage).arg(&calls);#[cfg(windows)]{use std::os::windows::process::CommandExt;cmd.creation_flags(0x08000000);}
   let mut a=crate::codex::adapter::CodexAdapter::start_shared_validation(cmd,Arc::new(|_|{})).unwrap();a.initialize().unwrap();core.session.lock().unwrap().adapter=Some(a);let generation=core.store.codex_chat_context("exact").unwrap().generation;
+  let stale=Uuid::new_v4().to_string();command(&core,ChatCommand::Send{thread_id:"exact".into(),id:stale.clone(),generation,source_sequence:None,expected_turn_id:None,mode:"QUEUE".into(),queue_requested:true,text:"stale original turn".into(),options:Default::default()}).unwrap();
+  std::fs::write(&stage,r#"{"turn":"foreign-active-turn","active":true}"#).unwrap();dispatch_queue_once(&core);assert_eq!(core.store.watch_reply(&stale).unwrap().unwrap().status,"FAILED");assert_eq!(core.store.watch_reply(&stale).unwrap().unwrap().error_code.as_deref(),Some("REPLY_QUEUE_TARGET_CHANGED"));assert!(!calls.exists());
+  std::fs::write(&stage,r#"{"turn":"owner-turn","active":true}"#).unwrap();
   let mut ids=Vec::new();for text in ["first","second","third"]{let id=Uuid::new_v4().to_string();command(&core,ChatCommand::Send{thread_id:"exact".into(),id:id.clone(),generation,source_sequence:None,expected_turn_id:None,mode:"QUEUE".into(),queue_requested:true,text:text.into(),options:Default::default()}).unwrap();ids.push(id);}
   dispatch_queue_once(&core);assert!(!calls.exists());std::fs::write(&stage,r#"{"turn":"owner-turn","active":false}"#).unwrap();dispatch_queue_once(&core);assert_eq!(core.store.watch_reply(&ids[0]).unwrap().unwrap().status,"SENT");assert_eq!(core.store.watch_reply(&ids[1]).unwrap().unwrap().status,"QUEUED");dispatch_queue_once(&core);assert_eq!(std::fs::read_to_string(&calls).unwrap(),r#"["first"]"#);
   std::fs::write(&stage,r#"{"turn":"first-ack","active":false}"#).unwrap();dispatch_queue_once(&core);assert_eq!(core.store.watch_reply(&ids[1]).unwrap().unwrap().status,"UNKNOWN");dispatch_queue_once(&core);assert_eq!(core.store.watch_reply(&ids[2]).unwrap().unwrap().status,"QUEUED");assert_eq!(std::fs::read_to_string(&calls).unwrap(),r#"["first","second"]"#);core.shutdown_owned_adapter();

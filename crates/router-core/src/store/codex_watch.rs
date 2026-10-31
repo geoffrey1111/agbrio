@@ -31,9 +31,17 @@ pub struct WatchSnapshot {
     pub item_id: Option<String>,
     pub text: String,
 }
+/// Ephemeral observed native settings; no configuration or credential writes.
+fn runtime_cache()->&'static std::sync::Mutex<std::collections::HashMap<(String,String),Value>>{
+ static CACHE:std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<(String,String),Value>>>=std::sync::OnceLock::new();CACHE.get_or_init(Default::default)
+}
+pub fn record_runtime(thread:&str,cwd:&str,value:Value){if let Ok(mut c)=runtime_cache().lock(){if c.len()>4096{c.clear();}c.insert((thread.into(),cwd.into()),value);}}
+pub fn observed_runtime(thread:&str,cwd:&str)->Option<Value>{runtime_cache().lock().ok()?.get(&(thread.into(),cwd.into())).cloned()}
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexWatch {
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub runtime:Option<Value>,
     pub thread_id: String,
     pub label: String,
     pub cwd: String,
@@ -94,6 +102,7 @@ fn watch_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CodexWatch> {
         rusqlite::Error::FromSqlConversionFailure(5, rusqlite::types::Type::Text, Box::new(e))
     })?;
     Ok(CodexWatch {
+        runtime:observed_runtime(&row.get::<_,String>(0)?,&row.get::<_,String>(2)?),
         thread_id: row.get(0)?,
         label: row.get(1)?,
         cwd: row.get(2)?,
@@ -120,7 +129,7 @@ pub(super) fn primary_chat_context(c:&Connection,id:&str)->Result<CodexWatch,Str
   if !Path::new(&cwd).is_absolute(){return Err("WATCH_PROJECT_UNAVAILABLE".into());}
   let hash=length_prefixed_hash(&[bridge.as_bytes(),revision.to_string().as_bytes(),endpoint.as_bytes(),cwd.as_bytes()]);
   let generation=-(i64::from_str_radix(&hash[..13],16).map_err(|_|"REPLY_CONTEXT_INVALID")?+1);
-  return Ok(CodexWatch{thread_id:id.into(),label,cwd,enabled:true,generation,snapshot:WatchSnapshot{state:"UNKNOWN".into(),turn_id:None,item_id:None,text:String::new()},checked_at:0,error_code:None,retry_after:0,send_count:0,shown_at:0,changed_at:0});
+  return Ok(CodexWatch{runtime:observed_runtime(id,&cwd),thread_id:id.into(),label,cwd,enabled:true,generation,snapshot:WatchSnapshot{state:"UNKNOWN".into(),turn_id:None,item_id:None,text:String::new()},checked_at:0,error_code:None,retry_after:0,send_count:0,shown_at:0,changed_at:0});
  }
  c.query_row("SELECT thread_id,label,cwd,enabled,generation,snapshot_json,checked_at,error_code,retry_after,(SELECT shown_at FROM watch_visibility v WHERE v.thread_id=codex_watches.thread_id) AS shown_at,(SELECT changed_at FROM watch_visibility v WHERE v.thread_id=codex_watches.thread_id) AS changed_at FROM codex_watches WHERE thread_id=?1 AND NOT EXISTS(SELECT 1 FROM watch_removed_items WHERE kind='WATCH' AND id=codex_watches.thread_id)",[id],watch_row).optional().map_err(db_error)?.ok_or("WATCH_NOT_FOUND".into())
 }
@@ -252,7 +261,9 @@ impl RouterStore {
             let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
             let old=tx.query_row("SELECT thread_id,label,cwd,enabled,generation,snapshot_json,checked_at,error_code,retry_after,(SELECT shown_at FROM watch_visibility v WHERE v.thread_id=codex_watches.thread_id) AS shown_at,(SELECT changed_at FROM watch_visibility v WHERE v.thread_id=codex_watches.thread_id) AS changed_at FROM codex_watches WHERE thread_id=?1",[id],watch_row).optional().map_err(db_error)?;
             let Some(old)=old.filter(|w|w.enabled && w.generation==generation) else {return Ok(false);};
-            let changed=old.snapshot!=*snapshot;
+            let previous:Option<String>=tx.query_row("SELECT json_extract(snapshot_json,'$._lastConfirmedState') FROM codex_watches WHERE thread_id=?1",[id],|r|r.get(0)).map_err(db_error)?;
+            let recovered_same=old.error_code.is_some()&&previous.as_deref()==Some("RESULT_READY")&&snapshot.state=="RESULT_READY"&&old.snapshot.turn_id==snapshot.turn_id&&old.snapshot.item_id==snapshot.item_id&&old.snapshot.text==snapshot.text;
+            let changed=old.snapshot!=*snapshot&&!recovered_same;
             if changed {tx.execute("INSERT INTO codex_watch_events(thread_id,label,cwd,snapshot_json,observed_at) VALUES(?1,?2,?3,?4,?5)",params![id,old.label,old.cwd,raw,now()]).map_err(db_error)?;}
             tx.execute("UPDATE codex_watches SET snapshot_json=?2,checked_at=?3,error_code=NULL,retry_after=0 WHERE thread_id=?1",params![id,raw,now()]).map_err(db_error)?;
             if changed {tx.execute("INSERT INTO watch_visibility(thread_id,changed_at) VALUES(?1,?2) ON CONFLICT(thread_id) DO UPDATE SET changed_at=excluded.changed_at",params![id,now()]).map_err(db_error)?;prune_events(&tx)?;}
@@ -260,7 +271,11 @@ impl RouterStore {
         })
     }
     pub fn codex_watch_unavailable(&self, id: &str, generation: i64) -> Result<(), String> {
-        self.with_connection(|c|{c.execute("UPDATE codex_watches SET error_code='WATCH_READ_UNAVAILABLE',retry_after=?3 WHERE thread_id=?1 AND generation=?2 AND enabled=1",params![id,generation,now()+30_000]).map_err(db_error)?;Ok(())})
+        self.codex_watch_unavailable_reason(id,generation,"WATCH_READ_UNAVAILABLE")
+    }
+    pub fn codex_watch_unavailable_reason(&self,id:&str,generation:i64,reason:&str)->Result<(),String>{
+        if !matches!(reason,"WATCH_READ_UNAVAILABLE"|"WATCH_THREAD_ARCHIVED"|"WATCH_SOURCE_FILE_MISSING"|"WATCH_PROJECT_CHANGED"){return Err("WATCH_ERROR_INVALID".into());}
+        self.with_connection(|c|{c.execute("UPDATE codex_watches SET snapshot_json=json_set(snapshot_json,'$._lastConfirmedState',CASE WHEN json_extract(snapshot_json,'$.state')!='UNKNOWN' THEN json_extract(snapshot_json,'$.state') ELSE json_extract(snapshot_json,'$._lastConfirmedState') END,'$.state','UNKNOWN'),error_code=?4,retry_after=?3 WHERE thread_id=?1 AND generation=?2 AND enabled=1",params![id,generation,now()+30_000,reason]).map_err(db_error)?;Ok(())})
     }
     /// Feed summaries are bounded. Fetch an exact sequence separately for the original text.
     pub fn codex_watch_feed(&self, after: i64) -> Result<WatchFeed, String> {
@@ -302,6 +317,10 @@ pub(super) fn event_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WatchEvent>
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn unavailable_source_marks_unknown_preserves_history_and_recovery_does_not_repeat_completion(){
+        let d=tempfile::tempdir().unwrap();let s=RouterStore::open_at(d.path().join("router.db")).unwrap();let snap=WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some("t".into()),item_id:Some("final".into()),text:"previous result".into()};s.enable_codex_watch("one","one","D:/fixture",&snap).unwrap();let generation=s.registered_codex_watch("one").unwrap().generation;let count=s.codex_watch_feed(0).unwrap().events.len();s.codex_watch_unavailable_reason("one",generation,"WATCH_THREAD_ARCHIVED").unwrap();let w=s.registered_codex_watch("one").unwrap();assert_eq!(w.snapshot.state,"UNKNOWN");assert_eq!(w.snapshot.text,snap.text);assert_eq!(w.error_code.as_deref(),Some("WATCH_THREAD_ARCHIVED"));assert!(!s.record_codex_watch("one",generation,&snap).unwrap());assert_eq!(s.codex_watch_feed(0).unwrap().events.len(),count);assert!(s.registered_codex_watch("one").unwrap().error_code.is_none());
+    }
     #[test]fn twenty_existing_watches_do_not_block_an_exact_claude_watch_and_capacity_is_bounded(){
         let d=tempfile::tempdir().unwrap();let s=RouterStore::open_at(d.path().join("capacity.db")).unwrap();let cwd=d.path().to_str().unwrap();let baseline=snapshot("IDLE","turn","baseline");
         for i in 0..20{s.enable_codex_watch(&format!("codex-{i}"),"existing",cwd,&baseline).unwrap();}
@@ -392,7 +411,8 @@ mod tests {
             after_failure.retry_after >= now() + 29_000
                 && after_failure.retry_after <= now() + 30_000
         );
-        assert_eq!(s.codex_watches().unwrap()[0].snapshot.state, "RESULT_READY");
+        assert_eq!(s.codex_watches().unwrap()[0].snapshot.state, "UNKNOWN");
+        assert_eq!(s.codex_watches().unwrap()[0].snapshot.text,final_reply.text);
         assert_eq!(
             s.codex_watches().unwrap()[0].error_code.as_deref(),
             Some("WATCH_READ_UNAVAILABLE")

@@ -536,6 +536,13 @@ impl CodexAdapter {
     pub fn active_turn_id(&self,thread:&str)->Option<String>{self.turns.lock().ok().and_then(|r|r.owned.get(thread).filter(|id|r.observed.get(thread)==Some(*id)).cloned())}
     pub fn is_shared_subscribed(&self,thread:&str)->bool{self.is_shared()&&self.shared_subscriptions.contains(thread)}
     pub fn observed_turn_id(&self,thread:&str)->Option<String>{self.turns.lock().ok().and_then(|r|r.observed.get(thread).cloned())}
+    /// Explicit reviewed send readiness only; never invoke from passive observation.
+    pub fn resume_unloaded_for_send(&mut self,thread:&str,cwd:&str)->Result<(),String>{
+        if self.guard.is_some(){return Err("FORBIDDEN".into());}
+        let response=self.request_with_timeout("thread/resume",json!({"threadId":thread,"excludeTurns":true}),WRITE_READINESS_TIMEOUT)?;
+        if response.pointer("/thread/id").and_then(Value::as_str)!=Some(thread)||response.pointer("/thread/cwd").and_then(Value::as_str)!=Some(cwd){return Err("REPLY_TARGET_CHANGED_REFRESH".into());}
+        if self.is_shared(){self.shared_subscriptions.insert(thread.into());}Ok(())
+    }
     /// Subscribe the same native backend to an explicitly selected conversation.
     /// No turn is started, no ownership is claimed, and no runtime setting changes.
     pub fn subscribe_shared_thread(&mut self,thread:&str,cwd:&str)->Result<(),String>{

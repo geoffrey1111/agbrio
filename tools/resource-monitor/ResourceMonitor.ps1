@@ -45,9 +45,24 @@ function Metrics($c){
  [ordered]@{availableBytes=[double]$m.AvailableBytes;physicalBytes=[double]$system.TotalPhysicalMemory;committedBytes=[double]$m.CommittedBytes;commitLimitBytes=[double]$m.CommitLimit;commitPercent=[math]::Round(100*[double]$m.CommittedBytes/[double]$m.CommitLimit,3);commitHeadroomBytes=[double]$m.CommitLimit-[double]$m.CommittedBytes;diskDFreeBytes=if($d.Count){$d[0].freeBytes}else{$null};disks=$disks}
 }
 function Reasons($m,$c){$result=@();if($m.availableBytes -lt $m.physicalBytes*$c.AvailableMemoryPercent/100){$result+='physical_memory_low'};if($m.commitPercent -gt $c.CommitPercent){$result+='commit_high'};foreach($d in @($m.disks)){if($d.freePercent -lt $d.thresholdPercent){$result+=('disk_low:'+$d.drive)}};return $result}
+function Confirm-Pressure($Initial,$Current,[double]$ElapsedSeconds){
+ $remaining=@($Initial|Where-Object{$Current -contains $_})
+ return @{conditions=$remaining;confirmed=($ElapsedSeconds -ge 60 -and $remaining.Count -gt 0)}
+}
 function Capture {
  try{$lock=[IO.File]::Open((Join-Path $DataRoot 'capture.lock'),'OpenOrCreate','ReadWrite','None')}catch [IO.IOException]{return}
  try{$c=Read-MonitorConfig @();if(!$c.Enabled){return};$m=Metrics $c;$conditions=@(Reasons $m $c);if(!$conditions.Count){return}
+  # Confirm only continuously present conditions; a recovered or new condition
+  # cannot borrow another condition's observation time. Event TTL starts at the
+  # final confirmed sample, not at the first warning one minute earlier.
+  $configuration=$c|ConvertTo-Json -Depth 12 -Compress;$observation=[Diagnostics.Stopwatch]::StartNew()
+  while($true){
+   $confirmation=Confirm-Pressure $conditions @(Reasons $m $c) $observation.Elapsed.TotalSeconds;$conditions=@($confirmation.conditions)
+   if(!$conditions.Count){return};if($confirmation.confirmed){break}
+   Start-Sleep -Seconds 5
+   $current=Read-MonitorConfig @();if(!$current.Enabled -or ($current|ConvertTo-Json -Depth 12 -Compress) -cne $configuration){return}
+   $m=Metrics $c
+  }
   $critical=$m.commitPercent -ge 95 -or $m.availableBytes -le $m.physicalBytes*[math]::Min(5,$c.AvailableMemoryPercent/2)/100
   foreach($disk in @($m.disks)){if($disk.freePercent -le [math]::Min(2,$disk.thresholdPercent/2)){$critical=$true}}
   $severity=if($critical){'critical'}else{'warning'};$now=[DateTimeOffset]::UtcNow;$statePath=Join-Path $DataRoot 'state.json';$state=if(Test-Path -LiteralPath $statePath){Get-Content -LiteralPath $statePath -Raw|ConvertFrom-Json}else{$null};$fingerprint=$severity+':'+(($conditions|Sort-Object)-join ',')
@@ -85,7 +100,7 @@ function Apply {
   $mirror=Join-Path $DataRoot 'ResourceCapture.ps1';$temp=$mirror+'.new';if([IO.Path]::GetFullPath($PSCommandPath) -ine [IO.Path]::GetFullPath($mirror)){[IO.File]::Copy($PSCommandPath,$temp,$true);if(Test-Path -LiteralPath $mirror){[IO.File]::Replace($temp,$mirror,[System.Management.Automation.Language.NullString]::Value)}else{[IO.File]::Move($temp,$mirror)}}
   Atomic $settingsPath $c
   $exe=Join-Path $env:ProgramFiles 'PowerShell\7\pwsh.exe';if(!(Test-Path -LiteralPath $exe)){$exe="$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"};$action=New-ScheduledTaskAction -Execute $exe -Argument ('-NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -WindowStyle Hidden -File "'+$mirror+'" -Mode Capture') -WorkingDirectory $DataRoot
-  $taskPrincipal=New-ScheduledTaskPrincipal -UserId $identity.Name -LogonType Interactive -RunLevel Limited;$taskSettings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Seconds 60) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+  $taskPrincipal=New-ScheduledTaskPrincipal -UserId $identity.Name -LogonType Interactive -RunLevel Limited;$taskSettings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Seconds 180) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
   $null=Register-ScheduledTask -TaskName $taskName -TaskPath '\' -Action $action -Principal $taskPrincipal -Settings $taskSettings -Description $marker -Force
   $physical=[double](Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory;$free=[math]::Floor($physical*$c.AvailableMemoryPercent/100);$interval=[TimeSpan]::FromSeconds($c.SampleSeconds).ToString('hh\:mm\:ss');$thresholds=@("\Memory\Available Bytes<$free",("\Memory\% Committed Bytes In Use>"+$c.CommitPercent))
   foreach($disk in @($c.Disks|Where-Object Enabled)){ $percent=([double]$disk.FreePercent).ToString('0.0',[Globalization.CultureInfo]::InvariantCulture);$thresholds+=('\LogicalDisk('+$disk.Drive+')\% Free Space<'+$percent) }
@@ -104,5 +119,5 @@ function Apply {
  }finally{$lock.Dispose()}
 }
 switch($Mode){'Read'{Read};'Apply'{Apply};'Capture'{Capture};'SelfTest'{
- $c=[pscustomobject]@{AvailableMemoryPercent=10;CommitPercent=90};$m=@{availableBytes=20;physicalBytes=100;commitPercent=50;disks=@(@{drive='C:';freePercent=8;thresholdPercent=10},@{drive='D:';freePercent=60;thresholdPercent=10})};if((@(Reasons $m $c)-join ',') -ne 'disk_low:C:'){throw 'Disk percent test failed'};$m.availableBytes=5;if((@(Reasons $m $c)-join ',') -ne 'physical_memory_low,disk_low:C:'){throw 'RAM percent test failed'};'PASS: selected disk and memory percentage predicates, no process actions'
+ $c=[pscustomobject]@{AvailableMemoryPercent=10;CommitPercent=90};$m=@{availableBytes=20;physicalBytes=100;commitPercent=50;disks=@(@{drive='C:';freePercent=8;thresholdPercent=10},@{drive='D:';freePercent=60;thresholdPercent=10})};if((@(Reasons $m $c)-join ',') -ne 'disk_low:C:'){throw 'Disk percent test failed'};$m.availableBytes=5;if((@(Reasons $m $c)-join ',') -ne 'physical_memory_low,disk_low:C:'){throw 'RAM percent test failed'};$pending=Confirm-Pressure @('physical_memory_low','commit_high') @('physical_memory_low','commit_high') 59;if($pending.confirmed){throw 'Observation window not elapsed'};$recovered=Confirm-Pressure $pending.conditions @('commit_high') 60;if(!$recovered.confirmed -or ($recovered.conditions -join ',') -ne 'commit_high'){throw 'Continuous condition confirmation failed'};$gone=Confirm-Pressure $recovered.conditions @('physical_memory_low') 65;if($gone.confirmed -or $gone.conditions.Count){throw 'Recovered condition borrowed observation time'};'PASS: thresholds and 60-second continuous observation/recovery, no process actions'
 }}

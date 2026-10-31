@@ -429,7 +429,7 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
 
   useEffect(()=>readModels.subscribe("directory:mobile",()=>{const next=readModels.peek<MobileWorkstream[]>("directory:mobile");if(next)setIndex(next);}),[]);
   useEffect(()=>{if(!index.length&&!readModels.peek("directory:mobile"))return;const ids=new Set(index.filter(row=>!row.trashedAt&&row.status!=="ARCHIVED").map(row=>row.id));readModels.retain("bridge:",ids);for(const id of ids)mobileRoleBridgeApi(id).warmState?.(id);},[index]);
-  useDirectorySync(async()=>{setIndex(await mobileApi.workstreams());});
+  useDirectorySync(async()=>{setIndex(await mobileApi.refreshWorkstreams());},{onMount:true});
 
   const load = useCallback(async (workstreamId: string, preserveExplicitChatGptCandidate = false) => {
     const ticket=++loadGeneration.current;

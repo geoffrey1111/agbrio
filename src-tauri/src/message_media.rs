@@ -10,6 +10,7 @@ pub(crate) struct MediaInput{pub scope:MediaScope,pub source:String,#[serde(defa
 pub(crate) struct MediaFile{pub filename:String,pub mime:String,pub data:String}
 fn referenced(text:&str,source:&str)->bool{[format!("]({source})"),format!("](<{source}>)"),format!("`{source}`")].iter().any(|v|text.contains(v))||text.lines().any(|l|l.trim()==source)}
 pub(crate) fn read(core:&RouterCore,input:MediaInput)->Result<MediaFile,String>{
+ if let MediaScope::Watch{thread_id,turn_id,item_id,..}=&input.scope{if thread_id.starts_with("pi:"){if !input.document_sources.is_empty(){return Err("PI_MEDIA_REQUIRES_EXACT_NATIVE_IMAGE".into());}return crate::pi::media::read(core,thread_id,turn_id.as_deref(),item_id.as_deref(),&input.source);}}
  let (root,text)=match input.scope{
   MediaScope::Watch{thread_id,sequence,turn_id,item_id}=>{
    let w=core.store.codex_watches()?.into_iter().find(|w|w.thread_id==thread_id).ok_or("MEDIA_SOURCE_MISMATCH")?;

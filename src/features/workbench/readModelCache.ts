@@ -15,7 +15,7 @@ export class ReadModelCache {
   private timer?: ReturnType<typeof setInterval>;
   private saveTimer?: ReturnType<typeof setTimeout>;
   private running = 0;
-  private wake = () => { if (this.background || document.visibilityState !== "hidden") {for(const e of this.entries.values())if(e.failed||(!this.background&&Date.now()-e.at>=e.period)){e.due=0;e.failed=false;}void this.tick();} };
+  private wake = () => { if (this.background || document.visibilityState !== "hidden") {for(const e of this.entries.values())if(e.failed||(!this.background&&(e.listeners.size>0||Date.now()-e.at>=e.period))){e.due=0;e.failed=false;}void this.tick();} };
   constructor(private storage: () => Storage | undefined = () => localStorage, private background=false) {}
   setScope(scope: string | null) {
     if (this.scope === scope) return;
@@ -96,8 +96,8 @@ export class ReadModelCache {
   private async tick() {
     if (!this.background && document.visibilityState === "hidden") return;
     const now = Date.now();
-    const due = [...this.entries.entries()].filter(([, e]) => e.loader && !e.pending && e.due <= now && (e.listeners.size || now - e.touched < 20 * 60 * 1000)).sort((a,b) => a[1].due - b[1].due);
-    for (const [key, e] of due) { if (this.running >= 2) break; void this.load(key, e).catch(() => undefined); }
+    const due = [...this.entries.entries()].filter(([, e]) => e.loader && !e.pending && e.due <= now && (e.listeners.size || now - e.touched < 20 * 60 * 1000)).sort((a,b) => Number(b[1].listeners.size>0)-Number(a[1].listeners.size>0)||a[1].due-b[1].due);
+    for (const [key, e] of due) { if (this.running >= (e.listeners.size?6:2)) continue; void this.load(key, e).catch(() => undefined); }
     const expired = [...this.entries.entries()].filter(([, e]) => !e.listeners.size && !e.pending).sort((a,b) => b[1].touched - a[1].touched).slice(96);
     for (const [key] of expired) this.entries.delete(key);
   }

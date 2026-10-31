@@ -1258,3 +1258,15 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .v3-notification-delivery form { display: grid; gap: 10px; max-width: 520px; margin: 12px 0; }
 .v3-notification-delivery label { display: grid; gap: 6px; }
 .v3-notification-delivery input { min-height: 44px; padding: 8px 10px; border: 1px solid var(--awr-line); border-radius: 6px; width: 100%; box-sizing: border-box; color: var(--awr-ink); background: #fff; }
+
+.pi-settings form{display:grid;gap:12px;max-width:42rem}.pi-settings form>input{width:100%;min-width:0;min-height:44px;padding:10px 12px;border:1px solid var(--awr-line);border-radius:12px;color:var(--awr-ink);background:var(--awr-canvas)}.pi-settings .pi-write-choice{display:flex;align-items:center;gap:10px}.pi-settings .pi-write-choice input{flex:none}.pi-scope-list{list-style:none;margin:0;padding:0}.pi-scope-list li{display:flex;align-items:center;gap:16px;justify-content:space-between;padding-block:14px}.pi-scope-list li>div{display:grid;gap:4px;min-width:0}.pi-directory-path{overflow-wrap:anywhere}.pi-scope-list small{color:var(--awr-muted)}.pi-scope-list button{flex:none;min-height:44px}@media(max-width:480px){.pi-scope-list li{align-items:flex-start;flex-direction:column;gap:8px}}
+
+.pi-delegations>button{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;text-align:start;border:0;background:transparent}.pi-delegations>button:hover{background:var(--awr-shell)}.pi-delegations>button>span:last-child{display:grid;gap:4px;min-width:0}.pi-delegations strong{overflow-wrap:anywhere}.pi-delegations small{color:var(--awr-muted)}.v6-badge.v6-pi{background:var(--awr-ink);color:var(--awr-canvas)}
+
+.pi-settings form>textarea{width:100%;min-width:0;resize:vertical;padding:10px 12px;border:1px solid var(--awr-line);border-radius:12px;color:var(--awr-ink);background:var(--awr-canvas);font:inherit;font-size:14px;line-height:1.5}
+.pi-settings fieldset{display:grid;gap:10px;min-width:0;margin:0;padding:14px;border:0;border-radius:12px;background:var(--awr-surface,#f5f3ef)}
+.pi-settings legend{padding:0 0 8px;font-weight:500}.pi-settings .pi-write-choice{align-items:flex-start;line-height:1.5}.pi-settings .pi-write-choice input{margin-top:4px}
+.pi-administrator-setup{margin-block:18px 26px;padding-block:12px;border-block-end:1px solid var(--awr-line)}
+.pi-settings :is(input,textarea,button):focus-visible{outline:2px solid var(--awr-accent,#b56f51);outline-offset:3px}
+
+.r2-router .v4-shared-codex.pi-settings .v4-meta{display:block;color:var(--awr-muted)}

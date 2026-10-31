@@ -31,7 +31,7 @@ pub(crate) struct Status{settings:Settings,collector_available:bool,recent:Vec<A
 struct TargetOption{#[serde(flatten)]target:Target,label:String}
 fn targets(core:&RouterCore)->Result<Vec<TargetOption>,String>{
  let mut result=Vec::new();let mut seen=std::collections::HashSet::new();
- for w in core.store.codex_watches()?.into_iter().filter(|w|w.enabled){seen.insert(w.thread_id.clone());result.push(TargetOption{target:target(&w),label:w.label});}
+ for w in core.store.codex_watches()?.into_iter().filter(|w|w.enabled&&!w.thread_id.starts_with("pi:")){seen.insert(w.thread_id.clone());result.push(TargetOption{target:target(&w),label:w.label});}
  for stream in core.store.active_workstreams()?{let b=core.store.role_bridge(&stream.id)?;for side in [b.decision,b.execution].into_iter().flatten(){let key=match side.endpoint.provider.as_str(){"CODEX"=>side.endpoint.external_id.clone(),"CLAUDE_CODE"=>format!("claude_code:{}",side.endpoint.external_id),_=>continue};if seen.contains(&key){continue;}if let Ok(w)=core.store.codex_chat_context(&key){seen.insert(key);result.push(TargetOption{target:target(&w),label:w.label});}}}
  Ok(result)
 }
@@ -157,7 +157,7 @@ fn route_resources(core:&RouterCore,settings:&Settings,at:i64)->Result<(),String
  Ok(())
 }
 pub(super) fn recover(core:&RouterCore,at:i64)->Result<(),String>{
- for w in core.store.codex_watches()?.into_iter().filter(|w|w.enabled&&!w.thread_id.starts_with("claude_code:")){
+ for w in core.store.codex_watches()?.into_iter().filter(|w|w.enabled&&!w.thread_id.starts_with("claude_code:")&&!w.thread_id.starts_with("pi:")){
   if w.error_code.is_some()||at-w.checked_at>30000||at-w.changed_at>600000{continue;}
   let candidate={let Ok(mut s)=core.session.try_lock()else{continue};let Some(a)=s.adapter.as_mut()else{continue};
    let Some(d)=a.latest_turn_diagnostic(&w.thread_id).filter(recoverable)else{continue};
@@ -197,7 +197,7 @@ fn send_codex_notice(core:&RouterCore,t:&Target,at:i64)->Result<(),String>{
  }
  Ok(())
 }
-pub(crate) fn maintain(core:&RouterCore){let at=now();let Ok(mut pass)=PASS.get_or_init(Mutex::default).try_lock()else{return};if at-pass.0<30000{return;}pass.0=at;drop(pass);
+pub(crate) fn maintain(core:&RouterCore){let _=core.store.observe_pi_manager_notices();let at=now();let Ok(mut pass)=PASS.get_or_init(Mutex::default).try_lock()else{return};if at-pass.0<30000{return;}pass.0=at;drop(pass);
  // File ingestion/receipt reconciliation never waits behind a native Codex
  // RPC. A slow recovery must not starve new critical Claude notifications.
  let _=core.store.expire_resource_notices(at);let _=reconcile(core,at);crate::codex_notices::reconcile(core);let Ok(s)=core.store.local_safety_settings()else{return};

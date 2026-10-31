@@ -43,7 +43,8 @@
       "resources/mcp-dns": "mcp-dns",
       "../tools/claude-code-plugin": "claude-code-plugin",
       "../tools/agbrio-control": "app-control",
-      "../tools/resource-monitor": "resource-monitor"
+      "../tools/resource-monitor": "resource-monitor",
+      "../tools/pi-adapter": "pi-adapter"
     },
     "externalBin": [
       "binaries/browser-executor-node"

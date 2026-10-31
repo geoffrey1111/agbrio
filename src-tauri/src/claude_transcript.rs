@@ -267,6 +267,11 @@ fn page_awaiting_reply(page:&Page)->bool{
 }
 /// The native row a plugin submission produced: this session, origin
 /// `agbrio-bridge`, written at or after the offer, unwrapped text exactly `text`.
+pub(crate) fn find_plugin_prompt_batch(path:&Path,session:&str,texts:&[String])->Vec<Option<String>>{
+ let mut found=vec![None;texts.len()];let Ok(mut file)=File::open(path)else{return found};let Ok(metadata)=file.metadata()else{return found};let start=metadata.len().saturating_sub(RECEIPT_SCAN);if file.seek(SeekFrom::Start(start)).is_err(){return found;}let mut bytes=Vec::new();if file.take(RECEIPT_SCAN).read_to_end(&mut bytes).is_err(){return found;}
+ for line in bytes.split(|b|*b==b'\n').rev(){if line.len()>MAX_LINE{continue;}let Ok(v)=serde_json::from_slice::<Value>(line)else{continue};if v["sessionId"]!=session||v["type"]!="user"||v["origin"]["kind"]!="plugin"||v["origin"]["name"]!="agbrio-bridge"||v["isSidechain"]==true{continue;}let content=&v["message"]["content"];let raw=match content{Value::String(s)=>s.clone(),Value::Array(a)=>a.iter().filter(|b|b["type"]=="text").filter_map(|b|b["text"].as_str()).collect::<Vec<_>>().join(""),_=>continue};let text=unwrap_plugin_prompt(&raw);for(i,expected)in texts.iter().enumerate(){if found[i].is_none()&&text==*expected{found[i]=v["uuid"].as_str().filter(|id|native(id)).map(str::to_owned);}}if found.iter().all(Option::is_some){break;}}
+ found
+}
 pub(crate) fn find_plugin_prompt(path: &Path, session: &str, text: &str, since_ms: i64) -> Option<String> {
     let mut file = File::open(path).ok()?;
     let len = file.metadata().ok()?.len();
@@ -577,4 +582,8 @@ mod presentation_tests {
         let mut side = row; side["isSidechain"] = Value::Bool(true);
         assert!(matches!(classify(&serde_json::to_vec(&side).unwrap(), session), Line::Skip));
     }
+}
+
+#[cfg(test)]mod batch_receipt_tests{use super::*;use serde_json::json;
+ #[test]fn only_original_native_plugin_rows_settle_requested_metadata(){let d=tempfile::tempdir().unwrap();let path=d.path().join("native.jsonl");let sid="10000000-0000-4000-8000-000000000001";let id="20000000-0000-4000-8000-000000000001";let rows=[json!({"type":"user","sessionId":sid,"uuid":id,"origin":{"kind":"plugin","name":"agbrio-bridge"},"message":{"content":"exact metadata"}}),json!({"type":"user","sessionId":sid,"uuid":id,"origin":{"kind":"user"},"message":{"content":"foreign origin"}})];std::fs::write(&path,rows.iter().map(Value::to_string).collect::<Vec<_>>().join("\n")).unwrap();assert_eq!(find_plugin_prompt_batch(&path,sid,&["exact metadata".into(),"foreign origin".into()]),vec![Some(id.into()),None]);assert_eq!(find_plugin_prompt_batch(&path,id,&["exact metadata".into()]),vec![None]);}
 }

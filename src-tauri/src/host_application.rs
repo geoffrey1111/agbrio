@@ -42,6 +42,9 @@ pub(crate) const CODEX_OBSERVER_REQUEST_TIMEOUT: Duration = Duration::from_secs(
 
 #[derive(Default)]
 pub(crate) struct Session {
+    /// Independent Pi task workers share Host ownership, never the Codex native
+    /// process, provider protocol, permission token or conversation identity.
+    pub(crate) pi: Arc<crate::pi::PiService>,
     pub(crate) adapter: Option<CodexAdapter>,
     /// Incremented whenever the Host replaces its single Codex adapter.  A
     /// retired observer exits before another poll, so reconnects cannot leave
@@ -810,6 +813,8 @@ pub(crate) fn mobile_codex_attachment_candidates(
 
 impl RouterCore {
     pub(crate) fn shutdown_owned_adapter(&self) {
+        let pi=self.session.lock().ok().map(|session|session.pi.clone());
+        if let Some(pi)=pi{pi.shutdown();}
         self.chatgpt.shutdown();
         if let Ok(mut session) = self.session.lock() {
             if let Some(adapter) = session.adapter.as_mut() {
@@ -4358,7 +4363,7 @@ pub(crate) fn run_codex_existing_thread_observer(
         match resident_observer_connection(&session,observer_epoch){ObserverConnection::Stopped=>return,ObserverConnection::Borrowed=>continue,ObserverConnection::Ready=>{}}
         if let Ok(watches) = store.codex_watches() {
             let now=rollover_now().unwrap_or(0)*1000;
-            let due:Vec<_>=watches.into_iter().filter(|w|w.enabled&&!w.thread_id.starts_with(router_core::store::claude_manual::PREFIX)&&w.retry_after<=now).collect();
+            let due:Vec<_>=watches.into_iter().filter(|w|w.enabled&&!w.thread_id.starts_with("pi:")&&!w.thread_id.starts_with(router_core::store::claude_manual::PREFIX)&&w.retry_after<=now).collect();
             let selected=crate::observer_batch::next_ids(due.iter().map(|w|w.thread_id.as_str()),&mut watch_cursor,crate::observer_batch::WATCH_READS_PER_PASS);
             for watch in due.into_iter().filter(|w|selected.contains(&w.thread_id)) {
                 // Pause/Resume generation is checked again when the native read commits.

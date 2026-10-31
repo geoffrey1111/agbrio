@@ -33,6 +33,7 @@ export interface UnifiedWorkbenchProps {
   notificationDetail?:boolean;
   devicePanel?:ReactNode;
   assistantPanel?:ReactNode;
+  piSettingsPanel?:ReactNode;
   quotaPanel?:ReactNode;
   updatePanel?:ReactNode;
   onOpenWebAccess?:()=>void;

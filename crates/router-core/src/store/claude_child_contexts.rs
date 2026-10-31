@@ -6,7 +6,7 @@ pub(super) fn context(c:&Connection,key:&str)->Result<codex_watch::CodexWatch,St
  let Some((root,revision,cwd,label,until))=row else{return Err("WATCH_NOT_FOUND".into())};
  let parent=codex_watch::primary_chat_context(c,&root)?;
  if root==key||!parent.enabled||parent.generation!=revision||until<now(){return Err("REPLY_TARGET_CHANGED_REFRESH".into())}
- Ok(codex_watch::CodexWatch{thread_id:key.into(),label,cwd:cwd.clone(),enabled:true,generation:generation(&root,revision,key,&cwd)?,snapshot:codex_watch::WatchSnapshot{state:"UNKNOWN".into(),turn_id:None,item_id:None,text:String::new()},checked_at:0,error_code:None,retry_after:0,send_count:0,shown_at:0,changed_at:0})
+ Ok(codex_watch::CodexWatch{runtime:codex_watch::observed_runtime(key,&cwd),thread_id:key.into(),label,cwd:cwd.clone(),enabled:true,generation:generation(&root,revision,key,&cwd)?,snapshot:codex_watch::WatchSnapshot{state:"UNKNOWN".into(),turn_id:None,item_id:None,text:String::new()},checked_at:0,error_code:None,retry_after:0,send_count:0,shown_at:0,changed_at:0})
 }
 impl RouterStore {
  pub fn open_claude_child_context(&self,root:&str,revision:i64,key:&str,cwd:&str,label:&str)->Result<(),String>{

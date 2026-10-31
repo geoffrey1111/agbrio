@@ -6,13 +6,13 @@ use serde_json::{json,Value};
 #[derive(Deserialize)]
 #[serde(tag="operation",rename_all="SCREAMING_SNAKE_CASE",rename_all_fields="camelCase",deny_unknown_fields)]
 pub(crate) enum Operation{
- CreateChat{#[serde(default="codex_provider")]provider:String,directory:String,label:Option<String>,model:Option<String>,effort:Option<String>,service_tier:Option<String>},
+ CreateChat{#[serde(default="codex_provider")]provider:String,directory:String,label:Option<String>,model:Option<String>,effort:Option<String>,service_tier:Option<String>,pi:Option<crate::pi::application::CreateInput>},
  CreateBridge{name:String},
  RenameBridge{workstream_id:String,binding_revision:i64,name:String},
  BindBridge{workstream_id:String,binding_revision:i64,decision:RoleBindingInput,execution:RoleBindingInput},
  BridgeLifecycle{workstream_id:String,binding_revision:i64,lifecycle:String},
  PinBridge{workstream_id:String,binding_revision:i64,pinned:bool},
- EnableWatch{thread_id:String},PauseWatch{thread_id:String,generation:i64},
+ EnableWatch{thread_id:String,pi_access:Option<crate::pi::application::AccessChange>},PauseWatch{thread_id:String,generation:i64},
  RemoveWatchItem{kind:String,id:String,removed:bool,generation:Option<i64>},
  MarkNotificationRead{sequence:i64},
  SendChat{thread_id:String,generation:i64,source_sequence:Option<i64>,expected_turn_id:Option<String>,#[serde(default="automatic_mode")]mode:String,#[serde(default)]queue_requested:bool,text:String,#[serde(default)]options:crate::watch_chat::ReplyOptions},
@@ -32,16 +32,25 @@ fn create_directory(value:&str)->Result<String,String>{
  let value=canonical.to_string_lossy();let value=value.strip_prefix("\\\\?\\").unwrap_or(&value);
  if value.starts_with("UNC\\")||value.starts_with("\\\\"){return Err("ASSISTANT_CREATE_DIRECTORY_INVALID".into());}Ok(value.into())
 }
+fn normalize_pi_control(operation:&str,input:&mut Value)->Result<(),String>{
+ if operation=="STOP_CHAT"&&input["threadId"].as_str().is_some_and(|id|id.starts_with("pi:"))&&input.get("runtimeEpoch").is_some(){
+  let epoch=input["runtimeEpoch"].as_str().filter(|s|!s.is_empty()).ok_or("PI_RUNTIME_EPOCH_INVALID")?.to_owned();
+  if input.get("turnId").is_some_and(|v|v.as_str()!=Some(&epoch)){return Err("PI_RUNTIME_EPOCH_CONFLICT".into());}
+  let object=input.as_object_mut().ok_or("ASSISTANT_ARGUMENTS_INVALID")?;object.remove("runtimeEpoch");object.insert("turnId".into(),json!(epoch));
+ }Ok(())
+}
 pub(crate) fn normalize(input:&mut router_core::store::assistant_actions::ActionInput)->Result<(),String>{
+ normalize_pi_control(&input.operation,&mut input.input)?;
  let op=decode(&input.operation,input.input.clone())?;
  match op {
-  Operation::CreateChat{directory,..}=>input.input["directory"]=json!(create_directory(&directory)?),
+  Operation::CreateChat{provider,directory,..}=>input.input["directory"]=json!(if provider=="PI"{crate::pi::application::normalize_directory(&directory)?}else{create_directory(&directory)?}),
   Operation::SendChat{mode,queue_requested,..}=>{
    if !queue_requested&&matches!(mode.as_str(),"AUTO"|"SEND"|"QUEUE"){input.input["mode"]=json!("AUTO");}
   },_=>{}
  }Ok(())
 }
-pub(crate) fn decode(operation:&str,input:Value)->Result<Operation,String>{
+pub(crate) fn decode(operation:&str,mut input:Value)->Result<Operation,String>{
+ normalize_pi_control(operation,&mut input)?;
  if operation=="RESPOND_CHAT"{validate_response_shape(&input)?;}
  if operation=="CREATE_CHAT"{validate_create_shape(&input)?;}
  let mut obj=input.as_object().cloned().ok_or("ASSISTANT_ARGUMENTS_INVALID")?;
@@ -49,12 +58,12 @@ pub(crate) fn decode(operation:&str,input:Value)->Result<Operation,String>{
  serde_json::from_value(Value::Object(obj)).map_err(|_|"ASSISTANT_OPERATION_OR_ARGUMENTS_INVALID".into())
 }
 fn validate_create_shape(value:&Value)->Result<(),String>{
- let fail=|field:&str|format!("ASSISTANT_ARGUMENTS_INVALID: CREATE_CHAT.{field}; allowed fields: provider, directory, label, model, effort, serviceTier; call agbrio_list_codex_models for supported settings");
+ let fail=|field:&str|format!("ASSISTANT_ARGUMENTS_INVALID: CREATE_CHAT.{field}; allowed fields: provider, directory, label, model, effort, serviceTier, pi; call agbrio_list_codex_models for supported settings");
  let obj=value.as_object().ok_or_else(||fail("input must be an object"))?;
- for key in obj.keys(){if !matches!(key.as_str(),"provider"|"directory"|"label"|"model"|"effort"|"serviceTier"){return Err(fail("input contains an unknown field"));}}
+ for key in obj.keys(){if !matches!(key.as_str(),"provider"|"directory"|"label"|"model"|"effort"|"serviceTier"|"pi"){return Err(fail("input contains an unknown field"));}}
  if value["directory"].as_str().is_none(){return Err(fail("directory must be an existing absolute directory"));}
  for key in ["label","model","effort","serviceTier"]{if obj.get(key).is_some_and(|v|!v.is_null()&&!v.is_string()){return Err(fail(key));}}
- if obj.get("provider").is_some_and(|v|!v.is_string()){return Err(fail("provider must be CODEX"));}Ok(())
+ if obj.get("provider").is_some_and(|v|!v.is_string()){return Err(fail("provider must be CODEX or PI"));}Ok(())
 }
 fn validate_response_shape(value:&Value)->Result<(),String>{
  let fail=|field:&str,expected:&str|format!("ASSISTANT_ARGUMENTS_INVALID: RESPOND_CHAT.{field} {expected}; use requestId/revision and questions[].id from read_chat; answers is a question-ID to answer-string map");
@@ -100,30 +109,32 @@ fn watch(core:&RouterCore,id:&str,generation:i64)->Result<(),String>{
 fn chat_context(core:&RouterCore,id:&str,generation:i64)->Result<(),String>{if core.store.codex_chat_context(id)?.generation!=generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}Ok(())}
 pub(crate) fn validate(core:&RouterCore,op:&Operation)->Result<(),String>{
  match op{
-  Operation::CreateChat{provider,directory,label,model,effort,service_tier}=>{if provider!="CODEX"{return Err("ASSISTANT_CREATE_PROVIDER_UNSUPPORTED".into());}if create_directory(directory)?!=*directory{return Err("ASSISTANT_CREATE_DIRECTORY_CHANGED".into());}if label.as_ref().is_some_and(|s|s.trim().is_empty()||s.chars().count()>120){return Err("WATCH_LABEL_INVALID".into());}core.validate_codex_creation_settings(&crate::codex::creation::Settings{model:model.clone(),effort:effort.clone(),service_tier:service_tier.clone()})?;},
+  Operation::CreateChat{provider,directory,label,model,effort,service_tier,pi}=>{if label.as_ref().is_some_and(|s|s.trim().is_empty()||s.chars().count()>120){return Err("WATCH_LABEL_INVALID".into());}if provider=="PI"{if model.is_some()||effort.is_some()||service_tier.is_some(){return Err("PI_SETTINGS_USE_PI_OBJECT".into());}crate::pi::application::validate_create(core,directory,pi.as_ref().ok_or("PI_CREATE_INPUT_REQUIRED")?)?;return Ok(());}if pi.is_some(){return Err("PI_SETTINGS_REQUIRE_PI_PROVIDER".into());}if provider!="CODEX"{return Err("ASSISTANT_CREATE_PROVIDER_UNSUPPORTED".into());}if create_directory(directory)?!=*directory{return Err("ASSISTANT_CREATE_DIRECTORY_CHANGED".into());}if label.as_ref().is_some_and(|s|s.trim().is_empty()||s.chars().count()>120){return Err("WATCH_LABEL_INVALID".into());}core.validate_codex_creation_settings(&crate::codex::creation::Settings{model:model.clone(),effort:effort.clone(),service_tier:service_tier.clone()})?;},
   Operation::CreateBridge{name}=>if name.trim().is_empty()||name.chars().count()>100{return Err("BRIDGE_NAME_INVALID".into());},
   Operation::RenameBridge{workstream_id,binding_revision,name}=>{bridge(core,workstream_id,*binding_revision)?;if name.trim().is_empty()||name.chars().count()>100{return Err("BRIDGE_NAME_INVALID".into());}},
   Operation::BindBridge{workstream_id,binding_revision,..}|Operation::PinBridge{workstream_id,binding_revision,..}=>bridge(core,workstream_id,*binding_revision)?,
   Operation::BridgeLifecycle{workstream_id,binding_revision,lifecycle}=>{bridge(core,workstream_id,*binding_revision)?;if !matches!(lifecycle.as_str(),"ACTIVE"|"TRASHED"){return Err("ASSISTANT_LIFECYCLE_INVALID".into());}},
   Operation::PauseGoal{target,expected_goal_fingerprint}|Operation::ResumeGoal{target,expected_goal_fingerprint}=>crate::goal_control::validate(core,&crate::goal_control::GoalInput{target:target.clone(),expected_goal_fingerprint:expected_goal_fingerprint.clone()},if matches!(op,Operation::PauseGoal{..}){"PAUSE_GOAL"}else{"RESUME_GOAL"})?,
   Operation::PauseWatch{thread_id,generation}=>watch(core,thread_id,*generation)?,
-  Operation::SendChat{thread_id,generation,source_sequence,mode,queue_requested,..}=>{if thread_id.starts_with(router_core::store::claude_manual::PREFIX){return Err("CLAUDE_MCP_WRITE_DISABLED".into());}if !matches!(mode.as_str(),"AUTO"|"SEND"|"QUEUE"|"STEER")||(*queue_requested&&mode!="QUEUE"){return Err("REPLY_INPUT_INVALID".into());}chat_context(core,thread_id,*generation)?;
+  Operation::SendChat{thread_id,generation,source_sequence,mode,queue_requested,expected_turn_id,options,..}=>{if thread_id.starts_with("pi:"){let t=core.store.pi_task(thread_id)?;if t.generation!=*generation{return Err("PI_TASK_GENERATION_CHANGED".into());}if source_sequence.is_some()||expected_turn_id.is_some()||options.model.is_some()||options.effort.is_some(){return Err("PI_SEND_OPTIONS_UNSUPPORTED".into());}if !matches!(mode.as_str(),"AUTO"|"SEND"|"STEER"|"QUEUE")||(*queue_requested&&mode!="QUEUE"){return Err("PI_SEND_MODE_INVALID".into());}return Ok(());}if thread_id.starts_with(router_core::store::claude_manual::PREFIX){return Err("CLAUDE_MCP_WRITE_DISABLED".into());}if !matches!(mode.as_str(),"AUTO"|"SEND"|"QUEUE"|"STEER")||(*queue_requested&&mode!="QUEUE"){return Err("REPLY_INPUT_INVALID".into());}chat_context(core,thread_id,*generation)?;
    if let Some(sequence)=source_sequence{
     let invalid=||"ASSISTANT_ARGUMENTS_INVALID: SEND_CHAT.sourceSequence must be an existing positive notification sequence for this exact thread; omit it or use null for a new conversation or a direct message. It is not generation, turnId or a message index. Read agbrio_read_chat.sendContext before preparing again.".to_string();
     if *sequence<=0{return Err(invalid());}
     match core.store.codex_watch_event(*sequence){Ok(event) if event.thread_id==*thread_id=>{},Ok(_)=>return Err(invalid()),Err(e) if e=="WATCH_EVENT_NOT_FOUND"=>return Err(invalid()),Err(e)=>return Err(e)}
    }
   },
-  Operation::AcknowledgeUnknownChat{thread_id,reply_id,generation}=>{chat_context(core,thread_id,*generation)?;let r=core.store.watch_reply(reply_id)?.ok_or("REPLY_NOT_FOUND")?;if r.thread_id!=*thread_id||r.status!="UNKNOWN"{return Err("ASSISTANT_UNKNOWN_RECEIPT_REQUIRED".into());}},
+  Operation::AcknowledgeUnknownChat{thread_id,reply_id,generation}=>{if thread_id.starts_with("pi:"){let task=core.store.pi_task(thread_id)?;if task.generation!=*generation||core.store.pi_command_receipt(&task.id,reply_id)?.status!="UNKNOWN"{return Err("PI_UNKNOWN_RECEIPT_REQUIRED".into());}return Ok(());}chat_context(core,thread_id,*generation)?;let r=core.store.watch_reply(reply_id)?.ok_or("REPLY_NOT_FOUND")?;if r.thread_id!=*thread_id||r.status!="UNKNOWN"{return Err("ASSISTANT_UNKNOWN_RECEIPT_REQUIRED".into());}},
   Operation::RemoveWatchItem{kind,id,generation,removed}=>{if kind=="WATCH"{let expected=generation.ok_or("ASSISTANT_WATCH_GENERATION_REQUIRED")?;if *removed{watch(core,id,expected)?;}else if core.store.registered_codex_watch(id)?.generation!=expected{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}}else if kind=="EVENT"{core.store.codex_watch_event(id.parse().map_err(|_|"WATCH_SEQUENCE_INVALID")?)?;}else{return Err("WATCH_REMOVAL_INVALID".into());}},
   Operation::MarkNotificationRead{sequence}=>{core.store.codex_watch_event(*sequence)?;},
   Operation::RespondChat{thread_id,request_id,input}=>{crate::watch_chat::assistant_response_command(core,thread_id,request_id,input)?;},
-  Operation::EnableWatch{thread_id}|Operation::StopChat{thread_id,..}=>if thread_id.trim().is_empty()||thread_id.len()>256{return Err("ASSISTANT_ARGUMENTS_INVALID".into());},
+  Operation::EnableWatch{thread_id,pi_access}=>{if thread_id.trim().is_empty()||thread_id.len()>256{return Err("ASSISTANT_ARGUMENTS_INVALID".into());}if let Some(access)=pi_access{if !thread_id.starts_with("pi:"){return Err("PI_ACCESS_REQUIRES_PI_TASK".into());}crate::pi::application::validate_access_change(core,thread_id,access)?;}},
+  Operation::StopChat{thread_id,..}=>if thread_id.trim().is_empty()||thread_id.len()>256{return Err("ASSISTANT_ARGUMENTS_INVALID".into());},
  }Ok(())
 }
 pub(crate) fn execute(core:&RouterCore,aid:&str,op:Operation)->Result<Value,String>{
  match op{
-  Operation::CreateChat{directory,label,model,effort,service_tier,..}=>{
+  Operation::CreateChat{provider,directory,label,model,effort,service_tier,pi}=>{
+   if provider=="PI"{return crate::pi::application::create(core,aid,&directory,label.as_deref().unwrap_or("新 Pi 对话"),pi.ok_or("PI_CREATE_INPUT_REQUIRED")?);}
    let directory=create_directory(&directory)?;
    let requested=crate::codex::creation::Settings{model,effort,service_tier};
    let created=core.start_configured_codex_thread(&directory,&requested)?;
@@ -142,11 +153,12 @@ pub(crate) fn execute(core:&RouterCore,aid:&str,op:Operation)->Result<Value,Stri
   Operation::BindBridge{workstream_id,binding_revision,decision,execution}=>serde_json::to_value(crate::role_bridge::bind(core,&workstream_id,binding_revision,decision,execution)?).map_err(|_|"ASSISTANT_RESPONSE_UNAVAILABLE".into()),
   Operation::BridgeLifecycle{workstream_id,lifecycle,..}=>serde_json::to_value(if lifecycle=="TRASHED"{core.store.trash_workstream(&workstream_id)?}else{core.store.restore_workstream(&workstream_id)?}).map_err(|_|"ASSISTANT_RESPONSE_UNAVAILABLE".into()),
   Operation::PinBridge{workstream_id,pinned,..}=>{core.store.set_workstream_pinned(&workstream_id,pinned)?;Ok(json!({"ok":true}))},
-  Operation::EnableWatch{thread_id}=>{crate::codex_watch::enable(core,&thread_id)?;Ok(json!({"ok":true}))},
+  Operation::EnableWatch{thread_id,pi_access}=>{if thread_id.starts_with("pi:"){return crate::pi::application::restore_managed(core,aid,&thread_id,pi_access);}if pi_access.is_some(){return Err("PI_ACCESS_REQUIRES_PI_TASK".into());}crate::codex_watch::enable(core,&thread_id)?;Ok(json!({"ok":true}))},
   Operation::PauseWatch{thread_id,..}=>{core.store.pause_codex_watch(&thread_id)?;Ok(json!({"ok":true}))},
   Operation::RemoveWatchItem{kind,id,removed,..}=>{core.store.set_watch_item_removed(&kind,&id,removed)?;Ok(json!({"ok":true}))},
   Operation::MarkNotificationRead{sequence}=>{core.store.mark_codex_watch_event_seen(sequence)?;Ok(json!({"ok":true}))},
   Operation::SendChat{thread_id,generation,source_sequence,expected_turn_id,mode,queue_requested,text,options}=>{
+   if thread_id.starts_with("pi:"){return crate::pi::application::send(core,&thread_id,aid,generation,&mode,queue_requested,text,&options);}
    let (mode,expected_turn_id)=if mode=="STEER"||(mode=="QUEUE"&&queue_requested){(mode,expected_turn_id)}else{
     crate::watch_chat::automatic_reply_target(core,&thread_id,generation,expected_turn_id)?
    };
@@ -154,7 +166,7 @@ pub(crate) fn execute(core:&RouterCore,aid:&str,op:Operation)->Result<Value,Stri
   },
   Operation::PauseGoal{target,expected_goal_fingerprint}=>{let r=crate::goal_control::apply(core,aid,crate::goal_control::GoalInput{target,expected_goal_fingerprint},"PAUSE_GOAL",false)?;if r.status!="APPLIED"{return Err("GOAL_CONTROL_UNCERTAIN_CHECK_RECEIPT".into());}serde_json::to_value(r).map_err(|_|"ASSISTANT_RESPONSE_UNAVAILABLE".into())},
   Operation::ResumeGoal{target,expected_goal_fingerprint}=>{let owner=core.store.assistant_action_has_owner_answer(aid)?;let r=crate::goal_control::apply(core,aid,crate::goal_control::GoalInput{target,expected_goal_fingerprint},"RESUME_GOAL",owner)?;if r.status!="APPLIED"{return Err("GOAL_CONTROL_UNCERTAIN_CHECK_RECEIPT".into());}serde_json::to_value(r).map_err(|_|"ASSISTANT_RESPONSE_UNAVAILABLE".into())},
-  Operation::StopChat{thread_id,turn_id}=>crate::watch_chat::command(core,crate::watch_chat::ChatCommand::Stop{thread_id,turn_id}),
+  Operation::StopChat{thread_id,turn_id}=>{if thread_id.starts_with("pi:"){crate::pi::application::stop(core,&thread_id,aid,&turn_id)}else{crate::watch_chat::command(core,crate::watch_chat::ChatCommand::Stop{thread_id,turn_id})}},
   Operation::RespondChat{thread_id,request_id,input}=>{let command=crate::watch_chat::assistant_response_command(core,&thread_id,&request_id,&input)?;crate::watch_chat::command(core,command)},
   Operation::AcknowledgeUnknownChat{thread_id,reply_id,..}=>crate::watch_chat::command(core,crate::watch_chat::ChatCommand::AcknowledgeUnknown{thread_id,id:reply_id,confirmed:true}),
  }

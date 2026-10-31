@@ -1,6 +1,8 @@
 import type {CodexWatch} from './CodexNotifications';
 import {t} from '../../i18n';
 export const QUIET_WATCH_AGE=3*24*60*60*1000;
+export const threadProviderLabel=(id:string)=>id.startsWith('pi:')?'Pi':id.startsWith('claude_code:')?'Claude Code':'Codex';
+export const threadAvatarKind=(id:string):'pi'|'claude'|'codex'=>id.startsWith('pi:')?'pi':id.startsWith('claude_code:')?'claude':'codex';
 const timestamp=(v:unknown)=>typeof v==='number'&&Number.isFinite(v)&&v>0?v:0;
 export function isQuietWatch(w:CodexWatch,now=Date.now()):boolean{
  if(!w.enabled||w.errorCode||['RUNNING','ACTION_REQUIRED','FAILED'].includes(w.snapshot.state)||w.taskTree?.running||w.taskTree?.attention)return false;

@@ -1,0 +1,240 @@
+/* Agbrio v7 token layer (management-approved direction, 2026-10-31).
+   Load LAST, after agbrio-v6-theme.css / conversation-polish.css.
+   Rules: brand orange-red only for "needs you", unread and selection; running is a
+   green dot; four status tags; one primary button style (ink); minimum 12px type.
+   This layer re-maps the shared --awr/--r2 tokens and restyles existing class
+   names in place. It changes no markup, routing or behavior. */
+
+:root{
+  /* palette */
+  --v7-bg:#f7f6f4;--v7-bg-sunken:#efedea;--v7-surface:#ffffff;--v7-hover:#f1efec;--v7-selected:#f5e9e3;
+  --v7-ink:#1e1b18;--v7-ink-2:#4a443e;--v7-muted:#766e66;--v7-faint:#a39b93;
+  --v7-line:#e6e3df;--v7-line-strong:#d9d5cf;
+  --v7-accent:#b4532a;--v7-accent-soft:#f5e9e3;--v7-accent-ink:#8f3f1d;
+  --v7-run:#2c7a57;--v7-run-soft:#e3f0e9;--v7-fail:#c0453a;--v7-fail-soft:#f8e6e3;
+  /* type scale: 28 phone title · 22 desktop title · 16 reader title · 15 body (16 phone) · 14 row/control · 13 secondary · 12 meta */
+  --v7-fs-title-phone:28px;--v7-fs-title:22px;--v7-fs-reader:16px;--v7-fs-body:15px;--v7-fs-row:14px;--v7-fs-2:13px;--v7-fs-meta:12px;
+  /* spacing 4/8/12/16/24/32 · radius 6 tag / 10 control / 14 card */
+  --v7-s1:4px;--v7-s2:8px;--v7-s3:12px;--v7-s4:16px;--v7-s5:24px;--v7-s6:32px;
+  --v7-r-tag:6px;--v7-r-ctl:10px;--v7-r-card:14px;
+  --v7-pop:0 10px 30px rgb(30 27 24 / 12%),0 1px 3px rgb(30 27 24 / 6%);
+  --v7-raise:0 1px 2px rgb(30 27 24 / 6%);
+
+  /* re-map the shared tokens every older surface reads */
+  --awr-canvas:var(--v7-bg);--awr-shell:var(--v7-bg-sunken);--awr-paper:var(--v7-surface);--awr-white:var(--v7-surface);
+  --awr-ink:var(--v7-ink);--awr-muted:var(--v7-muted);--awr-accent:var(--v7-accent);--awr-accent-soft:var(--v7-accent-soft);
+  --awr-line:var(--v7-line);--awr-success:var(--v7-run);--awr-success-soft:var(--v7-run-soft);
+  --awr-danger:var(--v7-fail);--awr-danger-soft:var(--v7-fail-soft);
+  /* "waiting" now reads as needs-you (brand), not amber */
+  --awr-warning:var(--v7-accent-ink);--awr-warning-soft:var(--v7-accent-soft);
+  --awr-radius-control:var(--v7-r-ctl);--awr-radius-panel:var(--v7-r-card);
+  --r2-paper:var(--v7-surface);--r2-shell:var(--v7-bg-sunken);--r2-soft:var(--v7-hover);--r2-surface:var(--v7-surface);
+  --r2-ink:var(--v7-ink);--r2-muted:var(--v7-muted);--r2-accent:var(--v7-accent);--r2-selected:var(--v7-selected);--r2-divider:var(--v7-line);
+}
+
+/* ---------- shared atoms ---------- */
+.v7-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.v7-model{display:inline-flex;align-items:center;flex:none;max-width:100%;height:18px;padding:0 6px;border:1px solid var(--v7-line-strong);border-radius:var(--v7-r-tag);background:var(--v7-surface);color:var(--v7-ink-2);font-size:var(--v7-fs-meta);font-weight:500;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;vertical-align:middle}
+.v7-model>[aria-hidden]{overflow:hidden;text-overflow:ellipsis}
+.v7-model[data-unknown]{border-style:dashed;background:transparent;color:var(--v7-faint)}
+.v7-status{display:inline-flex;align-items:center;gap:5px;width:fit-content;font-size:var(--v7-fs-meta);font-weight:500;line-height:20px;white-space:nowrap}
+.v7-status[data-tone=wait]{padding:0 7px;border-radius:var(--v7-r-tag);background:var(--v7-accent-soft);color:var(--v7-accent-ink)}
+.v7-status[data-tone=fail]{padding:0 7px;border-radius:var(--v7-r-tag);background:var(--v7-fail-soft);color:var(--v7-fail)}
+.v7-status[data-tone=run]{color:var(--v7-run)}
+.v7-status[data-tone=run]::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--v7-run);box-shadow:0 0 0 3px var(--v7-run-soft)}
+.v7-status[data-tone=done]{color:var(--v7-muted);font-weight:400}
+
+/* ---------- desktop frame ---------- */
+html .r2-router .r2-rail{background:var(--v7-bg-sunken);border-right:1px solid var(--v7-line)}
+html .r2-router .r2-brand{font-size:17px;font-weight:600}
+html .r2-router .r2-rail .r2-destinations button{min-height:36px;border-radius:var(--v7-r-ctl);font-size:var(--v7-fs-row);color:var(--v7-ink-2)}
+html .r2-router .r2-rail .r2-destinations button[aria-current=page]{color:var(--v7-ink);font-weight:600}
+html .r2-router .r2-rail .r2-nav-selection{border-radius:var(--v7-r-ctl);background:var(--v7-surface)!important;box-shadow:var(--v7-raise)}
+html .r2-router .r2-nav-badge{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--v7-accent);color:#fff;font-size:12px;font-weight:600}
+html .r2-router .r2-rail-caption{font-size:var(--v7-fs-meta);font-weight:500;letter-spacing:0;color:var(--v7-muted)}
+html .r2-router .r2-rail-bridges button{min-height:32px;font-size:var(--v7-fs-2);color:var(--v7-ink-2);border-radius:8px}
+html .r2-router .r2-header h1{font-size:var(--v7-fs-title);font-weight:600;letter-spacing:-.01em}
+html .r2-router .r2-header .r2-icon.r2-accent{width:32px;height:32px;min-height:32px;border-radius:var(--v7-r-ctl);background:var(--v7-ink);color:#fff}
+
+/* ---------- conversation list ---------- */
+/* list rows sit directly on the page surface; swipe layers must match it (opaque for the reveal) */
+html .r2-router .r2-content{--v7-list-bg:var(--v7-surface)}
+html .r2-router .agbrio-swipe-content{background:var(--v7-list-bg,var(--v7-surface))}
+html .r2-router .r2-directory .v6-home{gap:0;max-width:720px}
+html .r2-router .v6-search,html .v6-sheet .v6-search{min-height:36px;border:1px solid var(--v7-line);border-radius:var(--v7-r-ctl);background:var(--v7-surface);color:var(--v7-faint)}
+html .r2-router .v6-search input{font-size:var(--v7-fs-row)}
+/* one row of filters that fits 390px without clipping text */
+html .r2-router .v6-chips{gap:6px;padding:10px 0 6px;overflow-x:auto;flex-wrap:nowrap}
+html .r2-router .v6-chips button{min-height:28px;height:28px;padding:0 11px;border:1px solid var(--v7-line);border-radius:14px;background:var(--v7-surface);color:var(--v7-ink-2);font-size:var(--v7-fs-meta);font-weight:500;white-space:nowrap}
+html .r2-router .v6-chips button[aria-pressed=true]{border-color:var(--v7-ink);color:#fff}
+html .r2-router .v6-chips .v6-chip-fill{background:var(--v7-ink)}
+html .r2-router .v6-chips b{margin-left:3px;font-weight:600}
+html .r2-router .v6-section{padding:16px 10px 4px;font-size:var(--v7-fs-meta);font-weight:500;letter-spacing:0;color:var(--v7-muted)}
+html .r2-router .v6-list>*+*:not(.v6-section){border-top:0}
+/* row: title+time / one preview line / status · meta (· model) */
+html .r2-router .v6-row{gap:12px;padding:10px;border-radius:12px;background:transparent}
+html .r2-router .v6-row:hover{background:var(--v7-hover)!important}
+html .r2-router .v6-avatar{width:36px;height:36px}
+html .r2-router .v6-avatar img{border-radius:50%;background:var(--v7-bg-sunken)}
+html .r2-router .v6-badge{width:15px;height:15px;right:-2px;bottom:-2px;border-radius:5px;border-width:1.5px;font-size:9px} /* glyph: provider mark inside a 15px badge, not readable copy */
+html .r2-router .v6-pi{background:#3d5a80}
+html .r2-router .v6-row-body{flex-direction:row;flex-wrap:wrap;align-items:center;column-gap:6px;row-gap:2px}
+html .r2-router .v6-row-top{flex:0 0 100%;order:0}
+html .r2-router .v6-row-top strong{font-size:var(--v7-fs-row);font-weight:600}
+html .r2-router .v6-row-top time{font-size:var(--v7-fs-meta);color:var(--v7-muted)}
+html .r2-router .v6-row-preview{flex:0 0 100%;order:1;margin:0;font-size:var(--v7-fs-2);line-height:1.5;color:var(--v7-ink-2);-webkit-line-clamp:1}
+html .r2-router .v6-state{order:2;margin:0;padding:0;background:none;font-size:var(--v7-fs-meta);font-weight:500;line-height:20px;border-radius:0;color:var(--v7-muted)}
+html .r2-router .v6-state[data-tone=done]{font-weight:400}
+html .r2-router .v6-state[data-tone=run]{background:none;color:var(--v7-run)}
+html .r2-router .v6-state[data-tone=run] i{width:6px;height:6px;box-shadow:0 0 0 3px var(--v7-run-soft)}
+html .r2-router .v6-state[data-tone=wait]{padding:0 7px;border-radius:var(--v7-r-tag);background:var(--v7-accent-soft);color:var(--v7-accent-ink)}
+html .r2-router .v6-row-meta{order:3;flex:1 1 0;min-width:min-content;display:grid;grid-auto-flow:column;grid-template-columns:minmax(0,max-content) max-content;justify-content:start;align-items:center;gap:6px;font-size:var(--v7-fs-meta);line-height:20px;color:var(--v7-muted)}
+/* markup order is top, meta, preview, state; visual order puts meta after the state, so the separator keys off a later state sibling */
+html .r2-router .v6-row-body>.v6-row-meta:has(~.v6-state)::before{content:"·";color:var(--v7-faint)}
+html .r2-router .v6-row-body>.v6-row-meta:not(:has(~.v6-state))::before{content:none}
+html .r2-router .v6-row-body>.v6-row-meta:has(~.v6-state){grid-template-columns:max-content minmax(0,max-content) max-content}
+/* source/folder text yields width first; the model badge stays whole */
+html .r2-router .v6-row-meta>.v7-meta-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html .r2-router .v6-row-meta>.v7-model{flex:none}
+html .r2-router .v6-unread{right:12px;top:38px;width:8px;height:8px}
+/* Pi children: quiet text toggle, thread line instead of a full-width pill */
+html .r2-router .v6-pi-child-toggle{display:inline-flex;justify-content:flex-start;gap:4px;width:auto;min-height:24px;margin:-4px 0 4px 58px;padding:2px 6px;border-radius:6px;background:transparent;color:var(--v7-muted);font-size:var(--v7-fs-meta)}
+html .r2-router .v6-pi-child-toggle[aria-expanded=true]{background:transparent;color:var(--v7-ink-2)}
+html .r2-router .v6-pi-child-toggle:hover{background:var(--v7-hover)}
+html .r2-router .v6-pi-child-list{margin:0 0 6px 27px;padding:0 0 0 14px;border-inline-start:1.5px solid var(--v7-line-strong)}
+html .r2-router .v6-pi-child-list .v6-row{padding:8px 10px}
+html .r2-router .v6-pi-child-list .v6-avatar{width:28px;height:28px}
+
+/* ---------- to-do cards ---------- */
+html .r2-router .v6-todo-card{border:1px solid var(--v7-line);border-radius:var(--v7-r-card);background:var(--v7-surface);box-shadow:none}
+html .r2-router .v6-todo-kind{font-size:var(--v7-fs-meta);font-weight:500;letter-spacing:0}
+html .r2-router .v6-todo-kind[data-tone=wait],html .r2-router .v6-todo-kind[data-tone=accent]{color:var(--v7-accent-ink)}
+html .r2-router .v6-todo-kind[data-tone=danger]{color:var(--v7-fail)}
+html .r2-router .v6-todo-detail{font-size:var(--v7-fs-2);color:var(--v7-ink-2)}
+
+/* ---------- settings ---------- */
+html .r2-router .r2-settings>small{margin:20px 0 6px 4px;font-size:var(--v7-fs-meta);font-weight:500;letter-spacing:0;color:var(--v7-muted)}
+html .r2-router .r2-settings>small:first-child{margin-top:4px}
+html .r2-router .r2-settings-group{border-radius:var(--v7-r-card);background:var(--v7-surface);box-shadow:0 0 0 1px var(--v7-line);margin-bottom:8px}
+html .r2-router .r2-settings-group>button,html .r2-router .r2-settings-group>.r2-connection-row{min-height:48px;font-size:var(--v7-fs-row);color:var(--v7-ink)}
+html .r2-router .r2-settings-group>button svg{color:var(--v7-ink-2)}
+html .r2-router .r2-settings :is(p,li){font-size:var(--v7-fs-2);line-height:1.55;color:var(--v7-muted)}
+/* one primary style: ink fill; secondary: surface + outline */
+html .r2-router .r2-settings :where(button:not(.r2-icon):not(.v3-primary):not(.r2-action):not(.r2-quota-row)){min-height:36px;padding:0 14px;border:1px solid var(--v7-line-strong);border-radius:var(--v7-r-ctl);background:var(--v7-surface);font-size:var(--v7-fs-2)}
+html .r2-router :is(.r2-action,.v3-primary,.v6-primary){border-radius:var(--v7-r-ctl);background:var(--v7-ink);border-color:var(--v7-ink);color:#fff;font-weight:600}
+html .r2-router :is(.r2-action,.v3-primary,.v6-primary):disabled{background:var(--v7-line);border-color:var(--v7-line);color:var(--v7-faint)}
+
+/* ---------- Bridge reader ---------- */
+html .r2-router :is(.v5-reply-time,.v5-reply-time time){font-size:var(--v7-fs-meta)}
+/* running is a green dot, never the brand orange; only ACTION_REQUIRED keeps the needs-you colour */
+html .r2-router .r2-bridge-active-status{background:transparent;border:1px solid var(--v7-line);border-radius:var(--v7-r-ctl)}
+html .r2-router .r2-agent-state:is([data-phase=RUNNING],[data-phase=THINKING],[data-phase=GOAL_ACTIVE]){background:none;color:var(--v7-run)}
+html .r2-router .r2-agent-state:is([data-phase=RUNNING],[data-phase=THINKING],[data-phase=GOAL_ACTIVE]) :is(span,strong){color:var(--v7-run)}
+html .r2-router .r2-agent-state:is([data-phase=RUNNING],[data-phase=THINKING],[data-phase=GOAL_ACTIVE]) .r2-agent-signal{background:var(--v7-run);color:var(--v7-run)}
+/* one primary style (ink); on desktop the forward action is not a full-width bar */
+/* an older layer pins this button to the accent with !important; the final layer has to answer in kind */
+html body .r2-router .r2-reader-mount button.v3-primary{background:var(--v7-ink)!important;border-color:var(--v7-ink);color:#fff!important;border-radius:var(--v7-r-ctl);box-shadow:none}
+html body .r2-router .r2-reader-mount button.v3-primary:disabled{background:var(--v7-line)!important;border-color:var(--v7-line);color:var(--v7-faint)!important}
+html .r2-router .r2-bridge-message header time{font-size:var(--v7-fs-meta)}
+@media(min-width:761px) and (hover:hover),(min-width:1101px){
+  html body .r2-router .r2-reader-mount .v4-role-reader-actions{justify-content:flex-end}
+  html body .r2-router .r2-reader-mount button.v3-primary{flex:0 0 auto;width:fit-content;min-width:160px;padding-inline:20px;margin-inline-start:auto;align-self:flex-end}
+}
+
+/* ---------- floating layers ---------- */
+html .v6-sheet,html .r2-menu,html .r2-confirmation{box-shadow:var(--v7-pop)}
+
+/* ---------- desktop list + detail (NativeWorkbench data-split) ---------- */
+html .r2-router .r2-workspace[data-split]{flex-direction:row}
+html .r2-router .v7-list-pane{--v7-list-bg:var(--v7-bg);flex:0 0 384px;width:384px;min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--v7-bg);border-right:1px solid var(--v7-line)}
+html .r2-router .v7-list-pane[hidden]{display:none}
+html .r2-router .v7-list-head{flex:none;display:flex;align-items:center;gap:10px;height:64px;padding:16px 16px 4px 20px}
+html .r2-router .v7-list-head h1{flex:1;margin:0;font-size:var(--v7-fs-title);font-weight:600;letter-spacing:-.01em;color:var(--v7-ink)}
+html .r2-router .v7-list-head .r2-icon.r2-accent{width:32px;min-width:32px;height:32px;min-height:32px;padding:0;border-radius:var(--v7-r-ctl);background:var(--v7-ink);color:#fff}
+html .r2-router .r2-directory.v7-list-scroll{flex:1;min-height:0;width:auto;max-width:none;margin:0;padding:4px 12px 24px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin}
+html .r2-router .v7-list-scroll .v6-home{max-width:none}
+html .r2-router .v7-list-scroll .v6-search{background:var(--v7-surface)}
+html .r2-router .v7-list-scroll .v6-row{padding:10px 8px}
+/* the 384px list cannot spare a permanent 44px gutter for the hover delete; it overlays the row edge instead */
+html .r2-router .v7-list-scroll .agbrio-swipe-content{padding-right:0}
+html .r2-router .v7-list-scroll .agbrio-row-delete{background:var(--v7-hover)}
+html .r2-router .v6-row[aria-current=true]{background:var(--v7-surface)!important;box-shadow:0 0 0 1px var(--v7-line-strong),var(--v7-raise)}
+html .r2-router .v7-detail-pane{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden;background:var(--v7-surface)}
+html .r2-router .v7-detail-pane .r2-content{background:var(--v7-surface)}
+html .r2-router .v7-detail-empty{height:100%;display:grid;place-content:center;justify-items:center;gap:8px;color:var(--v7-faint)}
+html .r2-router .v7-detail-empty p{margin:0;font-size:var(--v7-fs-2);color:var(--v7-muted)}
+/* detail titles are 16px (page titles stay 22px); headers line up with the 64px list head */
+html .r2-router.v3-surface-workspace .v7-detail-pane .r2-header{height:64px;min-height:64px}
+html .r2-router.v3-surface-workspace .v7-detail-pane .r2-header h1{font-size:var(--v7-fs-reader);line-height:24px}
+/* the list is beside the conversation, so the reader needs no back button */
+html .r2-router .v7-detail-pane .v4-chat-back{display:none}
+
+/* ---------- conversation reader header: title / source \00b7 model chip \00b7 folder \00b7 computer, status top-right ---------- */
+html .v4-watch-chat.v6-chat .v4-chat-header{display:flex;align-items:center;gap:10px;min-height:64px;padding:10px 20px;background:var(--v7-surface);border-bottom:1px solid var(--v7-line)}
+html .v4-watch-chat.v6-chat .v4-chat-header .v6-avatar{width:36px;height:36px;flex:none}
+html .v4-watch-chat.v6-chat .v4-chat-identity{flex:1;min-width:0;text-align:left}
+html .v4-watch-chat.v6-chat .v4-chat-identity h2{margin:0;font-size:var(--v7-fs-reader);line-height:24px;font-weight:600;color:var(--v7-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html .v4-watch-chat.v6-chat .v7-chat-meta{display:flex;align-items:center;gap:6px;margin:2px 0 0;min-width:0;font-size:var(--v7-fs-meta);line-height:20px;color:var(--v7-muted);white-space:nowrap;overflow:hidden}
+html .v4-watch-chat.v6-chat .v7-chat-meta>span:not(.v7-model){min-width:0;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto}
+html .v4-watch-chat.v6-chat .v7-chat-meta>span:first-child{flex:none}
+html .v4-watch-chat.v6-chat .v7-chat-meta>span:not(.v7-model):not(:first-child)::before{content:"\00b7";margin-right:6px;color:var(--v7-faint)}
+html .v4-watch-chat.v6-chat .v4-chat-header .v4-chat-live{flex:none;display:flex;align-items:center;gap:6px;max-width:42%;padding:0;background:none;font-size:var(--v7-fs-meta);font-weight:500;line-height:20px;color:var(--v7-muted);white-space:nowrap}
+html .v4-watch-chat.v6-chat .v4-chat-header .v4-chat-live>span{overflow:hidden;text-overflow:ellipsis}
+html .v4-watch-chat.v6-chat .v4-chat-header .v4-chat-live[data-active=true]{color:var(--v7-run)}
+/* running reads as a green dot, not a spinner */
+html .v4-watch-chat.v6-chat .v4-chat-header .v4-chat-live[data-active=true]>svg{display:none}
+html .v4-watch-chat.v6-chat .v4-chat-header .v4-chat-live[data-active=true]::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--v7-run);box-shadow:0 0 0 3px var(--v7-run-soft)}
+html .v4-watch-chat.v6-chat .v4-chat-header .v4-chat-live button{width:auto;height:24px;min-height:24px!important;padding:0 8px!important;border:1px solid var(--v7-line-strong);border-radius:var(--v7-r-tag);background:var(--v7-surface);color:var(--v7-ink-2);font-size:var(--v7-fs-meta)!important}
+html .v4-watch-chat.v6-chat .v4-chat-header .v4-chat-more{flex:none}
+
+/* ---------- composer: one white box; follow-up mode, attachments, permissions and send share its bottom bar ---------- */
+html .v4-watch-chat.v6-chat .v4-chat-dock{background:var(--v7-surface);border-top:0}
+html .v4-watch-chat.v6-chat .v4-chat-composer{border:1px solid var(--v7-line-strong);border-radius:var(--v7-r-card);background:var(--v7-surface);box-shadow:var(--v7-raise)}
+/* :not([hidden]) lifts specificity past the shared html :is(...) textarea rule */
+html .v4-watch-chat.v6-chat .v4-chat-composer textarea:not([hidden]){border:0;box-shadow:none;outline:none;background:transparent;font-size:var(--v7-fs-body);color:var(--v7-ink)}
+html .v4-watch-chat.v6-chat .v4-chat-composer:focus-within{border-color:var(--v7-ink-2)}
+html .v4-watch-chat.v6-chat .v4-chat-composer-tools .v6-followup{display:inline-flex;align-items:center;gap:8px;min-width:0;margin:0 0 0 4px;padding:0;background:none;border:0;animation:none}
+html .v4-watch-chat.v6-chat .v4-chat-composer-tools .v6-followup>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--v7-fs-meta);color:var(--v7-muted)}
+html .v4-watch-chat.v6-chat .v4-chat-composer-tools .v4-followup-toggle{flex:none;height:28px;padding:2px;border-radius:8px;background:var(--v7-bg-sunken)}
+html .v4-watch-chat.v6-chat .v4-chat-composer-tools .v4-followup-toggle button{width:auto;height:24px;min-height:24px;padding:0 10px;border-radius:6px;font-size:var(--v7-fs-meta);color:var(--v7-ink-2)}
+html .v4-watch-chat.v6-chat .v4-chat-send{background:var(--v7-ink);color:#fff}
+html .v4-watch-chat.v6-chat .v4-chat-send:disabled{background:var(--v7-line);color:var(--v7-faint)}
+
+/* ---------- settings sub-pages: the old grey cards become the same white grouped list ---------- */
+html .r2-router .r2-settings .v4-shared-codex{border:0;border-radius:var(--v7-r-card);background:var(--v7-surface);box-shadow:0 0 0 1px var(--v7-line)}
+html .r2-router .r2-settings>.v4-shared-codex:first-child{margin-top:0}
+html .r2-router .r2-settings .local-safety-settings>label{align-items:stretch;text-align:start}
+html .r2-router .r2-settings .v4-shared-codex :is(h2,h3){font-size:var(--v7-fs-row);font-weight:600;color:var(--v7-ink)}
+
+/* ---------- phone (390) ---------- */
+@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1100px){
+  html .r2-router .r2-header h1{font-size:var(--v7-fs-title-phone);line-height:36px;font-weight:700;letter-spacing:-.02em}
+  html .r2-router[data-detail=true] .r2-header h1{font-size:var(--v7-fs-reader);line-height:24px;font-weight:600}
+  html .r2-router .r2-header .r2-icon.r2-accent{width:36px;height:36px;min-height:36px;border-radius:50%}
+  html .r2-router .v6-search{min-height:40px}
+  html .r2-router .v6-search input{font-size:16px}
+  html .r2-router .v6-chips button{min-height:32px;height:32px;padding:0 12px;border-radius:16px;font-size:var(--v7-fs-2)}
+  html .r2-router .v6-row{padding:10px 8px}
+  html .r2-router .v6-avatar{width:44px;height:44px}
+  html .r2-router .v6-row-top strong{font-size:16px}
+  html .r2-router .v6-row-preview{font-size:14px;-webkit-line-clamp:2}
+  /* phone row 3 is status · model; the avatar badge already names the source, so source/folder text yields to the model chip */
+  html .r2-router .v6-row-meta:has(>.v7-model)>.v7-meta-text{display:none}
+  html .r2-router .v6-row-body>.v6-row-meta:has(>.v7-model){grid-template-columns:max-content max-content}
+  html .r2-router .v6-unread{right:8px;top:40px}
+  html .r2-router .v6-pi-child-toggle{margin-left:64px;font-size:var(--v7-fs-2)}
+  html .r2-router .v6-pi-child-list{margin-left:30px}
+  html .r2-router .v6-pi-child-list .v6-avatar{width:32px;height:32px}
+  html .r2-router .r2-tabbar button{color:var(--v7-faint)}
+  html .r2-router .r2-tabbar button[aria-current=page]{color:var(--v7-ink)}
+  html .r2-router .r2-tabbar button>span:not(.r2-nav-selection){font-size:12px}
+  html .r2-router .r2-tabbar .r2-nav-badge{font-size:12px}
+  html .r2-router .r2-settings-group>button,html .r2-router .r2-settings-group>.r2-connection-row{min-height:52px;font-size:16px}
+  html .v4-watch-chat.v6-chat .v4-chat-header{gap:8px;padding:6px 12px 8px 4px}
+  html .v4-watch-chat.v6-chat .v4-chat-header .v6-avatar{width:32px;height:32px}
+  /* 375px cannot fit folder and computer beside the model chip and status; both stay in 对话信息 */
+  html .v4-watch-chat.v6-chat .v7-chat-meta>span:not(.v7-model):not(:first-child){display:none}
+  /* the mode toggle already says it; keep the hint only when steering is unavailable */
+  html .v4-watch-chat.v6-chat .v4-chat-composer-tools .v6-followup[data-steer=ready]>span{display:none}
+  html .v4-watch-chat.v6-chat .v4-chat-composer textarea{font-size:16px}
+}

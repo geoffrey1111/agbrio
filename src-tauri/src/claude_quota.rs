@@ -271,3 +271,5 @@ fn native_snapshot()->Option<Quota>{
  let bytes=std::fs::read(&path).unwrap();let mut old=body.clone();old["observedAt"]=json!(now()-60000);assert!(post(&old).status().is_success());assert_eq!(std::fs::read(&path).unwrap(),bytes);assert!(!String::from_utf8(bytes).unwrap().contains(sid));assert!(core.session.lock().unwrap().adapter.is_none());host.shutdown(&core);
  }
 }
+
+#[cfg(test)]mod owner_native_cache_acceptance{use super::*;#[test]#[ignore="explicit owner read-only current native quota cache; no auth/model or writes"]fn current_desktop_session_metadata_projects_as_available_quota(){let q=native_snapshot().expect("fresh actual Desktop native quota sample");assert_eq!(q.status,"AVAILABLE");assert_eq!(q.reason,Some("NATIVE_DESKTOP"));assert!(!q.buckets[0].windows.is_empty());eprintln!("{}",serde_json::to_string(&q).unwrap());}}

@@ -62,3 +62,11 @@ it("a suspended mobile refresh retries on pageshow immediately and retains its s
  Object.defineProperty(document,"visibilityState",{configurable:true,value:"visible"});window.dispatchEvent(new Event("pageshow"));await vi.advanceTimersByTimeAsync(0);
  expect(c.peek("bridge:resume")).toBe("resumed");expect(load).toHaveBeenCalledTimes(3);
 });
+
+it("foreground readers refresh immediately even behind two stalled background warmups",async()=>{
+ vi.useFakeTimers();const c=cache();Object.defineProperty(document,"visibilityState",{configurable:true,value:"visible"});
+ let finishA!:(v:string)=>void,finishB!:(v:string)=>void;
+ c.warm("bridge:background-a",()=>new Promise<string>(r=>finishA=r));c.warm("bridge:background-b",()=>new Promise<string>(r=>finishB=r));await vi.advanceTimersByTimeAsync(1000);
+ c.put("chat:current","cached");c.subscribe("chat:current",()=>{});const load=vi.fn().mockResolvedValue("latest");expect(await c.read("chat:current",load)).toBe("cached");
+ window.dispatchEvent(new Event("pageshow"));await vi.advanceTimersByTimeAsync(0);expect(c.peek("chat:current")).toBe("latest");expect(load).toHaveBeenCalledOnce();finishA("a");finishB("b");await vi.advanceTimersByTimeAsync(0);
+});
