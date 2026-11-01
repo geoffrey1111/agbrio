@@ -109,7 +109,7 @@ mod tests {
     use super::*;
     #[test]
     fn cache_omits_large_media_and_all_private_replay_fields() {
-        let raw = json!({"id":"one","parentId":null,"type":"message","message":{"role":"assistant","content":[{"type":"thinking","thinking":"PRIVATE_THINKING"},{"type":"text","text":"public","textSignature":"PRIVATE_SIGNATURE"},{"type":"image","mimeType":"image/png","data":"PRIVATE_BINARY"}],"errorMessage":"PRIVATE_KEY"}});
+        let raw = json!({"id":"one","parentId":null,"type":"message","message":{"role":"assistant","content":[{"type":"thinking","thinking":"PRIVATE_THINKING"},{"type":"text","text":"public","textSignature":"PRIVATE_SIGNATURE"},{"type":"image","mimeType":"image/png","data":"PRIVATE_BINARY"}],"errorMessage":"500 Authorization: Bearer PRIVATE_KEY"}});
         let mut h = History::default();
         h.append(raw.clone()).unwrap();
         let serialized = h.entries[0].to_string();
