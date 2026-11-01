@@ -109,6 +109,9 @@ public static class AgbrioSmokeWindow{[DllImport("user32.dll")]public static ext
  if($LASTEXITCODE -ne 0){throw 'Native accessibility harness compile failed.'}
  & $agbrioHarness ($agbrioProcess.MainWindowHandle.ToInt64()) $agbrioRoot
  if($LASTEXITCODE -ne 0){throw 'Fresh installed desktop UI gate failed.'}
+ if(Test-Path -LiteralPath (Join-Path $agbrioData 'AIWorkRouter/browser-executor/browser-runtime')){throw 'BROWSER_COMPONENT_DOWNLOADED_DURING_STARTUP'}
+ @{chromiumBundled=$false;sharedWsPresent=$true;preparationPresent=$true;startupDownload=$false}|ConvertTo-Json|Set-Content (Join-Path $agbrioRoot 'optional-browser-proof.json') -Encoding utf8
+
 }finally{
  # Only this isolated runner-owned process, never an existing user installation.
  if(!$agbrioProcess.HasExited){Stop-Process -Id $agbrioProcess.Id -Force}
