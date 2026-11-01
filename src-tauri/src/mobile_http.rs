@@ -258,6 +258,7 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         .route("/v1/mobile/media",post(read_message_media))
         .route("/v1/mobile/connection/probe",get(connection_probe))
         .route("/v1/mobile/codex-watches", get(codex_watches).post(codex_watch_command))
+        .route("/v1/mobile/computer-identity", get(computer_identity))
         .route("/v1/mobile/codex-watches/events", get(codex_watch_feed))
         .route("/v1/mobile/codex-watches/events/{sequence}", get(codex_watch_event))
         .route("/v1/mobile/codex-watches/delivery", get(codex_delivery_settings).post(codex_delivery_command))
@@ -582,7 +583,7 @@ async fn watch_no_store(mut response:axum::response::Response)->axum::response::
 
 #[derive(Deserialize)]
 #[serde(tag="action",rename_all="SCREAMING_SNAKE_CASE")]
-enum WatchCommand { Show { #[serde(rename="threadId")] thread_id:String }, MarkSeen {sequence:i64},MarkRead {sequence:i64}, Remove {kind:String,id:String,removed:bool}, Enable { #[serde(rename="threadId")] thread_id:String }, Pause { #[serde(rename="threadId")] thread_id:String }, Threads, Connect }
+enum WatchCommand { Show { #[serde(rename="threadId")] thread_id:String }, MarkSeen {sequence:i64},MarkRead {sequence:i64}, MarkThreadRead { #[serde(rename="threadId")] thread_id:String, #[serde(rename="upToSequence")] up_to_sequence:Option<i64> }, Remove {kind:String,id:String,removed:bool}, Enable { #[serde(rename="threadId")] thread_id:String }, Pause { #[serde(rename="threadId")] thread_id:String }, Threads, Connect }
 
 #[cfg(test)]#[test]
 fn owner_http_can_watch_claude_after_twenty_and_resurface_without_a_native_task(){
@@ -661,10 +662,11 @@ async fn character_board_asset(Path(asset_id):Path<String>,State(state):State<Mo
 #[derive(Deserialize)]
 #[serde(rename_all="camelCase")]
 struct WatchFeedQuery { #[serde(default)] after:i64, #[serde(default)] wait_seconds:u64 }
-async fn codex_watches(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<Vec<crate::claude_chat::WatchView>> {
+async fn codex_watches(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<Vec<serde_json::Value>> {
     authenticated(&headers,&state,false).await?;
-    Ok(Json(crate::claude_chat::list(&state.core).map_err(|e|ApiError(StatusCode::BAD_REQUEST,e))?))
+    Ok(Json(crate::todo_projection::watches(&state.core).map_err(|e|ApiError(StatusCode::BAD_REQUEST,e))?))
 }
+async fn computer_identity(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<serde_json::Value>{authenticated(&headers,&state,false).await?;Ok(Json(crate::todo_projection::computer_identity()))}
 async fn assistant_settings_view(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<serde_json::Value>{
  authenticated(&headers,&state,false).await?;crate::assistant_settings_view(&state.core).map(Json).map_err(core_error)
 }
@@ -690,6 +692,7 @@ async fn codex_watch_command(State(state):State<MobileHttpState>,headers:HeaderM
             WatchCommand::Remove{kind,id,removed}=>{core.store.set_watch_item_removed(&kind,&id,removed)?;Ok(serde_json::json!({"ok":true}))},
             WatchCommand::MarkSeen{sequence}=>{core.store.mark_codex_watch_event_seen(sequence)?;Ok(serde_json::json!({"ok":true}))},
               WatchCommand::MarkRead{sequence}=>{core.store.acknowledge_codex_watch_event(sequence)?;Ok(serde_json::json!({"ok":true}))},
+            WatchCommand::MarkThreadRead{thread_id,up_to_sequence}=>core.store.todo_mark_thread_read(&thread_id,up_to_sequence),
             WatchCommand::Pause{thread_id}=>{core.store.pause_codex_watch(&thread_id)?;Ok(serde_json::json!({"ok":true}))},
             WatchCommand::Threads=>serde_json::to_value(crate::codex_watch::candidates(&core)?).map_err(|_|"WATCH_RESPONSE_INVALID".into()),
             WatchCommand::Connect=>serde_json::to_value(crate::host_application::connect_codex_service(&core,std::sync::Arc::new(router_core::events::NullEventSink))?).map_err(|_|"WATCH_RESPONSE_INVALID".into()),
@@ -1272,9 +1275,9 @@ async fn record_rendered_push(
 
 #[derive(Deserialize)]#[serde(rename_all="camelCase",deny_unknown_fields)]
 struct BridgeActivityInput { workstream_ids:Vec<String> }
-async fn bridge_activity(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<BridgeActivityInput>)->ApiResult<Vec<crate::role_bridge::DirectoryActivity>>{
+async fn bridge_activity(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<BridgeActivityInput>)->ApiResult<Vec<serde_json::Value>>{
  authenticated(&headers,&state,true).await?;let core=state.core.clone();
- run_core_blocking("Bridge activity",move||crate::role_bridge::directory_activity(&core,&input.workstream_ids)).await.map(Json)
+ run_core_blocking("Bridge activity",move||crate::todo_projection::bridge_activity(&core,&input.workstream_ids)).await.map(Json)
 }
 async fn workstreams(
     State(state): State<MobileHttpState>,

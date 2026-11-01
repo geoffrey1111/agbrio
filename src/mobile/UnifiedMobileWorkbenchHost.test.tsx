@@ -108,7 +108,7 @@ it("opens the active phone notification controls through Native R2 Settings", as
   api.workstream.mockResolvedValue(activeChatGptSnapshot("work-a"));
   push.pushSetupState.mockResolvedValue("SUBSCRIBED");api.pushStatus.mockResolvedValue({activeSubscriptionCount:1});
   render(<UnifiedMobileWorkbenchHost initialSurface="SETTINGS"/>);
-  fireEvent.click(await screen.findByRole("button",{name:"消息通知"}));
+  fireEvent.click(await screen.findByRole("button",{name:/^通知提醒渠道/}));
   expect(await screen.findByRole("button",{name:"发送测试通知"})).toBeVisible();
   fireEvent.click(screen.getByRole("button",{name:"测试真实回复通知"}));await waitFor(()=>expect(api.testReplyPush).toHaveBeenCalledTimes(1));
 });

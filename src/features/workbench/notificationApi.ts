@@ -20,12 +20,13 @@ export function cachedNotificationApi(raw:NotificationApi):NotificationApi {
   refreshWatches:()=>readModels.refresh("notifications:watches",raw.watches,5000,{supersede:true}),
   watches:()=>readModels.read("notifications:watches",raw.watches),feed:after=>after?raw.feed(after):readModels.read("notifications:feed",()=>raw.feed(0)),event:id=>readModels.read(`notifications:event:${id}`,()=>raw.event(id),30000),
   enable:id=>updateWatch(id,true,()=>raw.enable(id)),show:raw.show?id=>updateWatch(id,true,()=>raw.show!(id)):undefined,pause:id=>updateWatch(id,false,()=>raw.pause(id)),remove:raw.remove?(...args)=>update(()=>raw.remove!(...args)):undefined,
-  markSeen:raw.markSeen?id=>update(()=>raw.markSeen!(id)):undefined,markRead:raw.markRead?id=>update(()=>raw.markRead!(id)):undefined,
+  markSeen:raw.markSeen?id=>update(()=>raw.markSeen!(id)):undefined,markRead:raw.markRead?id=>update(()=>raw.markRead!(id)):undefined,markThreadRead:raw.markThreadRead?(id,upTo)=>update(()=>raw.markThreadRead!(id,upTo)):undefined,
  };
 }
 export const desktopNotificationApi:NotificationApi=cachedNotificationApi({
  markSeen:sequence=>invoke("codex_watch_mark_seen",{sequence}),
  markRead:sequence=>invoke("codex_watch_mark_read",{sequence}),
+ markThreadRead:(threadId,upToSequence)=>invoke("codex_watch_mark_thread_read",{threadId,upToSequence:upToSequence??null}),
  chat:desktopWatchChatApi,
  delivery:{desktop:true,settings:()=>invoke("codex_delivery_settings"),command:input=>invoke("codex_delivery_command",{input})},
  onOpen:async callback=>{const dispose=await listen<number>("codex-notification-open",e=>callback(e.payload));try{const pending=await invoke<number|null>("codex_notification_navigation");if(pending!==null)callback(pending);return dispose;}catch(e){dispose();throw e;}},
@@ -36,6 +37,7 @@ function command<T>(body:unknown){return request<T>("/codex-watches",{method:"PO
 export const webNotificationApi:NotificationApi=cachedNotificationApi({
  markSeen:sequence=>command({action:"MARK_SEEN",sequence}),
  markRead:sequence=>command({action:"MARK_READ",sequence}),
+ markThreadRead:(threadId,upToSequence)=>command({action:"MARK_THREAD_READ",threadId,...(upToSequence===undefined?{}:{upToSequence})}),
  chat:webWatchChatApi,
  delivery:{desktop:false,settings:()=>request("/codex-watches/delivery"),command:input=>request("/codex-watches/delivery",{method:"POST",body:JSON.stringify(input)})},
  webUrl:async()=>`${location.origin}/mobile/notifications`,

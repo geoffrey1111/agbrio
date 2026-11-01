@@ -19,7 +19,7 @@ import type {
   WorkbenchLifecycle,
 } from "./models";
 
-export type WorkbenchSurface = "BOARD" | "NOTIFICATIONS" | "SETTINGS" | "BRIDGES" | "NEW_BRIDGE" | "INBOX" | "WORKSPACE" | "DISCUSSION" | "PROJECT_HOME" | "PROJECT" | "NEW_WORK" | "GOAL" | "RUNTIME" | "PROVIDER_RUN_STATUS" | "CHATGPT_DIAGNOSTICS" | "HANDOFF_SELECTION" | "HANDOFF_REVIEW" | "HANDOFF_STATUS" | "EXIT_IMPACT" | "INSTALL" | "RECYCLE" | "PURGE_CONFIRM" | "TEST_CLEANUP" | "CODEX_HISTORY" | "CHATGPT_RESULTS" | "CODEX_RESULTS" | "CODEX_ATTACHMENTS" | "CODEX_FEEDBACK" | "CODEX_REQUEST";
+export type WorkbenchSurface = "BOARD" | "NOTIFICATIONS" | "SETTINGS" | "BRIDGES" | "NEW_BRIDGE" | "INBOX" | "WORKSPACE" | "DISCUSSION" | "PROJECT_HOME" | "PROJECT" | "NEW_WORK" | "GOAL" | "RUNTIME" | "PROVIDER_RUN_STATUS" | "CHATGPT_DIAGNOSTICS" | "HANDOFF_SELECTION" | "HANDOFF_REVIEW" | "HANDOFF_STATUS" | "EXIT_IMPACT" | "INSTALL" | "RECYCLE" | "PURGE_CONFIRM" | "TEST_CLEANUP" | "CODEX_HISTORY" | "CHATGPT_RESULTS" | "CODEX_RESULTS" | "CODEX_ATTACHMENTS" | "CODEX_FEEDBACK" | "CODEX_REQUEST" | "NOTIFICATION_LOG";
 
 export interface UnifiedWorkbenchProps {
   onRefreshConversationDirectory?:()=>Promise<unknown>;
@@ -36,6 +36,14 @@ export interface UnifiedWorkbenchProps {
   piSettingsPanel?:ReactNode;
   quotaPanel?:ReactNode;
   updatePanel?:ReactNode;
+  /** Settings › 连接 › Codex 共享连接 (desktop). Falls back to runtimeAddon. */
+  codexConnectionPanel?:ReactNode;
+  /** Settings › 运行保护 (desktop). */
+  runtimeProtectionPanel?:ReactNode;
+  /** Settings › 概览 status reads over existing interfaces (desktop). */
+  overviewApi?:import("./SettingsHome").OverviewApi;
+  /** Phone settings computer card name (Transport T7). */
+  computerIdentity?:()=>Promise<{hostName:string|null}>;
   onOpenWebAccess?:()=>void;
   onCreateBridge?: (name:string)=>Promise<void>;
   items: WorkbenchItem[];

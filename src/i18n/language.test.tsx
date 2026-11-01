@@ -22,7 +22,7 @@ it("changes every mounted surface without remounting reader state or changing ro
  const draft=screen.getByRole("textbox",{name:"private draft",hidden:true});
  fireEvent.change(screen.getByRole("combobox",{name:"语言"}),{target:{value:"en"}});
  expect(screen.getByRole("combobox",{name:"Language"})).toHaveValue("en");
- expect(screen.getByRole("button",{name:"Notification preferences"})).toBeVisible();
+ expect(screen.getByRole("button",{name:/^Notifications/})).toBeVisible();
  expect(screen.getByRole("textbox",{name:"private draft",hidden:true})).toBe(draft);
  expect(draft).toHaveValue("设置\n通知\nunchanged instructions");expect(select).not.toHaveBeenCalled();
  expect(localStorage.getItem("agbrio.language.v1")).toBe("en");expect(document.documentElement.lang).toBe("en");

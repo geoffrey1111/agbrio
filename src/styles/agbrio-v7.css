@@ -73,7 +73,7 @@ html .r2-router .v6-section{padding:16px 10px 4px;font-size:var(--v7-fs-meta);fo
 html .r2-router .v6-list>*+*:not(.v6-section){border-top:0}
 /* row: title+time / one preview line / status · meta (· model) */
 html .r2-router .v6-row{gap:12px;padding:10px;border-radius:12px;background:transparent}
-html .r2-router .v6-row:hover{background:var(--v7-hover)!important}
+@media(hover:hover) and (pointer:fine){html .r2-router .v6-row:hover{background:var(--v7-hover)!important}}
 html .r2-router .v6-avatar{width:36px;height:36px}
 html .r2-router .v6-avatar img{border-radius:50%;background:var(--v7-bg-sunken)}
 html .r2-router .v6-badge{width:15px;height:15px;right:-2px;bottom:-2px;border-radius:5px;border-width:1.5px;font-size:9px} /* glyph: provider mark inside a 15px badge, not readable copy */
@@ -100,7 +100,7 @@ html .r2-router .v6-unread{right:12px;top:38px;width:8px;height:8px}
 /* Pi children: quiet text toggle, thread line instead of a full-width pill */
 html .r2-router .v6-pi-child-toggle{display:inline-flex;justify-content:flex-start;gap:4px;width:auto;min-height:24px;margin:-4px 0 4px 58px;padding:2px 6px;border-radius:6px;background:transparent;color:var(--v7-muted);font-size:var(--v7-fs-meta)}
 html .r2-router .v6-pi-child-toggle[aria-expanded=true]{background:transparent;color:var(--v7-ink-2)}
-html .r2-router .v6-pi-child-toggle:hover{background:var(--v7-hover)}
+@media(hover:hover) and (pointer:fine){html .r2-router .v6-pi-child-toggle:hover{background:var(--v7-hover)}}
 html .r2-router .v6-pi-child-list{margin:0 0 6px 27px;padding:0 0 0 14px;border-inline-start:1.5px solid var(--v7-line-strong)}
 html .r2-router .v6-pi-child-list .v6-row{padding:8px 10px}
 html .r2-router .v6-pi-child-list .v6-avatar{width:28px;height:28px}

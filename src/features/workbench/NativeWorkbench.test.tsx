@@ -10,7 +10,7 @@ afterEach(()=>{cleanup();localStorage.clear();});
 const base:UnifiedWorkbenchProps={items:[{id:"exact-a",name:"同名 Bridge",lifecycle:"ACTIVE"},{id:"exact-b",name:"同名 Bridge",lifecycle:"ACTIVE"}],draft:{value:""},onDraftChange:()=>{},onSelectWorkstream:()=>{}};
 it('offers interface updates in mobile About without replacing desktop installer controls',()=>{
  const previous=location.pathname;history.replaceState({},'', '/mobile');
- try{render(<UnifiedWorkbench {...base} surface='SETTINGS'/>);expect(screen.queryByRole('button',{name:'检查界面更新'})).toBeNull();fireEvent.click(screen.getByRole('button',{name:'关于'}));expect(screen.getAllByRole('button',{name:'检查界面更新'})).toHaveLength(1);expect(screen.getByRole('button',{name:'检查界面更新'})).toBeVisible();}
+ try{render(<UnifiedWorkbench {...base} surface='SETTINGS'/>);expect(screen.queryByRole('button',{name:'检查界面更新'})).toBeNull();fireEvent.click(screen.getByRole('button',{name:/^关于/}));expect(screen.getAllByRole('button',{name:'检查界面更新'})).toHaveLength(1);expect(screen.getByRole('button',{name:'检查界面更新'})).toBeVisible();}
  finally{history.replaceState({},'',previous);}
 });
 it("has stable destinations including the live board and routes same-named Bridges by their own ID",()=>{
@@ -24,7 +24,7 @@ it("keeps the role reader mounted but hidden while navigating utilities",()=>{
  const {rerender}=render(<UnifiedWorkbench {...base} selectedWorkstreamId="exact-a" surface="WORKSPACE" bridgePanel={<div>exact role content</div>}/>);
  expect(screen.getByText("exact role content")).toBeVisible();
  rerender(<UnifiedWorkbench {...base} selectedWorkstreamId="exact-a" surface="SETTINGS" bridgePanel={<div>exact role content</div>}/>);
- expect(screen.getByText("exact role content")).not.toBeVisible();expect(screen.getByRole("button",{name:"设备"})).toBeVisible();
+ expect(screen.getByText("exact role content")).not.toBeVisible();expect(screen.getByRole("button",{name:/^通知/})).toBeVisible();
 });
 it("removes immediately without confirmation, then rolls back a failed persistence",async()=>{
  let reject!:(cause:Error)=>void;const remove=vi.fn(()=>new Promise<void>((_,fail)=>{reject=fail;}));
@@ -45,8 +45,9 @@ it("serializes an immediate undo after a pending deletion and preserves the exac
 });
 it("puts notification preferences and device actions inside Settings",()=>{
  function App(){const[surface,setSurface]=useState<WorkbenchSurface>("SETTINGS");return <UnifiedWorkbench {...base} surface={surface} onSurfaceChange={setSurface} notificationSettings={<div>real notification controls</div>} devicePanel={<button>退出本设备</button>}/>;}
- render(<App/>);fireEvent.click(screen.getByRole("button",{name:"消息通知"}));expect(screen.getByText("real notification controls")).toBeVisible();
- fireEvent.click(screen.getByRole("button",{name:"返回"}));fireEvent.click(screen.getByRole("button",{name:"设备"}));expect(screen.getByRole("button",{name:"退出本设备"})).toBeVisible();
+ render(<App/>);fireEvent.click(screen.getByRole("button",{name:/^通知/}));expect(screen.getByText("real notification controls")).toBeVisible();
+ // Phone settings: sign-out sits at the bottom of the settings list itself.
+ fireEvent.click(screen.getByRole("button",{name:"返回"}));expect(screen.getByRole("button",{name:"退出本设备"})).toBeVisible();
 });
 it("renames the exact Bridge once without changing its binding or sending",async()=>{
  const rename=vi.fn().mockResolvedValue(undefined),select=vi.fn();

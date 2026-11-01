@@ -4,7 +4,7 @@ const caches:ReadModelCache[]=[];
 it("manual refresh can retire a stuck read without a late result replacing the new page",async()=>{
  const c=cache();let finish!:(v:string)=>void;const old=c.read("board:character",()=>new Promise<string>(r=>finish=r));await Promise.resolve();
  expect(await c.refresh("board:character",async()=>"fresh",2000,{supersede:true})).toBe("fresh");
- finish("old");await expect(old).rejects.toThrow("READ_CACHE_SUPERSEDED");expect(c.peek("board:character")).toBe("fresh");
+ finish("old");expect(await old).toBe("fresh");expect(c.peek("board:character")).toBe("fresh");
 });
 function cache(){const c=new ReadModelCache(()=>localStorage);caches.push(c);return c;}
 afterEach(()=>{for(const c of caches.splice(0))c.dispose();localStorage.clear();vi.useRealTimers();vi.restoreAllMocks();});

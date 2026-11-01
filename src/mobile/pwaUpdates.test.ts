@@ -3,6 +3,28 @@ let received:((e:{data:unknown})=>void)|null=null;
 class FakeChannel{port1={onmessage:null as ((e:{data:unknown})=>void)|null,close:vi.fn()};port2={close:vi.fn()};constructor(){received=e=>this.port1.onmessage?.(e);}}
 beforeEach(()=>{vi.resetModules();vi.stubGlobal('MessageChannel',FakeChannel);document.head.innerHTML='<meta name="aiwr-shell-assets" content="/assets/pwa-shell-old.json">';});
 afterEach(()=>{vi.unstubAllGlobals();document.head.innerHTML='';});
+it('checks a current live shell without requiring a worker and keeps same-origin login',async()=>{
+ Object.defineProperty(navigator,'serviceWorker',{configurable:true,value:{controller:null}});
+ const fetch=vi.fn(async()=>new Response('<meta name="aiwr-shell-assets" content="/assets/pwa-shell-old.json"><meta name="aiwr-shell-revision" content="2026.10.31-125">',{headers:{'content-type':'text/html'}}));vi.stubGlobal('fetch',fetch);
+ const p=await import('./pwaUpdates');await p.checkPwaUpdate();expect(p.pwaUpdateSnapshot()).toMatchObject({status:'CURRENT',revision:'2026.10.31-125'});expect(fetch).toHaveBeenCalledWith('/mobile',expect.objectContaining({credentials:'same-origin',cache:'no-store'}));
+});
+it('reports an expired login rather than blaming the network or deleting work',async()=>{
+ Object.defineProperty(navigator,'serviceWorker',{configurable:true,value:{controller:null}});vi.stubGlobal('fetch',vi.fn(async()=>new Response('login',{status:403})));sessionStorage.setItem('pwa-work-fixture','keep');
+ const p=await import('./pwaUpdates');await p.checkPwaUpdate();expect(p.pwaUpdateSnapshot()).toMatchObject({status:'UNAVAILABLE',reason:'AUTH'});expect(sessionStorage.getItem('pwa-work-fixture')).toBe('keep');sessionStorage.removeItem('pwa-work-fixture');
+});
+it('permits preparing a changed graph beyond the old ten-second limit without reload',async()=>{
+ vi.useFakeTimers();try{vi.stubGlobal('fetch',vi.fn(async()=>new Response('<meta name="aiwr-shell-assets" content="/assets/pwa-shell-new.json">')));
+ const worker={postMessage:vi.fn(d=>{setTimeout(()=>received?.({data:{type:'AIWR_SHELL_READY',id:d.id,manifest:'/assets/pwa-shell-new.json',revision:'2026.10.31-125'}}),15000);})};Object.defineProperty(navigator,'serviceWorker',{configurable:true,value:{controller:worker}});
+ const p=await import('./pwaUpdates');const check=p.checkPwaUpdate();await vi.advanceTimersByTimeAsync(11000);expect(p.pwaUpdateSnapshot()).toMatchObject({status:'CHECKING',preparing:true});await vi.advanceTimersByTimeAsync(4000);await check;expect(p.pwaUpdateSnapshot().status).toBe('READY');
+ }finally{vi.useRealTimers();}
+});
+it('repairs a stale worker once without unregistering or rotating subscriptions',async()=>{
+ vi.stubGlobal('fetch',vi.fn(async()=>new Response('<meta name="aiwr-shell-assets" content="/assets/pwa-shell-new.json">')));
+ const fresh={postMessage:vi.fn(d=>queueMicrotask(()=>received?.({data:{type:'AIWR_SHELL_READY',id:d.id,manifest:'/assets/pwa-shell-new.json'}})))};
+ const old={postMessage:vi.fn(d=>queueMicrotask(()=>received?.({data:{type:'AIWR_SHELL_UNAVAILABLE',id:d.id}})))};
+ const registration={active:old,update:vi.fn(async()=>{serviceObject.controller=fresh;}),unregister:vi.fn()};const serviceObject={controller:old,getRegistration:vi.fn(async()=>registration)};Object.defineProperty(navigator,'serviceWorker',{configurable:true,value:serviceObject});
+ const p=await import('./pwaUpdates');await p.checkPwaUpdate();expect(p.pwaUpdateSnapshot().status).toBe('READY');expect(registration.update).toHaveBeenCalledOnce();expect(registration.unregister).not.toHaveBeenCalled();expect(old.postMessage).toHaveBeenCalledOnce();expect(fresh.postMessage).toHaveBeenCalledOnce();
+});
 function service(){const worker={postMessage:vi.fn((d)=>{queueMicrotask(()=>received?.({data:{type:'AIWR_SHELL_READY',id:d.id,manifest:'/assets/pwa-shell-new.json',revision:'2026.10.09-31'}}));})};Object.defineProperty(navigator,'serviceWorker',{configurable:true,value:{controller:worker,addEventListener:vi.fn()}});return worker;}
 it('prepares a changed shell without reload, preserves stored work, and blocks reload throughout a mutation',async()=>{
  const worker=service();const p=await import('./pwaUpdates');sessionStorage.setItem('aiwr-watch-draft:demo:pending','exact-request');localStorage.setItem('aiwr.role-review.v5.demo','saved-review');

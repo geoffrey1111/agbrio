@@ -41,7 +41,7 @@ it('shows child execution and collapses coordination without exposing it as an o
  const view=render(<WatchChat original={native} api={{state:async()=>({...state,watch:{...state.watch,threadId:native.threadId},taskTree}),command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
  await screen.findByText('真实用户输入');expect(screen.getAllByText(/子对话执行中/).length).toBeGreaterThan(0);
  const internal=view.container.querySelector('.v4-chat-collaboration')!;expect(internal.tagName).toBe('DETAILS');expect(internal).not.toHaveAttribute('open');expect(internal.closest('[data-role="user"]')).toBeNull();
- fireEvent.click(screen.getByText(/查看任务树/));expect(screen.getByText('执行子对话')).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'查看子对话'}));expect(screen.getByText('执行子对话')).toBeVisible();
  expect(command.mock.calls.every(c=>(c as unknown as [{action:string}])[0]?.action==='HISTORY')).toBe(true);
 });
 beforeEach(()=>sessionStorage.clear());afterEach(()=>{cleanup();vi.unstubAllGlobals();});
@@ -384,4 +384,10 @@ it('an unsent Codex queue does not block guidance while unknown delivery still b
  const api:WatchChatApi={state:async()=>current,cachedState:()=>current,subscribe:(_id,fn)=>{notify=fn;return()=>{};},command:async()=>({messages:[],nextCursor:null}) as never};
  render(<WatchChat original={original} api={api} onBack={()=>{}}/>);const input=screen.getByRole('textbox');fireEvent.change(input,{target:{value:'guide current work'}});await waitFor(()=>expect(screen.getByRole('button',{name:'调整当前任务'})).toBeEnabled());
  current={...current,replies:[{...queued,status:'UNKNOWN'}]};act(()=>notify());expect(screen.getByRole('button',{name:'调整当前任务'})).toBeDisabled();expect(input).toHaveValue('guide current work');
+});
+
+it('removes an uncertain bubble persistently but retains its receipt and send fence',async()=>{
+ const r={...response('dismiss-unknown-specific','UNKNOWN'),sourceSequence:null,turnId:null,text:'待移除的提交选择'};const current={...state,replies:[r]};const command=vi.fn(async(_input:Record<string,unknown>)=>({messages:[],nextCursor:null}));const api={state:async()=>current,command:command as WatchChatApi['command']};
+ const first=render(<WatchChat original={original} api={api} onBack={()=>{}}/>);await screen.findByText('待移除的提交选择');fireEvent.click(screen.getByRole('button',{name:'送达尚未确认'}));fireEvent.click(screen.getByRole('button',{name:'从对话中移除'}));await waitFor(()=>expect(screen.queryByText('待移除的提交选择')).toBeNull());expect(screen.getByRole('button',{name:'发送回复'})).toBeDisabled();first.unmount();
+ render(<WatchChat original={original} api={api} onBack={()=>{}}/>);await screen.findByText('完整原文');expect(screen.queryByText('待移除的提交选择')).toBeNull();fireEvent.click(screen.getByRole('button',{name:'对话信息'}));expect(await screen.findByText('待移除的提交选择')).toBeInTheDocument();expect(command.mock.calls.some(args=>['SEND','ACKNOWLEDGE_UNKNOWN','CANCEL','ABANDON'].includes((args[0] as {action:string}).action))).toBe(false);expect(current.replies[0].status).toBe('UNKNOWN');
 });

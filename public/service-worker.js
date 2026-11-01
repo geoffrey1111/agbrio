@@ -10,9 +10,9 @@ function olderRevision(next,previous){const parse=s=>s?.match(/^(\d{4})\.(\d{2})
 function commitShell(cache,response,html,signal){const work=shellCommit.then(async()=>{const previous=await cache.match?.(SHELL_KEY);if(previous){const old=shellIdentity(await previous.text());if(olderRevision(shellIdentity(html).revision,old.revision))return old;}if(signal.aborted)throw Error("connection timeout");await cache.put(SHELL_KEY,response.clone());return shellIdentity(html);});shellCommit=work.catch(()=>undefined);return work;}
 function shellResponse(response) { return response.ok && !response.redirected && (response.headers.get("content-type") || "").includes("text/html"); }
 function staticAsset(url) { return url.origin === self.location.origin && (url.pathname.startsWith("/assets/") || url.pathname.startsWith("/fonts/") || url.pathname.startsWith("/avatars/") || ["/icon.ico","/manifest.webmanifest"].includes(url.pathname)); }
-async function withDeadline(work) {
+async function withDeadline(work,timeout=8000) {
   const abort = new AbortController();let timer;
-  const deadline = new Promise((_,reject) => {timer=setTimeout(()=>{abort.abort();reject(new Error("connection timeout"));},8000);});
+  const deadline = new Promise((_,reject) => {timer=setTimeout(()=>{abort.abort();reject(new Error("connection timeout"));},timeout);});
   try { return await Promise.race([work(abort.signal),deadline]); } finally { clearTimeout(timer); }
 }
 async function fetchNavigation(request) {
@@ -28,17 +28,19 @@ async function fetchNavigation(request) {
 }
 async function prepareShell(response) {
   return withDeadline(async signal => {
-    const next = response || await fetch(SHELL_KEY,{credentials:"omit",cache:"no-store",signal});
+    const next = response || await fetch(SHELL_KEY,{credentials:"same-origin",cache:"no-store",signal});
     return await cacheShell(next,signal);
-  });
+  },30000);
 }
 async function cacheShell(response,signal) {
-  if (!shellResponse(response)) return;
+  if(response.status===401||response.status===403||response.redirected)throw new Error("AUTH");
+  if (!shellResponse(response)) throw new Error("invalid shell response");
   const html = await response.clone().text();
   const cache = await caches.open(SHELL_CACHE);
   // Only Vite's same-origin asset links; no arbitrary URLs from page content.
   let paths = [...html.matchAll(/(?:src|href)=["'](\/assets\/[^"']+)["']/g)].map(match => match[1]);
   const manifest=html.match(/name="aiwr-shell-assets" content="(\/assets\/[A-Za-z0-9_-]+\.json)"/);
+  if(!manifest)throw new Error("invalid shell identity");
   const previous=await cache.match?.(SHELL_KEY);
   if(manifest&&previous){
     const old=await previous.clone().text();
@@ -52,15 +54,16 @@ async function cacheShell(response,signal) {
     }
   }
   if(manifest){
-    const response=await fetch(manifest[1],{credentials:"omit",cache:"no-cache",signal});
+    const response=await fetch(manifest[1],{credentials:"same-origin",cache:"no-cache",signal});
     if(!response.ok||response.redirected)throw new Error("shell manifest unavailable");
     const declared=await response.json();
     if(!Array.isArray(declared)||declared.length>64||declared.some(path=>typeof path!=="string"||!/^\/assets\/[A-Za-z0-9_.-]+\.(js|css)$/.test(path)))throw new Error("invalid shell manifest");
     paths=[...paths,...declared];
   }
   const resources = await Promise.all([...new Set(paths)].map(async path => {
-    const asset = await fetch(path, {credentials:"omit",cache:"no-cache",signal});
-    if (!asset.ok || asset.redirected) throw new Error("shell asset unavailable");
+    const cached=await cache.match?.(path);
+    const asset = cached&&cached.ok&&!cached.redirected&&!(cached.headers.get('content-type')||'').includes('text/html')?cached:await fetch(path, {credentials:"same-origin",cache:"force-cache",signal});
+    if (!asset.ok || asset.redirected || (asset.headers.get('content-type')||'').includes('text/html')) throw new Error("shell asset unavailable");
     return [path,asset];
   }));
   for (const [path,asset] of resources) {if(signal.aborted)throw new Error("connection timeout");await cache.put(path,asset);}
@@ -73,7 +76,7 @@ function shellIdentity(html){return {manifest:html.match(/name="aiwr-shell-asset
 self.addEventListener("message",event=>{
  const data=event.data;
  if(data?.type!=="AIWR_CHECK_SHELL"||typeof data.id!=="string"||data.id.length>100)return;
- event.waitUntil((async()=>{try{const shell=await prepareShell();if(!shell?.manifest)throw Error("shell unavailable");event.ports?.[0]?.postMessage({type:"AIWR_SHELL_READY",id:data.id,...shell});}catch{event.ports?.[0]?.postMessage({type:"AIWR_SHELL_UNAVAILABLE",id:data.id});}})());
+ event.waitUntil((async()=>{try{const shell=await prepareShell();if(!shell?.manifest)throw Error("shell unavailable");event.ports?.[0]?.postMessage({type:"AIWR_SHELL_READY",id:data.id,...shell});}catch(error){const message=String(error);const reason=/AUTH/.test(message)?"AUTH":/timeout/i.test(message)?"TIMEOUT":/identity/i.test(message)?"IDENTITY":"NETWORK";event.ports?.[0]?.postMessage({type:"AIWR_SHELL_UNAVAILABLE",id:data.id,reason});}})());
 });
 self.addEventListener("fetch", event => {
   const request = event.request, url = new URL(request.url);

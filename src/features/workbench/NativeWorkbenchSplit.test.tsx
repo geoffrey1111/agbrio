@@ -23,7 +23,7 @@ it("keeps the conversation list beside the open conversation on wide desktops",a
  const pane=document.querySelector(".v7-list-pane") as HTMLElement;
  expect(pane).toBeVisible();expect(within(pane).getByRole("heading",{name:"对话"})).toBeVisible();
  expect(screen.getByText("选择左侧对话查看详情")).toBeVisible();
- expect(within(pane).getAllByRole("button").map(b=>b.textContent?.trim()).filter(t=>["全部","等你","执行中1","Pi","Bridge"].includes(t??""))).toEqual(["全部","等你","执行中1","Pi","Bridge"]);
+ expect(within(pane).getAllByRole("button").map(b=>b.textContent?.trim()).filter(t=>["全部","等你","执行中1","Pi","Bridge"].includes(t??""))).toEqual(["全部","执行中1","Bridge"]);
  fireEvent.click(within(pane).getByRole("button",{name:/界面重设计/}));
  const header=await waitFor(()=>{const h=document.querySelector(".v4-chat-header") as HTMLElement;expect(h).toBeTruthy();return h;});
  expect(pane).toBeVisible();

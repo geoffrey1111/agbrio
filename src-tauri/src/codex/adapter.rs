@@ -39,6 +39,8 @@ impl CodexAdapter {
     #[cfg(test)]
     pub(crate) fn start_shared_validation(command:std::process::Command,listener:Arc<dyn Fn(&Value)+Send+Sync>)->Result<Self,String>{CoreAdapter::start_shared_transport(Arc::new(ValidationEventSink),listener,command).map(Self)}
     #[cfg(test)]
+    pub(crate) fn start_command_validation(command:std::process::Command,listener:Arc<dyn Fn(&Value)+Send+Sync>)->Result<Self,String>{CoreAdapter::start(Arc::new(ValidationEventSink),listener,command).map(Self)}
+    #[cfg(test)]
     pub(crate) fn start_validation(
         listener: Arc<dyn Fn(&Value) + Send + Sync>,
     ) -> Result<Self, String> {

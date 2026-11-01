@@ -114,17 +114,57 @@ pub(crate) async fn desktop_update_download(app:AppHandle,version:String,state:S
 #[tauri::command]
 pub(crate) fn desktop_update_install(version:String,confirm_restart:Option<bool>,state:State<'_,UpdateState>,core:State<'_,RouterCore>)->Result<(),String>{
  let _busy=guard(&state)?;
- let active={let s=core.session.lock().map_err(|_|"UPDATE_BUSY")?;s.codex_adapter_borrowed||s.connecting||s.adapter.as_ref().is_some_and(|a|a.has_owned_active_turns())};
+ audit_install(&version,"REQUESTED")?;
+ let pi=core.session.lock().map_err(|_|"UPDATE_ACTIVITY_UNAVAILABLE")?.pi.clone();
+ let _pi_update=match pi.reserve_update(&core.store){Ok(g)=>g,Err(e)=>{audit_install(&version,"BLOCKED_ACTIVITY")?;return Err(e);}};
+ let active=update_tasks_active(&core)?;
+ if active{audit_install(&version,"BLOCKED_TASK_RUNNING")?;}
  let (update,data)={let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;install_gate(&version,c.view.version.as_deref(),&c.view.state,c.candidate.is_some()&&c.bytes.is_some(),active,confirm_restart.unwrap_or(false))?;let update=c.candidate.clone().ok_or("UPDATE_CHANGED")?;let data=c.bytes.take().ok_or("UPDATE_CHANGED")?;c.view.state="INSTALLING".into();(update,data)};
  if core.store.backup_before_application_update().is_err(){if let Ok(mut c)=state.cache.lock(){c.bytes=Some(data);c.view.state="READY".into();}return Err("UPDATE_BACKUP_FAILED".into());}
+ // Recheck after the potentially slow backup; never consume a stale idle check.
+ match update_tasks_active(&core){Ok(false)=>{},result=>{if let Ok(mut c)=state.cache.lock(){c.bytes=Some(data);c.view.state="READY".into();}return Err(match result{Ok(true)=>"UPDATE_TASK_RUNNING".into(),Err(e)=>e,_=>unreachable!()});}}
+ if let Err(e)=audit_install(&version,"INSTALLER_DISPATCH"){if let Ok(mut c)=state.cache.lock(){c.bytes=Some(data);c.view.state="READY".into();}return Err(e);}
  if update.install(&data).is_err(){if let Ok(mut c)=state.cache.lock(){c.bytes=Some(data);c.view.state="READY".into();}return Err("UPDATE_INSTALL_FAILED".into());}Ok(())
 }
-// Desktop owner confirmation overrides only the active-task gate, never the
-// verified package/version gate or the mandatory backup before installation.
-fn install_gate(version:&str,cached_version:Option<&str>,state:&str,verified:bool,active:bool,confirmed:bool)->Result<(),String>{
+// An old UI's confirmRestart flag cannot override the owner's idle-only rule.
+fn install_gate(version:&str,cached_version:Option<&str>,state:&str,verified:bool,active:bool,_confirmed:bool)->Result<(),String>{
  if cached_version!=Some(version)||state!="READY"||!verified{return Err("UPDATE_CHANGED".into());}
- if active&&!confirmed{return Err("UPDATE_TASK_RUNNING".into());}Ok(())
+ if active{return Err("UPDATE_TASK_RUNNING".into());}Ok(())
 }
+fn audit_install(version:&str,phase:&str)->Result<(),String>{
+ use std::io::Write;
+ let root=std::path::PathBuf::from(std::env::var_os("LOCALAPPDATA").ok_or("UPDATE_AUDIT_FAILED")?).join("AIWorkRouter/logs");
+ std::fs::create_dir_all(&root).map_err(|_|"UPDATE_AUDIT_FAILED")?;
+ let path=root.join("desktop-updates.jsonl");
+ if std::fs::symlink_metadata(&path).is_ok_and(|m|m.file_type().is_symlink()){return Err("UPDATE_AUDIT_FAILED".into());}
+ if std::fs::metadata(&path).is_ok_and(|m|m.len()>1024*1024){std::fs::rename(&path,root.join("desktop-updates.previous.jsonl")).map_err(|_|"UPDATE_AUDIT_FAILED")?;}
+ let mut file=std::fs::OpenOptions::new().create(true).append(true).open(path).map_err(|_|"UPDATE_AUDIT_FAILED")?;
+ writeln!(file,"{}",serde_json::json!({"at":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|_|"UPDATE_AUDIT_FAILED")?.as_millis(),"channel":"DESKTOP_TAURI","actorAttestation":"UNAVAILABLE","pid":std::process::id(),"currentVersion":crate::app_control::version(),"targetVersion":version,"phase":phase})).map_err(|_|"UPDATE_AUDIT_FAILED")?;
+ file.sync_data().map_err(|_|"UPDATE_AUDIT_FAILED".into())
+}
+fn update_tasks_active(core:&RouterCore)->Result<bool,String>{
+ if core.store.pi_tasks()?.iter().any(|p|pi_state_busy(&p.state)){return Ok(true);}
+ let mut s=core.session.lock().map_err(|_|"UPDATE_ACTIVITY_UNAVAILABLE")?;
+ if s.codex_adapter_borrowed||s.connecting{return Ok(true);}
+ let Some(adapter)=s.adapter.as_mut()else{
+  return if core.store.codex_watches()?.iter().any(|w|!w.thread_id.starts_with("pi:")&&!w.thread_id.starts_with("claude_code:")){Err("UPDATE_ACTIVITY_UNAVAILABLE".into())}else{Ok(false)};
+ };
+ if adapter.has_owned_active_turns()||adapter.has_observed_active_turns(){return Ok(true);}
+ let mut cursor=serde_json::Value::Null;
+ for _ in 0..20 {
+  let page=adapter.request_with_timeout("thread/list",serde_json::json!({"limit":100,"cursor":cursor,"archived":false}),Duration::from_secs(12)).map_err(|_|"UPDATE_ACTIVITY_UNAVAILABLE")?;
+  let threads=page["data"].as_array().ok_or("UPDATE_ACTIVITY_UNAVAILABLE")?;
+  if codex_page_busy(threads)?{return Ok(true);}
+
+  cursor=page["nextCursor"].clone();if cursor.is_null(){return Ok(false);}
+ }
+ Err("UPDATE_ACTIVITY_UNAVAILABLE".into())
+}
+fn pi_state_busy(state:&str)->bool{matches!(state,"CREATING"|"RUNNING"|"UNKNOWN")}
+fn codex_page_busy(threads:&[serde_json::Value])->Result<bool,String>{
+ for thread in threads{match thread["status"]["type"].as_str(){Some("active")=>return Ok(true),Some("idle"|"notLoaded")=>{},_=>return Err("UPDATE_ACTIVITY_UNAVAILABLE".into())}}Ok(false)
+}
+
 #[tauri::command]
 pub(crate) fn desktop_update_open_release(state:State<'_,UpdateState>)->Result<(),String>{
  let url=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?.view.release_url.clone().unwrap_or_else(||format!("https://github.com/{REPO}/releases"));
@@ -133,6 +173,21 @@ pub(crate) fn desktop_update_open_release(state:State<'_,UpdateState>)->Result<(
 }
 #[cfg(test)]mod tests{
  use super::*;
+ #[test]fn update_reservation_blocks_new_pi_launch_and_send_without_creating_inputs(){
+  let dir=tempfile::tempdir().unwrap();let store=Arc::new(router_core::store::RouterStore::open_at(dir.path().join("router.db")).unwrap());let pi=crate::pi::PiService::default();
+  let lease=pi.reserve_update(&store).unwrap();assert!(pi.reserve_update(&store).is_err());
+  assert_eq!(pi.start(store.clone(),"not-a-real-task",false).err().as_deref(),Some("PI_LOCAL_REQUEST_NOT_QUEUED"));
+  assert_eq!(pi.send(store.clone(),"not-a-real-task","not-an-input".into(),1,"AUTO".into(),"never submit".into(),vec![]).err().as_deref(),Some("PI_LOCAL_REQUEST_NOT_QUEUED"));
+  assert!(store.pi_tasks().unwrap().is_empty());drop(lease);assert!(pi.reserve_update(&store).is_ok());
+ }
+ #[test]fn pi_and_external_codex_activity_cannot_be_overridden_or_assumed_idle(){
+  for state in ["CREATING","RUNNING","UNKNOWN"]{assert!(pi_state_busy(state));}
+  for state in ["RESULT_READY","CANCELLED","FAILED","IDLE"]{assert!(!pi_state_busy(state));}
+  assert!(codex_page_busy(&[serde_json::json!({"id":"external-not-owned","status":{"type":"active"}})]).unwrap());
+  assert!(!codex_page_busy(&[serde_json::json!({"status":{"type":"idle"}}),serde_json::json!({"status":{"type":"notLoaded"}})]).unwrap());
+  assert!(codex_page_busy(&[serde_json::json!({"status":{"type":"futureUnknown"}})]).is_err());
+ }
+
  fn manifest_fixture()->serde_json::Value{serde_json::json!({"version":"0.1.35-rc.54","notes":"update","platforms":{"windows-x86_64":{"signature":"fixture-signature","url":"https://github.com/geoffrey1111/agbrio/releases/download/v0.1.35-rc.54/Agbrio_0.1.35-rc.54_x64-setup.exe"}}})}
  #[test]fn independent_manifest_retains_exact_repository_version_filename_and_size_fences(){
   let v=manifest_fixture();assert_eq!(manifest_metadata(&serde_json::to_vec(&v).unwrap()).unwrap().version.to_string(),"0.1.35-rc.54");
@@ -161,7 +216,7 @@ pub(crate) fn desktop_update_open_release(state:State<'_,UpdateState>)->Result<(
  }
  #[test]fn active_restart_requires_confirmation_for_the_exact_verified_candidate(){
   assert_eq!(install_gate("0.1.3",Some("0.1.3"),"READY",true,true,false),Err("UPDATE_TASK_RUNNING".into()));
-  assert!(install_gate("0.1.3",Some("0.1.3"),"READY",true,true,true).is_ok());
+  assert_eq!(install_gate("0.1.3",Some("0.1.3"),"READY",true,true,true),Err("UPDATE_TASK_RUNNING".into()));
   assert!(install_gate("0.1.3",Some("0.1.3"),"READY",true,false,false).is_ok());
   for (version,state,verified) in [(Some("0.1.4"),"READY",true),(Some("0.1.3"),"DOWNLOADING",true),(Some("0.1.3"),"READY",false),(None,"READY",true)]{assert_eq!(install_gate("0.1.3",version,state,verified,true,true),Err("UPDATE_CHANGED".into()));}
  }

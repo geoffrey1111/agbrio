@@ -20,7 +20,7 @@ pub(crate) fn list(core:&RouterCore)->Result<Vec<WatchView>,String>{
         let mut tree=None;
         if watch.thread_id.starts_with("pi:"){
             if let Ok(task)=core.store.pi_task(&watch.thread_id){
-                if let Ok(view)=crate::pi::presentation::watch(&task){watch.runtime=view.runtime;watch.snapshot=view.snapshot;watch.snapshot.text=watch.snapshot.text.chars().take(6000).collect();watch.error_code=task.error_code.clone();}
+                if let Ok(view)=crate::pi::presentation::watch(&task){watch.runtime=view.runtime;watch.snapshot=view.snapshot;watch.snapshot.text=watch.snapshot.text.chars().take(6000).collect();watch.error_code=view.error_code;}
                 let loaded=core.session.lock().ok().is_some_and(|s|s.pi.loaded(&task.id));
                 if !loaded&&matches!(task.state.as_str(),"RUNNING"|"WAITING_DECISION"){watch.snapshot.state="UNKNOWN".into();}
                 let last_message_at=core.store.pi_public_history_page(&task.id,None,1).ok().and_then(|p|p.first().cloned()).and_then(|v|v["timestamp"].as_str().and_then(|s|time::OffsetDateTime::parse(s,&time::format_description::well_known::Rfc3339).ok()).map(|t|(t.unix_timestamp_nanos()/1_000_000)as i64));

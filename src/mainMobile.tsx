@@ -27,3 +27,4 @@ import "./styles/mobile-inputs.css";
 import "./styles/conversation-polish.css";
 // v7 token layer loads last (management-approved redesign, 2026-10-31).
 import "./styles/agbrio-v7.css";
+import "./styles/agbrio-v7-r2.css";

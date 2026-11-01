@@ -47,8 +47,18 @@ struct Actor {
 pub(crate) struct PiService {
     actors: Mutex<HashMap<String, Actor>>,
     launch:Mutex<()>,
+    updating:std::sync::atomic::AtomicBool,
 }
+pub(crate) struct UpdateReservation<'a>(&'a PiService);
+impl Drop for UpdateReservation<'_>{fn drop(&mut self){self.0.updating.store(false,std::sync::atomic::Ordering::Release);}}
 impl PiService {
+    pub(crate) fn reserve_update(&self,store:&RouterStore)->Result<UpdateReservation<'_>,String>{
+        let _launch=self.launch.lock().map_err(|_|"UPDATE_ACTIVITY_UNAVAILABLE")?;
+        if self.updating.swap(true,std::sync::atomic::Ordering::AcqRel){return Err("UPDATE_BUSY".into());}
+        let reservation=UpdateReservation(self);
+        if store.pi_tasks()?.iter().any(|t|matches!(t.state.as_str(),"CREATING"|"RUNNING"|"UNKNOWN")){return Err("UPDATE_TASK_RUNNING".into());}
+        Ok(reservation)
+    }
     pub(crate) fn audit(&self,key:&str)->Option<Value>{self.actors.try_lock().ok().and_then(|a|a.get(key).map(|v|v.audit.clone()))}
     /// Only a reviewed create/restore operation may enter here. Never implicitly
     /// recreate an empty lost session or resume an uncertain send.
@@ -62,6 +72,7 @@ impl PiService {
         self.start_locked(store,key,restore)
     }
     fn start_locked(&self,store:Arc<RouterStore>,key:&str,restore:bool)->Result<Task,String>{
+        if self.updating.load(std::sync::atomic::Ordering::Acquire){return Err("PI_LOCAL_REQUEST_NOT_QUEUED".into());}
         let mut actors = self.actors.lock().map_err(|_| "PI_SERVICE_UNAVAILABLE")?;
         let task = store.pi_task(key)?;
         if actors.get(&task.id).is_some_and(|a| a.worker.is_finished()) {
@@ -261,7 +272,10 @@ impl PiService {
         text: String,
         images: Vec<Value>,
     ) -> Result<Value, String> {
+        if self.updating.load(std::sync::atomic::Ordering::Acquire){return Err("PI_LOCAL_REQUEST_NOT_QUEUED".into());}
         if store.pi_command_receipt(key,&request).is_err(){let was_loaded=self.loaded(key);self.refresh_failed_context(store.clone(),key)?;if store.pi_task(key)?.generation!=generation{return Err(if was_loaded{"PI_CONTEXT_REFRESHED_READ_CHAT_AND_PREPARE_NEW_ACTION_NOT_SENT"}else{"PI_SESSION_RELOADED_READ_CHAT_AND_PREPARE_NEW_ACTION_NOT_SENT"}.into());}}
+        let _launch=self.launch.lock().map_err(|_|"PI_SERVICE_UNAVAILABLE")?;
+        if self.updating.load(std::sync::atomic::Ordering::Acquire){return Err("PI_LOCAL_REQUEST_NOT_QUEUED".into());}
         let (receipt, claimed) = store.pi_claim_command(
             key,
             &request,
@@ -511,7 +525,7 @@ fn apply_terminal_receipts(
             .rev()
             .find(|e| e["type"] == "message" && e["message"]["role"] == "assistant")
             .and_then(|e| projection::public_entry(e));
-        let result = json!({"lastAssistant":last,"leafId":leaf,"nativeTerminalReceiptId":receipt["id"],"piRunId":data["runId"],"completedAt":receipt["timestamp"].as_str().and_then(crate::claude_quota::parse_utc_ms),"hadToolErrors":current.iter().any(|e|e["message"]["role"]=="toolResult"&&e["message"]["isError"]==true),"consumption":"NOT_CONFIRMED"});
+        let result = json!({"lastAssistant":last,"leafId":leaf,"nativeTerminalReceiptId":receipt["id"],"piRunId":data["runId"],"completedAt":receipt["timestamp"].as_str().and_then(crate::claude_quota::parse_utc_ms),"hadToolErrors":current.iter().any(|e|e["message"]["role"]=="toolResult"&&e["message"]["isError"]==true),"consumption":"NOT_CONFIRMED","retryAttempts":data["retryAttempts"].as_u64(),"retryPolicy":data["retryPolicy"].as_str()});
         let applied=store.pi_record_terminal(
             key,
             receipt["id"]

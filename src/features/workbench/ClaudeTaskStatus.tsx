@@ -25,6 +25,12 @@ export function ClaudeChildReader({node,api,threadId,generation,standalone=false
  return <details className="claude-child-result" onToggle={e=>setOpen(e.currentTarget.open)}><summary><span className="claude-task-title">{node.depth>1?'↳ ':''}{node.title}</span><span data-state={node.state}>{t(labels[node.state]??'状态待确认')}</span></summary>{content}</details>
 
 }
+/** Persistent per-parent opt-in (CHILD_NOTIFICATIONS); the interface itself is unchanged. */
+export function ChildNotificationsToggle({api,threadId,generation,enabled,onChanged}:{api:WatchChatApi;threadId:string;generation:number;enabled:boolean;onChanged?:()=>Promise<void>}){
+ const [saving,setSaving]=useState(false),[error,setError]=useState(false);
+ async function toggle(next:boolean){setSaving(true);setError(false);try{await api.command({action:'CHILD_NOTIFICATIONS',threadId,generation,enabled:next});await onChanged?.();}catch{setError(true)}finally{setSaving(false)}}
+ return <div className="v7-child-push"><label><span><strong>{t('推送子对话结果')}</strong><small>{t('开启后，这个主对话下的 Claude Code 子对话每结束一轮，就把新结果推送给你，走你已开启的提醒渠道（Windows 通知、浏览器推送或邮件）。只推新结果，不补发旧记录；默认关闭。Pi 子任务是单独监听的对话，按它自己的通知提醒，不受这个开关影响。')}</small></span><input type="checkbox" role="switch" checked={enabled} disabled={saving} onChange={e=>void toggle(e.target.checked)}/></label>{error&&<p role="alert">{t('设置未保存，请重试。')}</p>}</div>;
+}
 export function ClaudeTaskStatus({tree,api,threadId,generation,notificationsEnabled=false,onNotificationsChanged,expanded=false,onOpenChild}:Props){
  const [saving,setSaving]=useState(false),[error,setError]=useState(false);
  async function toggle(enabled:boolean){if(!api||!threadId)return;setSaving(true);setError(false);try{await api.command({action:'CHILD_NOTIFICATIONS',threadId,generation,enabled});await onNotificationsChanged?.();}catch{setError(true)}finally{setSaving(false)}}

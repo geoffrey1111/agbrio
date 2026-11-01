@@ -213,7 +213,7 @@ fn exact_not_loaded_metadata_error(error: &str, expected_thread: &str) -> bool {
 
 #[derive(Clone,Debug,serde::Serialize)]
 #[serde(rename_all="camelCase")]
-pub struct NativeTurnDiagnostic{pub thread_id:String,pub turn_id:String,pub status:String,pub error_code:Option<String>,pub will_retry:Option<bool>,pub confirmed_terminal:bool}
+pub struct NativeTurnDiagnostic{pub thread_id:String,pub turn_id:String,pub status:String,pub error_code:Option<String>,pub will_retry:Option<bool>,pub confirmed_terminal:bool,#[serde(skip_serializing_if="Option::is_none")]pub confirmation_source:Option<String>}
 fn native_error_code(error:&Value)->Option<String>{
  let info=&error["codexErrorInfo"];
  // Fixed native capacity messages may arrive as `other` (including remote
@@ -230,6 +230,7 @@ fn native_error_code(error:&Value)->Option<String>{
 }
 #[derive(Default)]
 struct TurnRegistry {
+    read_confirmed:HashSet<(String,String)>,
     diagnostics:HashMap<String,NativeTurnDiagnostic>,
     observed:HashMap<String,String>,owned:HashMap<String,String>,
     terminal:HashMap<(String,String),String>,completed:std::collections::VecDeque<(String,String)>,
@@ -241,8 +242,8 @@ impl TurnRegistry {
 
     fn acknowledge(&mut self,thread:&str,turn:&str){if self.terminal.contains_key(&(thread.into(),turn.into())){return;}self.owned.insert(thread.into(),turn.into());self.observed.insert(thread.into(),turn.into());}
     fn finish(&mut self,thread:&str,turn:&str,status:&str){
-        let key=(thread.to_string(),turn.to_string());if !self.terminal.contains_key(&key){self.completed.push_back(key.clone());}self.terminal.insert(key,status.into());
-        while self.completed.len()>1024{if let Some(key)=self.completed.pop_front(){self.terminal.remove(&key);}}
+        let key=(thread.to_string(),turn.to_string());self.read_confirmed.remove(&key);if !self.terminal.contains_key(&key){self.completed.push_back(key.clone());}self.terminal.insert(key,status.into());
+        while self.completed.len()>1024{if let Some(key)=self.completed.pop_front(){self.terminal.remove(&key);self.read_confirmed.remove(&key);}}
         if self.observed.get(thread).is_some_and(|v|v==turn){self.observed.remove(thread);}
         if self.owned.get(thread).is_some_and(|v|v==turn){self.owned.remove(thread);}
     }
@@ -531,6 +532,7 @@ impl CodexAdapter {
     }
 
     pub fn has_owned_active_turns(&self)->bool{self.turns.lock().map(|r|!r.owned.is_empty()).unwrap_or(true)}
+    pub fn has_observed_active_turns(&self)->bool{self.turns.lock().map(|r|!r.observed.is_empty()).unwrap_or(true)}
     pub fn is_turn_active(&self,thread:&str)->bool{self.turns.lock().map(|r|r.observed.contains_key(thread)).unwrap_or(true)}
     pub fn is_exact_turn_active(&self,thread:&str,turn:&str)->bool{self.turns.lock().map(|r|r.owned.get(thread).is_some_and(|v|v==turn)&&r.observed.get(thread).is_some_and(|v|v==turn)).unwrap_or(false)}
     pub fn active_turn_id(&self,thread:&str)->Option<String>{self.turns.lock().ok().and_then(|r|r.owned.get(thread).filter(|id|r.observed.get(thread)==Some(*id)).cloned())}
@@ -561,6 +563,19 @@ impl CodexAdapter {
             if let Some(id)=turn["id"].as_str().filter(|id|!id.is_empty()&&id.len()<=256){if let Ok(mut r)=self.turns.lock(){r.reconcile_shared_current(thread,id);}}
         }
     }
+    /// Reconcile a missed completion notification from the SAME loaded shared
+    /// backend. A completed result body is not required for execution to finish.
+    /// No persisted/notLoaded/unknown/interrupted projection is upgraded here.
+    pub fn reconcile_shared_idle_completed(&self,thread:&str,cwd:&str,metadata:&Value,turn:&Value)->bool{
+        if self.is_closed()||!self.is_shared_subscribed(thread)||metadata["id"].as_str()!=Some(thread)||metadata["cwd"].as_str()!=Some(cwd)||metadata.pointer("/status/type").and_then(Value::as_str)!=Some("idle")||turn["status"]!="completed"{return false}
+        let Some(id)=turn["id"].as_str().filter(|id|!id.is_empty()&&id.len()<=256)else{return false};
+        let Ok(mut registry)=self.turns.lock()else{return false};
+        if registry.observed.get(thread).is_some_and(|current|current!=id)||registry.owned.get(thread).is_some_and(|current|current!=id){return false}
+        let key=(thread.to_owned(),id.to_owned());
+        if registry.terminal.get(&key).is_some_and(|status|status!="completed"){return false}
+        if !registry.terminal.contains_key(&key){registry.finish(thread,id,"completed");registry.read_confirmed.insert(key);}
+        drop(registry);self.note_turn_diagnostic(thread,turn);true
+    }
     pub fn note_turn_diagnostic(&self,thread:&str,turn:&Value){
         let Some(id)=turn["id"].as_str().filter(|id|!id.is_empty()&&id.len()<=256)else{return};
         let Some(status)=turn["status"].as_str().filter(|s|matches!(*s,"inProgress"|"active"|"pending"|"completed"|"failed"|"interrupted"))else{return};
@@ -570,7 +585,8 @@ impl CodexAdapter {
             let old=r.diagnostics.get(thread).filter(|d|d.turn_id==id);
             let code=native_error_code(&turn["error"]).or_else(||old.and_then(|d|d.error_code.clone()));
             let retry=old.and_then(|d|d.will_retry);
-            r.diagnostics.insert(thread.into(),NativeTurnDiagnostic{thread_id:thread.into(),turn_id:id.into(),status:status.into(),error_code:code,will_retry:if matches!(status,"failed"|"interrupted"|"completed"){Some(false)}else{retry},confirmed_terminal:confirmed});
+            let source=confirmed.then(||if r.read_confirmed.contains(&(thread.into(),id.into())){"SHARED_IDLE_READ"}else{"EVENT"}.to_string());
+            r.diagnostics.insert(thread.into(),NativeTurnDiagnostic{thread_id:thread.into(),turn_id:id.into(),status:status.into(),error_code:code,will_retry:if matches!(status,"failed"|"interrupted"|"completed"){Some(false)}else{retry},confirmed_terminal:confirmed,confirmation_source:source});
         }
     }
     pub fn terminal_turn_status(&self,thread:&str,turn:&str)->Option<String>{self.turns.lock().ok().and_then(|r|r.terminal.get(&(thread.into(),turn.into())).cloned())}
@@ -1371,8 +1387,8 @@ fn spawn_stdout_reader(
                     if !permitted{continue;}
                     match message.get("method").and_then(Value::as_str) {
                         Some("turn/started")=>{if let(Some(thread),Some(turn))=(message.pointer("/params/threadId").and_then(Value::as_str),notification_turn_id(&message)){if let Ok(mut r)=turns.lock(){r.observed.insert(thread.into(),turn.into());if shared_scope.is_none(){r.owned.insert(thread.into(),turn.into());}}}}
-                        Some("turn/completed")=>{if let(Some(thread),Some(turn),Some(status))=(message.pointer("/params/threadId").and_then(Value::as_str),notification_turn_id(&message),message.pointer("/params/turn/status").and_then(Value::as_str).filter(|s|matches!(*s,"completed"|"interrupted"|"failed"))){if let Ok(mut r)=turns.lock(){r.finish(thread,turn,status);let error_code=native_error_code(&message["params"]["turn"]["error"]).or_else(||(status=="failed").then(||r.diagnostics.get(thread).filter(|d|d.turn_id==turn).and_then(|d|d.error_code.clone())).flatten());r.diagnostics.insert(thread.into(),NativeTurnDiagnostic{thread_id:thread.into(),turn_id:turn.into(),status:status.into(),error_code,will_retry:Some(false),confirmed_terminal:true});}}}
-                        Some("error")=>{if let(Some(thread),Some(turn))=(message.pointer("/params/threadId").and_then(Value::as_str),message.pointer("/params/turnId").and_then(Value::as_str)){if let Ok(mut r)=turns.lock(){if r.observed.get(thread).is_some_and(|id|id==turn){r.diagnostics.insert(thread.into(),NativeTurnDiagnostic{thread_id:thread.into(),turn_id:turn.into(),status:"inProgress".into(),error_code:native_error_code(&message["params"]["error"]),will_retry:message.pointer("/params/willRetry").and_then(Value::as_bool),confirmed_terminal:false});}}}}
+                        Some("turn/completed")=>{if let(Some(thread),Some(turn),Some(status))=(message.pointer("/params/threadId").and_then(Value::as_str),notification_turn_id(&message),message.pointer("/params/turn/status").and_then(Value::as_str).filter(|s|matches!(*s,"completed"|"interrupted"|"failed"))){if let Ok(mut r)=turns.lock(){r.finish(thread,turn,status);let error_code=native_error_code(&message["params"]["turn"]["error"]).or_else(||(status=="failed").then(||r.diagnostics.get(thread).filter(|d|d.turn_id==turn).and_then(|d|d.error_code.clone())).flatten());r.diagnostics.insert(thread.into(),NativeTurnDiagnostic{thread_id:thread.into(),turn_id:turn.into(),status:status.into(),error_code,will_retry:Some(false),confirmed_terminal:true,confirmation_source:Some("EVENT".into())});}}}
+                        Some("error")=>{if let(Some(thread),Some(turn))=(message.pointer("/params/threadId").and_then(Value::as_str),message.pointer("/params/turnId").and_then(Value::as_str)){if let Ok(mut r)=turns.lock(){if r.observed.get(thread).is_some_and(|id|id==turn){r.diagnostics.insert(thread.into(),NativeTurnDiagnostic{thread_id:thread.into(),turn_id:turn.into(),status:"inProgress".into(),error_code:native_error_code(&message["params"]["error"]),will_retry:message.pointer("/params/willRetry").and_then(Value::as_bool),confirmed_terminal:false,confirmation_source:None});}}}}
                         _ => {}
                     }
                     event_listener(&message);

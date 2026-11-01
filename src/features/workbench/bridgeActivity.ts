@@ -2,7 +2,9 @@ import {invoke} from "@tauri-apps/api/core";
 import {request} from "../../mobile/api";
 import type {BridgeRole,RoleActivity,AssistantProcessed} from "./RoleBridgePanel";
 import {readModels, type ReadModelCache} from "./readModelCache";
-export type BridgeActivity={lastMessageAt?:number|null;assistantProcessed?:AssistantProcessed|null;workstreamId:string;bindingRevision:number;unreadCount?:number;latestRole?:BridgeRole|null;sides:RoleActivity[]};
+/** Transport T4: actionable handoffs under the current binding (absent until deployed). */
+export type PendingHandoff={id:string;sourceObservationId:string;sourceRole:string;status:"READY"|"APPROVED"|"UNPREPARED";bindingRevision:number};
+export type BridgeActivity={readyHandoffs?:PendingHandoff[];lastMessageAt?:number|null;assistantProcessed?:AssistantProcessed|null;workstreamId:string;bindingRevision:number;unreadCount?:number;latestRole?:BridgeRole|null;sides:RoleActivity[]};
 export type BridgeActivityApi=((workstreamIds:string[])=>Promise<BridgeActivity[]>) & {
  refresh?:(ids:string[])=>Promise<BridgeActivity[]>;
  cached?:(ids:string[])=>BridgeActivity[]|undefined;

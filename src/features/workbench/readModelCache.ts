@@ -3,7 +3,9 @@ import {isTauri} from '@tauri-apps/api/core';
  * One scheduler keeps recently used resources warm across navigation; desktop
  * continues in the background, mobile resumes when visible.
  * A mobile scope is enabled only by a live authenticated session response. */
-type Entry = { value?: unknown; at: number; touched: number; due: number; period: number; failed?:boolean; loader?: () => Promise<unknown>; pending?: Promise<unknown>; version: number; listeners: Set<() => void> };
+export const isSupersededRead = (error: unknown) => /^(?:(?:Error|AbortError):\s*)?READ_CACHE_SUPERSEDED$/.test(String(error));
+class SupersededRead extends Error { constructor(){super("READ_CACHE_SUPERSEDED");this.name="AbortError";} }
+type Entry = { valueVersion?:number; value?: unknown; at: number; touched: number; due: number; period: number; failed?:boolean; loader?: () => Promise<unknown>; pending?: Promise<unknown>; version: number; listeners: Set<() => void> };
 const STORAGE = "agbrio.private-read-cache.v1";
 // Cache-first start shows the last week of presentation while the live check runs.
 const MAX_AGE = 7 * 24 * 60 * 60 * 1000;
@@ -26,7 +28,7 @@ export class ReadModelCache {
       const saved = raw && raw.length <= MAX_CHARS ? JSON.parse(raw) : null;
       if (scope && saved?.scope === scope && Array.isArray(saved.rows)) {
         for (const row of saved.rows.slice(0, 48)) if (typeof row.key === "string" && typeof row.at === "number" && row.at <= Date.now() && Date.now() - row.at < MAX_AGE)
-          this.entries.set(row.key, {value: row.value, at: row.at, touched: row.at, due: 0, period: 5000, version: 0, listeners: new Set()});
+          this.entries.set(row.key, {value: row.value, at: row.at, touched: row.at, due: 0, period: 5000, version: 0, valueVersion:0, listeners: new Set()});
       } else this.storage()?.removeItem(STORAGE);
     } catch { /* unavailable/corrupt storage never blocks the application */ }
   }
@@ -39,6 +41,7 @@ export class ReadModelCache {
   age(key: string) { const at = this.entries.get(key)?.at; return at ? Date.now() - at : Infinity; }
   observedAt(key: string) { return this.entries.get(key)?.at ?? 0; }
   generation() { return this.epoch; }
+  presentationScope() { return this.scope; }
   private entry(key: string) {
     let e = this.entries.get(key);
     if (!e) { e = {at: 0, touched: Date.now(), due: 0, period: 5000, version: 0, listeners: new Set()}; this.entries.set(key, e); }
@@ -66,7 +69,7 @@ export class ReadModelCache {
     const e=this.entry(key); if(!e.loader){e.loader=loader;e.period=period;} this.start();
   }
   put<T>(key: string, value: T) {
-    const e = this.entry(key); e.version++; e.value = value; e.at = Date.now(); e.due = e.at + e.period; e.listeners.forEach(fn => fn()); this.save();
+    const e = this.entry(key); e.version++; e.valueVersion=e.version; e.value = value; e.at = Date.now(); e.due = e.at + e.period; e.listeners.forEach(fn => fn()); this.save();
   }
   invalidate(prefix = "", discard = false) {
     for (const [key, e] of this.entries) if (key.startsWith(prefix)) {
@@ -84,10 +87,16 @@ export class ReadModelCache {
     if (e.pending) return e.pending;
     if (!e.loader) return Promise.reject(new Error("READ_CACHE_NO_LOADER"));
     const epoch = this.epoch, version = e.version; this.running++;
-    const promise = Promise.resolve().then(e.loader).then(value => {
+    const promise:Promise<unknown> = Promise.resolve().then(e.loader).then(value => {
       if (epoch === this.epoch && version === e.version && this.entries.get(key) === e) {
-        e.value = value; e.failed=false;e.at = Date.now(); e.due = e.at + e.period; e.listeners.forEach(fn => fn()); this.save();
-      } else throw new Error("READ_CACHE_SUPERSEDED");
+        e.valueVersion=version; e.value = value; e.failed=false;e.at = Date.now(); e.due = e.at + e.period; e.listeners.forEach(fn => fn()); this.save();
+      } else {
+        if(epoch===this.epoch&&this.entries.get(key)===e){
+          if(e.pending&&e.pending!==promise)return e.pending;
+          if(e.value!==undefined&&e.valueVersion===e.version)return e.value;
+        }
+        throw new SupersededRead();
+      }
       return value;
     }).catch(error => { if (epoch === this.epoch && version === e.version){e.failed=true;e.due = !this.background&&error?.name==="AbortError"?0:Date.now() + Math.max(10000, e.period);} throw error; })
       .finally(() => { if (e.pending === promise) e.pending = undefined; this.running--; });

@@ -1,6 +1,7 @@
 import {act,cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
 import {ConversationHome} from './ConversationHome';
+import {TodoPage} from './TodoPage';
 import type {CodexWatch,NotificationApi} from './CodexNotifications';
 import {QUIET_WATCH_AGE} from './watchPresentation';
 afterEach(cleanup);
@@ -8,15 +9,19 @@ const messageEpoch=Date.now()-60000;
 const watch=(id:string,at:number,state='RESULT_READY'):CodexWatch=>({threadId:id,label:id,cwd:'C:/fixture',lastMessageAt:at?messageEpoch+at:0,checkedAt:Date.now(),enabled:true,generation:1,errorCode:null,snapshot:{state,turnId:'turn',itemId:'message',text:'fixture'}});
 function fixture(initial:CodexWatch[]){let rows=initial;let notify=()=>{};const api={connect:vi.fn(),threads:vi.fn(),enable:vi.fn(),pause:vi.fn(),feed:vi.fn(),event:vi.fn(),webUrl:vi.fn(),cachedWatches:()=>rows,watches:vi.fn(async()=>rows),show:vi.fn(async(id:string)=>{const shownAt=Date.now();rows=rows.map(w=>w.threadId===id?{...w,shownAt}:w);notify();return{shownAt};}),subscribe:(listener:()=>void)=>{notify=listener;return()=>{};}} as NotificationApi;return{api,push:(next:CodexWatch[])=>{rows=next;notify();}};}
 const order=()=>[...document.querySelectorAll('.v6-list .v6-row strong')].map(n=>n.textContent);
-it('folds Pi under its native manager, promotes child activity and retains an all-Pi lookup',async()=>{
+it('folds Pi into its native manager tree, promotes child activity and finds a child by search',async()=>{
  const parent=watch('claude_code:manager',1);
  const child={...watch('pi:child',3,'RUNNING'),piParent:{provider:'CLAUDE_CODE',externalId:'manager',cwd:parent.cwd}};
  const a=fixture([parent,child,watch('ordinary',2)]),open=vi.fn();
  render(<ConversationHome bridges={[]} activity={{}} activityClock={Date.now()} watchApi={a.api} addRequest={0} onOpenBridge={vi.fn()} onOpenWatch={open}/>);
- await screen.findByText('Pi 子任务执行中 · 1 项');expect(order()).toEqual(['claude_code:manager','ordinary']);
- fireEvent.click(screen.getByRole('button',{name:'Pi 子任务 · 1 项'}));expect(screen.getByText('pi:child')).toBeVisible();
- fireEvent.click(screen.getByText('pi:child'));expect(open).toHaveBeenCalledWith(child);
- fireEvent.click(screen.getByRole('button',{name:'Pi'}));await waitFor(()=>expect(order()).toEqual(['pi:child']));
+ await screen.findByText('子对话执行中 1');expect(order()).toEqual(['claude_code:manager','ordinary']);
+ expect(screen.queryByText('pi:child')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'子对话 1 · 执行中 1'}));expect(screen.getByText('pi:child')).toBeVisible();
+ fireEvent.click(screen.getByText('pi:child'));expect(open).toHaveBeenCalledWith(child,{parentLabel:'claude_code:manager'});
+ expect(screen.queryByRole('button',{name:'Pi'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'子对话 1 · 执行中 1'}));expect(screen.queryByText('pi:child')).toBeNull();
+ fireEvent.change(screen.getByRole('searchbox',{name:'搜索对话、子对话或项目'}),{target:{value:'pi:child'}});
+ await waitFor(()=>expect(order()).toEqual(['claude_code:manager']));expect(screen.getByText('pi:child')).toBeVisible();
 });
 it('folds three-day quiet watches without pausing and resurfaces actual new messages',async()=>{
  const old={...watch('quiet',1),lastMessageAt:Date.now()-QUIET_WATCH_AGE-1000};const a=fixture([old,watch('running',1,'RUNNING')]);
@@ -73,4 +78,12 @@ it('moves a conversation only on a new message and preserves that order through 
 it('keeps unknown timestamps last and breaks equal times by stable identity',async()=>{
  const a=fixture([watch('z',200),watch('unknown',0),watch('a',200)]);
  render(<ConversationHome bridges={[]} activity={{}} activityClock={Date.now()} watchApi={a.api} addRequest={0} onOpenBridge={vi.fn()} onOpenWatch={vi.fn()}/>);await waitFor(()=>expect(order()).toEqual(['a','z','unknown']));
+});
+
+it('dismisses only the old failed todo without stopping its watch and shows a new failure',async()=>{
+ const old=watch('pi:dismiss-failure-only',4,'FAILED');const a=fixture([old]);const props={bridges:[],activity:{},activityClock:Date.now(),watchApi:a.api,onOpenBridge:vi.fn(),onOpenWatch:vi.fn()};
+ const view=render(<TodoPage {...props}/>);await screen.findByText(old.label);
+ fireEvent.click(screen.getByRole('button',{name:'知道了'}));await waitFor(()=>expect(screen.queryByText(old.label)).toBeNull());
+ view.unmount();render(<TodoPage {...props}/>);expect(screen.queryByText(old.label)).toBeNull();expect(a.api.pause).not.toHaveBeenCalled();
+ act(()=>a.push([{...old,snapshot:{...old.snapshot,itemId:'a-new-error'}}]));await waitFor(()=>expect(screen.getByText(old.label)).toBeVisible());
 });

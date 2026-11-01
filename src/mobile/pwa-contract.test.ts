@@ -5,6 +5,28 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const manifest = JSON.parse(readFileSync(resolve(process.cwd(), "public/manifest.webmanifest"), "utf8"));
 const workerSource = readFileSync(resolve(process.cwd(), "public/service-worker.js"), "utf8");
 
+it('finishes a slow public graph after fifteen seconds without the old eight-second failure',async()=>{
+ vi.useFakeTimers();const handlers=new Map<string,(event:any)=>void>(),put=vi.fn();
+ const html='<html><meta name="aiwr-shell-assets" content="/assets/pwa-shell-slow.json"><meta name="aiwr-shell-revision" content="2026.10.31-125"></html>';
+ vi.stubGlobal('self',{addEventListener:(n:string,h:any)=>handlers.set(n,h),location:{origin:'https://router.example'}});vi.stubGlobal('caches',{open:vi.fn(async()=>({put,match:vi.fn()}))});vi.stubGlobal('fetch',vi.fn(async(input:string)=>input.endsWith('.json')?new Response(JSON.stringify(['/assets/slow.js'])):input.endsWith('.js')?new Promise<Response>(resolve=>setTimeout(()=>resolve(new Response('public code')),15000)):new Response(html,{headers:{'content-type':'text/html'}})));
+ try{new Function(workerSource)();const postMessage=vi.fn();let pending!:Promise<unknown>;handlers.get('message')!({data:{type:'AIWR_CHECK_SHELL',id:'slow-check'},ports:[{postMessage}],waitUntil:(p:Promise<unknown>)=>pending=p});await vi.advanceTimersByTimeAsync(9000);expect(postMessage).not.toHaveBeenCalled();await vi.advanceTimersByTimeAsync(6000);await pending;expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({type:'AIWR_SHELL_READY'}));expect(put.mock.calls.at(-1)?.[0]).toBe('/mobile');}finally{vi.useRealTimers();vi.unstubAllGlobals();}
+});
+
+it('keeps same-origin access for public updates and reuses already cached hashed code',async()=>{
+ const handlers=new Map<string,(event:any)=>void>(),put=vi.fn();
+ const old='<html><meta name="aiwr-shell-assets" content="/assets/pwa-shell-old.json"></html>';
+ const html='<html><meta name="aiwr-shell-assets" content="/assets/pwa-shell-next.json"><meta name="aiwr-shell-revision" content="2026.10.31-125"></html>';
+ const cached=new Response('already cached',{headers:{'content-type':'text/javascript'}});
+ const fetch=vi.fn(async(input:string,options:any)=>{expect(options.credentials).toBe('same-origin');if(input==='/mobile')return new Response(html,{headers:{'content-type':'text/html'}});if(input.endsWith('.json'))return new Response(JSON.stringify(['/assets/existing.js','/assets/new.js']));if(input==='/assets/new.js')return new Response('new code');throw Error('Cached code was re-downloaded');});
+ vi.stubGlobal('self',{addEventListener:(name:string,h:any)=>handlers.set(name,h),location:{origin:'https://router.example'}});vi.stubGlobal('caches',{open:vi.fn(async()=>({put,match:vi.fn(async(key:string)=>key==='/mobile'?new Response(old):key==='/assets/existing.js'?cached.clone():undefined)}))});vi.stubGlobal('fetch',fetch);
+ try{new Function(workerSource)();const postMessage=vi.fn();let pending!:Promise<unknown>;handlers.get('message')!({data:{type:'AIWR_CHECK_SHELL',id:'same-origin-check'},ports:[{postMessage}],waitUntil:(p:Promise<unknown>)=>pending=p});await pending;expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({type:'AIWR_SHELL_READY'}));expect(fetch.mock.calls.some(c=>c[0]==='/assets/existing.js')).toBe(false);expect(put.mock.calls.at(-1)?.[0]).toBe('/mobile');}finally{vi.unstubAllGlobals();}
+});
+
+it('does not cache an access or login page that is returned as status 200',async()=>{
+ const handlers=new Map<string,(event:any)=>void>(),put=vi.fn();vi.stubGlobal('self',{addEventListener:(n:string,h:any)=>handlers.set(n,h),location:{origin:'https://router.example'}});vi.stubGlobal('caches',{open:vi.fn(async()=>({put,match:vi.fn()}))});vi.stubGlobal('fetch',vi.fn(async()=>new Response('<html>Please sign in</html>',{headers:{'content-type':'text/html'}})));
+ try{new Function(workerSource)();const postMessage=vi.fn();let pending!:Promise<unknown>;handlers.get('message')!({data:{type:'AIWR_CHECK_SHELL',id:'login-check'},ports:[{postMessage}],waitUntil:(p:Promise<unknown>)=>pending=p});await pending;expect(put).not.toHaveBeenCalled();expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({type:'AIWR_SHELL_UNAVAILABLE',reason:'IDENTITY'}));}finally{vi.unstubAllGlobals();}
+});
+
 describe("MOBILE_WEB_PUSH_V1 PWA contract", () => {
  it("reuses a warm Bridge client by acknowledged intent without reloading its document",async()=>{
   const handlers=new Map<string,(e:any)=>void>();const focus=vi.fn().mockResolvedValue(undefined),navigate=vi.fn(),openWindow=vi.fn(),postMessage=vi.fn((message,ports)=>{expect(message).toEqual({type:"AGBRIO_OPEN_BRIDGE",target:"https://router.example/mobile?workstream=qa-b&reply=qa-result"});ports[0].onmessage({data:{accepted:true}});});
@@ -191,7 +213,7 @@ it("bounds a stalled navigation and falls back without caching private responses
 });
 
 it("activates even when public-shell install/precache hangs",async()=>{
- vi.useFakeTimers();const handlers=new Map<string,(event:any)=>void>(),skipWaiting=vi.fn().mockResolvedValue(undefined);vi.stubGlobal("self",{addEventListener:(n:string,h:(e:any)=>void)=>handlers.set(n,h),skipWaiting});vi.stubGlobal("fetch",vi.fn(()=>new Promise(()=>{})));new Function(workerSource)();let pending:Promise<unknown>|undefined;handlers.get("install")!({waitUntil:(p:Promise<unknown>)=>pending=p});await vi.advanceTimersByTimeAsync(8000);await pending;expect(skipWaiting).toHaveBeenCalledOnce();vi.useRealTimers();vi.unstubAllGlobals();
+ vi.useFakeTimers();const handlers=new Map<string,(event:any)=>void>(),skipWaiting=vi.fn().mockResolvedValue(undefined);vi.stubGlobal("self",{addEventListener:(n:string,h:(e:any)=>void)=>handlers.set(n,h),skipWaiting});vi.stubGlobal("fetch",vi.fn(()=>new Promise(()=>{})));new Function(workerSource)();let pending:Promise<unknown>|undefined;handlers.get("install")!({waitUntil:(p:Promise<unknown>)=>pending=p});await vi.advanceTimersByTimeAsync(30000);await pending;expect(skipWaiting).toHaveBeenCalledOnce();vi.useRealTimers();vi.unstubAllGlobals();
 });
 
 it("returns a warm public shell before network and preserves it when new dependencies fail",async()=>{
@@ -239,7 +261,7 @@ it('explicit update readiness is returned only after the full public graph commi
 it('failed public graph download never advertises readiness or replaces the shell',async()=>{
  const handlers=new Map<string,(event:any)=>void>(),put=vi.fn();const html='<html><meta name="aiwr-shell-assets" content="/assets/pwa-shell-next.json"></html>';
  vi.stubGlobal('self',{addEventListener:(name:string,fn:(e:any)=>void)=>handlers.set(name,fn),location:{origin:'https://router.example'}});vi.stubGlobal('caches',{open:vi.fn(async()=>({put,match:vi.fn(async()=>undefined)}))});vi.stubGlobal('fetch',vi.fn(async(input:string)=>input.endsWith('.json')?new Response(JSON.stringify(['/assets/missing.js'])):input.endsWith('.js')?new Response('',{status:503}):new Response(html,{headers:{'content-type':'text/html'}})));new Function(workerSource)();
- const postMessage=vi.fn();let pending!:Promise<unknown>;handlers.get('message')!({data:{type:'AIWR_CHECK_SHELL',id:'exact-check'},ports:[{postMessage}],waitUntil:(p:Promise<unknown>)=>pending=p});await pending;expect(put).not.toHaveBeenCalled();expect(postMessage).toHaveBeenCalledWith({type:'AIWR_SHELL_UNAVAILABLE',id:'exact-check'});
+ const postMessage=vi.fn();let pending!:Promise<unknown>;handlers.get('message')!({data:{type:'AIWR_CHECK_SHELL',id:'exact-check'},ports:[{postMessage}],waitUntil:(p:Promise<unknown>)=>pending=p});await pending;expect(put).not.toHaveBeenCalled();expect(postMessage).toHaveBeenCalledWith({type:'AIWR_SHELL_UNAVAILABLE',id:'exact-check',reason:'NETWORK'});
 });
 it('a late older public graph cannot roll the committed interface back',async()=>{
  const handlers=new Map<string,(event:any)=>void>();let committed:Response|undefined;let release:(r:Response)=>void=()=>{};let reads=0;
@@ -261,7 +283,7 @@ it("does not re-download a complete unchanged version during a warm navigation",
 
 it("refreshes an old shell from the network rather than recycling HTTP-cached navigation",async()=>{
  const headers={'content-type':'text/html'};
- const old='<html>old shell</html>',next='<html>current shell</html>';
+ const old='<html><meta name="aiwr-shell-assets" content="/assets/pwa-shell-shared.json">old shell</html>',next='<html><meta name="aiwr-shell-assets" content="/assets/pwa-shell-shared.json">current shell</html>';
  let stored=new Response(old,{headers});
  const handlers=new Map<string,(event:any)=>void>();
  const match=vi.fn(async()=>stored.clone());

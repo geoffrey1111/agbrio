@@ -15,6 +15,8 @@ mod service;
 mod session;
 pub(crate) use service::PiService;
 mod history;
+mod failure;
+#[cfg(test)]mod provider_recovery_tests;
 mod settings;
 mod transport;
 mod windows_job;

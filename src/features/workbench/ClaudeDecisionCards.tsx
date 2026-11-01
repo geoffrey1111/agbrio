@@ -1,9 +1,11 @@
 import {MessageDelivery} from './MessageDelivery';
+import {dismissAttention,decisionAttentionKey,useDismissedAttention} from './attentionDismissals';
 import {useEffect,useRef,useState} from 'react';
 import {t} from '../../i18n';
 import type {ClaudeOwnerRequest,WatchChatApi} from './watchChatApi';
-type Props={requests:ClaudeOwnerRequest[];api:WatchChatApi;threadId:string;generation:number;childId?:string;refresh:()=>Promise<void>};
-function Card({request,api,threadId,generation,childId,refresh}:Props&{request:ClaudeOwnerRequest}){
+type Props={requests:ClaudeOwnerRequest[];api:WatchChatApi;threadId:string;generation:number;childId?:string;refresh:()=>Promise<void>;showDismissed?:boolean};
+function Card({request,api,threadId,generation,childId,refresh,showDismissed=false}:Props&{request:ClaudeOwnerRequest}){
+ const isDismissed=useDismissedAttention(),dismissKey=decisionAttentionKey(threadId,childId,request.id,request.revision),hidden=isDismissed(dismissKey);
  const [submittedText,setSubmittedText]=useState('');
  const [choices,setChoices]=useState<Record<string,string[]>>({}),[custom,setCustom]=useState<Record<string,string>>({}),[busy,setBusy]=useState(false),[submitted,setSubmitted]=useState(false),[error,setError]=useState(false);
  const latestRefresh=useRef(refresh);latestRefresh.current=refresh;
@@ -11,8 +13,9 @@ function Card({request,api,threadId,generation,childId,refresh}:Props&{request:C
  const questions=request.payload.questions??[];
  const answers=Object.fromEntries(questions.map(q=>[q.question,[...(choices[q.question]??[]),...(custom[q.question]?.trim()?[custom[q.question].trim()]:[])].join(', ')]));
  async function submit(answer:object){if(busy||submitted||request.status!=='PENDING')return;setSubmittedText('answers' in answer?Object.values((answer as {answers:Record<string,string>}).answers).join('\n'):(answer as {action:string}).action==='ALLOW_ONCE'?t('仅允许这次'):(answer as {action:string}).action==='DENY'?t('拒绝'):t('在 Claude 中处理'));setBusy(true);setError(false);try{await api.command({action:'CLAUDE_DECISION',threadId,generation,childId:childId??null,id:request.id,revision:request.revision,answer});setSubmitted(true);await refresh();}catch{setSubmitted(true);setError(true);}finally{setBusy(false)}}
+ if(hidden&&!showDismissed)return null;
  if(['APPLIED','NATIVE'].includes(request.status)&&!submittedText)return null;
- if(request.status!=='PENDING'||submitted||busy){const status=['APPLIED','NATIVE'].includes(request.status)?request.status:error?'UNKNOWN':request.status==='PENDING'?'SENDING':request.status;return <div className="v4-chat-submission"><MessageDelivery status={status}><p>{t('提交结果尚未确认，不会自动重发。')}</p><button type="button" disabled={busy} onClick={()=>void refresh()}>{t('检查发送记录')}</button></MessageDelivery><article className="v4-chat-message" data-role="user">{submittedText||t(request.kind==='QUESTION'?'提交选择':'Claude Code 请求本次权限')}</article></div>;}
+ if(request.status!=='PENDING'||submitted||busy||hidden){const status=['APPLIED','NATIVE'].includes(request.status)?request.status:error?'UNKNOWN':request.status==='PENDING'?(hidden?'UNKNOWN':'SENDING'):request.status;return <div className="v4-chat-submission"><MessageDelivery status={status} onDismiss={hidden?undefined:()=>dismissAttention(dismissKey)}><p>{t(status==='EXPIRED'?'该请求已结束，不需要再次提交。':'提交结果尚未确认，不会自动重发。')}</p><button type="button" disabled={busy} onClick={()=>void refresh()}>{t('检查发送记录')}</button></MessageDelivery><article className="v4-chat-message" data-role="user">{submittedText||t(request.kind==='QUESTION'?'提交选择':'Claude Code 请求本次权限')}</article></div>;}
 
  return <section className="v4-chat-request v4-question-card" aria-label={t('Claude Code 待处理请求')}>
   <header><strong>{t(request.kind==='QUESTION'?'Claude Code 需要你的选择':'Claude Code 请求本次权限')}</strong></header>

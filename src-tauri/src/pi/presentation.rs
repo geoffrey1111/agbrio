@@ -51,7 +51,7 @@ pub(crate) fn watch(task: &Task) -> Result<CodexWatch, String> {
         .ok_or("PI_SESSION_ID_UNCONFIRMED")?;
     let epoch = format!("pi-session:{native}");
     let last = task.result.as_ref().and_then(|r| r.get("lastAssistant"));
-    let text = last
+    let mut text = last
         .map(|e| {
             message(e, &epoch, 0)["text"]
                 .as_str()
@@ -59,6 +59,9 @@ pub(crate) fn watch(task: &Task) -> Result<CodexWatch, String> {
                 .to_owned()
         })
         .unwrap_or_default();
+    let failure=super::failure::task_detail(task);
+    let display_error=failure.as_ref().and_then(|v|v["code"].as_str()).map(str::to_owned).or_else(||task.error_code.clone());
+    if let Some(reason)=failure.as_ref().and_then(|v|v["reason"].as_str()){text=reason.to_owned();}
     let state = match task.state.as_str() {
         "CREATING" | "EMPTY_LOST" => "UNKNOWN",
         "WAITING_DECISION" => "ACTION_REQUIRED",
@@ -80,7 +83,7 @@ pub(crate) fn watch(task: &Task) -> Result<CodexWatch, String> {
             text,
         },
         checked_at: task.updated_at,
-        error_code: task.error_code.clone(),
+        error_code: display_error,
         retry_after: 0,
         send_count: 0,
         shown_at: task.created_at,

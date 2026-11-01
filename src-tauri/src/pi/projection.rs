@@ -41,7 +41,7 @@ pub(super) fn public_entry(entry: &Value) -> Option<Value> {
         }
     }
     Some(
-        json!({"id":id,"parentId":entry["parentId"].as_str(),"timestamp":entry["timestamp"].as_str(),"role":role,"content":blocks,"provider":message["provider"].as_str(),"model":message["model"].as_str(),"responseModel":message["responseModel"].as_str(),"providerThinkingLevel":message["providerThinkingLevel"].as_str(),"toolCallId":message["toolCallId"].as_str(),"toolName":message["toolName"].as_str(),"isError":message["isError"].as_bool(),"errorCode":message["errorMessage"].as_str().filter(|s|!s.is_empty()).map(|s|if s.starts_with("PI_PROVIDER_"){s}else{super::history::provider_error(s)}),"stopReason":message["stopReason"].as_str()}),
+        json!({"id":id,"parentId":entry["parentId"].as_str(),"timestamp":entry["timestamp"].as_str(),"role":role,"content":blocks,"provider":message["provider"].as_str(),"model":message["model"].as_str(),"responseModel":message["responseModel"].as_str(),"providerThinkingLevel":message["providerThinkingLevel"].as_str(),"toolCallId":message["toolCallId"].as_str(),"toolName":message["toolName"].as_str(),"isError":message["isError"].as_bool(),"providerFailure":super::failure::message_detail(message),"errorCode":message["errorCode"].as_str().or_else(||message["errorMessage"].as_str().filter(|s|!s.is_empty()).map(|s|if s.starts_with("PI_PROVIDER_"){s}else{super::history::provider_error(s)})),"stopReason":message["stopReason"].as_str()}),
     )
 }
 

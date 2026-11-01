@@ -1,4 +1,22 @@
 {
+  "正在准备界面更新…": "Preparing the interface update…",
+  "当前访问校验未通过，请重新打开连接页面后重试。": "Access verification did not complete. Reopen the connection page and try again.",
+  "界面更新组件尚未就绪，请稍后重试或重新打开页面。": "The interface updater is not ready. Try again shortly or reopen the page.",
+  "界面更新准备超时，当前界面仍可使用，请稍后重试。": "Preparing the interface update timed out. You can keep using this version and try again later.",
+  "暂时无法连接更新服务，当前界面仍可使用。": "The update service is temporarily unavailable. You can keep using this interface.",
+
+  "请求已失效": "Request expired",
+  "该请求已结束，不需要再次提交。": "This request has ended. No new submission is needed.",
+
+  "从对话中移除": "Remove from conversation",
+  "仅从对话中移除，发送记录仍会保留，不会重发。": "Only remove the bubble. Its sending record is kept; it won't be resent.",
+  "从对话中移除不会撤回或重发消息，未确认记录仍可在这里核对。": "Removing a bubble does not recall or resend it. Unconfirmed records can still be checked here.",
+  "查看未确认的发送记录": "Check unconfirmed sending records",
+
+  "有任务正在执行，请等待任务结束后安装。": "A task is still running. Wait for it to finish before installing.",
+  "暂时无法确认任务状态，请稍后重试。": "Task activity could not be confirmed. Try again later.",
+  "无法保存更新记录，请稍后重试。": "Could not save the update log. Try again later.",
+
   "连接超时，正在重试。页面和草稿已保留。": "Connection timed out. Retrying with your page and drafts retained.",
   "远程连接暂时不可用，正在自动重试。无需重新配对。": "Remote connection is temporarily unavailable. Retrying automatically; no new pairing is needed.",
   "读取超时，现有内容已保留，请稍后重试。": "Read timed out. Existing content is retained; try again shortly.",
@@ -1546,5 +1564,13 @@
   "还没有读到用量。请打开 Claude 桌面 App 的「使用情况」后刷新；只有本机取得真实额度时才显示百分比。": "No usage data yet. Open Usage in the Claude desktop app, then refresh. Percentages appear only when actual quota data is available on this computer.",
 "等待 Claude 更新额度": "Waiting for Claude quota update",
 "尚未读到 Claude 的最新额度。以下仅为本机 token 统计，不代表剩余百分比；请在 Claude 桌面 App 的「使用情况」更新后，再刷新这里。": "Latest Claude quota is unavailable. The token counts below are local usage, not a remaining percentage. Open Usage in the Claude desktop app, then refresh here.",
-"来自当前已登录的 Claude 桌面对话；显示订阅额度剩余比例，无需另行登录。": "From the currently signed-in Claude desktop conversation. Shows remaining subscription quota; no additional sign-in."
+"来自当前已登录的 Claude 桌面对话；显示订阅额度剩余比例，无需另行登录。": "From the currently signed-in Claude desktop conversation. Shows remaining subscription quota; no additional sign-in.",
+  "Pi 的上游 API 余额不足": "Pi’s provider API balance is too low",
+  "Pi 的上游 API 额度已用尽": "Pi’s provider API quota is used up",
+  "Pi 的上游 API 认证失败": "Pi’s provider API authentication failed",
+  "去上游 API 平台充值，再打开对话继续任务。": "Add credits on the provider’s platform, then open the conversation to continue.",
+  "在上游账户调高额度或等额度重置，再打开对话继续任务。": "Raise the provider account limit or wait for it to reset, then open the conversation to continue.",
+  "检查 Pi 的 API 配置里的密钥或授权，再打开对话继续任务。": "Check the key or authorization in Pi’s API configuration, then open the conversation to continue.",
+  "上游原话：": "Provider said: ",
+  "下一步：": "Next: "
 }

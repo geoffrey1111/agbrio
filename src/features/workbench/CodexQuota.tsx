@@ -45,9 +45,11 @@ export function CodexQuota({api,active=true,provider='Codex'}:{api:CodexQuotaApi
  const first=data?.status==='AVAILABLE'?data.buckets.find(b=>b.id==='codex'||b.id==='claude')??data.buckets[0]:null;
  const notEnabled=data?.status==='UNAVAILABLE'&&data.reason==='NOT_ENABLED';
  const firstWindow=first?.windows[0];
+ // Thin remaining-share bar; only a real percentage reading draws one.
+ const meter=firstWindow&&firstWindow.usedTokens===undefined&&!(provider==='Claude Code'&&data?.reason==='LOCAL_ESTIMATE')&&Number.isFinite(firstWindow.remainingPercent)?Math.max(0,Math.min(100,firstWindow.remainingPercent)):null;
  const label=provider==='Claude Code'&&data?.reason==='LOCAL_ESTIMATE'?t('等待 Claude 更新额度'):firstWindow?(firstWindow.usedTokens!==undefined?t('{0}已用 {1} tokens',quotaPeriod(firstWindow.windowDurationMins),tokens(firstWindow.usedTokens)):t('{0}剩余 {1}%',quotaPeriod(firstWindow.windowDurationMins),percent(firstWindow.remainingPercent))):busy?t('读取中…'):notEnabled?t('未开启'):offline?t('等待连接'):t('暂不可读取');
  return <Dialog.Root open={open} onOpenChange={value=>{setOpen(value);if(value)void refresh();}}>
-  <Dialog.Trigger asChild><button type="button" className="r2-quota-row" aria-label={t('查看 {0} 额度',provider)}><span>{t('{0} 额度',provider)}</span><span>{stale&&firstWindow?t('上次读取 · {0}',label):label}</span><ChevronRight size={18}/></button></Dialog.Trigger>
+  <Dialog.Trigger asChild><button type="button" className="r2-quota-row" data-available={meter!==null||undefined} aria-label={t('查看 {0} 额度',provider)}><span>{t('{0} 额度',provider)}</span><span>{stale&&firstWindow?t('上次读取 · {0}',label):label}</span>{meter!==null&&<span className="r2-quota-meter" aria-hidden="true"><i style={{width:`${meter}%`}}/></span>}<ChevronRight size={18}/></button></Dialog.Trigger>
   <Dialog.Portal><Dialog.Overlay className="r2-quota-overlay"/><Dialog.Content className="r2-quota-sheet r2-sheet" aria-describedby="quota-description">
    <div className="r2-quota-handle" aria-hidden="true"/><header><Dialog.Title>{t('{0} 额度',provider)}</Dialog.Title><Dialog.Close asChild><button type="button" className="r2-icon" aria-label={t('关闭')}><X size={20}/></button></Dialog.Close></header>
    <Dialog.Description id="quota-description">{provider==='Codex'?t('当前电脑连接的 Codex 账户额度。'):data?.reason==='NATIVE_DESKTOP'?t('来自当前已登录的 Claude 桌面对话；显示订阅额度剩余比例，无需另行登录。'):data?.reason==='DESKTOP_APP'?t('Claude 订阅额度，与 Claude 桌面 App「使用情况」一致；显示剩余比例。'):data?.reason==='LOCAL_ESTIMATE'?t('Claude Code 订阅用量。'):t('Claude 订阅额度，来自电脑上 Claude Code 的状态栏；显示剩余比例。')}</Dialog.Description>
