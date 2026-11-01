@@ -1,4 +1,4 @@
-// Production WebView2 may not expose CDP. Exercise the owned native window's
+﻿// Production WebView2 may not expose CDP. Exercise the owned native window's
 // accessibility controls without enabling devtools or injecting a web endpoint.
 using System;using System.IO;using System.Linq;using System.Collections.Generic;
 using System.Threading;using System.Drawing;using System.Drawing.Imaging;
@@ -22,10 +22,11 @@ class AgbrioNativeQa {
  static void Picture(IntPtr h,string filename){Rect r;if(!GetWindowRect(h,out r))throw new Exception("Native bounds unavailable");using(var b=new Bitmap(r.R-r.L,r.B-r.T)){using(var g=Graphics.FromImage(b)){var dc=g.GetHdc();try{if(!PrintWindow(h,dc,2))throw new Exception("Native capture failed");}finally{g.ReleaseHdc(dc);}}b.Save(Path.Combine(output,filename),ImageFormat.Png);}}
  [STAThread]static int Main(string[] args){
   try{var h=new IntPtr(long.Parse(args[0]));output=Path.GetFullPath(args[1]);Directory.CreateDirectory(output);root=AutomationElement.FromHandle(h);var p=new Placement();p.Length=Marshal.SizeOf(p);if(!GetWindowPlacement(h,ref p)||p.Show!=3)throw new Exception("Native window is not maximized");
-   Click(Find("Settings",ControlType.Button));Find("Language",ControlType.ComboBox);
+   Click(Find("Settings",ControlType.Button));Click(Find("通用",ControlType.Button));Find("Language",ControlType.ComboBox);
+   Click(Find("手机与设备",ControlType.Button));
    Click(Find("Add to your phone\u2019s home screen",ControlType.Button));Find("Use Safari",ControlType.Text);
    var platform=Find("Android",ControlType.TabItem);((SelectionItemPattern)platform.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();Find("Use Chrome",ControlType.Text);Picture(h,"desktop-phone-install-guide.png");
-   Click(Find("Settings",ControlType.Button));Click(Find("Devices",ControlType.Button));
+   Click(Find("Settings",ControlType.Button));Click(Find("手机与设备",ControlType.Button));Click(Find("手机配对与已登录设备",ControlType.Button));
    if(!Find("Try free for 7 days",ControlType.Button).Current.IsEnabled)throw new Exception("Trial entry unavailable");Click(Find("I have an activation code",ControlType.Button));var code=Find("Activation code",ControlType.Edit);var activate=Find("Activate connection",ControlType.Button);if(activate.Current.IsEnabled)throw new Exception("Empty redemption code accepted");Picture(h,"desktop-hosted-code.png");Click(Find("Cancel",ControlType.Button));Click(Find("Use your own server",ControlType.Button));
    var combo=Find("Connection method",ControlType.ComboBox);var input=Find("HTTPS address",ControlType.Edit);var value=(ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern);if(value.Current.Value!="")throw new Exception("Personal origin in fresh profile");
    var pair=root.FindFirst(TreeScope.Descendants,new AndCondition(new PropertyCondition(AutomationElement.NameProperty,"Generate pairing code"),new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Button)));if(pair!=null)throw new Exception("Future pairing stage exposed before origin verification");
