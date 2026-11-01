@@ -55,9 +55,11 @@ export function ComputerStatusCard({runtime,identity,onOpen}:{runtime?:RuntimePr
  const [hostName,setHostName]=useState<string|null>(null);
  useEffect(()=>{let alive=true;void identity?.().then(r=>{if(alive&&typeof r?.hostName==='string')setHostName(r.hostName.slice(0,64));},()=>undefined);return()=>{alive=false;};},[identity]);
  const check=(id:string)=>runtime?.checks.find(c=>c.id===id)?.state;
- const host=check('router-host'),codex=check('codex');
- const online=host==='READY'||codex==='READY';
- const text=!runtime?t('正在读取…'):online?t('在线'):host==='CHECKING'||codex==='CHECKING'?t('检查中'):t('暂时连不上');
- const body=<><span className="v7-set-icon"><Monitor size={18} aria-hidden/></span><span className="v7-set-main"><strong>{hostName||t('电脑')}</strong><small><span className="v7-set-status" data-tone={online?'ok':'muted'}>{text}</span>{codex==='READY'?` · ${t('Codex 已接入')}`:''}</small></span>{onOpen&&<ChevronRight size={18} aria-hidden/>}</>;
+ // The phone reports router-core. Missing/checking fields are not proof of a disconnect.
+ const host=check('router-core')??check('router-host'),codex=check('codex');
+ const hostUnavailable=host==='UNAVAILABLE',codexUnavailable=codex==='UNAVAILABLE';
+ if(!hostUnavailable&&!codexUnavailable)return null;
+ const text=hostUnavailable?t('暂时连不上'):`${t('Codex 连接')} · ${t('未就绪')}`;
+ const body=<><span className="v7-set-icon"><Monitor size={18} aria-hidden/></span><span className="v7-set-main"><strong>{hostName||t('电脑')}</strong><small><span className="v7-set-status" data-tone="muted">{text}</span></small></span>{onOpen&&<ChevronRight size={18} aria-hidden/>}</>;
  return onOpen?<button type="button" className="v7-computer-card" onClick={onOpen} aria-label={t('电脑连接状态')}>{body}</button>:<div className="v7-computer-card">{body}</div>;
 }
