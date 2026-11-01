@@ -53,10 +53,13 @@ pub(crate) struct UpdateReservation<'a>(&'a PiService);
 impl Drop for UpdateReservation<'_>{fn drop(&mut self){self.0.updating.store(false,std::sync::atomic::Ordering::Release);}}
 impl PiService {
     pub(crate) fn reserve_update(&self,store:&RouterStore)->Result<UpdateReservation<'_>,String>{
+        self.reserve_update_confirmed(store,false)
+    }
+    pub(crate) fn reserve_update_confirmed(&self,store:&RouterStore,confirmed:bool)->Result<UpdateReservation<'_>,String>{
         let _launch=self.launch.lock().map_err(|_|"UPDATE_ACTIVITY_UNAVAILABLE")?;
         if self.updating.swap(true,std::sync::atomic::Ordering::AcqRel){return Err("UPDATE_BUSY".into());}
         let reservation=UpdateReservation(self);
-        if store.pi_tasks()?.iter().any(|t|matches!(t.state.as_str(),"CREATING"|"RUNNING"|"UNKNOWN")){return Err("UPDATE_TASK_RUNNING".into());}
+        if !confirmed && store.pi_tasks()?.iter().any(|t|matches!(t.state.as_str(),"CREATING"|"RUNNING"|"UNKNOWN")){return Err("UPDATE_TASK_RUNNING".into());}
         Ok(reservation)
     }
     pub(crate) fn audit(&self,key:&str)->Option<Value>{self.actors.try_lock().ok().and_then(|a|a.get(key).map(|v|v.audit.clone()))}

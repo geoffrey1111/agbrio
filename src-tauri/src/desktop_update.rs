@@ -114,22 +114,24 @@ pub(crate) async fn desktop_update_download(app:AppHandle,version:String,state:S
 #[tauri::command]
 pub(crate) fn desktop_update_install(version:String,confirm_restart:Option<bool>,state:State<'_,UpdateState>,core:State<'_,RouterCore>)->Result<(),String>{
  let _busy=guard(&state)?;
+ let confirmed=confirm_restart.unwrap_or(false);
+ if confirmed{audit_install(&version,"OWNER_CONFIRMED_FORCE_REQUEST")?;}
  audit_install(&version,"REQUESTED")?;
  let pi=core.session.lock().map_err(|_|"UPDATE_ACTIVITY_UNAVAILABLE")?.pi.clone();
- let _pi_update=match pi.reserve_update(&core.store){Ok(g)=>g,Err(e)=>{audit_install(&version,"BLOCKED_ACTIVITY")?;return Err(e);}};
- let active=update_tasks_active(&core)?;
- if active{audit_install(&version,"BLOCKED_TASK_RUNNING")?;}
- let (update,data)={let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;install_gate(&version,c.view.version.as_deref(),&c.view.state,c.candidate.is_some()&&c.bytes.is_some(),active,confirm_restart.unwrap_or(false))?;let update=c.candidate.clone().ok_or("UPDATE_CHANGED")?;let data=c.bytes.take().ok_or("UPDATE_CHANGED")?;c.view.state="INSTALLING".into();(update,data)};
+ let _pi_update=match pi.reserve_update_confirmed(&core.store,confirmed){Ok(g)=>g,Err(e)=>{audit_install(&version,"BLOCKED_ACTIVITY")?;return Err(e);}};
+ let active=match update_tasks_active(&core){Ok(v)=>v,Err(_) if confirmed=>true,Err(e)=>return Err(e)};
+ if active{audit_install(&version,if confirmed{"OWNER_CONFIRMED_ACTIVE_UPDATE"}else{"BLOCKED_TASK_RUNNING"})?;}
+ let (update,data)={let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;install_gate(&version,c.view.version.as_deref(),&c.view.state,c.candidate.is_some()&&c.bytes.is_some(),active,confirmed)?;let update=c.candidate.clone().ok_or("UPDATE_CHANGED")?;let data=c.bytes.take().ok_or("UPDATE_CHANGED")?;c.view.state="INSTALLING".into();(update,data)};
  if core.store.backup_before_application_update().is_err(){if let Ok(mut c)=state.cache.lock(){c.bytes=Some(data);c.view.state="READY".into();}return Err("UPDATE_BACKUP_FAILED".into());}
  // Recheck after the potentially slow backup; never consume a stale idle check.
- match update_tasks_active(&core){Ok(false)=>{},result=>{if let Ok(mut c)=state.cache.lock(){c.bytes=Some(data);c.view.state="READY".into();}return Err(match result{Ok(true)=>"UPDATE_TASK_RUNNING".into(),Err(e)=>e,_=>unreachable!()});}}
+ match update_tasks_active(&core){Ok(false)=>{},_ if confirmed=>{},result=>{if let Ok(mut c)=state.cache.lock(){c.bytes=Some(data);c.view.state="READY".into();}return Err(match result{Ok(true)=>"UPDATE_TASK_RUNNING".into(),Err(e)=>e,_=>unreachable!()});}}
  if let Err(e)=audit_install(&version,"INSTALLER_DISPATCH"){if let Ok(mut c)=state.cache.lock(){c.bytes=Some(data);c.view.state="READY".into();}return Err(e);}
  if update.install(&data).is_err(){if let Ok(mut c)=state.cache.lock(){c.bytes=Some(data);c.view.state="READY".into();}return Err("UPDATE_INSTALL_FAILED".into());}Ok(())
 }
-// An old UI's confirmRestart flag cannot override the owner's idle-only rule.
-fn install_gate(version:&str,cached_version:Option<&str>,state:&str,verified:bool,active:bool,_confirmed:bool)->Result<(),String>{
+// Only a desktop owner confirmation for this verified version overrides activity guards.
+fn install_gate(version:&str,cached_version:Option<&str>,state:&str,verified:bool,active:bool,confirmed:bool)->Result<(),String>{
  if cached_version!=Some(version)||state!="READY"||!verified{return Err("UPDATE_CHANGED".into());}
- if active{return Err("UPDATE_TASK_RUNNING".into());}Ok(())
+ if active&&!confirmed{return Err("UPDATE_TASK_RUNNING".into());}Ok(())
 }
 fn audit_install(version:&str,phase:&str)->Result<(),String>{
  use std::io::Write;
@@ -216,7 +218,7 @@ pub(crate) fn desktop_update_open_release(state:State<'_,UpdateState>)->Result<(
  }
  #[test]fn active_restart_requires_confirmation_for_the_exact_verified_candidate(){
   assert_eq!(install_gate("0.1.3",Some("0.1.3"),"READY",true,true,false),Err("UPDATE_TASK_RUNNING".into()));
-  assert_eq!(install_gate("0.1.3",Some("0.1.3"),"READY",true,true,true),Err("UPDATE_TASK_RUNNING".into()));
+  assert!(install_gate("0.1.3",Some("0.1.3"),"READY",true,true,true).is_ok());
   assert!(install_gate("0.1.3",Some("0.1.3"),"READY",true,false,false).is_ok());
   for (version,state,verified) in [(Some("0.1.4"),"READY",true),(Some("0.1.3"),"DOWNLOADING",true),(Some("0.1.3"),"READY",false),(None,"READY",true)]{assert_eq!(install_gate("0.1.3",version,state,verified,true,true),Err("UPDATE_CHANGED".into()));}
  }

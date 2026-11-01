@@ -1572,5 +1572,9 @@
   "在上游账户调高额度或等额度重置，再打开对话继续任务。": "Raise the provider account limit or wait for it to reset, then open the conversation to continue.",
   "检查 Pi 的 API 配置里的密钥或授权，再打开对话继续任务。": "Check the key or authorization in Pi’s API configuration, then open the conversation to continue.",
   "上游原话：": "Provider said: ",
-  "下一步：": "Next: "
+  "下一步：": "Next: ",
+  "仍要强制更新？": "Force this update?",
+  "即将安装": "Version to install",
+  "确认强制更新": "Confirm force update",
+  "有任务正在执行，或暂时无法确认任务状态。更新将重启 Agbrio，Pi 子任务可能中断，手机和 MCP 会短暂断开；不保证任务不中断。": "Tasks are running, or activity could not be confirmed. Updating restarts Agbrio, may interrupt Pi tasks, and briefly disconnects phone and MCP access. Tasks may be interrupted."
 }
