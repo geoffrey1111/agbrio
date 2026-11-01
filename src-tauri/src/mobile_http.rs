@@ -721,6 +721,7 @@ async fn codex_delivery_settings(State(state):State<MobileHttpState>,headers:Hea
 async fn codex_delivery_command(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<crate::watch_notifications::DeliveryCommand>)->ApiResult<String>{
     authenticated(&headers,&state,true).await?;
     match &input {
+        crate::watch_notifications::DeliveryCommand::NotificationTypes{..}=>{},
         crate::watch_notifications::DeliveryCommand::Channel{channel,..}|crate::watch_notifications::DeliveryCommand::Test{channel} if channel=="WEB"=>{},
         _=>return Err(ApiError(StatusCode::FORBIDDEN,"DELIVERY_DESKTOP_SETUP_REQUIRED".into()))
     }
@@ -1194,6 +1195,7 @@ fn record_push_delivery(
     delivery: &crate::push::PushDeliveryOutcome,
 ) -> Result<(), String> {
     let delivery_state = match delivery {
+        crate::push::PushDeliveryOutcome::Suppressed=>return Ok(()),
         crate::push::PushDeliveryOutcome::Sent { .. } => "SENT",
         crate::push::PushDeliveryOutcome::NoSubscription => "NO_SUBSCRIPTION",
         crate::push::PushDeliveryOutcome::Failed { .. } => "FAILED",
@@ -1207,7 +1209,7 @@ fn record_push_delivery(
             invalid_subscription_fingerprints,
             ..
         } => invalid_subscription_fingerprints.clone(),
-        crate::push::PushDeliveryOutcome::NoSubscription => vec![],
+        crate::push::PushDeliveryOutcome::NoSubscription | crate::push::PushDeliveryOutcome::Suppressed => vec![],
     };
     for fingerprint in invalid_fingerprints {
         core.store.deactivate_push_subscription_metadata(&fingerprint)?;
@@ -1219,6 +1221,7 @@ fn push_delivery_response(
     delivery: crate::push::PushDeliveryOutcome,
 ) -> ApiResult<serde_json::Value> {
     match delivery {
+        crate::push::PushDeliveryOutcome::Suppressed=>return Ok(Json(serde_json::json!({"skipped":"TYPE_DISABLED"}))),
         crate::push::PushDeliveryOutcome::Sent { .. } => {}
         crate::push::PushDeliveryOutcome::NoSubscription => {
             return Err(core_error(

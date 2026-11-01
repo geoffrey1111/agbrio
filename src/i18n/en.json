@@ -1576,5 +1576,11 @@
   "仍要强制更新？": "Force this update?",
   "即将安装": "Version to install",
   "确认强制更新": "Confirm force update",
-  "有任务正在执行，或暂时无法确认任务状态。更新将重启 Agbrio，Pi 子任务可能中断，手机和 MCP 会短暂断开；不保证任务不中断。": "Tasks are running, or activity could not be confirmed. Updating restarts Agbrio, may interrupt Pi tasks, and briefly disconnects phone and MCP access. Tasks may be interrupted."
+  "有任务正在执行，或暂时无法确认任务状态。更新将重启 Agbrio，Pi 子任务可能中断，手机和 MCP 会短暂断开；不保证任务不中断。": "Tasks are running, or activity could not be confirmed. Updating restarts Agbrio, may interrupt Pi tasks, and briefly disconnects phone and MCP access. Tasks may be interrupted.",
+  "浏览器推送类型": "Browser push types",
+  "适用于连接这台电脑的所有浏览器；关闭推送不会删除消息或待办。": "Applies to all browsers connected to this computer. Disabling push does not delete messages or to-dos.",
+  "任务完成": "Task completed",
+  "任务执行失败": "Task failed",
+  "需要用户决策或提问": "Decision or question needs attention",
+  "推送偏好已保存": "Push preferences saved"
 }

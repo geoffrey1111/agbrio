@@ -1270,3 +1270,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .pi-settings :is(input,textarea,button):focus-visible{outline:2px solid var(--awr-accent,#b56f51);outline-offset:3px}
 
 .r2-router .v4-shared-codex.pi-settings .v4-meta{display:block;color:var(--awr-muted)}
+
+/* Native checkbox rows for browser push categories; leave email inputs unchanged. */
+.v3-notification-delivery .notification-types{border:0;padding:0;margin:16px 0}
+.v3-notification-delivery .notification-type-option{display:flex;align-items:center;gap:12px;min-height:44px}
+.v3-notification-delivery .notification-type-option input[type=checkbox]{flex:none;width:20px;height:20px;min-height:20px;padding:0;accent-color:var(--awr-accent)}

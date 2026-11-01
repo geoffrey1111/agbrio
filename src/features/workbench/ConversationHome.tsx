@@ -144,7 +144,7 @@ export function ConversationHome({selectedKey,bridges,activity,activityClock,wat
  async function showQuiet(w:CodexWatch){if(!watchApi?.show)return;setQuietError(null);try{await watchApi.show(w.threadId);}catch(e){setQuietError(watchStartError(e));}}
  const openWatch=(w:CodexWatch,target?:WatchOpenTarget)=>{if(!target?.childId){markResultSeen(w.threadId,w.lastMessageAt);
   // T5: clear this conversation's captured result notices; an older Host lacks it and the local seen mark stands.
-  if(w.unreadResult===true)void watchApi?.markThreadRead?.(w.threadId).catch(()=>undefined);}if(target)onOpenWatch(w,target);else onOpenWatch(w);};
+  if(w.unreadResult!==undefined)void watchApi?.markThreadRead?.(w.threadId).catch(()=>undefined);}if(target)onOpenWatch(w,target);else onOpenWatch(w);};
  const open=(r:Row)=>r.bridge?onOpenBridge(r.bridge.id):r.watch&&openWatch(r.watch);
  const openChild=(r:Row,e:ChildEntry)=>{if(!r.watch)return;markResultSeen(e.key,e.at);if(e.kind==="pi"&&e.watch)openWatch(e.watch,{parentLabel:r.title});else if(e.node)openWatch(r.watch,{childId:e.node.sessionId});};
  // data-bridge-id lets useBridgeActivity read status only for rows on screen.

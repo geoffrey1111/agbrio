@@ -1,3 +1,4 @@
+import {readAndClearPush} from '../../mobile/readPush';
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { codexApi } from "../codex/api";
@@ -36,8 +37,8 @@ export const desktopNotificationApi:NotificationApi=cachedNotificationApi({
 function command<T>(body:unknown){return request<T>("/codex-watches",{method:"POST",body:JSON.stringify(body)});}
 export const webNotificationApi:NotificationApi=cachedNotificationApi({
  markSeen:sequence=>command({action:"MARK_SEEN",sequence}),
- markRead:sequence=>command({action:"MARK_READ",sequence}),
- markThreadRead:(threadId,upToSequence)=>command({action:"MARK_THREAD_READ",threadId,...(upToSequence===undefined?{}:{upToSequence})}),
+ markRead:sequence=>readAndClearPush(()=>command({action:"MARK_READ",sequence}),(_d,u)=>Number(u.searchParams.get("event"))===sequence),
+ markThreadRead:(threadId,upToSequence)=>readAndClearPush(()=>command({action:"MARK_THREAD_READ",threadId,...(upToSequence===undefined?{}:{upToSequence})}),async(d,u)=>{const seq=Number(d.sequence??u.searchParams.get("event"));if(!Number.isSafeInteger(seq)||seq<=0||upToSequence!==undefined&&seq>upToSequence)return false;return (d.threadId??(await request<{threadId:string}>(`/codex-watches/events/${seq}`)).threadId)===threadId;}),
  chat:webWatchChatApi,
  delivery:{desktop:false,settings:()=>request("/codex-watches/delivery"),command:input=>request("/codex-watches/delivery",{method:"POST",body:JSON.stringify(input)})},
  webUrl:async()=>`${location.origin}/mobile/notifications`,

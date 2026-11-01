@@ -47,7 +47,7 @@ describe("MOBILE_WEB_PUSH_V1 PWA contract", () => {
     vi.stubGlobal("clients",{matchAll:vi.fn().mockResolvedValue([]),openWindow});vi.stubGlobal("fetch",fetch);new Function(workerSource)();
     let pending:Promise<unknown>|undefined;
     handlers.get("push")!({data:{json:()=>({type:"codex_watch",eventId:"aiwr-host-42",sequence:42,label:"执行对话",state:"FAILED"})},waitUntil:(p:Promise<unknown>)=>{pending=p;}});await pending;
-    expect(showNotification).toHaveBeenCalledWith("执行对话",expect.objectContaining({body:"执行失败",data:{target:"/mobile/notifications?event=42"},tag:"codex-watch-aiwr-host-42"}));expect(fetch).not.toHaveBeenCalled();
+    expect(showNotification).toHaveBeenCalledWith("执行对话",expect.objectContaining({body:"执行失败",data:{target:"/mobile/notifications?event=42",threadId:null,sequence:42},tag:"codex-watch-aiwr-host-42"}));expect(fetch).not.toHaveBeenCalled();
     handlers.get("notificationclick")!({notification:{close:vi.fn(),data:{target:"/mobile/notifications?event=42"}},waitUntil:(p:Promise<unknown>)=>{pending=p;}});await pending;
     expect(openWindow).toHaveBeenLastCalledWith("https://router.example/mobile/notifications?event=42");
     handlers.get("notificationclick")!({notification:{close:vi.fn(),data:{target:"https://evil.example/mobile/notifications?event=42"}},waitUntil:(p:Promise<unknown>)=>{pending=p;}});await pending;
@@ -123,7 +123,7 @@ describe("MOBILE_WEB_PUSH_V1 PWA contract", () => {
     await pushCompletion;
     expect(showNotification).toHaveBeenCalledWith("Release review", expect.objectContaining({
       body: "ChatGPT 有新回复",
-      data: { target: "/mobile?workstream=ws-1&reply=reply-1" },
+      data: { target: "/mobile?workstream=ws-1&reply=reply-1", threadId: null, sequence: null },
       tag: "chatgpt-reply-reply-1",
     }));
     expect(workerSource).not.toContain("fullReply");
@@ -135,7 +135,7 @@ describe("MOBILE_WEB_PUSH_V1 PWA contract", () => {
 
     let clickCompletion: Promise<unknown> | undefined;
     handlers.get("notificationclick")!({
-      notification: { close: vi.fn(), data: { target: "/mobile?workstream=ws-1&reply=reply-1" } },
+      notification: { close: vi.fn(), data: { target: "/mobile?workstream=ws-1&reply=reply-1" }, threadId: null, sequence: null },
       waitUntil: (promise: Promise<unknown>) => { clickCompletion = promise; },
     });
     await clickCompletion;
@@ -164,7 +164,7 @@ describe("MOBILE_WEB_PUSH_V1 PWA contract", () => {
 
     expect(showNotification).toHaveBeenCalledWith("执行对话", expect.objectContaining({
       body: "Codex 有新回复",
-      data: { target: "/mobile?workstream=ws-game&reply=codex-reply-9" },
+      data: { target: "/mobile?workstream=ws-game&reply=codex-reply-9", threadId: null, sequence: null },
       tag: "codex-reply-codex-reply-9",
     }));
     expect(fetch).toHaveBeenCalledWith("/v1/mobile/push/rendered", expect.objectContaining({
@@ -189,7 +189,7 @@ describe("MOBILE_WEB_PUSH_V1 PWA contract", () => {
 
     let clickCompletion: Promise<unknown> | undefined;
     handlers.get("notificationclick")!({
-      notification: { close: vi.fn(), data: { target: "/mobile?workstream=ws-1&reply=reply-1" } },
+      notification: { close: vi.fn(), data: { target: "/mobile?workstream=ws-1&reply=reply-1" }, threadId: null, sequence: null },
       waitUntil: (promise: Promise<unknown>) => { clickCompletion = promise; },
     });
     await clickCompletion;

@@ -2002,7 +2002,7 @@ impl RouterStore {
         observation_id: &str,
         state: &str,
     ) -> Result<(), String> {
-        if !["SENT", "FAILED", "NO_SUBSCRIPTION"].contains(&state) {
+        if !["SENT", "FAILED", "NO_SUBSCRIPTION", "SKIPPED"].contains(&state) {
             return Err("Unsupported ReplyObservation push state".into());
         }
         self.with_connection(|connection| {

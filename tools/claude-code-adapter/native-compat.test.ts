@@ -71,4 +71,6 @@ test('native VM returns one-call decisions and preserves denials without prompt 
  const permission=await driver.tool.check({tool:'Bash',tool_use_id:'native-permission',command:'echo fictional'});expect(permission.decision).toBe('allow');expect(permission.updatedPermissions).toBeUndefined();
  const previous=posts;nativeDecision='deny';expect((await driver.tool.check({tool:'Bash',tool_use_id:'managed-deny',command:'echo fictional'})).decision).toBe('deny');expect(posts).toBe(previous);
  nativeDecision='ask';expect((await driver.tool.check({tool:'Bash',tool_use_id:'organization-ceiling',command:'echo fictional',ceiling:'ask'})).decision).toBe('ask');expect(posts).toBe(previous);expect(submits).toBe(0);
+ expect((await driver.tool.check({tool:'Agent',tool_use_id:'phone-owner-agent',ceiling:'allow'})).decision).toBe('allow');expect((await driver.tool.check({tool:'mcp__agbrio__execute_action',tool_use_id:'native-mcp-only',ceiling:'allow'})).decision).toBe('ask');expect(submits).toBe(0);
+
 });

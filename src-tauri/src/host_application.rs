@@ -2905,6 +2905,7 @@ pub(crate) fn attempt_reply_push_with(
     let workstream_name = store.workstream_name(&endpoint.workstream_id)?;
     let payload = serde_json::json!({"type":if endpoint.provider == "CODEX" { "codex_reply" } else { "chatgpt_reply" },"workstreamId":endpoint.workstream_id,"observationId":observation.id,"workstreamName":workstream_name,"conversationName":endpoint.label});
     let (push_state, invalid_fingerprints) = match push(payload.to_string().as_bytes()) {
+        Ok(crate::push::PushDeliveryOutcome::Suppressed)=>{store.record_reply_push_attempt(&observation.id,"SKIPPED")?;return Ok(());},
         Ok(crate::push::PushDeliveryOutcome::Sent {
             invalid_subscription_fingerprints,
         }) => ("SENT", invalid_subscription_fingerprints),

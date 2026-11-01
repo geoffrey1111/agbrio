@@ -3111,3 +3111,10 @@ fn mobile_global_index_preserves_trash_and_readable_endpoint_context(){
  let items=core.mobile_workstreams().unwrap();let visible=items.iter().find(|i|i.id==active.id).unwrap();let deleted=items.iter().find(|i|i.id==trashed.id).unwrap();
  assert_eq!(visible.source_label,"Codex · human dialogue label");assert_eq!(visible.project_name,"first group");assert!(deleted.trashed_at.is_some());assert_eq!(deleted.project_name,"second group");assert_ne!(visible.id,deleted.id);
 }
+
+#[test]fn disabled_push_category_records_skipped_without_replaying_existing_results(){
+ let(_d,store,w,endpoint)=observer_context();let mut calls=0;let mut send=|_:&[u8]|{calls+=1;Ok(crate::push::PushDeliveryOutcome::Suppressed)};
+ assert!(record_provider_surface_reply_with(&store,&endpoint,"fixture-category-off","preserved result",&mut send).unwrap());
+ assert!(!record_provider_surface_reply_with(&store,&endpoint,"fixture-category-off","preserved result",&mut send).unwrap());
+ assert_eq!(calls,1);let items=store.reply_observations_for_workstream(&w.id).unwrap();assert_eq!(items.len(),1);assert_eq!(items[0].push_state,"SKIPPED");assert_eq!(items[0].text,"preserved result");
+}

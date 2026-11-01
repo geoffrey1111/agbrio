@@ -34,7 +34,7 @@ export function registerOwnerRequests(on,state){
  on('classic.PreToolUse',{tool:'AskUserQuestion'},async($,e,next)=>{
   const original=(await next(e))??{};
   if(original.deny||e.agentId||e.agent_id||e.answers&&Object.keys(e.answers).length)return original;
-  const input=original.updatedInput??e;
+  const input=original.updatedInput??e.input??e;
   if(!Array.isArray(input.questions))return original;
   const answer=await hold($,state,e,'QUESTION',{questions:input.questions});if(!answer)return original;
   const {tool,tool_use_id,...args}=input;
@@ -44,7 +44,7 @@ export function registerOwnerRequests(on,state){
   const original=await next(e);
   // Managed/organization/MCP and subagent boundaries remain native. Only a
   // genuine pending built-in call can be approved once by the owner.
-  if(original.decision!=='ask'||e.ceiling==='ask'||e.agentId||e.tool==='AskUserQuestion'||e.tool?.startsWith('mcp__')||!e.tool_use_id)return original;
+  if(original.decision!=='ask'||e.ceiling==='ask'||e.agentId||e.agent_id||e.tool==='AskUserQuestion'||e.tool?.startsWith('mcp__')||!e.tool_use_id)return original;
   const {tool,tool_use_id,agentId,ceiling,isReadOnly,...input}=e;
   const answer=await hold($,state,e,'PERMISSION',{tool,input});if(!answer)return original;
   return {decision:answer.action==='ALLOW_ONCE'?'allow':'deny',reason:answer.action==='ALLOW_ONCE'?'Owner allowed this call in Agbrio.':'Owner declined this call in Agbrio.'};

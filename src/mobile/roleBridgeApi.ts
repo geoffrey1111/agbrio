@@ -1,3 +1,4 @@
+import {readAndClearPush} from './readPush';
 import{webWatchChatApi}from"../features/workbench/watchChatApi";
 import {cachedRoleBridgeApi} from "../features/workbench/cachedRoleBridgeApi";
 import { request } from "./api";
@@ -8,7 +9,7 @@ function roleCommand<T>(workstreamId:string,body:unknown){return request<T>(`/wo
 export function mobileRoleBridgeApi(workstreamId:string): RoleBridgeApi {
  return cachedRoleBridgeApi({
   chat:webWatchChatApi,
-  markRead:(id,observation)=>request<void>(`/workstreams/${encodeURIComponent(id)}/reply-observations/${encodeURIComponent(observation)}/read`,{method:"POST"}),
+  markRead:(id,observation)=>readAndClearPush(()=>request<void>(`/workstreams/${encodeURIComponent(id)}/reply-observations/${encodeURIComponent(observation)}/read`,{method:"POST"}),(_d,u)=>u.searchParams.get("workstream")===id&&u.searchParams.get("reply")===observation),
   openChat:async thread=>(await webWatchChatApi.state(thread)).watch,
   state: async id => request<RoleState>(`/workstreams/${encodeURIComponent(id)}/role-bridge`),
   sync: id => roleCommand(id,{action:"SYNC"}),

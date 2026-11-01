@@ -19,6 +19,7 @@ pub struct NotificationNavigation(pub Mutex<Option<i64>>);
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsView {
+    pub notification_types:crate::push::NotificationTypes,
     #[serde(flatten)]
     pub settings: DeliverySettings,
     pub has_secret: bool,
@@ -28,6 +29,7 @@ pub struct SettingsView {
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum DeliveryCommand {
+    NotificationTypes { types:crate::push::NotificationTypes },
     Channel {
         channel: String,
         enabled: bool,
@@ -115,6 +117,7 @@ pub fn view(store: &RouterStore) -> Result<SettingsView, String> {
     let settings = store.watch_delivery_settings()?;
     let has_secret = password(&settings.account).is_ok();
     Ok(SettingsView {
+        notification_types:crate::push::notification_types()?,
         settings,
         has_secret,
         windows_status: windows_status(),
@@ -123,6 +126,7 @@ pub fn view(store: &RouterStore) -> Result<SettingsView, String> {
 }
 pub fn command(store: &RouterStore, input: DeliveryCommand) -> Result<String, String> {
     match input {
+        DeliveryCommand::NotificationTypes{types}=>{crate::push::set_notification_types(types)?;Ok("SAVED".into())},
         DeliveryCommand::Channel { channel, enabled } => {
             if enabled && channel == "EMAIL" {
                 let s = store.watch_delivery_settings()?;
@@ -232,9 +236,10 @@ fn deliver(
             Err(_) => ("SKIPPED", Some("WINDOWS_NOTIFICATION_REJECTED")),
         },
         "WEB" => {
-            let payload = serde_json::json!({"type":"codex_watch","eventId":id,"sequence":event.map(|e|e.sequence),"label":event.map(|e|e.label.as_str()).unwrap_or("通知通道测试"),"state":event.map(|e|e.snapshot.state.as_str()).unwrap_or("TEST")});
+            let payload = serde_json::json!({"type":"codex_watch","eventId":id,"sequence":event.map(|e|e.sequence),"threadId":event.map(|e|e.thread_id.as_str()),"label":event.map(|e|e.label.as_str()).unwrap_or("通知通道测试"),"state":event.map(|e|e.snapshot.state.as_str()).unwrap_or("TEST")});
             match crate::push::send_payload(payload.to_string().as_bytes()) {
                 Ok(crate::push::PushDeliveryOutcome::Sent { .. }) => ("SENT", None),
+                Ok(crate::push::PushDeliveryOutcome::Suppressed) => ("SKIPPED",Some("WEB_PUSH_TYPE_DISABLED")),
                 Ok(crate::push::PushDeliveryOutcome::NoSubscription) => {
                     ("SKIPPED", Some("WEB_PUSH_NO_SUBSCRIPTION"))
                 }

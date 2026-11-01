@@ -133,7 +133,7 @@ self.addEventListener("push", event => {
   event.waitUntil((async () => {
     await self.registration.showNotification(title, {
       body: watch ? `${data.state === "ACTION_REQUIRED" ? "需要你确认或回答" : data.state === "FAILED" ? "执行失败" : data.state === "TEST" ? "通知通道测试" : "新结果已到达"}` : data.type === "test" ? "AI_WORK_ROUTER_WEB_PUSH_V1_OK" : `${provider} 有新回复`,
-      data: { target },
+      data: { target, threadId: typeof data.threadId === "string" ? data.threadId : null, sequence },
       tag: watch ? `codex-watch-${data.eventId || sequence || "test"}` : observationId ? `${provider.toLowerCase()}-reply-${observationId}` : `${provider.toLowerCase()}-reply`
     });
     // A receipt is meaningful only for a real persisted observation. It is a

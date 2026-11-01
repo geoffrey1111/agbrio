@@ -39,8 +39,20 @@ pub struct PushSubscriptionKeys {
     pub p256dh: String,
     pub auth: String,
 }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+pub struct NotificationTypes { pub completed:bool,pub failed:bool,pub action_required:bool }
+impl Default for NotificationTypes { fn default()->Self{Self{completed:true,failed:true,action_required:true}} }
+impl NotificationTypes {
+ fn allows(&self,payload:&serde_json::Value)->bool{match payload["type"].as_str(){
+ Some("codex_watch")=>match payload["state"].as_str(){Some("TEST")=>true,Some("FAILED")=>self.failed,Some("ACTION_REQUIRED")=>self.action_required,Some("RESULT_READY"|"RESULT_PENDING")=>self.completed,_=>true},
+ Some("codex_reply"|"chatgpt_reply")=>self.completed,_=>true}}
+}
+pub fn notification_types()->Result<NotificationTypes,String>{let _g=CONFIG_OPERATION.lock().map_err(|_|"Push configuration unavailable")?;Ok(read_config()?.notification_types)}
+pub fn set_notification_types(types:NotificationTypes)->Result<(),String>{let _g=CONFIG_OPERATION.lock().map_err(|_|"Push configuration unavailable")?;let mut c=read_config()?;c.notification_types=types;write_config(&c)}
 #[derive(Default, Serialize, Deserialize)]
 struct LocalPushConfig {
+    #[serde(default)] notification_types:NotificationTypes,
     vapid_private_key: String,
     subscriptions: Vec<PushSubscriptionInput>,
 }
@@ -49,6 +61,7 @@ struct LocalPushConfig {
 /// endpoint leaves this module; raw PushSubscription material stays local.
 #[derive(Debug, PartialEq, Eq)]
 pub enum PushDeliveryOutcome {
+    Suppressed,
     Sent {
         invalid_subscription_fingerprints: Vec<String>,
     },
@@ -275,7 +288,7 @@ pub fn send_payload(payload: &[u8]) -> Result<PushDeliveryOutcome, String> {
     let vapid_subject = configured_vapid_subject()?;
     let (config,key)={
         let _guard=CONFIG_OPERATION.lock().map_err(|_| "Push configuration unavailable")?;
-        let mut config=read_config()?;let key=key_pair(&mut config)?;write_config(&config)?;(config,key)
+        let mut config=read_config()?;if !config.notification_types.allows(&serde_json::from_slice(payload).map_err(|_|"Push payload invalid")?){return Ok(PushDeliveryOutcome::Suppressed);}let key=key_pair(&mut config)?;write_config(&config)?;(config,key)
     };
     if config.subscriptions.is_empty() {
         return Ok(PushDeliveryOutcome::NoSubscription);
@@ -483,11 +496,21 @@ fn permanently_invalid_status(status: u16) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]fn notification_preferences_filter_by_kind_without_suppressing_tests(){
+        let p=NotificationTypes{completed:false,failed:true,action_required:false};
+        assert!(!p.allows(&serde_json::json!({"type":"codex_watch","state":"RESULT_READY"})));
+        assert!(p.allows(&serde_json::json!({"type":"codex_watch","state":"FAILED"})));
+        assert!(!p.allows(&serde_json::json!({"type":"codex_watch","state":"ACTION_REQUIRED"})));
+        assert!(!p.allows(&serde_json::json!({"type":"codex_reply"})));
+        assert!(p.allows(&serde_json::json!({"type":"test"})));
+        let legacy:LocalPushConfig=serde_json::from_str(r#"{"vapid_private_key":"unchanged","subscriptions":[]}"#).unwrap();
+        assert!(legacy.notification_types.completed&&legacy.notification_types.failed&&legacy.notification_types.action_required);
+    }
     #[test]
     fn invalid_delivery_pruning_preserves_new_and_changed_subscriptions() {
         let sub=|endpoint:&str,key:&str|super::PushSubscriptionInput{endpoint:endpoint.into(),keys:super::PushSubscriptionKeys{p256dh:key.into(),auth:"fixture".into()}};
-        let snapshot=super::LocalPushConfig{vapid_private_key:String::new(),subscriptions:vec![sub("old","a"),sub("updated","old-key")]};
-        let mut current=super::LocalPushConfig{vapid_private_key:String::new(),subscriptions:vec![sub("old","a"),sub("updated","new-key"),sub("new","b")]};
+        let snapshot=super::LocalPushConfig{notification_types:Default::default(),vapid_private_key:String::new(),subscriptions:vec![sub("old","a"),sub("updated","old-key")]};
+        let mut current=super::LocalPushConfig{notification_types:Default::default(),vapid_private_key:String::new(),subscriptions:vec![sub("old","a"),sub("updated","new-key"),sub("new","b")]};
         super::prune_invalid_snapshot(&mut current,&snapshot,&["old".into(),"updated".into()]);
         assert_eq!(current.subscriptions.iter().map(|s|s.endpoint.as_str()).collect::<Vec<_>>(),vec!["updated","new"]);
     }
