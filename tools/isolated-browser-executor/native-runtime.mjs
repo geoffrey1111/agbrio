@@ -1,3 +1,4 @@
+import {browserPackage} from './browser-package.mjs';
 // Windows distribution/path boundary only. DOM/CDP operations stay in Executor.
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
@@ -116,21 +117,14 @@ export class ChromiumRuntime {
     }
     return this.browser;
   }
-  async verifiedBinary() {
+  async verifiedBinary(download = false) {
     await this.resolveProfile();
     await rejectLinkedAncestors(this.resources);
     await rejectLinkedAncestors(this.profile);
-    const binary = path.join(this.resources, 'chromium', 'chrome.exe');
+    const binary = await browserPackage({resources:this.resources,data:this.data,download});
     if (await fileSha256(binary) !== BINARY_SHA) throw Object.assign(new Error('CHROMIUM_HASH_MISMATCH'), { code: 'CHROMIUM_HASH_MISMATCH' });
-    const manifest = JSON.parse(await readFile(path.join(this.resources, 'chromium-manifest.json'), 'utf8'));
-    // The package's verified archive supplies this manifest. Verify every
-    // shipped runtime file, including chrome.dll, before native execution.
-    for (const [relative, expected] of Object.entries(manifest.files)) {
-      const filename = path.resolve(this.resources, 'chromium', relative);
-      if (!filename.startsWith(path.resolve(this.resources, 'chromium') + path.sep)) throw new Error('CHROMIUM_MANIFEST_PATH_INVALID');
-      await rejectLinkedAncestors(filename);
-      if (await fileSha256(filename) !== expected) throw new Error('CHROMIUM_PACKAGE_HASH_MISMATCH');
-    }
+    // browserPackage verified every manifest file before selection/publication.
+    this.binaryPath = binary;
     await mkdir(this.profile, { recursive: true });
     return binary;
   }
@@ -160,7 +154,7 @@ export class ChromiumRuntime {
   }
   async openHumanSecurity() {
     if (!await this.authRequired()) throw new Error('SECURITY_RECOVERY_NOT_REQUIRED');
-    const binary = await this.verifiedBinary();
+    const binary = await this.verifiedBinary(true);
     return this.platform.withExclusiveProfile(this.profile, async assertHeld => {
       assertHeld();
       return this.openHumanSecurityExclusively(binary, assertHeld);
@@ -226,6 +220,7 @@ export class ChromiumRuntime {
     }
   }
   async openForAuthentication() {
+    if (!this.browser) await this.verifiedBinary(true);
     if (await this.authRequired()) return this.openHumanSecurity();
     const reused = !!this.browser;
     const browser = await this.connection();
@@ -238,7 +233,7 @@ export class ChromiumRuntime {
     const owner = owners.length === 1 ? owners[0] : null;
     const pid = browser.process()?.pid;
     if (!owner || owner.pid !== pid || !owner.automated
-      || path.resolve(owner.binary).toLowerCase() !== path.resolve(this.resources, 'chromium', 'chrome.exe').toLowerCase()) {
+      || path.resolve(owner.binary).toLowerCase() !== path.resolve(this.binaryPath??path.join(this.resources, 'chromium', 'chrome.exe')).toLowerCase()) {
       throw new Error('SECURITY_BROWSER_IDENTITY_CHANGED');
     }
     const focus = await this.platform.focus(owner);

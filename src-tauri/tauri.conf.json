@@ -36,7 +36,6 @@
     "useLocalToolsDir": true,
     "resources": {
       "../dist": "dist",
-      "resources/browser-executor": "browser-executor",
       "resources/web-availability": "web-availability",
       "resources/codex-shared": "codex-shared",
       "resources/hosted-relay": "hosted-relay",
@@ -44,7 +43,8 @@
       "../tools/claude-code-plugin": "claude-code-plugin",
       "../tools/agbrio-control": "app-control",
       "../tools/resource-monitor": "resource-monitor",
-      "../tools/pi-adapter": "pi-adapter"
+      "../tools/pi-adapter": "pi-adapter",
+      "resources/browser-executor-lite": "browser-executor"
     },
     "externalBin": [
       "binaries/browser-executor-node"

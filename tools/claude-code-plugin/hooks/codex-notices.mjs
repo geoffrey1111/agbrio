@@ -4,7 +4,14 @@ const uuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 function owner(state){if(state.stopped||!uuid(state.identity?.sessionId)||typeof state.identity?.cwd!=='string')throw Error('AGBRIO_NOTICE_SESSION_UNAVAILABLE');return{sessionId:state.identity.sessionId,instanceId:state.instanceId,cwd:state.identity.cwd};}
 function key(state){return `${KEY}:${owner(state).sessionId}`;}
 function serial(state,work){const p=(state.taskNoticeQueue??Promise.resolve()).catch(()=>{}).then(work);state.taskNoticeQueue=p;return p;}
-async function post($,state,input){const r=await $.http.fetch(`${state.origin}/v1/claude-code/codex-notices`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${state.token}`},body:JSON.stringify({...owner(state),...input})});if(!r.ok)throw Error('AGBRIO_NOTICE_HOST_UNAVAILABLE');return JSON.parse(r.text||'{}');}
+export function hostFailure(r){
+ let body;try{body=JSON.parse(r.text||'{}');}catch{}
+ const candidate=typeof body?.error==='string'?body.error:body?.error?.code;
+ const code=/^(?:CLAUDE|WATCH|AGBRIO|CODEX)_[A-Z0-9_]{1,112}$/.test(candidate??'')?candidate:r.status===404?'AGBRIO_WAIT_HOST_UPDATE_REQUIRED':r.status===422?'AGBRIO_NOTICE_REQUEST_INVALID':'AGBRIO_NOTICE_HOST_REJECTED';
+ const e=Error(code);e.httpStatus=Number.isInteger(r.status)?r.status:null;return e;
+}
+async function post($,state,input){let r;try{r=await $.http.fetch(`${state.origin}/v1/claude-code/codex-notices`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${state.token}`},body:JSON.stringify({...owner(state),...input})});}catch{throw Error('AGBRIO_NOTICE_NETWORK_UNAVAILABLE');}if(!r.ok)throw hostFailure(r);try{return JSON.parse(r.text||'{}');}catch{throw Error('AGBRIO_NOTICE_RESPONSE_INVALID');}}
+
 async function load($,state){const v=await $.store.get(key(state));return Array.isArray(v)?v.filter(v=>v.sessionId===state.identity.sessionId&&v.cwd===state.identity.cwd):[];}
 async function ack($,state,r){const v=await post($,state,{action:'ACK',noticeId:r.id,messageId:r.messageId});if(v.accepted!==true)throw Error('AGBRIO_NOTICE_RECEIPT_UNCONFIRMED');}
 export async function registerTaskWait($,state,input){return post($,state,{action:'REGISTER',threadId:input.threadId,generation:input.generation,turnId:input.turnId,followGoal:input.followGoal===true,followTask:input.followTask===true,ttlSeconds:input.ttlSeconds??86400});}

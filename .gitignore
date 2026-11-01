@@ -51,3 +51,5 @@ redemption-codes/
 # Private recording assets remain outside the public source export
 demo/
 src/demo/
+
+src-tauri/resources/browser-executor-lite/

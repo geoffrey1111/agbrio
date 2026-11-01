@@ -43,6 +43,12 @@ if($Installer){
 }else{throw 'Installer or diagnostic InstalledImage required.'}
 $agbrioExecutable=Join-Path $agbrioInstall 'ai-work-router.exe'
 if(!(Test-Path -LiteralPath $agbrioExecutable)){throw 'Installed application missing.'}
+# The default installer must retain shared helpers while omitting Chromium.
+if(Test-Path -LiteralPath (Join-Path $agbrioInstall 'browser-executor/chromium/chrome.exe')){throw 'CHROMIUM_STILL_BUNDLED'}
+if(!(Test-Path -LiteralPath (Join-Path $agbrioInstall 'browser-executor/node_modules/ws/index.js'))){throw 'SHARED_WS_MISSING_FROM_LITE_PACKAGE'}
+if(!(Test-Path -LiteralPath (Join-Path $agbrioInstall 'browser-executor/browser-package.mjs'))){throw 'OPTIONAL_BROWSER_PREPARATION_MISSING'}
+@{chromiumBundled=$false;sharedWsPresent=$true;preparationPresent=$true}|ConvertTo-Json|Set-Content (Join-Path $agbrioRoot 'optional-browser-proof.json') -Encoding utf8
+
 $agbrioStart=[Diagnostics.ProcessStartInfo]::new($agbrioExecutable)
 $agbrioStart.UseShellExecute=$false
 $agbrioStart.Environment['LOCALAPPDATA']=$agbrioData

@@ -6,7 +6,7 @@ const input={action:'wait',followTask:false,threadId:tid,generation:1,turnId:tur
 function fixture(){
  let time=100000,status='RUNNING',failure=false,submits=0,calls=0;const data=new Map(),hooks={};
  const state={identity:{sessionId:sid,cwd:'D:\\fixture'},instanceId:sid,origin:'http://127.0.0.1:12345',token:'a'.repeat(64),stopped:false};
- const $={clock:{now:async()=>time},store:{get:async k=>structuredClone(data.get(k)),set:async(k,v)=>data.set(k,structuredClone(v))},http:{fetch:async()=>{calls++;if(failure)throw Error('network');return{ok:true,text:JSON.stringify({...input,state:status})};}},prompt:{submit:async()=>{submits++;return{};}}};
+ const $={clock:{now:async()=>time},store:{get:async k=>structuredClone(data.get(k)),set:async(k,v)=>data.set(k,structuredClone(v))},http:{fetch:async()=>{calls++;if(failure)throw Error('network');return{ok:true,text:JSON.stringify({...input,state:status,subscriptions:[]})};}},prompt:{submit:async()=>{submits++;return{};}}};
  registerCodexWait((n,a,b)=>{hooks[n]=b??a;return{catch:()=>{}};},state);
  hooks['session.append']=async($,e,next)=>appendCodexWait($,state,e,await next(e));
  return{$,state,data,hooks,time:v=>time=v,status:v=>status=v,fail:v=>failure=v,submits:()=>submits,calls:()=>calls,wait:()=>handleCodexWait($,state,input),tick:()=>tickCodexWaits($,state)};
@@ -53,7 +53,7 @@ test('parallel wait and tick deduplicate; no body or user identity is submitted'
 });
 test('heartbeat without any registered wait performs no source request',async()=>{const f=fixture();await f.tick();assert.equal(f.calls(),0);});
 test('shared plugin storage keeps simultaneous Claude sessions independent across reload',async()=>{
- const f=fixture();await f.wait();f.$.http.fetch=async(_,init)=>({ok:true,text:JSON.stringify({...JSON.parse(init.body),state:'RUNNING'})});const other={...f.state,identity:{sessionId:turn,cwd:'D:\\fixture'},codexWaitQueue:null};
+ const f=fixture();await f.wait();f.$.http.fetch=async(_,init)=>({ok:true,text:JSON.stringify({...JSON.parse(init.body),state:'RUNNING',subscriptions:[]})});const other={...f.state,identity:{sessionId:turn,cwd:'D:\\fixture'},codexWaitQueue:null};
  await handleCodexWait(f.$,other,{...input,threadId:sid});
  assert.equal((await handleCodexWait(f.$,f.state,{action:'status'})).waits[0].threadId,tid);
  assert.equal((await handleCodexWait(f.$,other,{action:'status'})).waits[0].threadId,sid);
@@ -61,7 +61,7 @@ test('shared plugin storage keeps simultaneous Claude sessions independent acros
 });
 
 test('settled history never exhausts the active slots and archived turns never submit twice',async()=>{
- const f=fixture();f.$.http.fetch=async(_,init)=>({ok:true,text:JSON.stringify({...JSON.parse(init.body),state:'RUNNING'})});
+ const f=fixture();f.$.http.fetch=async(_,init)=>({ok:true,text:JSON.stringify({...JSON.parse(init.body),state:'RUNNING',subscriptions:[]})});
  const items=Array.from({length:64},(_,i)=>({...input,turnId:`30000000-0000-4000-8000-${String(i+1).padStart(12,'0')}`,status:'DELIVERED',expiresAt:200000}));
  f.data.set(`agbrio-codex-waits-v1:${sid}`,{...f.state.identity,waits:items});
  await handleCodexWait(f.$,f.state,{...input,turnId:'40000000-0000-4000-8000-000000000001'});
@@ -69,7 +69,7 @@ test('settled history never exhausts the active slots and archived turns never s
  const old=await handleCodexWait(f.$,f.state,{...input,turnId:items[0].turnId});assert.equal(old.wait.status,'DELIVERED');assert.equal(f.submits(),0);
 });
 test('more than eight live waits are accepted while an actual bounded active limit is explicit',async()=>{
- const f=fixture();f.$.http.fetch=async(_,init)=>({ok:true,text:JSON.stringify({...JSON.parse(init.body),state:'RUNNING'})});
+ const f=fixture();f.$.http.fetch=async(_,init)=>({ok:true,text:JSON.stringify({...JSON.parse(init.body),state:'RUNNING',subscriptions:[]})});
  for(let i=0;i<128;i++)await handleCodexWait(f.$,f.state,{...input,turnId:`50000000-0000-4000-8000-${String(i+1).padStart(12,'0')}`});
  assert.equal((await handleCodexWait(f.$,f.state,{action:'status'})).capacity.waiting,128);
  await assert.rejects(handleCodexWait(f.$,f.state,{...input,turnId:'60000000-0000-4000-8000-000000000001'}),/AGBRIO_WAIT_ACTIVE_LIMIT/);
@@ -80,3 +80,6 @@ test('explicit expired exact turn renewal revalidates without unlocking uncertai
 test('legacy UNKNOWN with an independent native receipt settles without a second submission',async()=>{const f=fixture();await f.wait();f.status('RESULT_READY');await f.tick();assert.equal(f.submits(),1);const fetch=f.$.http.fetch;f.$.http.fetch=async(u,o)=>JSON.parse(o.body).action==='RECONCILE_LEGACY'?{ok:true,text:JSON.stringify({receipts:[{...input,messageId:sid}]})}:fetch(u,o);f.time(140000);await f.tick();assert.equal((await handleCodexWait(f.$,f.state,{action:'status'})).waits[0].status,'DELIVERED');assert.equal(f.submits(),1);});
 
 test('native stored user envelope also acknowledges only the exact plugin notice',async()=>{const f=fixture();await f.wait();f.status('RESULT_READY');await f.tick();const r={type:'user',uuid:sid,message:{role:'user',content:waitNotice(input,'RESULT_READY')}};await appendCodexWait(f.$,f.state,{door:'delivery',origin:{kind:'plugin',name:'agbrio-bridge'}},r);assert.equal((await handleCodexWait(f.$,f.state,{action:'status'})).waits[0].status,'DELIVERED');assert.equal(f.submits(),1);});
+
+test('status reads durable Host subscriptions even when local plugin storage is empty',async()=>{const f=fixture();f.$.http.fetch=async()=>({ok:true,text:JSON.stringify({subscriptions:[{id:'durable',mode:'TASK',status:'ACTIVE',threadId:tid,generation:1}]})});const v=await handleCodexWait(f.$,f.state,{action:'status'});assert.equal(v.persistentSubscriptions[0].id,'durable');assert.equal(v.capacity.waiting,1);assert.equal(v.capacity.persistentActive,1);assert.equal(v.capacity.legacyWaiting,0);assert.equal(f.submits(),0);});
+test('registration failures preserve safe Host reason and HTTP status without raw secrets',async()=>{const f=fixture();f.$.http.fetch=async()=>({ok:false,status:400,text:JSON.stringify({error:'CLAUDE_ROOT_CHANGED',token:'PRIVATE_DO_NOT_FORWARD'})});const result=JSON.parse((await f.hooks['tool.call'](f.$,{action:'wait',threadId:tid,generation:1,followTask:true})).result);assert.equal(result.error,'CLAUDE_ROOT_CHANGED');assert.equal(result.httpStatus,400);assert.ok(!JSON.stringify(result).includes('PRIVATE_DO_NOT_FORWARD'));});

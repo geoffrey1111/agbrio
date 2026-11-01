@@ -12,7 +12,7 @@ export function hostOrigin(value) {
   return u.origin;
 }
 function diagnostic(state) {
-  return JSON.stringify({pluginVersion:'0.1.20',mode:'OWNER_MANUAL_INPUT',phase:state.phase,error:state.error,httpStatus:state.httpStatus,identityReady:!!state.identity,pendingEvents:state.pending.length,deliveredEvents:state.delivered,writesEnabled:false,manualInputProtocol:1,codexWaitProtocol:state.codexWaitReady?1:null,resourceNoticeProtocol:2,taskNoticeProtocol:2,taskSubscriptions:state.taskSubscriptions?.length??0,taskNoticeError:state.taskNoticeError??null});
+  return JSON.stringify({pluginVersion:'0.1.22',mode:'OWNER_MANUAL_INPUT',phase:state.phase,error:state.error,httpStatus:state.httpStatus,identityReady:!!state.identity,pendingEvents:state.pending.length,deliveredEvents:state.delivered,writesEnabled:false,manualInputProtocol:1,codexWaitProtocol:state.codexWaitReady?1:null,resourceNoticeProtocol:2,taskNoticeProtocol:2,taskSubscriptions:state.taskSubscriptions?.length??0,taskNoticeError:state.taskNoticeError??null,taskNoticeHttpStatus:state.taskNoticeHttpStatus??null});
 }
 function noteError(state, error) {
   const message=typeof error?.message==='string' ? error.message : '';
@@ -29,7 +29,7 @@ async function flush($, state) {
   while (state.pending.length) {
     state.phase='HTTP';
     let response;
-    try { response = await $.http.fetch(`${state.origin}/v1/claude-code/events`, {method: 'POST', headers: {'content-type': 'application/json', authorization: `Bearer ${state.token}`, 'x-agbrio-control-version':'1','x-agbrio-plugin-version':'0.1.20'}, body: JSON.stringify(state.pending[0])}); } catch {throw new Error('AGBRIO_HTTP_UNAVAILABLE');}
+    try { response = await $.http.fetch(`${state.origin}/v1/claude-code/events`, {method: 'POST', headers: {'content-type': 'application/json', authorization: `Bearer ${state.token}`, 'x-agbrio-control-version':'1','x-agbrio-plugin-version':'0.1.22'}, body: JSON.stringify(state.pending[0])}); } catch {throw new Error('AGBRIO_HTTP_UNAVAILABLE');}
     state.httpStatus=Number.isInteger(response.status) ? response.status : null;
     if (!response.ok) throw new Error('AGBRIO_ADAPTER_DELIVERY_UNCONFIRMED');
     const recovered=state.error!==null;state.pending.shift();state.delivered++;state.phase='CONNECTED';state.error=null;state.reported=null;if(recovered)await report($,state);
@@ -78,7 +78,7 @@ export function register(on, options) {
       state.identity={sessionId,cwd,version};
       await initCodexWait($,state);
       void emit($,state,'SESSION_START').then(async()=>{try{await publishQuota($,state);}catch{}}).catch(async error=>{noteError(state,error);await report($,state);});
-      $.clock.every(5_000,async()=>{try {await refreshCwd($,state);await flushOwnerReceipts($,state);await flushReceipt($,state);await emit($,state,'HEARTBEAT');} catch(error){noteError(state,error);await report($,state);}try{await tickTaskNotices($,state);}catch{state.taskNoticeError='AGBRIO_NOTICE_SOURCE_UNAVAILABLE';}try{await tickCodexWaits($,state);}catch{/* wait failure cannot disable observation or a manual receipt */}try{await tickResourceNotice($,state);}catch{/* optional resource notice must not disable observation */}try{await publishQuota($,state);}catch{/* optional metadata read must not disable observation */}});
+      $.clock.every(5_000,async()=>{try {await refreshCwd($,state);await flushOwnerReceipts($,state);await flushReceipt($,state);await emit($,state,'HEARTBEAT');} catch(error){noteError(state,error);await report($,state);}try{await tickTaskNotices($,state);}catch(error){state.taskNoticeError=error?.message??'AGBRIO_NOTICE_SOURCE_UNAVAILABLE';state.taskNoticeHttpStatus=error?.httpStatus??null;}try{await tickCodexWaits($,state);}catch{/* wait failure cannot disable observation or a manual receipt */}try{await tickResourceNotice($,state);}catch{/* optional resource notice must not disable observation */}try{await publishQuota($,state);}catch{/* optional metadata read must not disable observation */}});
     } catch(error) {noteError(state,error);void report($,state);}
     return next(e);
   });

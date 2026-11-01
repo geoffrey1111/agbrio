@@ -1,5 +1,5 @@
 // Native Mods APIs only. A notice is metadata, never a provider reply or an owner instruction.
-import {registerTaskWait,cancelTaskWait,taskWaitStatus,reconcileLegacyWaits} from './codex-notices.mjs';
+import {registerTaskWait,cancelTaskWait,taskWaitStatus,reconcileLegacyWaits,hostFailure} from './codex-notices.mjs';
 const TOOL='mcp__agbrio-bridge__codex_wait';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const TERMINAL=['RESULT_READY','ACTION_REQUIRED','FAILED','INTERRUPTED'];
@@ -35,7 +35,7 @@ function target(input){
 function same(a,b){return a.threadId===b.threadId&&a.generation===b.generation&&a.turnId===b.turnId;}
 export async function probeCodexWait($,state,wait){
   const response=await $.http.fetch(`${state.origin}/v1/claude-code/codex-wait`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${state.token}`,'x-agbrio-wait-version':'2'},body:JSON.stringify({...identity(state),instanceId:state.instanceId,...target(wait)})});
-  if(!response.ok)throw Error(response.status===404?'AGBRIO_WAIT_HOST_UPDATE_REQUIRED':'AGBRIO_WAIT_SOURCE_UNAVAILABLE');
+  if(!response.ok)throw hostFailure(response);
   const value=JSON.parse(response.text||'{}');
   if(!same(value,wait)||!['IDLE','RUNNING','RESULT_PENDING','INCOMPLETE','UNKNOWN',...TERMINAL].includes(value.state))throw Error('AGBRIO_WAIT_RESPONSE_INVALID');
   return value;
@@ -48,7 +48,7 @@ export async function handleCodexWait($,state,input){return serial(state,async()
   if(input.action==='cancel'&&input.subscriptionId)return cancelTaskWait($,state,input);
   const waits=await load($,state),now=await $.clock.now();
   for(const w of waits)if(w.status==='WAITING'&&w.expiresAt<=now)w.status='EXPIRED';
-  if(input.action==='status'){await save($,state,waits);return{persistentSubscriptions:state.taskSubscriptions??[],pluginVersion:'0.1.20',waits,capacity:{waiting:waits.filter(w=>w.status==='WAITING').length,maxWaiting:MAX_WAITING,unknown:waits.filter(w=>w.status==='UNKNOWN').length}};}
+  if(input.action==='status'){const host=await taskWaitStatus($,state);if(!Array.isArray(host.subscriptions))throw Error('AGBRIO_NOTICE_RESPONSE_INVALID');state.taskSubscriptions=host.subscriptions;await save($,state,waits);return{persistentSubscriptions:host.subscriptions,pluginVersion:'0.1.22',waits,capacity:{waiting:waits.filter(w=>w.status==='WAITING').length+host.subscriptions.filter(s=>s.status==='ACTIVE'&&s.mode!=='PI').length,legacyWaiting:waits.filter(w=>w.status==='WAITING').length,persistentActive:host.subscriptions.filter(s=>s.status==='ACTIVE'&&s.mode!=='PI').length,maxWaiting:MAX_WAITING,unknown:waits.filter(w=>w.status==='UNKNOWN').length}};}
   const t=target(input),saved=await $.store.get(archiveKey(identity(state),t)),old=waits.find(w=>same(w,t))??(saved?.sessionId===state.identity.sessionId&&saved.cwd===state.identity.cwd&&same(saved.wait??{},t)?saved.wait:null);
   if(input.action==='cancel'){
     if(old?.status==='WAITING')old.status='CANCELLED';
@@ -103,12 +103,12 @@ async function submitWaitNotice($,state,wait){
 }
 export async function initCodexWait($,state){
     state.codexWaitReady=false;
-    try{await $.tool.register({name:'codex_wait',description:'Only for an owner-delegated Codex task: use followTask:true for a durable subscription to each new turn result/question/failure without a one-hour expiration. Use followGoal:true to follow the same native Goal across intermediate turns. Receive new-question metadata and final/blocked Goal metadata separately, without progress spam. Host-persisted subscriptions survive reloads. Set followGoal:false or omit it for legacy exact-turn one-shot waiting. Cancel a durable subscription by subscriptionId, or inspect status. First read the exact target with authorized Agbrio MCP. Does not read bodies, send to Codex, or approve further work. Requires the Agbrio Host with codex-wait support; open session and live plugin required. Settled history is compacted without losing exact-turn deduplication. Up to128 concurrent waits; status reports capacity. UNKNOWN is never retried.',inputSchema:{type:'object',properties:{action:{type:'string',enum:['wait','status','cancel']},followGoal:{type:'boolean'},followTask:{type:'boolean'},subscriptionId:{type:'string'},threadId:{type:'string'},generation:{type:'integer'},turnId:{type:'string'},ttlSeconds:{type:'integer',minimum:30,maximum:86400}},required:['action'],additionalProperties:false}});state.codexWaitReady=true;}catch{}
+    try{await $.tool.register({name:'codex_wait',description:'Only for an owner-delegated Codex task: use followTask:true for a durable subscription to each new turn result/question/failure without a one-hour expiration. Use followGoal:true to follow the same native Goal across intermediate turns. Receive new-question metadata and final/blocked Goal metadata separately, without progress spam. Host-persisted subscriptions survive reloads. Default is a durable task subscription without turnId; repeat registration returns its existing ID. Set followTask:false and followGoal:false with an exact turnId for legacy one-shot waiting. Cancel a durable subscription by subscriptionId, or inspect status. First read the exact target with authorized Agbrio MCP. Does not read bodies, send to Codex, or approve further work. Requires the Agbrio Host with codex-wait support; open session and live plugin required. Settled history is compacted without losing exact-turn deduplication. Up to128 concurrent waits; status reports capacity. UNKNOWN is never retried.',inputSchema:{type:'object',properties:{action:{type:'string',enum:['wait','status','cancel']},followGoal:{type:'boolean'},followTask:{type:'boolean'},subscriptionId:{type:'string'},threadId:{type:'string'},generation:{type:'integer'},turnId:{type:'string'},ttlSeconds:{type:'integer',minimum:30,maximum:86400}},required:['action'],additionalProperties:false}});state.codexWaitReady=true;}catch{}
 }
 export function registerCodexWait(on,state){
   on('tool.call',{tool:TOOL},async($,e)=>{
     try{return{result:JSON.stringify(await handleCodexWait($,state,e))};}
-    catch(error){const code=['AGBRIO_WAIT_HOST_UPDATE_REQUIRED','AGBRIO_WAIT_SOURCE_UNAVAILABLE','AGBRIO_WAIT_SESSION_UNAVAILABLE','AGBRIO_WAIT_TARGET_INVALID','AGBRIO_WAIT_TTL_INVALID','AGBRIO_WAIT_LIMIT','AGBRIO_WAIT_ACTIVE_LIMIT'].includes(error?.message)?error.message:'AGBRIO_WAIT_NOT_REGISTERED';return{result:JSON.stringify({error:code,instruction:'Check the exact target, live plugin/Host compatibility and authorized MCP. No notification is promised; do not replace this with a polling task or resend.'})};}
+    catch(error){const code=/^(?:CLAUDE|WATCH|AGBRIO|CODEX)_[A-Z0-9_]{1,112}$/.test(error?.message??'')?error.message:['AGBRIO_WAIT_HOST_UPDATE_REQUIRED','AGBRIO_WAIT_SOURCE_UNAVAILABLE','AGBRIO_WAIT_SESSION_UNAVAILABLE','AGBRIO_WAIT_TARGET_INVALID','AGBRIO_WAIT_TTL_INVALID','AGBRIO_WAIT_LIMIT','AGBRIO_WAIT_ACTIVE_LIMIT'].includes(error?.message)?error.message:'AGBRIO_WAIT_NOT_REGISTERED';return{result:JSON.stringify({error:code,pluginVersion:'0.1.22',sessionId:UUID.test(state.identity?.sessionId??'')?state.identity.sessionId:null,threadId:UUID.test(e.threadId??'')?e.threadId:null,httpStatus:error.httpStatus??null,instruction:code==='CLAUDE_ROOT_CHANGED'?'The plugin current working directory differs from the registered native session root. Report this exact error; do not rebind or re-login.':code==='CLAUDE_COMMAND_PUBLISHER_CHANGED'?'The exact native session/plugin instance is not currently registered. Check /agbrio-status and reload the existing plugin when idle; retain authorization.':'Check the exact target, live plugin/Host compatibility and authorized MCP. No notification is promised; do not replace this with a polling task or resend.'})};}
   });
 }
 export async function appendCodexWait($,state,e,result){

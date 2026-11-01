@@ -5,7 +5,7 @@ on:
       version:
         description: Exact version built from main
         required: true
-        default: 0.1.35-rc.106
+        default: 0.1.35-rc.107
       installer_sha256:
         description: SHA256 of the updater-signed installer
         required: true
@@ -52,5 +52,6 @@ jobs:
           path: |
             runtime/clean-windows/proof.json
             runtime/clean-windows/entrypoints-proof.json
+            runtime/clean-windows/optional-browser-proof.json
             runtime/clean-windows/*.png
 

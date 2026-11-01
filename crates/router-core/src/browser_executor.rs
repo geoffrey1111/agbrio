@@ -138,7 +138,7 @@ impl ExecutorProcess {
             process.input.flush().map_err(|_| "EXECUTOR_WRITE_FAILED")?;
             let reply = process
                 .output
-                .recv_timeout(Duration::from_secs(60))
+                .recv_timeout(Duration::from_secs(if operation=="open"{1800}else{60}))
                 .map_err(|_| "EXECUTOR_REPLY_UNOBSERVED")??;
             if reply.get("id").and_then(Value::as_u64) != Some(id) {
                 return Err("EXECUTOR_REPLY_IDENTITY_MISMATCH".into());
