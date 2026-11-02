@@ -23,3 +23,5 @@ it('unlocks a choice when the caller proved no command was accepted',async()=>{
  const submit=vi.fn(async()=>undefined);render(<NativeTurnActions card={card} disabled={false} replies={[]} submit={submit}/>);
  fireEvent.click(screen.getByRole('radio'));fireEvent.click(screen.getByRole('button',{name:'发送选择'}));await waitFor(()=>expect(submit).toHaveBeenCalledTimes(1));await waitFor(()=>expect(screen.getByRole('button',{name:'发送选择'})).toBeEnabled());
 });
+
+it('renders the original label choices and sends only the explicitly selected normalized reply once',async()=>{const submit=vi.fn(async()=>'attempt');render(<NativeTurnActions card={{id:'label-only',question:'要我把这条结果重发给管理吗？',actions:[{label:'重发给管理',message:'重发给管理'},{label:'我自己转',message:'我自己转'}]}} disabled={false} replies={[]} submit={submit}/>);expect(submit).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('radio',{name:'重发给管理'}));const send=screen.getByRole('button',{name:'发送选择'});fireEvent.click(send);fireEvent.click(send);await waitFor(()=>expect(submit).toHaveBeenCalledExactlyOnceWith('重发给管理'));});

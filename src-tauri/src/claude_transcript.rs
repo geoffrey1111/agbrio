@@ -136,7 +136,7 @@ fn classify(line: &[u8], session: &str) -> Line {
             // Desktop's wrap_up is native user-facing presentation, not tool chatter.
             // Read only the exact built-in name and documented visible fields.
             let wrap=v["message"]["content"].as_array().and_then(|items|items.iter().find(|b|b["type"]=="tool_use"&&b["name"]=="mcp__ccd_turn__wrap_up"));
-            let card=wrap.map(|b|{let input=&b["input"];let actions=input["actions"].as_array().map(|a|a.iter().take(12).filter_map(|a|Some(serde_json::json!({"label":a["label"].as_str()?.chars().take(2000).collect::<String>(),"message":a["message"].as_str()?.chars().take(100000).collect::<String>()}))).collect::<Vec<_>>()).unwrap_or_default();serde_json::json!({"id":b["id"],"question":input["ask"].as_str(),"actions":actions})});
+            let card=wrap.map(|b|{let input=&b["input"];let actions=input["actions"].as_array().map(|a|a.iter().take(12).filter_map(|a|Some(serde_json::json!({"label":a["label"].as_str().filter(|s|!s.trim().is_empty())?.chars().take(2000).collect::<String>(),"message":a["message"].as_str().filter(|s|!s.trim().is_empty()).or_else(||a["label"].as_str())?.chars().take(100000).collect::<String>()}))).collect::<Vec<_>>()).unwrap_or_default();serde_json::json!({"id":b["id"],"question":input["ask"].as_str(),"actions":actions})});
             let recap=wrap.and_then(|b|b["input"]["recap"].as_str()).unwrap_or("");
             let mut text=if text.trim().is_empty(){recap.to_owned()}else{text};
             let files = v["message"]["content"].as_array().map(|items| presented_files(items)).unwrap_or_default();
@@ -553,6 +553,12 @@ This is how Claude Code surfaces a prompt a plugin submits between turns.";
       std::fs::write(&path,[user("p","u","开始"),wrap.to_string(),end.to_string()].join("\n")).unwrap();let page=page(&path,S,None).unwrap();let card=&page.turns[0].messages[1];assert_eq!(card.id,"claude_msg:wrap-native");assert_eq!(card.text,"阶段结果");assert_eq!(card.card.as_ref().unwrap()["actions"][0]["message"],"执行方案 A");let status=status(&path,S).unwrap();assert_eq!(status.state,"COMPLETE");assert_eq!(status.reply.as_deref(),Some("阶段结果"));
     }
     #[test]
+    fn native_wrap_up_label_only_actions_remain_selectable_without_inventing_options(){
+      let dir=tempfile::tempdir().unwrap();let path=dir.path().join("label-only.jsonl");
+      let wrap=json!({"type":"assistant","sessionId":S,"uuid":"row","message":{"id":"label-only","content":[{"type":"tool_use","name":"mcp__ccd_turn__wrap_up","id":"card-call","input":{"recap":"结果","ask":"要我把这条结果重发给管理吗？","actions":[{"label":"重发给管理"},{"label":"我自己转"},{"label":"自定义","message":"原生指定消息"},{"message":"无标签不应显示"}]}}]}});
+      std::fs::write(&path,[user("p","u","开始"),wrap.to_string()].join("\n")).unwrap();let p=page(&path,S,None).unwrap();let actions=&p.turns[0].messages[1].card.as_ref().unwrap()["actions"];assert_eq!(actions.as_array().unwrap().len(),3);assert_eq!(actions[0]["label"],"重发给管理");assert_eq!(actions[0]["message"],"重发给管理");assert_eq!(actions[1]["message"],"我自己转");assert_eq!(actions[2]["message"],"原生指定消息");
+    }
+    #[test]
     fn owner_decision_receipts_require_an_exact_native_tool_result_row(){
       let dir=tempfile::tempdir().unwrap();let path=dir.path().join("receipt.jsonl");let uuid="40000000-0000-4000-8000-000000000001";
       let row=json!({"type":"user","sessionId":S,"uuid":uuid,"message":{"content":[{"type":"tool_result","tool_use_id":"exact-call","content":"done"}]}});
@@ -586,4 +592,12 @@ mod presentation_tests {
 
 #[cfg(test)]mod batch_receipt_tests{use super::*;use serde_json::json;
  #[test]fn only_original_native_plugin_rows_settle_requested_metadata(){let d=tempfile::tempdir().unwrap();let path=d.path().join("native.jsonl");let sid="10000000-0000-4000-8000-000000000001";let id="20000000-0000-4000-8000-000000000001";let rows=[json!({"type":"user","sessionId":sid,"uuid":id,"origin":{"kind":"plugin","name":"agbrio-bridge"},"message":{"content":"exact metadata"}}),json!({"type":"user","sessionId":sid,"uuid":id,"origin":{"kind":"user"},"message":{"content":"foreign origin"}})];std::fs::write(&path,rows.iter().map(Value::to_string).collect::<Vec<_>>().join("\n")).unwrap();assert_eq!(find_plugin_prompt_batch(&path,sid,&["exact metadata".into(),"foreign origin".into()]),vec![Some(id.into()),None]);assert_eq!(find_plugin_prompt_batch(&path,id,&["exact metadata".into()]),vec![None]);}
+    #[test]
+    #[ignore="explicit owner-selected native card; read-only, no prompt or decision"]
+    fn owner_selected_label_card_read_only(){
+      let sid=std::env::var("AGBRIO_OWNER_WRAP_SESSION").unwrap();assert!(native(&sid));let id=std::env::var("AGBRIO_OWNER_WRAP_TOOL").unwrap();assert!(id.starts_with("toolu_"));let root=PathBuf::from(std::env::var_os("USERPROFILE").unwrap()).join(".claude/projects");let path=find(&root,&sid).unwrap();let mut cursor=None;let mut found=None;
+      for _ in 0..64{let p=page(&path,&sid,cursor).unwrap();for m in p.turns.iter().flat_map(|t|&t.messages){if let Some(card)=m.card.as_ref().filter(|c|c["id"]==id){found=Some(card.clone());}}if found.is_some()||p.next.is_none(){break;}cursor=p.next;}
+      let card=found.expect("exact native card not found");let actions=card["actions"].as_array().unwrap();assert_eq!(actions.len(),2);assert!(actions.iter().all(|a|a["label"].as_str().is_some_and(|v|!v.is_empty())&&a["message"]==a["label"]));println!("exactNativeCard=true options=2 ownerWrites=0 providerCalls=0");
+    }
+
 }
