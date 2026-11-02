@@ -66,6 +66,19 @@ impl RouterStore {
     pub fn finish_watch_reply(&self,id:&str,status:&str,turn:Option<&str>,error:Option<&str>)->Result<(),String>{if !matches!(status,"SENT"|"UNKNOWN"|"FAILED"){return Err("REPLY_STATUS_INVALID".into());}self.with_connection(|c|{let changed=c.execute("UPDATE watch_replies SET status=?2,turn_id=?3,error_code=?4,updated_at=?5 WHERE id=?1 AND status IN ('QUEUED','SENDING') AND (?2!='FAILED' OR status='QUEUED')",params![id,status,turn,error,now()]).map_err(db_error)?;if changed!=1{return Err("REPLY_ALREADY_ATTEMPTED".into());}Ok(())})}
     pub fn cancel_watch_reply(&self,thread:&str,id:&str)->Result<(),String>{self.with_connection(|c|{if c.execute("UPDATE watch_replies SET status='CANCELLED',updated_at=?3 WHERE id=?2 AND thread_id=?1 AND status='QUEUED'",params![thread,id,now()]).map_err(db_error)?!=1{return Err("REPLY_ALREADY_ATTEMPTED".into());}Ok(())})}
     pub fn recover_watch_replies(&self)->Result<usize,String>{self.with_connection(|c|c.execute("UPDATE watch_replies SET status='UNKNOWN',error_code='HOST_RESTART_ACK_UNKNOWN',updated_at=?1 WHERE status='SENDING'",[now()]).map_err(db_error))}
+    /// Only an exact native question-answer envelope settles this special send.
+    /// A turn/steer acknowledgement can precede native input consumption by minutes.
+    pub fn reconcile_async_answer_replies(&self,thread:&str,generation:i64,cards:&[Value])->Result<usize,String>{self.with_connection(|c|{
+        let context=codex_watch::chat_context(c,thread)?;if context.generation!=generation||!context.enabled{return Err("REPLY_TARGET_CHANGED_REFRESH".into())}
+        let mut changed=0;
+        for card in cards.iter().filter(|q|q["responseSent"]==true){
+            let(Some(request),Some(hash))=(card["requestId"].as_str(),card["responseHash"].as_str())else{continue};
+            let id=crate::codex::async_questions::answer_id(thread,request);
+            let prior=c.query_row(&format!("SELECT {COLS} FROM watch_replies WHERE id=?1 AND thread_id=?2 AND generation=?3 AND status='UNKNOWN'"),params![id,thread,generation],row).optional().map_err(db_error)?;
+            let Some(prior)=prior else{continue};if crate::codex::async_questions::response_hash(&prior.text).as_deref()!=Some(hash){continue}
+            changed+=c.execute("UPDATE watch_replies SET status='SENT',error_code=NULL,updated_at=?2 WHERE id=?1 AND status='UNKNOWN'",params![id,now()]).map_err(db_error)?;
+        }Ok(changed)
+    })}
     pub fn require_no_watch_reply_writer(&self,thread:&str)->Result<(),String>{self.with_connection(|c|{let count:i64=c.query_row("SELECT COUNT(*) FROM watch_replies WHERE thread_id=?1 AND status IN ('QUEUED','SENDING','UNKNOWN')",[thread],|r|r.get(0)).map_err(db_error)?;if count>0{return Err("REPLY_PREVIOUS_PENDING_CHECK_FIRST".into());}Ok(())})}
     pub fn acknowledge_watch_reply_unknown(&self,thread:&str,id:&str,confirmed:bool)->Result<(),String>{if !confirmed{return Err("REPLY_OWNER_CONFIRMATION_REQUIRED".into());}self.with_connection(|c|{if c.execute("UPDATE watch_replies SET status='ACKNOWLEDGED',error_code='OWNER_CHECKED_DELIVERY_STILL_UNKNOWN',updated_at=?3 WHERE id=?2 AND thread_id=?1 AND status='UNKNOWN'",params![thread,id,now()]).map_err(db_error)?!=1{return Err("REPLY_STATUS_CHANGED_REFRESH".into());}Ok(())})}
     /// Explicitly revoke an unacknowledged request ID, including a delayed HTTP
@@ -105,6 +118,12 @@ fn setup()->(tempfile::TempDir,RouterStore,WatchReply){let d=tempfile::tempdir()
  let(_d,s,mut queued)=setup();queued.mode="QUEUE".into();queued.expected_turn_id=Some("active-turn".into());let original=s.prepare_watch_reply(&queued).unwrap();
  let mut steer=queued.clone();steer.id=Uuid::new_v4().to_string();steer.mode="STEER".into();steer.text="guide the current turn".into();s.prepare_watch_reply(&steer).unwrap();s.claim_watch_reply(&steer.id).unwrap();assert!(s.queued_watch_replies().unwrap().is_empty());assert!(s.claim_watch_reply(&queued.id).is_err());
  s.finish_watch_reply(&steer.id,"SENT",Some("active-turn"),None).unwrap();assert_eq!(serde_json::to_value(s.watch_reply(&queued.id).unwrap().unwrap()).unwrap(),serde_json::to_value(original).unwrap());assert_eq!(s.queued_watch_replies().unwrap()[0].id,queued.id);assert_eq!(s.queued_watch_reply_target(&queued.id).unwrap().as_deref(),Some("active-turn"));
+}
+
+#[test]fn async_answer_ack_stays_unknown_until_matching_native_record_even_after_reopen(){
+ let(d,s,mut r)=setup();let request="exact-question";r.id=crate::codex::async_questions::answer_id(&r.thread_id,request);r.text=format!("<send_user_message_question_reply>{}</send_user_message_question_reply>",serde_json::json!([{"questionItemId":"question-key","answer":"A"}]));s.prepare_watch_reply(&r).unwrap();s.claim_watch_reply(&r.id).unwrap();s.finish_watch_reply(&r.id,"UNKNOWN",Some("turn"),Some("REPLY_ASYNC_ACCEPTED_UNCONFIRMED")).unwrap();
+ let hash=crate::codex::async_questions::response_hash(&r.text).unwrap();let wrong=serde_json::json!({"requestId":request,"responseSent":true,"responseHash":"different"});assert_eq!(s.reconcile_async_answer_replies(&r.thread_id,r.generation,&[wrong]).unwrap(),0);assert_eq!(s.watch_reply(&r.id).unwrap().unwrap().status,"UNKNOWN");assert!(s.claim_watch_reply(&r.id).is_err());
+ drop(s);let s=RouterStore::open_at(d.path().join("router.db")).unwrap();let card=serde_json::json!({"requestId":request,"responseSent":true,"responseHash":hash});assert!(s.reconcile_async_answer_replies(&r.thread_id,r.generation+1,&[card.clone()]).is_err());assert_eq!(s.reconcile_async_answer_replies(&r.thread_id,r.generation,&[card.clone()]).unwrap(),1);assert_eq!(s.watch_reply(&r.id).unwrap().unwrap().status,"SENT");assert_eq!(s.reconcile_async_answer_replies(&r.thread_id,r.generation,&[card]).unwrap(),0);drop(s);drop(d);
 }
 
 }

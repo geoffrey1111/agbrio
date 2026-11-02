@@ -90,7 +90,15 @@ impl RouterStore{
    self.with_connection(|c|{require_binding(c,&b)?;enqueue(c,&sub,&anchor,if t.state=="WAITING_DECISION"{"QUESTION"}else{"PI_RESULT"},&t.state,None,t.updated_at)})?;
   }Ok(())
  }
- pub fn codex_notice_auth(&self,token:&str,p:&Command)->Result<(),String>{self.with_connection(|c|{super::claude_manual::verify_publisher(c,token,&p.session_id,&p.instance_id,&p.cwd)?;let cwd:String=c.query_row("SELECT cwd FROM claude_sessions WHERE session_id=?1",[&p.session_id],|r|r.get(0)).map_err(db_error)?;if !crate::claude_code::same_root(&cwd,&p.cwd){return Err("CLAUDE_ROOT_CHANGED".into());}Ok(())})}
+ pub fn codex_notice_auth(&self,token:&str,p:&Command)->Result<(),String>{self.with_connection(|c|{
+  // The authenticated native publisher's cwd is a working directory, not its
+  // registered session root. Desktop can reload a plugin while cwd is elsewhere.
+  // Receiver routing always uses claude_sessions.cwd; subscription validation
+  // still pins that exact root, source generation and original receiver.
+  super::claude_manual::verify_publisher(c,token,&p.session_id,&p.instance_id,&p.cwd)?;
+  let cwd:String=c.query_row("SELECT cwd FROM claude_sessions WHERE session_id=?1",[&p.session_id],|r|r.get(0)).map_err(db_error)?;
+  if crate::claude_code::root_key(&cwd).is_none(){return Err("CLAUDE_ROOT_UNAVAILABLE".into());}Ok(())
+ })}
  pub fn codex_notice_sync(&self,token:&str,p:&Command)->Result<Value,String>{self.codex_notice_auth(token,p)?;let receiver_root=self.claude_session(&p.session_id)?.cwd;self.with_connection(|c|{let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
   if matches!(p.action.as_str(),"STATUS"|"OFFER"|"SYNC"){
    let mut q=tx.prepare("SELECT * FROM claude_codex_subscriptions WHERE receiver_sid=?1 AND receiver_cwd=?2 AND status='ACTIVE' AND expires_at<=?3").map_err(db_error)?;
@@ -125,6 +133,17 @@ impl RouterStore{
 #[cfg(test)]mod tests{
  use super::*;
  fn fixture()->(tempfile::TempDir,RouterStore,String,Command,Binding){let d=tempfile::tempdir().unwrap();let s=RouterStore::open_at(d.path().join("state.db")).unwrap();let pair=s.create_claude_connection().unwrap();let sid=id();let instance=id();let cwd=d.path().to_str().unwrap().to_string();s.ingest_claude_event(&pair.token,&crate::claude_code::Event{event_id:id(),session_id:sid.clone(),instance_id:instance.clone(),sequence:1,cwd:cwd.clone(),version:"2.1.309".into(),kind:"SESSION_START".into(),turn_id:None,text:None,completed_at:None}).unwrap();s.enable_codex_watch("source-thread","source",&cwd,&codex_watch::WatchSnapshot{state:"RUNNING".into(),turn_id:Some("anchor-turn".into()),item_id:None,text:"private source body".into()}).unwrap();let w=s.registered_codex_watch("source-thread").unwrap();let p:Command=serde_json::from_value(serde_json::json!({"sessionId":sid,"instanceId":instance,"cwd":cwd,"action":"SYNC"})).unwrap();let b=Binding{receiver_sid:sid,receiver_cwd:cwd.clone(),thread_id:w.thread_id,generation:w.generation,source_cwd:cwd,anchor_turn:"anchor-turn".into(),mode:"GOAL".into(),goal_key:Some("a".repeat(64)),expires_at:now()+86400000};(d,s,pair.token,p,b)}
+ #[test]fn reloaded_publisher_working_directory_cannot_change_durable_receiver_root(){
+  let(d,s,token,mut p,mut b)=fixture();b.mode="TASK".into();b.goal_key=None;b.expires_at=253402300799000;let sub=s.register_codex_notice(&b).unwrap();
+  let elsewhere=tempfile::tempdir().unwrap();p.cwd=elsewhere.path().to_string_lossy().into();p.action="OFFER".into();
+  s.observe_codex_notices(&b.thread_id,b.generation,&b.source_cwd,"new-turn","inProgress",None,None,&[Question{request_id:"new-question".into(),turn_id:"new-turn".into(),kind:"USER_INPUT".into()}]).unwrap();
+  assert_eq!(s.codex_notice_sync(&token,&p).unwrap()["notice"]["requestId"],"new-question");drop(s);
+  let s=RouterStore::open_at(d.path().join("state.db")).unwrap();assert_eq!(s.codex_notice_sync(&token,&p).unwrap()["notice"]["requestId"],"new-question");
+  assert_eq!(s.codex_notice_sources(None).unwrap()[0].binding.receiver_cwd,b.receiver_cwd);assert_eq!(s.codex_notice_sources(None).unwrap()[0].id,sub.id);
+  let original=p.instance_id.clone();p.instance_id=id();assert!(s.codex_notice_sync(&token,&p).is_err());p.instance_id=original;assert!(s.codex_notice_sync("invalid",&p).is_err());
+  // A real registered root change still refuses the old bound receiver.
+  s.with_connection(|c|{c.execute("UPDATE claude_sessions SET cwd=?2 WHERE session_id=?1",params![p.session_id,p.cwd]).map_err(db_error)?;Ok(())}).unwrap();assert!(s.codex_notice_sync(&token,&p).unwrap()["notice"].is_null());
+ }
  #[test]fn offered_notice_does_not_consume_attempt_and_claim_is_idempotent(){let(_d,s,token,mut p,b)=fixture();s.register_codex_notice(&b).unwrap();s.observe_codex_notices(&b.thread_id,b.generation,&b.source_cwd,"t","inProgress",b.goal_key.as_deref(),Some("blocked"),&[]).unwrap();p.action="OFFER".into();let n=s.codex_notice_sync(&token,&p).unwrap()["notice"].clone();assert!(!n.is_null());assert!(s.pending_codex_native_receipts().unwrap().is_empty());assert_eq!(s.codex_notice_sync(&token,&p).unwrap()["notice"]["id"],n["id"]);p.action="CLAIM".into();p.claim_id=Some(id());p.notice_id=n["id"].as_str().map(str::to_owned);assert_eq!(s.codex_notice_sync(&token,&p).unwrap()["accepted"],true);assert_eq!(s.codex_notice_sync(&token,&p).unwrap()["accepted"],true);assert_eq!(s.pending_codex_native_receipts().unwrap().len(),1);p.action="OFFER".into();assert!(s.codex_notice_sync(&token,&p).unwrap()["notice"].is_null());}
  #[test]fn legacy_unknown_without_a_v2_claim_can_never_be_claimed_again(){let(_d,s,token,mut p,b)=fixture();s.register_codex_notice(&b).unwrap();s.observe_codex_notices(&b.thread_id,b.generation,&b.source_cwd,"t","inProgress",b.goal_key.as_deref(),Some("blocked"),&[]).unwrap();let n=s.codex_notice_sync(&token,&p).unwrap()["notice"].clone();p.action="CLAIM".into();p.notice_id=n["id"].as_str().map(str::to_owned);p.claim_id=Some(id());assert_eq!(s.codex_notice_sync(&token,&p).unwrap_err(),"CLAUDE_NOTICE_CLAIM_UNAVAILABLE");}
  #[test]fn durable_task_subscription_survives_multiple_turns_and_explicit_renewal(){

@@ -512,11 +512,12 @@ fn mcp_async_question_response_uses_exact_card_and_one_durable_answer(){
  let chat=call("agbrio_read_chat",json!({"threadId":"qa-source-thread"})).unwrap();let card=&chat["state"]["asyncQuestions"][0];assert_eq!(card["requestId"],"fixture-question");let key=card["questions"][0]["id"].as_str().unwrap();
  let input=json!({"threadId":"qa-source-thread","requestId":card["requestId"],"input":{"revision":card["revision"],"answers":{key:"A"}}});
  let action=call("agbrio_prepare_action",json!({"requestId":"async-answer-one","operation":"RESPOND_CHAT","input":input})).unwrap();let approve=json!({"actionId":action["id"],"expectedHash":action["payloadHash"],"ruleId":"continue","useOwnerAnswer":false,"assessment":"Delegated fictional choice"});
- let result=call("agbrio_execute_action",approve.clone()).unwrap();assert_eq!(result["status"],"APPLIED","{result}");assert_eq!(call("agbrio_execute_action",approve).unwrap(),result);
+ let result=call("agbrio_execute_action",approve.clone()).unwrap();assert_eq!(result["status"],"APPLIED","{result}");assert_eq!(result["result"]["status"],"UNKNOWN");assert_eq!(result["result"]["errorCode"],"REPLY_ASYNC_ACCEPTED_UNCONFIRMED");assert_eq!(call("agbrio_execute_action",approve).unwrap(),result);
  let writes=std::fs::read_to_string(dir.path().join("native-writes.jsonl")).unwrap();assert_eq!(writes.lines().count(),1);assert!(writes.contains(if busy{"turn/steer"}else{"turn/start"}));assert!(writes.contains("send_user_message_question_reply"));assert!(writes.contains("fixture-question"));
  let mut changed=input.clone();changed["input"]["answers"][key]=json!("B");assert!(call("agbrio_prepare_action",json!({"requestId":"different-answer","operation":"RESPOND_CHAT","input":changed})).unwrap_err().contains("DIFFERENT_CONTENT"));
  let answered=json!({"type":"response_item","payload":{"type":"message","role":"user","content":[{"text":format!("<send_user_message_question_reply>[{{\"questionItemId\":{},\"answer\":\"A\"}}]</send_user_message_question_reply>",json!(key))}]}});
  use std::io::Write;writeln!(std::fs::OpenOptions::new().append(true).open(&rollout).unwrap(),"{}",answered).unwrap();
+ let reread=call("agbrio_read_chat",json!({"threadId":"qa-source-thread"})).unwrap();assert_eq!(reread["state"]["replies"][0]["status"],"SENT");
  assert!(call("agbrio_prepare_action",json!({"requestId":"answered-card","operation":"RESPOND_CHAT","input":input})).unwrap_err().contains("EXPIRED"));assert_eq!(std::fs::read_to_string(dir.path().join("native-writes.jsonl")).unwrap().lines().count(),1);
  std::fs::remove_file(rollout).unwrap();core.shutdown_owned_adapter();
 }

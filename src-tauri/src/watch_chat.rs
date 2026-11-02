@@ -86,6 +86,7 @@ pub(crate) fn state(core:&RouterCore,id:&str)->Result<ChatState,String>{
  let controllable=owned.clone().or_else(||(a.is_shared_subscribed(id)&&busy).then(||a.observed_turn_id(id)).flatten());
  let shared=a.is_shared_subscribed(id);
  let async_questions=a.read_async_owner_questions(id,m.pointer("/thread/path").and_then(Value::as_str));
+ core.store.reconcile_async_answer_replies(id,w.generation,&async_questions)?;
  let latest_turn=a.latest_turn_diagnostic(id).filter(|d|w.snapshot.turn_id.as_deref()==Some(&d.turn_id));
  let goal=read_codex_goal_from_session(&mut s,id)?;let requests:Vec<MobileCodexRequest>=s.pending_codex_requests.values().filter(|r|r.thread_id==id&&(shared||owned.as_deref()==Some(&r.turn_id))).filter_map(mobile_codex_request_projection).collect();
  let goal_controls=goal.as_ref().map(|g|crate::goal_control::controls(core,g,busy,!requests.is_empty())).transpose()?;
@@ -194,7 +195,7 @@ fn dispatch(core:&RouterCore,s:&mut Session,w:&CodexWatch,r:&WatchReply,resource
  core.store.claim_watch_reply(&r.id)?;
  let a=s.adapter.as_mut().unwrap();let response=a.request(if r.mode=="STEER"{"turn/steer"}else{"turn/start"},params);
  match response {Ok(v)=>{let t=reply_ack_turn(&r,&v);
-   if let Some(t)=t{if r.mode!="STEER"{a.mark_turn_started(&w.thread_id,t);}core.store.finish_watch_reply(&r.id,"SENT",Some(t),None)?;}else{core.store.finish_watch_reply(&r.id,"UNKNOWN",None,Some("REPLY_ACK_UNOBSERVED"))?;}
+   if let Some(t)=t{if r.mode!="STEER"{a.mark_turn_started(&w.thread_id,t);}if r.text.trim().starts_with("<send_user_message_question_reply>"){core.store.finish_watch_reply(&r.id,"UNKNOWN",Some(t),Some("REPLY_ASYNC_ACCEPTED_UNCONFIRMED"))?;let m=metadata(a,w)?;let cards=a.read_async_owner_questions(&w.thread_id,m.pointer("/thread/path").and_then(Value::as_str));core.store.reconcile_async_answer_replies(&w.thread_id,w.generation,&cards)?;}else{core.store.finish_watch_reply(&r.id,"SENT",Some(t),None)?;}}else{core.store.finish_watch_reply(&r.id,"UNKNOWN",None,Some("REPLY_ACK_UNOBSERVED"))?;}
  },Err(_)=>{core.store.finish_watch_reply(&r.id,"UNKNOWN",None,Some("REPLY_ACK_UNOBSERVED"))?;}}
  core.store.watch_reply(&r.id)?.ok_or("REPLY_NOT_FOUND".into())
 }
