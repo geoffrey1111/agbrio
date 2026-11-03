@@ -49,11 +49,25 @@ jobs:
           lipo "$APP/Contents/MacOS/ai-work-router" -verify_arch arm64
           lipo "$APP/Contents/MacOS/browser-executor-node" -verify_arch arm64
           test -x "$APP/Contents/MacOS/browser-executor-node"
-      - name: Isolated candidate startup
-        run: node scripts/macos-startup-smoke.mjs src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Agbrio.app
+      - name: Delivered DMG and isolated installed startup
+        run: |
+          APP=src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Agbrio.app
+          MOUNT="$RUNNER_TEMP/agbrio-dmg-$GITHUB_RUN_ID"
+          INSTALLED="$RUNNER_TEMP/agbrio-installed-$GITHUB_RUN_ID"
+          mkdir -p "$MOUNT" "$INSTALLED"
+          set -- src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          test "$#" -eq 1
+          hdiutil attach "$1" -readonly -nobrowse -mountpoint "$MOUNT"
+          ditto "$MOUNT/Agbrio.app" "$INSTALLED/Agbrio.app"
+          hdiutil detach "$MOUNT"
+          diff -qr "$APP" "$INSTALLED/Agbrio.app"
+          codesign --verify --deep --strict "$INSTALLED/Agbrio.app"
+          node scripts/macos-startup-smoke.mjs "$INSTALLED/Agbrio.app"
       - name: Checksums
         working-directory: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg
-        run: shasum -a 256 ./*.dmg > SHA256SUMS.txt
+        run: |
+          shasum -a 256 ./*.dmg > SHA256SUMS.txt
+          cat SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: agbrio-macos-aarch64-candidate
