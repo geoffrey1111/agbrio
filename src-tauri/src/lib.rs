@@ -210,10 +210,10 @@ fn web_paired_devices()->Result<Vec<web_auth::Device>,String>{web_auth::global()
 fn web_revoke_device(device_id:String)->Result<(),String>{web_auth::global()?.revoke(Some(&device_id),None)}
 
 #[tauri::command]
-fn codex_delivery_settings(state:State<'_,RouterState>)->Result<watch_notifications::SettingsView,String>{watch_notifications::view(&state.store)}
+async fn codex_delivery_settings(state:State<'_,RouterState>)->Result<watch_notifications::SettingsView,String>{let store=state.store.clone();tauri::async_runtime::spawn_blocking(move||watch_notifications::view(&store)).await.map_err(|_|"DELIVERY_SETTINGS_UNAVAILABLE".to_string())?}
 #[tauri::command]
-fn codex_request_desktop_notifications()->Result<(),String>{
-    #[cfg(target_os="macos")]{platform::macos_notifications::request_permission()}
+async fn codex_request_desktop_notifications()->Result<(),String>{
+    #[cfg(target_os="macos")]{tauri::async_runtime::spawn_blocking(platform::macos_notifications::request_permission).await.map_err(|_|"MACOS_NOTIFICATION_UNAVAILABLE".to_string())?}
     #[cfg(not(target_os="macos"))]{Err(platform::UNSUPPORTED.into())}
 }
 #[tauri::command]

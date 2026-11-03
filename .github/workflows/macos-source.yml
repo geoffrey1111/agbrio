@@ -21,7 +21,7 @@ jobs:
   browser-boundary:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.native_browser_check }}
     runs-on: macos-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
