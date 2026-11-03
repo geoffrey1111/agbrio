@@ -1,6 +1,9 @@
 //! Desktop platform admission. Unsupported features fail before side effects.
 pub(crate) const UNSUPPORTED: &str = "PLATFORM_NOT_YET_SUPPORTED";
 
+#[cfg(target_os="macos")]
+pub(crate) mod macos_notifications;
+
 pub(crate) fn require_native_desktop()->Result<(),String>{
     if cfg!(any(windows,target_os="macos")){Ok(())}else{Err(UNSUPPORTED.into())}
 }

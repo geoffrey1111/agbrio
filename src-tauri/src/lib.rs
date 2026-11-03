@@ -212,6 +212,11 @@ fn web_revoke_device(device_id:String)->Result<(),String>{web_auth::global()?.re
 #[tauri::command]
 fn codex_delivery_settings(state:State<'_,RouterState>)->Result<watch_notifications::SettingsView,String>{watch_notifications::view(&state.store)}
 #[tauri::command]
+fn codex_request_desktop_notifications()->Result<(),String>{
+    #[cfg(target_os="macos")]{platform::macos_notifications::request_permission()}
+    #[cfg(not(target_os="macos"))]{Err(platform::UNSUPPORTED.into())}
+}
+#[tauri::command]
 async fn codex_delivery_command(input:watch_notifications::DeliveryCommand,state:State<'_,RouterState>)->Result<String,String>{let store=state.store.clone();tauri::async_runtime::spawn_blocking(move||watch_notifications::command(&store,input)).await.map_err(|_|"DELIVERY_COMMAND_FAILED".to_string())?}
 #[tauri::command]
 fn codex_notification_navigation(state:State<'_,watch_notifications::NotificationNavigation>)->Option<i64>{state.0.lock().ok()?.take()}
@@ -1422,6 +1427,8 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let core = app.state::<RouterCore>().inner().clone();
     // Notification registration affects this application's own Windows identity only.
     let _ = watch_notifications::register_windows();
+    #[cfg(target_os="macos")]
+    platform::macos_notifications::init(app.handle());
     #[cfg(windows)]
     let _ = notification_activation::register(app.handle());
     #[cfg(windows)]
@@ -1627,7 +1634,7 @@ pub fn run() {
         desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,hosted_connection_trial,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_set_launch_administrator, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
         claude_watch_chat,claude_watch_chat_command,codex_watch_candidates,codex_watch_list, codex_watch_enable, codex_watch_show, codex_watch_pause, codex_watch_remove, computer_identity, codex_watch_mark_thread_read, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
-        codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
+        codex_delivery_settings, codex_request_desktop_notifications, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
         workspace_snapshot,
         workstream_snapshot,
         native_window_monitor_evidence,
@@ -1714,7 +1721,7 @@ pub fn run() {
         pi_settings,pi_prepare_administrator,pi_authorize_directory,pi_authorize_workspace,pi_revoke_directory,resource_monitor_read,resource_monitor_apply,local_safety_status,local_safety_save,app_cache_status,app_cache_cleanup,review_board_publish,review_board_desktop_url,published_board_remove,published_boards_list,published_board_publish,published_board_snapshot,published_board_asset,app_capabilities,app_diagnostics,character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
         claude_code_sessions,claude_code_connections,claude_code_setup,claude_code_connect,claude_code_revoke,
         desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,hosted_connection_trial,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_set_launch_administrator, shared_codex_setup, shared_codex_launch, shared_codex_disable,
-        codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
+        codex_delivery_settings, codex_request_desktop_notifications, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
         read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
         claude_watch_chat,claude_watch_chat_command,codex_watch_candidates,codex_watch_list, codex_watch_enable, codex_watch_show, codex_watch_pause, codex_watch_remove, computer_identity, codex_watch_mark_thread_read, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
         workspace_snapshot,

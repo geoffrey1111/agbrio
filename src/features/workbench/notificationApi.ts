@@ -29,7 +29,7 @@ export const desktopNotificationApi:NotificationApi=cachedNotificationApi({
  markRead:sequence=>invoke("codex_watch_mark_read",{sequence}),
  markThreadRead:(threadId,upToSequence)=>invoke("codex_watch_mark_thread_read",{threadId,upToSequence:upToSequence??null}),
  chat:desktopWatchChatApi,
- delivery:{desktop:true,settings:()=>invoke("codex_delivery_settings"),command:input=>invoke("codex_delivery_command",{input})},
+ delivery:{desktop:true,settings:()=>invoke("codex_delivery_settings"),command:input=>(input as {action?:string})?.action==="AUTHORIZE_DESKTOP"?invoke("codex_request_desktop_notifications"):invoke("codex_delivery_command",{input})},
  onOpen:async callback=>{const dispose=await listen<number>("codex-notification-open",e=>callback(e.payload));try{const pending=await invoke<number|null>("codex_notification_navigation");if(pending!==null)callback(pending);return dispose;}catch(e){dispose();throw e;}},
  webUrl:()=>invoke("codex_notifications_web_url"),
  remove:(kind,id,removed)=>invoke("codex_watch_remove",{kind,id,removed}),watches:()=>invoke("codex_watch_list"),connect:()=>codexApi.connect(),threads:()=>invoke("codex_watch_candidates"),enable:threadId=>invoke("codex_watch_enable",{threadId}),show:threadId=>invoke("codex_watch_show",{threadId}),pause:threadId=>invoke("codex_watch_pause",{threadId}),feed:after=>invoke("codex_watch_feed",{after}),event:sequence=>invoke("codex_watch_event",{sequence}),

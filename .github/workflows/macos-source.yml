@@ -3,12 +3,30 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      audit_chromium:
+        description: Audit the fixed official Mac Chromium archive without starting a browser
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
   group: macos-source-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
+  chromium-audit:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.audit_chromium }}
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit pinned official Chromium archive
+        run: python3 scripts/audit-macos-chromium.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-chromium-audit
+          path: ${{ runner.temp }}/agbrio-chromium-audit/*.json
+          if-no-files-found: error
   source:
     runs-on: macos-latest
     timeout-minutes: 45

@@ -12,3 +12,17 @@ describe("notification delivery setup",()=>{
 });
 
 it('saves the selected notification categories without disabling channels',async()=>{const api=fixture(false);const initial=await api.settings();api.settings.mockResolvedValue({...initial,notificationTypes:{completed:true,failed:true,actionRequired:true}});render(<NotificationDeliveryPanel api={api}/>);fireEvent.click(await screen.findByRole('checkbox',{name:'任务完成'}));await waitFor(()=>expect(api.command).toHaveBeenCalledWith({action:'NOTIFICATION_TYPES',types:{completed:false,failed:true,actionRequired:true}}));});
+
+it('asks macOS notification permission only after an explicit owner action',async()=>{
+ const view:DeliveryView={desktopPlatform:'MACOS',account:'fixture@example.invalid',recipient:'fixture@example.invalid',hasSecret:false,windowsStatus:'NOT_INITIALIZED',channels:[{channel:'WINDOWS',enabled:false}],history:[]};
+ const api:DeliveryApi={desktop:true,settings:vi.fn().mockResolvedValue(view),command:vi.fn().mockResolvedValue('SAVED')};render(<NotificationDeliveryPanel api={api}/>);
+ await screen.findByRole('heading',{name:'macOS 桌面通知'});expect(api.command).not.toHaveBeenCalled();expect(screen.queryByLabelText('应用专用密码')).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'开启 macOS 提醒'}));await waitFor(()=>expect(api.command).toHaveBeenCalledWith({action:'CHANNEL',channel:'WINDOWS',enabled:true}));
+ expect(vi.mocked(api.command).mock.calls[0]).toEqual([{action:'AUTHORIZE_DESKTOP'}]);
+});
+
+it('does not enable macOS delivery after permission is denied or remains uncertain',async()=>{
+ const view:DeliveryView={desktopPlatform:'MACOS',account:'',recipient:'',hasSecret:false,windowsStatus:'NOT_INITIALIZED',channels:[{channel:'WINDOWS',enabled:false}],history:[]};
+ const api:DeliveryApi={desktop:true,settings:vi.fn().mockResolvedValue(view),command:vi.fn().mockRejectedValue('MACOS_NOTIFICATION_PERMISSION_PENDING')};render(<NotificationDeliveryPanel api={api}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'开启 macOS 提醒'}));await screen.findByRole('alert');expect(api.command).toHaveBeenCalledExactlyOnceWith({action:'AUTHORIZE_DESKTOP'});
+});

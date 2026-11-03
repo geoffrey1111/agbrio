@@ -51,6 +51,11 @@ windows = { version = "0.61.3", features = ["Data_Xml_Dom", "UI_Notifications", 
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-plugin-single-instance = "2.4.4"
+objc2 = "=0.6.4"
+objc2-foundation = "=0.3.2"
+objc2-user-notifications = { version = "=0.3.2", default-features = false, features = ["std", "UNUserNotificationCenter", "UNNotification", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationSettings", "UNNotificationTrigger", "bitflags", "block2"] }
+block2 = "=0.6.2"
+
 
 [target.'cfg(windows)'.dev-dependencies]
 windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Accessibility", "Win32_UI_WindowsAndMessaging", "Win32_System_Ole", "Win32_UI_Notifications", "System"] }

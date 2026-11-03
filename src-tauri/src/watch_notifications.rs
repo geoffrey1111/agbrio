@@ -24,6 +24,7 @@ pub struct SettingsView {
     pub settings: DeliverySettings,
     pub has_secret: bool,
     pub windows_status: String,
+    pub desktop_platform: &'static str,
     pub history: Vec<DeliveryRecord>,
 }
 #[derive(Deserialize)]
@@ -121,6 +122,7 @@ pub fn view(store: &RouterStore) -> Result<SettingsView, String> {
         settings,
         has_secret,
         windows_status: windows_status(),
+        desktop_platform: if cfg!(target_os="macos"){"MACOS"}else if cfg!(windows){"WINDOWS"}else{"UNSUPPORTED"},
         history: store.watch_delivery_history()?,
     })
 }
@@ -135,7 +137,7 @@ pub fn command(store: &RouterStore, input: DeliveryCommand) -> Result<String, St
                 notification_url(Some(1))?;
             }
             if enabled && channel == "WINDOWS" && windows_status() != "ENABLED" {
-                return Err("WINDOWS_NOTIFICATIONS_DISABLED".into());
+                return Err(if cfg!(target_os="macos"){"MACOS_NOTIFICATIONS_DISABLED"}else{"WINDOWS_NOTIFICATIONS_DISABLED"}.into());
             }
             store.set_watch_delivery_channel(&channel, enabled)?;
             Ok("SAVED".into())
@@ -233,6 +235,9 @@ fn deliver(
     match channel {
         "WINDOWS" => match show_windows(event) {
             Ok(()) => ("SENT", None),
+            Err(code) if cfg!(target_os="macos")&&code=="MACOS_NOTIFICATION_ACCEPTANCE_UNKNOWN" => ("UNKNOWN",Some("MACOS_NOTIFICATION_ACCEPTANCE_UNKNOWN")),
+            Err(code) if cfg!(target_os="macos")&&code=="MACOS_NOTIFICATIONS_DISABLED" => ("SKIPPED",Some("MACOS_NOTIFICATIONS_DISABLED")),
+            Err(_) if cfg!(target_os="macos") => ("SKIPPED",Some("MACOS_NOTIFICATION_REJECTED")),
             Err(_) => ("SKIPPED", Some("WINDOWS_NOTIFICATION_REJECTED")),
         },
         "WEB" => {
@@ -422,10 +427,12 @@ fn windows_status() -> String {
     }
     .into()
 }
-#[cfg(not(windows))]
+#[cfg(not(any(windows,target_os="macos")))]
 fn windows_status() -> String {
     "UNSUPPORTED".into()
 }
+#[cfg(target_os="macos")]
+fn windows_status()->String{crate::platform::macos_notifications::status()}
 fn xml(value: &str) -> String {
     value
         .replace('&', "&amp;")
@@ -566,10 +573,12 @@ pub fn repair_legacy_toasts(store: &RouterStore) -> Result<usize, String> {
 fn windows_toast_xml(kind: &str, label: &str, launch: &str) -> String {
     format!("<toast activationType=\"protocol\" launch=\"{}\"><visual><binding template=\"ToastGeneric\"><text>{}</text><text>{}</text><text>点击在 AI Work Router 查看原文并回复</text></binding></visual></toast>",xml(launch),xml(kind),xml(&label.chars().take(120).collect::<String>()))
 }
-#[cfg(not(windows))]
+#[cfg(not(any(windows,target_os="macos")))]
 fn show_windows(_: Option<&WatchEvent>) -> Result<(), String> {
     Err("WINDOWS_UNSUPPORTED".into())
 }
+#[cfg(target_os="macos")]
+fn show_windows(event:Option<&WatchEvent>)->Result<(),String>{crate::platform::macos_notifications::show(event)}
 
 #[cfg(test)]
 mod tests {
@@ -714,5 +723,11 @@ mod tests {
             assert!(body.contains("Message-ID: <fixture-stable-id@ai-work-router.local>"));
             assert!(body.contains("To: geoffreyzjx826@gmail.com"));
         }
+    }
+}
+
+#[cfg(test)]mod macos_permission_boundary_tests{
+    #[test]fn native_permission_request_is_not_a_shared_http_delivery_command(){
+        assert!(serde_json::from_value::<super::DeliveryCommand>(serde_json::json!({"action":"AUTHORIZE_DESKTOP"})).is_err());
     }
 }
