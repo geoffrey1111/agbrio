@@ -63,6 +63,7 @@ jobs:
           diff -qr "$APP" "$INSTALLED/Agbrio.app"
           codesign --verify --deep --strict "$INSTALLED/Agbrio.app"
           node scripts/macos-startup-smoke.mjs "$INSTALLED/Agbrio.app"
+          node scripts/macos-cli-lifecycle-smoke.mjs "$INSTALLED/Agbrio.app"
       - name: Checksums
         working-directory: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg
         run: |

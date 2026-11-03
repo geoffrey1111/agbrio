@@ -117,7 +117,8 @@ mod service {
   Err(())
  }
 }
-#[cfg(not(windows))] mod service {use super::*;pub(super) fn can_recover()->bool{false}pub(super) fn recover(_: &AtomicBool)->Result<(),()>{Err(())}}
+#[cfg(target_os="macos")]mod service{use super::*;pub(super)fn can_recover()->bool{crate::platform::macos_web_recovery::can_recover()}pub(super)fn recover(stop:&AtomicBool)->Result<(),()>{crate::platform::macos_web_recovery::recover(stop).map_err(|_|())}}
+#[cfg(not(any(windows,target_os="macos")))] mod service {use super::*;pub(super) fn can_recover()->bool{false}pub(super) fn recover(_: &AtomicBool)->Result<(),()>{Err(())}}
 #[cfg(test)] mod tests {
  use super::*;
  #[test]fn loopback_bootstrap_is_local_ready_but_never_public_ready(){
@@ -170,4 +171,5 @@ pub(crate) fn request_setup(resource_dir:std::path::PathBuf)->Result<(),String>{
  let child=std::process::Command::new(executable).args(["-NoProfile","-NonInteractive","-EncodedCommand",&Base64::encode_string(&bytes)]).creation_flags(0x08000000).spawn();
  match child {Ok(mut child)=>{std::thread::spawn(move||{let _=child.wait();SETUP_PENDING.store(false,Ordering::Release);});Ok(())},Err(_)=>{SETUP_PENDING.store(false,Ordering::Release);Err("WEB_RECOVERY_SETUP_UNAVAILABLE".into())}}
 }
-#[cfg(not(windows))]pub(crate) fn request_setup(_:std::path::PathBuf)->Result<(),String>{Err("WEB_RECOVERY_SETUP_UNAVAILABLE".into())}
+#[cfg(target_os="macos")]pub(crate)fn request_setup(_:std::path::PathBuf)->Result<(),String>{crate::platform::macos_web_recovery::setup()}
+#[cfg(not(any(windows,target_os="macos")))]pub(crate) fn request_setup(_:std::path::PathBuf)->Result<(),String>{Err("WEB_RECOVERY_SETUP_UNAVAILABLE".into())}

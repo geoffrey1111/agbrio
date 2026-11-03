@@ -225,7 +225,7 @@ fn native(args: &[String]) -> Result<Value, String> {
     }
     Ok(value)
 }
-fn identity(pid: u32) -> Result<Value, String> {
+pub(crate) fn identity(pid: u32) -> Result<Value, String> {
     native(&["identity".into(), pid.to_string()])
 }
 fn domain() -> String {

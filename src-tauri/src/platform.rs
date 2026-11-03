@@ -7,6 +7,8 @@ pub(crate) mod macos_notifications;
 pub(crate) mod macos_startup;
 #[cfg(target_os="macos")]
 pub(crate) mod macos_resources;
+#[cfg(target_os="macos")]
+pub(crate) mod macos_web_recovery;
 
 pub(crate) fn require_native_desktop()->Result<(),String>{
     if cfg!(any(windows,target_os="macos")){Ok(())}else{Err(UNSUPPORTED.into())}

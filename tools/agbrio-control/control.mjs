@@ -37,11 +37,11 @@ function endpoint(){
 }
 function processIdentity(pid,executable){
  if(!Number.isSafeInteger(pid)||pid<1)throw Error('APP_CONTROL_PROCESS_INVALID');
- let row;try{row=execFileSync('/bin/ps',['-p',String(pid),'-o','uid=,lstart=,comm='],{encoding:'utf8',timeout:2000}).trim();}catch{return null;}
- if(!row)return null;
- const match=row.match(/^(\d+)\s+(.{24})\s+(.+)$/);
- if(!match||Number(match[1])!==process.geteuid()||realpathSync(match[3])!==executable)throw Error('APP_CONTROL_EXECUTABLE_MISMATCH');
- return {pid,started:match[2],executable};
+ const helper=resolve(dirname(dirname(executable)),'Resources/macos-platform/mac-resource-sampler');
+ let actual;try{actual=JSON.parse(execFileSync(helper,['identity',String(pid)],{encoding:'utf8',timeout:3000,env:{PATH:'/usr/bin:/bin',HOME:process.env.HOME||''}}));}catch{throw Error('APP_CONTROL_IDENTITY_UNCONFIRMED');}
+ if(actual.state==='EXITED')return null;
+ if(actual.pid!==pid||actual.ownerUid!==process.geteuid()||actual.image!==executable||typeof actual.created!=='string')throw Error('APP_CONTROL_EXECUTABLE_MISMATCH');
+ return {pid,started:actual.created,executable};
 }
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 async function start(app,executable){
@@ -49,7 +49,10 @@ async function start(app,executable){
  // executable identities before asking LaunchServices to start anything.
  const rows=execFileSync('/bin/ps',['-axo','pid=,uid=,comm='],{encoding:'utf8',timeout:3000}).split('\n');
  for(const row of rows){const match=row.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/);if(!match||Number(match[2])!==process.geteuid()||match[3]!==executable)continue;const state=await exchange(endpoint(),'STATUS');if(state.pid!==Number(match[1])||!processIdentity(state.pid,executable))throw Error('APP_CONTROL_EXECUTABLE_MISMATCH');return state;}
- const result=spawnSync('/usr/bin/open',['-a',app],{timeout:5000,stdio:'ignore'});if(result.status!==0)throw Error('APP_CONTROL_START_UNCONFIRMED');
+ // Preserve only the existing non-secret home/native-CLI process overrides.
+ // LaunchServices otherwise may discard the caller's isolated/native context.
+ const context=['HOME','CODEX_HOME','AI_WORK_ROUTER_CODEX_EXECUTABLE'].flatMap(key=>process.env[key]===undefined?[]:['--env',`${key}=${process.env[key]}`]);
+ const result=spawnSync('/usr/bin/open',['-a',app,...context],{timeout:5000,stdio:'ignore'});if(result.status!==0)throw Error('APP_CONTROL_START_UNCONFIRMED');
  for(let n=0;n<120;n++){try{const state=await exchange(endpoint(),'STATUS');if(processIdentity(state.pid,executable))return state;}catch(error){if(error.message==='APP_CONTROL_EXECUTABLE_MISMATCH')throw error;}await delay(250);}
  throw Error('APP_CONTROL_START_UNCONFIRMED');
 }
