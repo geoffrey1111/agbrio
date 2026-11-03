@@ -515,7 +515,7 @@ mod tests {
         assert_eq!(current.subscriptions.iter().map(|s|s.endpoint.as_str()).collect::<Vec<_>>(),vec!["updated","new"]);
     }
     use super::*;
-    use std::io::Read;
+    use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::thread;
 
@@ -574,17 +574,27 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let server = thread::spawn(move || {
+            // Establish actual HTTP readiness before measuring the stalled request.
+            // The warm-up is not part of the timeout under test.
+            {
+                let (mut socket, _) = listener.accept().unwrap();
+                let mut request = [0u8; 512];
+                assert!(socket.read(&mut request).unwrap() > 0);
+                socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+            }
             let (mut socket, _) = listener.accept().unwrap();
             let mut request = [0u8; 512];
-            let _ = socket.read(&mut request);
+            assert!(socket.read(&mut request).unwrap() > 0);
             thread::sleep(Duration::from_millis(200));
         });
         // Time the bounded transport, not first-use client/runtime initialization.
         let client = push_http_client(Duration::from_millis(20), Duration::from_millis(50)).unwrap();
+        assert!(client.get(format!("http://{address}/ready")).timeout(Duration::from_secs(2)).send().unwrap().status().is_success());
         let started = Instant::now();
         let result = client.get(format!("http://{address}/stalled"))
             .send();
-        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.is_timeout(), "stalled transport must hit its configured deadline: {error:?}");
         assert!(started.elapsed() < Duration::from_millis(180), "transport elapsed: {:?}", started.elapsed());
         server.join().unwrap();
     }
