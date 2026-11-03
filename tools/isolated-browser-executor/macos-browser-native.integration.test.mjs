@@ -29,8 +29,9 @@ test('real Mac Chromium preserves native identity, human-only stop, owned close 
    if(protectedStarted)await until(()=>platform.inventory(protectedProfile),items=>items.length===0);
    // Failed fixture evidence stays only in this ephemeral CI job until its VM
    // is discarded. Never upload a browser profile as an artifact.
-   if(settled)await rm(base,{recursive:true,force:true});
+   if(settled)await rm(base,{recursive:true,force:true,maxRetries:10,retryDelay:100});
   }finally{server.closeAllConnections();await new Promise(done=>server.close(done));}
+  if(settled)console.log(JSON.stringify({status:'MACOS_NATIVE_BROWSER_E2E_PASS',providerInputSubmitted:false,modelsInvoked:0,humanOnlyCdp:false,exactNativeIdentity:true,sameProfileRestart:true,unrelatedProcessPreserved:true}));
  });
  await assert.rejects(runtime.connection(),/CHROMIUM_COMPONENT_NOT_INSTALLED/);
  // This explicit manual fixture is the only download in this test job.
@@ -59,7 +60,7 @@ test('real Mac Chromium preserves native identity, human-only stop, owned close 
  const restarted=new ChromiumRuntime({resourceDirectory:resources,dataDirectory:path.join(base,'primary')});
  await restarted.connection();assert.equal(restarted.profile,runtime.profile);await restarted.shutdown();
  assert.deepEqual(await platform.inventory(runtime.profile),[]);
- await platform.close(protectedOwner);await until(()=>platform.inventory(protectedProfile),items=>items.length===0);protectedOwner=null;protectedStarted=false;settled=true;
- const marker=JSON.parse(await readFile(path.join(runtime.profile,'aiwr-profile-owner.json'),'utf8'));assert.ok(marker.ownerId);
- console.log(JSON.stringify({status:'MACOS_NATIVE_BROWSER_E2E_PASS',providerInputSubmitted:false,modelsInvoked:0,humanOnlyCdp:false,exactNativeIdentity:true,sameProfileRestart:true,unrelatedProcessPreserved:true}));
+ await platform.close(protectedOwner);await until(()=>platform.inventory(protectedProfile),items=>items.length===0);protectedOwner=null;protectedStarted=false;
+ const marker=JSON.parse(await readFile(path.join(runtime.profile,'aiwr-profile-owner.json'),'utf8'));assert.ok(marker.ownerId);settled=true;
+
 });

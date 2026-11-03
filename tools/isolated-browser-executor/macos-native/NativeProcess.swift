@@ -123,9 +123,22 @@ func guardProfile(_ request: [String: Any]) throws {
                 let root = try profile(request["profile"])
                 if let pid = try singletonPID(root), let item = try inspect(pid) { print(try json([item])) } else { print("[]") }
             case "close":
-                let (app, _) = try verified(request, closing: true)
+                let (app, pid) = try verified(request, closing: true)
                 guard app.terminate() else { try refuse("SECURITY_BROWSER_CLOSE_PENDING") }
-                print(try json(["status": "CLOSE_REQUESTED"]))
+                // SingletonLock may disappear while Chromium is still exiting.
+                // Retain this exact NSRunningApplication and native birth/image
+                // identity until exit; a disappearing lock alone is not enough.
+                let deadline = Date().addingTimeInterval(5)
+                while Date() < deadline {
+                    if app.isTerminated { print(try json(["status": "CLOSED"])); return }
+                    guard let actual = try inspect(pid) else { print(try json(["status": "CLOSED"])); return }
+                    guard actual["binary"] as? String == request["binary"] as? String,
+                          actual["started"] as? String == request["started"] as? String else {
+                        try refuse("SECURITY_BROWSER_IDENTITY_CHANGED")
+                    }
+                    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+                }
+                try refuse("SECURITY_BROWSER_CLOSE_PENDING")
             case "focus":
                 let (app, pid) = try verified(request, closing: false)
                 guard visible(pid) else { try refuse("SECURITY_BROWSER_WINDOW_UNAVAILABLE") }
