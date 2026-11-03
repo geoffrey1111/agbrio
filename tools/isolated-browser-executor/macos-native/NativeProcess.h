@@ -1,3 +1,4 @@
+#include <sys/param.h>
 #include <libproc.h>
 #include <sys/proc_info.h>
 #include <sys/file.h>

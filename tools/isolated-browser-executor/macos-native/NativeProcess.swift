@@ -43,7 +43,9 @@ func singletonPID(_ root: String) throws -> Int32? {
     if lstat(file, &info) != 0 { if errno == ENOENT { return nil }; try refuse("PROFILE_IN_USE") }
     guard (info.st_mode & S_IFMT) == S_IFLNK, info.st_uid == geteuid() else { try refuse("PROFILE_IN_USE") }
     let target = try FileManager.default.destinationOfSymbolicLink(atPath: file)
-    guard let separator = target.lastIndex(of: "-"), String(target[..<separator]) == ProcessInfo.processInfo.hostName,
+    var host = [CChar](repeating: 0, count: 256)
+    let hostResult = host.withUnsafeMutableBufferPointer { gethostname($0.baseAddress, $0.count) }
+    guard hostResult == 0, let separator = target.lastIndex(of: "-"), String(target[..<separator]) == String(cString: host),
           let pid = Int32(target[target.index(after: separator)...]), pid > 0 else { try refuse("PROFILE_IN_USE") }
     return pid
 }
@@ -131,7 +133,7 @@ func guardProfile(_ request: [String: Any]) throws {
                     if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid { print(try json(["status": "FOREGROUND"])); return }
                     RunLoop.current.run(until: Date().addingTimeInterval(0.05))
                 }
-                print(try json(["status": "ATTENTION"]))
+                try refuse("SECURITY_BROWSER_FOCUS_BLOCKED")
             default: try refuse("SECURITY_REQUEST_UNSUPPORTED")
             }
         } catch Refusal.code(let code) { print("{\"errorCode\":\"\(code)\"}"); exit(1) }
