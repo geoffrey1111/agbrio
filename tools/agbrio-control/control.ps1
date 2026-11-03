@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
  [ValidateSet('Status','Capabilities','Diagnostics','Start','Stop','Restart','PublishBoard','PublishReviewBoard','RegisterCodexNotices')][string]$Command='Status',
  [int]$ReviewPort=47816,
@@ -62,12 +62,23 @@ function Exact-Owner($Status,[string]$Path) {
 function Start-Host([string]$Path) {
  $existing=@(Get-CimInstance Win32_Process -Filter "Name='ai-work-router.exe'" | Where-Object {$_.ExecutablePath -ieq $Path})
  if($existing.Count){$state=Invoke-Control 'STATUS';$null=Exact-Owner $state $Path;return $state}
- $launched=Start-Process -FilePath $Path -WindowStyle Hidden -PassThru
+ # The desktop Explorer owns this launch, so a terminal/agent job cannot
+ # terminate the resident app when its parent conversation closes.
+ $currentSession=([Diagnostics.Process]::GetCurrentProcess()).SessionId
+ $explorers=@(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" | Where-Object {$_.SessionId -eq $currentSession})
+ if(!$explorers.Count){throw 'APP_CONTROL_DESKTOP_OWNER_UNAVAILABLE'}
+ foreach($explorer in $explorers){$ownerInfo=Invoke-CimMethod -InputObject $explorer -MethodName GetOwnerSid;if($ownerInfo.Sid -ne $sid){throw 'APP_CONTROL_DESKTOP_OWNER_MISMATCH'}}
+ $shellWindows=(New-Object -ComObject Shell.Application).Windows()
+ try {
+  $location=[object]0;$root=[object]0;$handle=[int]0
+  $desktopShell=$shellWindows.FindWindowSW([ref]$location,[ref]$root,8,[ref]$handle,1)
+  if(!$desktopShell -or !$desktopShell.Document.Application){throw 'APP_CONTROL_INDEPENDENT_START_UNAVAILABLE'}
+  $desktopShell.Document.Application.ShellExecute($Path,'',(Split-Path -Parent $Path),'open',0)
+ } finally {if($shellWindows){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shellWindows)}}
  $deadline=[DateTime]::UtcNow.AddSeconds(30)
  while([DateTime]::UtcNow -lt $deadline){
   try {$state=Invoke-Control 'STATUS';$null=Exact-Owner $state $Path;return $state} catch {
    if($_.Exception.Message -eq 'APP_CONTROL_EXECUTABLE_MISMATCH'){throw}
-   if($launched.HasExited){throw 'APP_CONTROL_START_FAILED'}
    Start-Sleep -Milliseconds 250
   }
  }

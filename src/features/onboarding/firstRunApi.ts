@@ -1,0 +1,26 @@
+import type {ExistingCodexThreadCandidate,ExistingCodexThreadCatalog} from '../codex/types';
+import {invoke} from '@tauri-apps/api/core';
+import type {SharedCodexStatus} from '../workbench/SharedCodexConnection';
+import type {HostedStatus} from '../workbench/HostedConnection';
+import type {ClaudeCatalog,ClaudeConnectionResult} from '../workbench/ClaudeSessionPicker';
+import type {SetupAgent,SetupSnapshot} from './firstRunModel';
+import {assistantMcpConfig} from '../workbench/assistantClientInstructions';
+type AssistantView={mcpUrl:string|null;grants:{scope?:string;approvalMode?:string;expiresAt:number;revokedAt:number|null}[];bridges:unknown[]};
+export type OwnerAuthorizationRequest={requestId:string;clientName:string;redirectUri:string;resource:string;expiresAt:number};
+export type FirstRunApi={authorizations?:()=>Promise<OwnerAuthorizationRequest[]>;openAuthorization?:(requestId:string)=>Promise<void>;setupMcp?:()=>Promise<{phase:string;endpoint:string}>;mcpStatus?:()=>Promise<{phase:string;endpoint:string}>;copyText?:(text:string)=>Promise<void>;candidates?:(agents:SetupAgent[])=>Promise<ExistingCodexThreadCandidate[]>;watch?: (threadId:string)=>Promise<unknown>;watches?:()=>Promise<{threadId:string;enabled:boolean}[]>;eligibility?:()=>Promise<SetupSnapshot>;snapshot:(agents?:SetupAgent[])=>Promise<SetupSnapshot>;devices?:()=>Promise<SetupSnapshot['devices']>;prepareCodex:()=>Promise<SharedCodexStatus>;openCodex:()=>Promise<SharedCodexStatus>;installClaude:()=>Promise<ClaudeConnectionResult>;trial:()=>Promise<HostedStatus>;redeem:(code:string)=>Promise<HostedStatus>;configure:(origin:string)=>Promise<unknown>;retryConnection:()=>Promise<unknown>;pairCode:()=>Promise<{code:string;expiresAt:number}>;grant:()=>Promise<unknown>};
+const fulfilled=<T,>(result:PromiseSettledResult<T>):T|undefined=>result.status==='fulfilled'?result.value:undefined;
+export const desktopFirstRunApi:FirstRunApi={authorizations:()=>invoke('claude_code_authorizations'),openAuthorization:requestId=>invoke('claude_code_open_authorization',{requestId}),setupMcp:()=>invoke('claude_code_setup_mcp'),mcpStatus:()=>invoke('claude_code_mcp_status'),
+ candidates:async agents=>{if(agents.includes('CODEX'))await invoke('connect_codex');return (await invoke<ExistingCodexThreadCatalog>('codex_watch_candidates')).threads;},watch:threadId=>invoke('codex_watch_enable',{threadId}),watches:()=>invoke('codex_watch_list'),
+ eligibility:async()=>{
+  const [diagnostics,devices,assistant]=await Promise.allSettled([invoke<{watches?:{total:number};claude?:{livePublishers:number}}>('app_diagnostics'),invoke<unknown[]>('web_paired_devices'),invoke<AssistantView>('assistant_settings')]);const d=fulfilled(diagnostics),p=fulfilled(devices),a=fulfilled(assistant);
+  return {existingUse:Boolean((d?.watches?.total??0)>0||(d?.claude?.livePublishers??0)>0||p?.length||a?.grants.length||a?.bridges.length)};
+ },
+ snapshot:async(agents=[])=>{
+  const results=await Promise.allSettled([agents.includes('CODEX')?invoke<SharedCodexStatus>('shared_codex_status'):Promise.resolve(undefined),agents.includes('CLAUDE_CODE')?invoke<ClaudeCatalog>('claude_code_sessions'):Promise.resolve(undefined),invoke<AssistantView>('assistant_settings'),invoke<HostedStatus>('hosted_connection_status'),invoke<{origin:string|null}>('mobile_connection_view'),invoke<{publicReady:boolean}>('web_availability_status'),invoke<{id:string;label:string}[]>('web_paired_devices'),invoke<{watches?:{total:number};claude?:{livePublishers:number}}>('app_diagnostics')]);
+  const shared=fulfilled(results[0]),claude=fulfilled(results[1]),assistant=fulfilled(results[2]),hosted=fulfilled(results[3]),connection=fulfilled(results[4]),availability=fulfilled(results[5]),devices=fulfilled(results[6]),diagnostics=fulfilled(results[7]);
+  const claudeLoaded=claude?claude.sessions.some(s=>s.leaseUntil>Date.now()&&s.state!=='SESSION_END'):undefined;
+  return {shared,claudeLoaded,mcpUrl:assistant?assistantMcpConfig(assistant.mcpUrl)?assistant.mcpUrl:null:undefined,hasGrant:assistant?assistant.grants.some(g=>g.scope==='INSTANCE'&&g.approvalMode==='CONVERSATION_REVIEW'&&!g.revokedAt&&g.expiresAt>Date.now()):undefined,hosted,origin:connection?.origin,publicReady:availability?.publicReady,devices:devices?.filter(d=>d.label!=='Assistant authorization'),
+   existingUse:shared||assistant||devices||diagnostics?Boolean(shared?.enabled||shared?.ready||assistant?.grants.length||assistant?.bridges.length||devices?.length||(diagnostics?.watches?.total??0)>0||(diagnostics?.claude?.livePublishers??0)>0):undefined};
+ },
+ devices:()=>invoke<{id:string;label:string}[]>('web_paired_devices').then(rows=>rows.filter(d=>d.label!=='Assistant authorization')),prepareCodex:()=>invoke('shared_codex_setup'),openCodex:()=>invoke('shared_codex_launch'),installClaude:()=>invoke('claude_code_connect'),trial:()=>invoke('hosted_connection_trial'),redeem:code=>invoke('hosted_connection_redeem',{input:{code}}),configure:origin=>invoke('mobile_connection_configure',{input:{method:'CUSTOM_HTTPS',origin}}),retryConnection:()=>invoke('web_availability_retry'),pairCode:()=>invoke('web_pairing_code',{replaceDeviceId:null}),grant:()=>invoke('assistant_connect_instance',{input:{label:'Claude Code',expiresAt:Date.now()+30*86400000}}),
+};

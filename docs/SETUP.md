@@ -1,20 +1,18 @@
 # Complete setup and everyday use
 
-Public Windows releases, checked 2026-10-22. Complete desktop setup first; phone, Claude Code and external assistants are optional, separate connections.
+Open the Windows app and follow the first-run guide. Choose Codex, Claude Code, or both; the guide prepares supported connections and phone pairing. You can skip and reopen it from Settings. The sections below also explain the manual routes.
 
 [简体中文完整教程](SETUP.zh-CN.md) · [FAQ and troubleshooting](FAQ.md) · [Home](../README.md)
 
 ## 1. Choose a version and install
 
-Use [0.1.35-rc.57, the latest recommended release](https://github.com/geoffrey1111/agbrio/releases/latest). 0.1.34 remains historical; existing users upgrade instead of choosing between two recommended channels.
-
-The exact **0.1.35-rc.57** installer version, signature and verified bytes are retained. Latest promotion does not certify every future Codex version, history or crash case. [Package identity and validation limits](RELEASE_0.1.35-rc.57.md). The installer includes a generic board viewer, without private board content, artwork or runtime data.
+Use the [latest Windows release](https://github.com/geoffrey1111/agbrio/releases/latest). The installer provides the app and generic board viewer without your private project content or accounts.
 
 1. Use Windows x64 with your own official Windows Store Codex Desktop. Complete official installation/login first if needed. Agbrio does not bundle Desktop or provide an account/quota.
 2. Download the installer from the selected release. Compare `Get-FileHash -Algorithm SHA256 -LiteralPath 'full installer path'` with its `SHA256SUMS.txt`; stop on mismatch.
 3. Save work. Quit Agbrio through its tray menu before updating; do not run two instances. If switching Codex modes, finish tasks and exit Desktop normally at that point. Never force-stop a working task.
 4. Install while retaining data, login, Bridges, drafts and pairing. Personally review Windows confirmations. The updater `.sig` is not a Windows Authenticode signature and does not promise no SmartScreen warning.
-5. Open Agbrio and check Settings/About. rc.57 installs **Codex (Agbrio shared)** and **Codex (return to normal)** in the Start Menu.
+5. Open Agbrio and check Settings/About. The app installs **Codex (Agbrio shared)** and **Codex (return to normal)** in the Start Menu.
 
 Closing the Agbrio window normally leaves the Host in the tray; quitting there stops it. Remote access needs the computer awake and online. Settings → Language offers English, 简体中文, 繁體中文 or system default. Desktop and phone retain their own choice; messages are not translated. Japanese/Korean currently have README introductions only.
 

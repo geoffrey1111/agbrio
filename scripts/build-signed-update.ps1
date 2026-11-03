@@ -1,6 +1,11 @@
 [CmdletBinding()]
-param([Parameter(Mandatory=$true)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$')][string]$Version,[string]$NotesFile='',[ValidateSet('lzma','zlib')][string]$Compression='lzma',[string]$HostedControlOrigin=$env:AGBRIO_HOSTED_CONTROL_ORIGIN,[switch]$SelfHostedOnly,[string]$SigningCredentialsDirectory='',[switch]$BundleOnly,[ValidatePattern('^[a-fA-F0-9]{64}$')][string]$ExpectedExecutableSha256)
+param([Parameter(Mandatory=$true)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$')][string]$Version,[string]$NotesFile='',[ValidateSet('lzma','zlib')][string]$Compression='lzma',[string]$HostedControlOrigin=$env:AGBRIO_HOSTED_CONTROL_ORIGIN,[switch]$SelfHostedOnly,[string]$SigningCredentialsDirectory='',[switch]$BundleOnly,[ValidatePattern('^[a-fA-F0-9]{64}$')][string]$ExpectedExecutableSha256,[string]$FrontendSnapshotDirectory='')
 $ErrorActionPreference='Stop'
+function Get-SnapshotFrontendDirectory([string]$RepoRoot,[string]$Snapshot) {
+ $relative=[IO.Path]::GetRelativePath((Join-Path $RepoRoot 'src-tauri'),$Snapshot).Replace('\','/')
+ if([IO.Path]::IsPathRooted($relative) -or $relative.Contains(':')){throw 'Snapshot frontendDist must remain a relative asset directory, not a URL'}
+ return $relative
+}
 $baseVersion=[version]($Version.Split('-')[0])
 if($baseVersion -lt [version]'0.1.1'){throw 'The first signed update must use version 0.1.1 or higher; installed 0.1.0 clients cannot update to a 0.1.0 prerelease'}
 if($SelfHostedOnly -and $HostedControlOrigin){throw 'Choose a hosted origin or explicit SelfHostedOnly, not both'}
@@ -16,6 +21,8 @@ $repoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if($env:CARGO_TARGET_DIR -and ![IO.Path]::IsPathRooted($env:CARGO_TARGET_DIR)){throw 'CARGO_TARGET_DIR must be absolute for signed artifact readback'}
 $buildTarget=if($env:CARGO_TARGET_DIR){[IO.Path]::GetFullPath($env:CARGO_TARGET_DIR)}else{Join-Path $repoRoot 'src-tauri/target'}
 if($BundleOnly){
+ $dependencyStamp=Join-Path $buildTarget 'release/deps/ai_work_router_lib.d'
+ if(!(Test-Path -LiteralPath $dependencyStamp) -or !(Get-Content -LiteralPath $dependencyStamp -Raw).Contains('# env-dep:VITE_AGBRIO_APP_VERSION='+$Version)){throw 'Native build version stamp missing: build with VITE_AGBRIO_APP_VERSION matching Version before bundling'}
  if(!$ExpectedExecutableSha256){throw 'BundleOnly requires the independently verified existing executable SHA256'}
  $existingExecutable=Join-Path $buildTarget 'release/ai-work-router.exe'
  if(!(Test-Path -LiteralPath $existingExecutable) -or (Get-FileHash -LiteralPath $existingExecutable).Hash.ToLowerInvariant() -cne $ExpectedExecutableSha256.ToLowerInvariant()){throw 'Existing executable identity mismatch; no bundling permitted'}
@@ -38,12 +45,27 @@ try{
  }
  $env:VITE_AGBRIO_APP_VERSION=$Version
  $overlay=Join-Path $releaseRoot 'signed-build.json'
- @{version=$Version;bundle=@{createUpdaterArtifacts=$true;windows=@{nsis=@{compression=$Compression}}}} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $overlay -Encoding utf8
+ $configuration=@{version=$Version;bundle=@{createUpdaterArtifacts=$true;windows=@{nsis=@{compression=$Compression}}}}
+ if($FrontendSnapshotDirectory){
+  $snapshot=(Resolve-Path -LiteralPath $FrontendSnapshotDirectory).Path
+  $runtimeRoot=(Join-Path $repoRoot 'runtime')+[IO.Path]::DirectorySeparatorChar
+  if(!$snapshot.StartsWith($runtimeRoot,[StringComparison]::OrdinalIgnoreCase) -or !(Test-Path -LiteralPath (Join-Path $snapshot 'index.html'))){throw 'Frontend snapshot must be a verified task-owned runtime directory'}
+  $resources=@{'../dist'=$null};$resources[$snapshot.Replace('\','/')]='dist'
+  $configuration.bundle.resources=$resources
+  # A drive-absolute Windows path can deserialize as FrontendDist::Url and
+  # launch file:///D:/... instead of embedding portable application assets.
+  $frontendRelative=Get-SnapshotFrontendDirectory $repoRoot $snapshot
+  $configuration.build=@{frontendDist=$frontendRelative;beforeBuildCommand=''}
+ }
+ $configuration | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $overlay -Encoding utf8
  Push-Location $repoRoot
  try{
   if($BundleOnly){& npm run tauri -- bundle --bundles nsis --config $overlay}else{& npm run build:windows -- --config $overlay}
   if($LASTEXITCODE -ne 0){throw 'Signed build failed; nothing was published'}
-  if($BundleOnly -and (Get-FileHash -LiteralPath $existingExecutable).Hash.ToLowerInvariant() -cne $ExpectedExecutableSha256.ToLowerInvariant()){throw 'Bundling changed the native executable; inspect instead of publishing'}
+  if($BundleOnly){
+   $nativeProof=& (Join-Path $PSScriptRoot 'verify-bundle-native.ps1') -Executable $existingExecutable -ExpectedSha256 $ExpectedExecutableSha256
+   $nativeProof|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $releaseRoot 'native-bundle-proof.json') -Encoding utf8
+  }
   $installer=Join-Path $buildTarget ('release/bundle/nsis/Agbrio_'+$Version+'_x64-setup.exe')
   if(!(Test-Path -LiteralPath ($installer+'.sig'))){throw 'No updater signature was generated; do not publish as an in-app update'}
   Copy-Item -LiteralPath $installer,($installer+'.sig') -Destination $releaseRoot

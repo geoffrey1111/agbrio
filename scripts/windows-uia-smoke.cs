@@ -22,6 +22,7 @@ class AgbrioNativeQa {
  static void Picture(IntPtr h,string filename){Rect r;if(!GetWindowRect(h,out r))throw new Exception("Native bounds unavailable");using(var b=new Bitmap(r.R-r.L,r.B-r.T)){using(var g=Graphics.FromImage(b)){var dc=g.GetHdc();try{if(!PrintWindow(h,dc,2))throw new Exception("Native capture failed");}finally{g.ReleaseHdc(dc);}}b.Save(Path.Combine(output,filename),ImageFormat.Png);}}
  [STAThread]static int Main(string[] args){
   try{var h=new IntPtr(long.Parse(args[0]));output=Path.GetFullPath(args[1]);Directory.CreateDirectory(output);root=AutomationElement.FromHandle(h);var p=new Placement();p.Length=Marshal.SizeOf(p);if(!GetWindowPlacement(h,ref p)||p.Show!=3)throw new Exception("Native window is not maximized");
+   for(int attempt=0;attempt<100;attempt++){var skip=root.FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Button)).Cast<AutomationElement>().FirstOrDefault(e=>e.Current.Name=="Skip setup");if(skip!=null){Click(skip);break;}var settings=root.FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.NameProperty,"Settings"));if(settings.Count>0)break;Thread.Sleep(100);}
    Click(Find("Settings",ControlType.Button));Click(Find("通用",ControlType.Button));Find("Language",ControlType.ComboBox);
    Click(Find("手机与设备",ControlType.Button));
    Click(Find("Add to your phone\u2019s home screen",ControlType.Button));Find("Use Safari",ControlType.Text);

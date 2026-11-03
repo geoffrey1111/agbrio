@@ -92,6 +92,19 @@ Var AgbrioPreviousDirectory
   !insertmacro AGBRIO_REMOVE_EXACT_ENTRY "${programsDirectory}" "${installDirectory}" "Codex (return to normal)" "return-normal.ps1"
 !macroend
 
+!macro AGBRIO_CREATE_CANONICAL_ENTRIES desktopDirectory programsDirectory installDirectory
+  CreateDirectory "${desktopDirectory}"
+  CreateDirectory "${programsDirectory}\Agbrio"
+  ${IfNot} ${FileExists} "${desktopDirectory}\Agbrio.lnk"
+    CreateShortCut "${desktopDirectory}\Agbrio.lnk" "${installDirectory}\${MAINBINARYNAME}.exe"
+    !insertmacro SetLnkAppUserModelId "${desktopDirectory}\Agbrio.lnk"
+  ${EndIf}
+  ${IfNot} ${FileExists} "${programsDirectory}\Agbrio\Agbrio.lnk"
+    CreateShortCut "${programsDirectory}\Agbrio\Agbrio.lnk" "${installDirectory}\${MAINBINARYNAME}.exe"
+    !insertmacro SetLnkAppUserModelId "${programsDirectory}\Agbrio\Agbrio.lnk"
+  ${EndIf}
+!macroend
+
 !macro NSIS_HOOK_PREINSTALL
   StrCpy $AgbrioLegacyMigration 0
   ReadRegStr $AgbrioLegacyDirectory SHCTX "${AGBRIO_LEGACY_PRODUCT}" ""
@@ -125,6 +138,9 @@ Var AgbrioPreviousDirectory
     Call CreateOrUpdateStartMenuShortcut
     Call CreateOrUpdateDesktopShortcut
     Pop $UpdateMode
+    ; Silent installs may skip the Start Menu page or return early while
+    ; migrating an old link. Always leave these two canonical entrypoints.
+    !insertmacro AGBRIO_CREATE_CANONICAL_ENTRIES "$DESKTOP" "$SMPROGRAMS" "$INSTDIR"
   ${EndIf}
   ; Separate opt-in entry. Never replace the official Codex shortcut/defaults.
   !insertmacro AGBRIO_INSTALL_SHARED_ENTRY "$SMPROGRAMS\Agbrio" "$INSTDIR"

@@ -2,11 +2,11 @@
 
 ## Connect your work
 
-[Download the Windows app](https://github.com/geoffrey1111/agbrio/releases/latest), open it and connect the agent conversations you already use. In Chats, choose the conversation you want to follow. To pass work between two conversations, create a Bridge and review the destination before sending.
+[Download the Windows app](https://github.com/geoffrey1111/agbrio/releases/latest), open it and choose Codex, Claude Code or both in the first-run guide. Agbrio configures supported local connections for you; confirm personal permissions when asked. You can skip and reopen setup from Settings. In Chats, choose the conversation you want to follow. To pass work between two conversations, create a Bridge and review the destination before sending.
 
 ## Take it to your phone
 
-On the computer, open Settings → Devices. Enter your hosted redemption code, or set up your own HTTPS connection. Pair the phone, then add Agbrio to its home screen. Keep the computer and Agbrio online.
+The same guide prepares the phone connection, offers a hosted trial or activation code, and pairs your phone. Existing HTTPS connections are reused. Follow the iPhone or Android home-screen instructions and enable notifications on the phone when wanted. You can also manage pairing later in Settings → Devices. Keep the computer and Agbrio online.
 
 ## Create your first board
 
