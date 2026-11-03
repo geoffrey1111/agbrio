@@ -229,7 +229,7 @@ fn identity(pid: u32) -> Result<Value, String> {
     native(&["identity".into(), pid.to_string()])
 }
 fn domain() -> String {
-    format!("user/{}", uid())
+    format!("gui/{}", uid())
 }
 struct Job {
     pid: Option<u32>,
@@ -457,7 +457,7 @@ fn control(root: &Path, id: &str, args: &[String]) -> Result<(), ControlError> {
         .env("PATH", "/usr/bin:/bin")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(if cfg!(test){Stdio::inherit()}else{Stdio::null()})
         .spawn()
         .map_err(|_| ControlError::Failed)?;
     if let Ok(Some(status)) = child.try_wait() {
