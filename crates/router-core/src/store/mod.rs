@@ -95,6 +95,7 @@ const NORMAL_FEATURE_MIGRATIONS: &[(&str, &str)] = &[
     ("assistant-oauth-refresh-v1", include_str!("../../migrations/normal/019_assistant_oauth_refresh.sql")),
     ("codex-reply-fifo-v1", include_str!("../../migrations/normal/026_codex_reply_fifo.sql")),
     ("watch-visibility-v1", include_str!("../../migrations/normal/027_watch_visibility.sql")),
+    ("removed-reply-presentations-v1", include_str!("../../migrations/normal/035_removed_reply_presentations.sql")),
 ];
 
 const MIGRATIONS: &[(i64, &str)] = &[

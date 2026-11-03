@@ -30,7 +30,7 @@ export function cachedWatchChatApi(raw:WatchChatApi):WatchChatApi {
   if(input.action==="HISTORY"&&!input.cursor)return readModels.read<T>(historyCacheKey(input.threadId),()=>raw.command<T>(input),15000);
   const result=await raw.command<T>(input);
   if(input.action==="GOAL_CONTROL"){readModels.invalidate("bridge:");readModels.invalidate("bridge-activity:");}
-  if(!["HISTORY","CHILD_HISTORY","OPTIONS","RECEIPT","GOAL_RECEIPT"].includes(input.action)){readModels.invalidate(chatCacheKey(input.threadId));readModels.invalidate(historyCacheKey(input.threadId));readModels.invalidate("notifications:");}
+  if(!["HISTORY","CHILD_HISTORY","OPTIONS","RECEIPT","GOAL_RECEIPT"].includes(input.action)){readModels.invalidate(chatCacheKey(input.threadId),true);readModels.invalidate(historyCacheKey(input.threadId));readModels.invalidate("notifications:");}
   return result;
  }};
 }

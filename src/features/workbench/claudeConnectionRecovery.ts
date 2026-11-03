@@ -1,6 +1,8 @@
 import {t,type Language} from '../../i18n';
 import manualInstall from './claudeManualInstall.ps1?raw';
+import addressDiscovery from './mcpAddressDiscovery.ps1?raw';
 export const claudeManualInstallPowerShell=manualInstall;
+export const mcpAddressDiscoveryPowerShell=addressDiscovery;
 export function claudeRecoveryKind(error:unknown):'wait'|'host'|'update'|'configuration'|'manual'{
  const code=String(error).split(':')[0];
  if(/^CLAUDE_PLUGIN_ADMIN_REFUSED:(READ|SAVE)_CONFIGURATION:/.test(String(error)))return 'configuration';

@@ -10,6 +10,10 @@ const STORAGE = "agbrio.private-read-cache.v1";
 // Cache-first start shows the last week of presentation while the live check runs.
 const MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 const MAX_CHARS = 1_500_000;
+function persistentView(key:string,value:unknown){
+ if(key.startsWith('chat:')&&value&&typeof value==='object'&&Array.isArray((value as {replies?:unknown}).replies))return {...value,replies:[]};
+ return value;
+}
 export class ReadModelCache {
   private entries = new Map<string, Entry>();
   private scope: string | null = null;
@@ -28,10 +32,12 @@ export class ReadModelCache {
       const saved = raw && raw.length <= MAX_CHARS ? JSON.parse(raw) : null;
       if (scope && saved?.scope === scope && Array.isArray(saved.rows)) {
         for (const row of saved.rows.slice(0, 48)) if (typeof row.key === "string" && typeof row.at === "number" && row.at <= Date.now() && Date.now() - row.at < MAX_AGE)
-          this.entries.set(row.key, {value: row.value, at: row.at, touched: row.at, due: 0, period: 5000, version: 0, valueVersion:0, listeners: new Set()});
+          this.entries.set(row.key, {value: persistentView(row.key,row.value), at: row.at, touched: row.at, due: 0, period: 5000, version: 0, valueVersion:0, listeners: new Set()});
       } else this.storage()?.removeItem(STORAGE);
     } catch { /* unavailable/corrupt storage never blocks the application */ }
+    this.save();
   }
+  stats() { let bytes=0;for(const e of this.entries.values()){try{bytes+=new TextEncoder().encode(JSON.stringify(e.value)??'').length;}catch{}}return {bytes,entries:this.entries.size,retentionDays:7,persistedLimitBytes:MAX_CHARS*2}; }
   clear() {
     this.epoch++; for (const e of this.entries.values()) { e.version++; e.value = undefined; e.at = 0; e.due = 0; e.listeners.forEach(fn => fn()); }
     this.entries.clear(); clearTimeout(this.saveTimer);
@@ -107,7 +113,8 @@ export class ReadModelCache {
     const now = Date.now();
     const due = [...this.entries.entries()].filter(([, e]) => e.loader && !e.pending && e.due <= now && (e.listeners.size || now - e.touched < 20 * 60 * 1000)).sort((a,b) => Number(b[1].listeners.size>0)-Number(a[1].listeners.size>0)||a[1].due-b[1].due);
     for (const [key, e] of due) { if (this.running >= (e.listeners.size?6:2)) continue; void this.load(key, e).catch(() => undefined); }
-    const expired = [...this.entries.entries()].filter(([, e]) => !e.listeners.size && !e.pending).sort((a,b) => b[1].touched - a[1].touched).slice(96);
+    const inactive = [...this.entries.entries()].filter(([, e]) => !e.listeners.size && !e.pending).sort((a,b) => b[1].touched - a[1].touched);
+    const expired = inactive.filter(([,e],index)=>index>=96||(e.at>0&&now-e.at>=MAX_AGE));
     for (const [key] of expired) this.entries.delete(key);
   }
   private save() {
@@ -119,7 +126,7 @@ export class ReadModelCache {
       for (const [key, e] of [...this.entries.entries()].sort((a,b) => b[1].touched - a[1].touched)) {
         if (key.startsWith('board:') || e.value === undefined || Date.now() - e.at >= MAX_AGE || rows.length >= 48) continue;
         // Command receipts, draft/CAS records and model options are never registered here.
-        const row = {key, at:e.at, value:e.value}; const length = JSON.stringify(row).length;
+        const row = {key, at:e.at, value:persistentView(key,e.value)}; const length = JSON.stringify(row).length;
         if (size + length > MAX_CHARS - 1000) continue; rows.push(row); size += length;
       }
       try { this.storage()?.setItem(STORAGE, JSON.stringify({scope:this.scope, rows})); } catch { /* quota/private mode: memory cache continues */ }

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 #[derive(Clone,PartialEq,Eq,Deserialize)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]
-struct Request { api_version:u32,request_id:String,command:String,expected_instance:Option<String>,#[serde(default)]folder:Option<String>,#[serde(default)]notice_binding:Option<router_core::store::codex_notices::Binding> }
+struct Request { #[serde(default)]review_port:Option<u16>,#[serde(default)]title:Option<String>,api_version:u32,request_id:String,command:String,expected_instance:Option<String>,#[serde(default)]folder:Option<String>,#[serde(default)]notice_binding:Option<router_core::store::codex_notices::Binding> }
 
 fn dispatch(core:&RouterCore,host:&HostRuntime,bytes:&[u8],seen:&mut HashMap<String,(Request,Value)>)->(Value,bool) {
     let failure=|code:&str|(json!({"apiVersion":1,"errorCode":code}),false);
@@ -19,6 +19,8 @@ fn dispatch(core:&RouterCore,host:&HostRuntime,bytes:&[u8],seen:&mut HashMap<Str
         "STATUS"=>(json!({"state":"RUNNING","instanceId":host.instance_id(),"pid":std::process::id(),"appVersion":app_control::version()}),false),
         "CAPABILITIES"=>(app_control::capabilities("OWNER"),false),
         "DIAGNOSTICS"=>match app_control::diagnostics(core,Some(host)){Ok(v)=>(v,false),Err(_)=>return failure("APP_DIAGNOSTICS_STORE_UNAVAILABLE")},
+        "PUBLISH_REVIEW_BOARD" if r.expected_instance.as_deref()==Some(host.instance_id())=>{if seen.len()>=128{return failure("APP_CONTROL_REQUEST_LIMIT");}match r.folder.as_deref().ok_or("REVIEW_BOARD_ROOT_REQUIRED".to_string()).and_then(|folder|crate::review_boards::publish(folder,r.review_port.unwrap_or(47816),r.title.as_deref().unwrap_or("互动审批看板"))){Ok(v)=>(json!(v),false),Err(code)=>return failure(&code)}},
+        "PUBLISH_REVIEW_BOARD"=>return failure("APP_CONTROL_EXPECTED_INSTANCE_REQUIRED"),
         "PUBLISH_BOARD" if r.expected_instance.as_deref()==Some(host.instance_id())=>{
             if seen.len()>=128{return failure("APP_CONTROL_REQUEST_LIMIT");}
             match r.folder.as_deref().ok_or_else(||"PUBLISHED_BOARD_FOLDER_REQUIRED".to_string()).and_then(crate::published_boards::publish){Ok(v)=>(json!(v),false),Err(code)=>return failure(&code)}
@@ -36,7 +38,7 @@ fn dispatch(core:&RouterCore,host:&HostRuntime,bytes:&[u8],seen:&mut HashMap<Str
     };
     let reply=json!({"apiVersion":1,"requestId":r.request_id,"data":data});
     // Never evict an id and permit a reused id to change meaning in one Host epoch.
-    if shutdown||matches!(r.command.as_str(),"PUBLISH_BOARD"|"REGISTER_CODEX_NOTICES") {
+    if shutdown||matches!(r.command.as_str(),"PUBLISH_BOARD"|"PUBLISH_REVIEW_BOARD"|"REGISTER_CODEX_NOTICES") {
         if seen.len()>=128{return failure("APP_CONTROL_REQUEST_LIMIT");}
         seen.insert(r.request_id.clone(),(r,reply.clone()));
     }

@@ -1,3 +1,4 @@
+import {PublishedBoardSettings} from './PublishedBoardSettings';
 import {invoke,isTauri} from '@tauri-apps/api/core';
 import {useEffect,useState} from 'react';
 import {ExternalLink,FolderOpen,Globe} from 'lucide-react';
@@ -30,7 +31,7 @@ export function BoardView({active}:{active:boolean}){
  return <BoardHub active={active} legacy={legacy} legacyAvailable={Boolean(source)} sourceLoading={source===undefined}/>;
 }
 
-export function BoardSourceSettings(){
+function LegacyBoardSourceSettings(){
  useLanguage();const source=useBoardSource();const editable=isTauri();
  const[kind,setKind]=useState<'LOCAL'|'URL'>('LOCAL'),[value,setValue]=useState(''),[desktopValue,setDesktopValue]=useState(''),[extraValue,setExtraValue]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false);
  useEffect(()=>{if(!source)return;setKind(source.kind);setValue(source.kind==='URL'?source.url:source.root);setDesktopValue(source.kind==='URL'?source.desktopUrl??'':'');setExtraValue(source.kind==='LOCAL'?(source.extraRoots??[]).join('\n'):'');},[source]);
@@ -53,3 +54,6 @@ export function BoardSourceSettings(){
   {editable?<button type="submit" className="board-source-save" disabled={busy||!value.trim()}>{busy?uiText('正在保存…'):saved?uiText('已保存'):uiText('保存')}</button>:<p className="board-source-muted">{uiText('看板来源只能在电脑上的 Agbrio 设置里更改。')}</p>}
  </form>;
 }
+
+/** Default publication stays inside this Agbrio; existing interactive links remain intact. */
+export function BoardSourceSettings({onOpen}:{onOpen?:()=>void}={}){const source=useBoardSource();return <><PublishedBoardSettings onOpen={onOpen} legacyAvailable={Boolean(source)}/>{source&&<details className="board-source-legacy"><summary>{uiText('现有看板连接')}</summary><p>{uiText('现有连接保留，不影响审批和日常使用。')}</p><LegacyBoardSourceSettings/></details>}</>;}

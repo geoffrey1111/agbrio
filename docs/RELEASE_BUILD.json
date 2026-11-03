@@ -1,5 +1,5 @@
 {
-  "version": "0.1.35-rc.109",
+  "version": "0.1.35-rc.115",
   "bundle": {
     "windows": {
       "nsis": {

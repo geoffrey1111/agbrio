@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
- [ValidateSet('Status','Capabilities','Diagnostics','Start','Stop','Restart','PublishBoard','RegisterCodexNotices')][string]$Command='Status',
+ [ValidateSet('Status','Capabilities','Diagnostics','Start','Stop','Restart','PublishBoard','PublishReviewBoard','RegisterCodexNotices')][string]$Command='Status',
+ [int]$ReviewPort=47816,
+ [string]$Title='互动审批看板',
  [string]$NoticeBindingFile='',
  [string]$Folder='',
  [string]$Executable=(Join-Path $PSScriptRoot '..\ai-work-router.exe'),
@@ -16,6 +18,7 @@ function Invoke-Control([string]$Operation,[string]$Expected='',[guid]$Identity=
  try {
   $pipe.Connect(2000)
   $payload=@{apiVersion=1;requestId=$Identity.ToString();command=$Operation;expectedInstance=if($Expected){$Expected}else{$null}}
+  if($Operation -eq 'PUBLISH_REVIEW_BOARD'){$payload.folder=$Folder;$payload.reviewPort=$ReviewPort;$payload.title=$Title}
   if($Operation -eq 'PUBLISH_BOARD'){$payload.folder=$Folder}
   if($Operation -eq 'REGISTER_CODEX_NOTICES'){$payload.noticeBinding=Get-Content -LiteralPath $NoticeBindingFile -Raw|ConvertFrom-Json}
   $bytes=[Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Compress)+"`n")
@@ -93,6 +96,7 @@ try {
   'Status' {Invoke-Control 'STATUS' $ExpectedInstance $RequestId}
   'Capabilities' {Invoke-Control 'CAPABILITIES' $ExpectedInstance $RequestId}
   'Diagnostics' {Invoke-Control 'DIAGNOSTICS' $ExpectedInstance $RequestId}
+  'PublishReviewBoard' {if(!$Folder){throw 'REVIEW_BOARD_ROOT_REQUIRED'};$owner=Invoke-Control 'STATUS';Invoke-Control 'PUBLISH_REVIEW_BOARD' $owner.instanceId $RequestId}
   'PublishBoard' {if(!$Folder){throw 'PUBLISHED_BOARD_FOLDER_REQUIRED'};$owner=Invoke-Control 'STATUS';Invoke-Control 'PUBLISH_BOARD' $owner.instanceId $RequestId}
   'RegisterCodexNotices' {if(!$NoticeBindingFile){throw 'CLAUDE_NOTICE_BINDING_REQUIRED'};$owner=Invoke-Control 'STATUS';Invoke-Control 'REGISTER_CODEX_NOTICES' $owner.instanceId $RequestId}
   'Start' {Start-Host (Exact-Executable)}

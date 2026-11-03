@@ -249,8 +249,10 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         .route("/v1/mobile/cache",get(app_cache_status))
         .route("/v1/mobile/cache/cleanup",post(app_cache_cleanup))
         .route("/v1/mobile/board-source",get(board_source_read))
+        .route("/v1/mobile/review-boards/{id}/frame/", get(review_board_root).post(review_board_root).layer::<_,std::convert::Infallible>(tower_http::compression::CompressionLayer::new()).layer::<_,std::convert::Infallible>(axum::extract::DefaultBodyLimit::max(64*1024)))
+        .route("/v1/mobile/review-boards/{id}/frame/{*rest}", get(review_board_path).post(review_board_path).layer::<_,std::convert::Infallible>(tower_http::compression::CompressionLayer::new()).layer::<_,std::convert::Infallible>(axum::extract::DefaultBodyLimit::max(64*1024)))
         .route("/v1/mobile/boards",get(published_boards_list))
-        .route("/v1/mobile/boards/{id}",get(published_board_snapshot).layer(tower_http::compression::CompressionLayer::new()))
+        .route("/v1/mobile/boards/{id}",get(published_board_snapshot).delete(published_board_remove).layer(tower_http::compression::CompressionLayer::new()))
         .route("/v1/mobile/boards/{id}/assets/{asset_id}",get(published_board_asset))
         .route("/v1/mobile/character-board/assets/{asset_id}",get(character_board_asset))
         .route("/v1/mobile/bridges",post(create_bridge))
@@ -618,7 +620,16 @@ struct BoardReviewInput{revision:String,#[serde(flatten)]input:crate::character_
 async fn app_cache_status(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<crate::attachment_cache::Report>{authenticated(&headers,&state,false).await?;Ok(Json(run_core_blocking("Cache status",move||crate::attachment_cache::inspect(&state.core,false)).await?))}
 async fn app_cache_cleanup(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<crate::attachment_cache::Report>{authenticated(&headers,&state,true).await?;Ok(Json(run_core_blocking("Cache cleanup",move||crate::attachment_cache::inspect(&state.core,true)).await?))}
 async fn board_source_read(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<Option<crate::character_board::Source>>{board_authenticated(&headers,&state).await?;Ok(Json(crate::character_board::source()))}
+// Review applications retain the original public DEVICE-only authorization.
+// Access JWT, MCP grants and list visibility are not owner approval credentials.
+fn review_device(headers:&HeaderMap,state:&MobileHttpState,write:bool)->Result<(),ApiError>{
+ if headers.get("host").and_then(|v|v.to_str().ok())!=Some(state.config.allowed_host.as_str())||headers.get("origin").is_some_and(|v|v.to_str().ok()!=Some(state.config.allowed_origin.as_str()))||write&&headers.get("origin").and_then(|v|v.to_str().ok())!=Some(state.config.allowed_origin.as_str()){return Err(ApiError(StatusCode::FORBIDDEN,"REVIEW_BOARD_ORIGIN_BLOCKED".into()))}
+ if crate::web_auth::cookie_token(headers).is_none_or(|token|!state.web_auth.valid(&token)){return Err(ApiError(StatusCode::UNAUTHORIZED,"REVIEW_BOARD_DEVICE_REQUIRED".into()))}Ok(())
+}
+async fn review_board_root(Path(id):Path<String>,State(state):State<MobileHttpState>,headers:HeaderMap,uri:axum::http::Uri,method:axum::http::Method,body:axum::body::Bytes)->Result<axum::response::Response,ApiError>{review_device(&headers,&state,method==axum::http::Method::POST)?;Ok(crate::review_boards::proxy(id,String::new(),uri.query().map(str::to_owned),method,headers,body,state.config.allowed_origin.clone()).await)}
+async fn review_board_path(Path((id,rest)):Path<(String,String)>,State(state):State<MobileHttpState>,headers:HeaderMap,uri:axum::http::Uri,method:axum::http::Method,body:axum::body::Bytes)->Result<axum::response::Response,ApiError>{review_device(&headers,&state,method==axum::http::Method::POST)?;Ok(crate::review_boards::proxy(id,rest,uri.query().map(str::to_owned),method,headers,body,state.config.allowed_origin.clone()).await)}
 async fn published_boards_list(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<Vec<crate::published_boards::BoardInfo>>{board_authenticated(&headers,&state).await?;Ok(Json(run_core_blocking("Published board list",crate::published_boards::list).await?))}
+async fn published_board_remove(Path(id):Path<String>,State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<serde_json::Value>{authenticated(&headers,&state,true).await?;run_core_blocking("Remove published board registration",move||crate::published_boards::remove(&id)).await?;Ok(Json(serde_json::json!({"ok":true})))}
 async fn published_board_snapshot(Path(id):Path<String>,State(state):State<MobileHttpState>,headers:HeaderMap,Query(query):Query<BoardQuery>)->Result<impl IntoResponse,ApiError>{
  board_authenticated(&headers,&state).await?;
  let value=run_core_blocking("Published board",move||crate::published_boards::snapshot(&id,query.known_revision.as_deref())).await?;
@@ -668,7 +679,7 @@ async fn codex_watches(State(state):State<MobileHttpState>,headers:HeaderMap)->A
 }
 async fn computer_identity(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<serde_json::Value>{authenticated(&headers,&state,false).await?;Ok(Json(crate::todo_projection::computer_identity()))}
 async fn assistant_settings_view(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<serde_json::Value>{
- authenticated(&headers,&state,false).await?;crate::assistant_settings_view(&state.core).map(Json).map_err(core_error)
+ authenticated(&headers,&state,false).await?;crate::assistant_settings_view(&state.core,Some(state.config.allowed_origin.clone())).map(Json).map_err(core_error)
 }
 async fn assistant_connect_instance(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<router_core::store::assistant::AssistantConnectionInput>)->ApiResult<router_core::store::assistant::AssistantGrant>{
  authenticated(&headers,&state,true).await?;state.core.store.connect_assistant_instance(input).map(Json).map_err(core_error)

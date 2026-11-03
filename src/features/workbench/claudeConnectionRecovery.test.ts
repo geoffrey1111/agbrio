@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {claudeCompletionInstructions,claudeFailureStage,claudeManualInstallPowerShell,claudeRecoveryKind} from './claudeConnectionRecovery';
+import {claudeCompletionInstructions,claudeFailureStage,claudeManualInstallPowerShell,mcpAddressDiscoveryPowerShell,claudeRecoveryKind} from './claudeConnectionRecovery';
 describe('Claude setup recovery',()=>{
  it('shows fixed stage metadata without rendering arbitrary native error text',()=>{
   expect(claudeFailureStage('CLAUDE_PLUGIN_ADMIN_REFUSED:SAVE_CONFIGURATION:125')).toContain('125');
@@ -20,3 +20,5 @@ describe('Claude setup recovery',()=>{
   expect(claudeManualInstallPowerShell).not.toMatch(/Invoke-WebRequest|Invoke-RestMethod|ExecutionPolicy|--values-stdin|Stop-Process|Set-ExecutionPolicy/);
  });
 });
+
+it('address lookup reads only the public current-user connection file and contains no installation or credential commands',()=>{expect(mcpAddressDiscoveryPowerShell).toContain('mobile-runtime.json');expect(mcpAddressDiscoveryPowerShell).toContain('allowed_origin');expect(mcpAddressDiscoveryPowerShell).not.toMatch(/Invoke-WebRequest|Invoke-RestMethod|Set-Content|Set-ExecutionPolicy|auth\.json|hosted-settings|plugin install|Stop-Process/);});

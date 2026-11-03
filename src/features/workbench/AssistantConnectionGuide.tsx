@@ -7,12 +7,13 @@ import {CopyAction} from "./NativeReaderActions";
 import {assistantSetupInstructions,assistantReadOnlyInstructions,assistantTakeoverInstructions,type AssistantRoute} from "./assistantSetupInstructions";
 import "../../styles/assistant-guide.css";
 import {AssistantDailyReport,type ReportBridge} from "./AssistantDailyReport";
-import {claudeCodeAddCommand} from "./claudeConnectionInstructions";
+import {claudeCodeAddCommand,claudeManualConnectionInstructions} from "./claudeConnectionInstructions";
 import {assistantMcpConfig} from "./assistantClientInstructions";
 import {AssistantOverview} from "./AssistantOverview";
+import {mcpAddressDiscoveryPowerShell} from "./claudeConnectionRecovery";
 
 type ExistingGrant={id:string;scope?:string;approvalMode?:string;label:string;expiresAt:number;revokedAt:number|null};
-export type AssistantHelpPage="CHATGPT_PLUGINS"|"AUTH_DOCUMENTATION";
+export type AssistantHelpPage="CHATGPT_PLUGINS"|"AUTH_DOCUMENTATION"|"CLAUDE_CONNECTORS";
 function ClaudeCodeConnectionSteps({mcpUrl}:{mcpUrl:string|null}){
  const command=claudeCodeAddCommand(mcpUrl);
  return <section className="assistant-step-context" aria-label={t("Claude Code 完整接入")}>
@@ -26,7 +27,7 @@ function ClaudeCodeConnectionSteps({mcpUrl}:{mcpUrl:string|null}){
   <a href="https://code.claude.com/docs/en/mcp" target="_blank" rel="noopener noreferrer">{t("Claude Code 官方接入说明")}</a>
  </section>;
 }
-export function AssistantConnectionGuide({mcpUrl,grants,bridges=[],onAddGrant,onRouteChange,openHelp,connectClaude}:{mcpUrl:string|null;grants:ExistingGrant[];bridges?:ReportBridge[];onAddGrant:()=>void;onRouteChange:(route:AssistantRoute)=>void;openHelp:(page:AssistantHelpPage)=>Promise<void>;connectClaude?:()=>Promise<ClaudeConnectionResult>}){
+export function AssistantConnectionGuide({mcpUrl,grants,bridges=[],onAddGrant,onRouteChange,openHelp,connectClaude,onRefresh,onConfigureConnection}:{mcpUrl:string|null;grants:ExistingGrant[];bridges?:ReportBridge[];onAddGrant:()=>void;onRouteChange:(route:AssistantRoute)=>void;openHelp:(page:AssistantHelpPage)=>Promise<void>;connectClaude?:()=>Promise<ClaudeConnectionResult>;onRefresh?:()=>Promise<void>;onConfigureConnection?:()=>void}){
  useLanguage();const id=useId(),heading=useRef<HTMLHeadingElement>(null);
  const[route,setRoute]=useState<AssistantRoute|null>(null),[step,setStep]=useState(0),[openError,setOpenError]=useState("");
  const active=grants.filter(g=>g.scope==="INSTANCE"&&g.approvalMode==="CONVERSATION_REVIEW"&&!g.revokedAt&&g.expiresAt>Date.now());
@@ -34,6 +35,7 @@ export function AssistantConnectionGuide({mcpUrl,grants,bridges=[],onAddGrant,on
  const universal=route==="claude"||route==="workbuddy"||route==="generic";
  const target=route==="cloud"?"dot":route==="local"?"Codex":route==="claude"?"Claude Code":route==="workbuddy"?"WorkBuddy":t("当前助手");
  const config=assistantMcpConfig(mcpUrl);
+ const readyUrl=config?mcpUrl:null;
  const labels=["检查入口","准备授权",route==="local"?"添加到 Codex":universal?"添加 MCP 连接":"注册云端插件","本人同意","只读验收","选择 Bridge"];
  function choose(value:AssistantRoute){setRoute(value);setStep(0);setOpenError("");onRouteChange(value);}
  function navigate(value:number){setStep(value);setOpenError("");requestAnimationFrame(()=>heading.current?.focus({preventScroll:true}));}
@@ -52,17 +54,16 @@ export function AssistantConnectionGuide({mcpUrl,grants,bridges=[],onAddGrant,on
    </div>
    {!route?<p className="assistant-route-hint">{t("选择要使用的助手。每个客户端需要分别连接并验收。")}</p>:<>
     <p className="assistant-guide-notice">{t("连接后可按需操作 Bridge；持续托管和日报需分别核对事件唤醒、定时能力，不会自动开启。")}</p>
-    {route==="claude"&&<ClaudeNativeConnection connect={connectClaude}/>}
-    <div className="assistant-agent-start"><CopyAction showLabel text={assistantSetupInstructions(mcpUrl,getLanguage(),route)} label={t("复制给 AI 助手")}/><p>{t("把指令粘贴到所选助手的对话中；它会先检查入口，再引导连接。登录和同意仍由你完成。")}</p></div>
-    {route==="claude"&&<ClaudeCodeConnectionSteps mcpUrl={mcpUrl}/>}
-    <div className="assistant-current-connection"><p>{t("当前 MCP 地址")}</p>{mcpUrl?<div className="assistant-guide-value"><code>{mcpUrl}</code><CopyAction text={mcpUrl} label={t("复制 MCP 地址")}/></div>:<p>{t("尚未配置 MCP 入口。先到设备设置选择已有 HTTPS 服务或部署方式。")}</p>}{active.length>0&&<p className="assistant-grant-summary"><Check size={18}/>{t("有效授权将直接复用 · 可随时撤销")}</p>}</div>
+    <div className="assistant-agent-start"><CopyAction showLabel text={readyUrl?assistantSetupInstructions(readyUrl,getLanguage(),route):null} label={t("复制给 AI 助手")}/><p>{t("把指令粘贴到所选助手的对话中；它会先检查入口，再引导连接。登录和同意仍由你完成。")}</p></div>
+    <section className="assistant-current-connection" aria-label={t("当前 MCP 地址")}><h3>{t("当前 MCP 地址")}</h3>{readyUrl?<><div className="assistant-guide-value"><code>{readyUrl}</code><CopyAction text={readyUrl} label={t("复制 MCP 地址")}/></div><p>{t("这是这台电脑的 MCP 地址，只用于添加连接，不含登录凭据。")}</p>{route==="claude"&&<><p><strong>{t("手动添加到 Claude")}</strong></p><ol><li>{t("打开 Claude 的 Customize → Connectors，点击 + Add → Add custom connector；旧版入口为 Settings → Connectors。")}</li><li>{t("名称填 agbrio，地址粘贴上面的 MCP 地址；使用 OAuth，若有 OAuth client 选项选 Register automatically，不填写 token 或客户端密钥。")}</li><li>{t("完成本人登录与同意，回到当前 Code 对话，在 + → Connectors 中打开 agbrio，再让助手只读调用 agbrio_read_app。")}</li></ol><button type="button" onClick={()=>void external("CLAUDE_CONNECTORS")}>{t("打开 Claude 连接器设置")}</button><CopyAction showLabel text={claudeManualConnectionInstructions(readyUrl,getLanguage())} label={t("复制手动添加步骤")}/></>}</>:<div role="status"><p>{t("先准备真实连接地址，暂时不能复制接入指令。")}</p><p>{t("手机已经能连接？请先点“刷新连接信息”。仍没有地址时，在这台电脑的“设置 → 设备”检查现有手机连接；无需重装通知插件。")}</p><CopyAction showLabel text={mcpAddressDiscoveryPowerShell} label={t("复制只读查址命令")}/><p>{t("也可把查址命令交给这台电脑上的助手执行，只读取当前连接地址，不修改配置。")}</p>{onConfigureConnection&&<button type="button" onClick={onConfigureConnection}>{t("打开设备连接设置")}</button>}</div>}{onRefresh&&<button type="button" onClick={()=>void onRefresh()}>{t("刷新连接信息")}</button>}{active.length>0&&<p className="assistant-grant-summary"><Check size={18}/>{t("有效授权将直接复用 · 可随时撤销")}</p>}</section>
+    {route==="claude"&&<><ClaudeCodeConnectionSteps mcpUrl={readyUrl}/><p>{t("MCP 管理 Codex 与通知插件是两条连接。只有 codex_wait 时，仍需按上面的真实地址添加 agbrio MCP。")}</p><ClaudeNativeConnection connect={connectClaude} mcpUrl={readyUrl}/></>}
     <details className="assistant-human-details"><summary>{t("查看我需要做的步骤")}</summary><section className="assistant-human-steps" aria-label={t("只需要你完成")}><h3>{t("只需要你完成")}</h3>
      <ol><li><strong>{t("选择助手授权")}</strong>{active.length?<p>{t("已有有效的整个应用授权，可直接复用。")}</p>:<button type="button" onClick={onAddGrant}>{t("创建 30 天授权")}</button>}<p>{t("旧版单 Bridge 授权不会自动升级。")}</p></li>
      <li><strong>{t("本人登录并同意连接")}</strong>{route==="cloud"&&<button type="button" onClick={()=>void external("CHATGPT_PLUGINS")}>{t("在浏览器打开插件首页")}</button>}<p>{t(route==="cloud"?"按 agent 指引添加云端连接，核对范围并同意，再在目标 dot 中启用。":universal?"在所选助手添加 MCP 连接，完成本人 OAuth 同意，再只读验收工具。":"按 agent 指引连接本地 Codex，核对范围并同意。")}</p></li>
      <li><strong>{t("告诉助手接管哪些 Bridge")}</strong><p>{t("说明任务、需要询问的情况和暂停条件；不需要另填 Brief。")}</p></li></ol>
     </section></details>
     {openError&&<p role="alert">{openError}</p>}
-    <details className="assistant-prompt-preview"><summary>{t("预览要复制的指令")}</summary><pre>{assistantSetupInstructions(mcpUrl,getLanguage(),route)}</pre></details>
+    <details className="assistant-prompt-preview"><summary>{t("预览要复制的指令")}</summary><pre>{assistantSetupInstructions(readyUrl,getLanguage(),route)}</pre></details>
     <AssistantDailyReport bridges={bridges} mcpUrl={mcpUrl}/>
     <details className="assistant-manual"><summary>{t("自己操作：查看详细教程")}</summary>
     <p className="assistant-overview-note">{t("已有正常连接？先跳到“只读验收”。下面的数字只表示正在阅读的步骤，不表示连接成功。")}</p>

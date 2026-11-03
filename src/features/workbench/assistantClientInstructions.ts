@@ -2,6 +2,10 @@ import type {Language} from "../../i18n";
 
 export type GenericAssistantClient="workbuddy"|"generic";
 
+export function missingMcpInstructions(language:Language):string{
+ return language==='en'?'Agbrio has not provided a valid HTTPS MCP address yet. In this user’s Agbrio, open Settings → Devices and check the existing phone connection. If the phone already works, return to AI assistant and refresh connection details. Otherwise finish configuring this computer’s connection first. Then copy the real address and setup instructions again. Do not add a placeholder, use another user’s address, reinstall the notification plugin, or claim MCP is connected.':language==='zh-TW'?'Agbrio 尚未提供有效的 HTTPS MCP 位址。請在這位使用者自己的 Agbrio 開啟「設定 → 裝置」，檢查既有手機連接；手機已可連接時，回到「AI 助手」重新整理連接資訊。否則先完成這台電腦的連接設定。取得真實位址後重新複製接入指令。不要新增佔位符、使用其他使用者的位址、重裝通知插件，或宣稱 MCP 已連接。':'Agbrio 尚未提供有效的 HTTPS MCP 地址。请在这位用户自己的 Agbrio 打开「设置 → 设备」，检查已有手机连接；手机已能连接时，回到「AI 助手」刷新连接信息。否则先完成这台电脑的连接设置。拿到真实地址后重新复制接入指令。不要添加占位符、使用其他用户的地址、重装通知插件，或宣称 MCP 已连接。';
+}
+
 /** WorkBuddy configuration contains only an endpoint. Other clients own their schema. */
 export function assistantMcpConfig(mcpUrl:string|null):string|null{
  try{const u=new URL(mcpUrl??"");if(u.protocol!=="https:"||u.username||u.password||u.search||u.hash||u.pathname!=="/mcp")return null;}catch{return null;}

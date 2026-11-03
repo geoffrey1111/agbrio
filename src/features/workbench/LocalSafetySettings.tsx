@@ -21,7 +21,7 @@ export function LocalSafetySettings({api=localSafetyApi}:{api?:typeof localSafet
  const changed=!!draft&&JSON.stringify(draft)!==JSON.stringify(status?.settings);
  return <section className="v4-shared-codex local-safety-settings" aria-label={t('运行保护')}><h2>{t('运行保护')}</h2>{draft&&<>
   <label><input type="checkbox" checked={draft.recoveryEnabled} disabled={busy} onChange={e=>{setDraft({...draft,recoveryEnabled:e.target.checked});setSaved(false);}}/> {t('自动恢复 Codex 模型故障')}</label>
-  <p>{t('适用于所有监听的 Codex 对话。明确的临时模型故障后等待 60 秒，继续原目标；每条对话 30 分钟内最多 2 次。手动暂停、额度不足和待决策不会自动恢复。')}</p>
+  <p>{t('仅自动恢复已有原生目标（Goal）的监听对话。目标因明确的临时模型故障阻塞后等待 60 秒，30 分钟内最多恢复 2 次。没有 Goal 的普通对话仍需在 Codex 中重试；手动暂停、额度不足和待决策不会自动恢复。')}</p>
   <ResourceMonitorSettings/>
   <label htmlFor="resource-alert-target">{t('资源告警接收对话')}</label>
   {!!ordered.length&&<ol className="local-safety-targets">{ordered.map((target,index)=>{const w=watches.find(w=>w.threadId===target.threadId&&w.generation===target.generation&&w.cwd===target.cwd);return <li key={target.threadId} className="local-safety-target"><span><small>{t(index===0?'主接收':'备用 {0}',index)}</small><strong>{w?.label??t('原接收对话已不可用，请重新选择')}</strong><small>{target.threadId.startsWith('claude_code:')?'Claude Code':'Codex'}</small></span><div><button type="button" disabled={busy||index===0} aria-label={t('上移接收对话 {0}',index+1)} onClick={()=>move(index,-1)}><ArrowUp size={18}/></button><button type="button" disabled={busy||index===ordered.length-1} aria-label={t('下移接收对话 {0}',index+1)} onClick={()=>move(index,1)}><ArrowDown size={18}/></button><button type="button" disabled={busy} aria-label={t('移除接收对话 {0}',index+1)} onClick={()=>changeOrder(ordered.filter((_,i)=>i!==index))}><X size={18}/></button></div></li>;})}</ol>}

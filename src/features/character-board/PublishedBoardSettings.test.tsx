@@ -1,0 +1,12 @@
+import {afterEach,expect,it,vi} from 'vitest';
+import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
+import {PublishedBoardSettings} from './PublishedBoardSettings';
+import {selectedBoard} from './boardSelection';
+vi.mock('@tauri-apps/api/core',()=>({isTauri:()=>false}));
+afterEach(()=>{cleanup();localStorage.clear();});
+const first={id:'a'.repeat(32),title:'全局进度',available:true,revision:'r'},second={id:'b'.repeat(32),title:'第二块看板',available:true,revision:'s'};
+const api=()=>({list:vi.fn(async()=>[first,second]),help:vi.fn(async()=>({boards:{cliPath:null}})),remove:vi.fn(async()=>{}),publish:vi.fn(),snapshot:vi.fn(),asset:vi.fn()});
+it('lists every publication beside the existing board and opens the exact selection',async()=>{const open=vi.fn();render(<PublishedBoardSettings api={api()} legacyAvailable onOpen={open}/>);await screen.findByText('全局进度');expect(screen.getByText('第二块看板')).toBeVisible();expect(screen.getByText('现有看板')).toBeVisible();fireEvent.click(within(screen.getByText('第二块看板').closest('li')!).getByRole('button',{name:'打开'}));expect(selectedBoard()).toBe(second.id);expect(open).toHaveBeenCalledOnce();expect(screen.queryByPlaceholderText('https://board.example.com')).toBeNull();});
+it('requires an explicit confirmation before cancelling only the selected registration',async()=>{const a=api();render(<PublishedBoardSettings api={a}/>);await screen.findByText('全局进度');const row=within(screen.getByText('全局进度').closest('li')!);fireEvent.click(row.getByRole('button',{name:'取消接入'}));expect(a.remove).not.toHaveBeenCalled();expect(screen.getByText('只取消 Agbrio 接入，不删除电脑上的文件。')).toBeVisible();a.list.mockResolvedValue([second]);fireEvent.click(row.getByRole('button',{name:'确认取消接入'}));await waitFor(()=>expect(a.remove).toHaveBeenCalledWith(first.id));expect(screen.getByText('第二块看板')).toBeVisible();});
+
+it('lists a registered review service once and does not duplicate its old external entry',async()=>{const a=api();const review={...first,kind:'REVIEW' as const,replacesLegacy:true,title:'美术审批'};a.list.mockResolvedValue([review,second]);render(<PublishedBoardSettings api={a} legacyAvailable/>);await screen.findByText('美术审批');expect(screen.getByText('审批型看板 · 原服务')).toBeVisible();expect(screen.queryByText('现有看板')).toBeNull();fireEvent.click(within(screen.getByText('美术审批').closest('li')!).getByRole('button',{name:'打开'}));expect(selectedBoard()).toBe(review.id);});

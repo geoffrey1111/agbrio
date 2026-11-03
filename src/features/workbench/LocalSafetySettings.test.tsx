@@ -7,7 +7,7 @@ describe('owner safety settings',()=>{
   const initial={settings:{recoveryEnabled:true,alertTarget:null},collectorAvailable:true,recent:[],targets:[{threadId:'claude_code:exact',generation:3,cwd:'D:\\manager',label:'管理对话'}]};
   const api={read:vi.fn().mockResolvedValue(initial),watches:vi.fn().mockResolvedValue([{threadId:'claude_code:exact',generation:3,cwd:'D:\\manager',enabled:true,label:'管理对话'}]),save:vi.fn().mockImplementation(settings=>Promise.resolve({...initial,settings}))} as unknown as typeof localSafetyApi;
   render(<LocalSafetySettings api={api}/>);
-  expect(await screen.findByLabelText('自动恢复 Codex 模型故障')).toBeChecked();expect(screen.getByLabelText('资源告警接收对话')).toHaveValue('');expect(api.save).not.toHaveBeenCalled();
+  expect(await screen.findByLabelText('自动恢复 Codex 模型故障')).toBeChecked();expect(screen.getByText(/没有 Goal 的普通对话仍需在 Codex 中重试/)).toBeVisible();expect(screen.getByLabelText('资源告警接收对话')).toHaveValue('');expect(api.save).not.toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText('资源告警接收对话'),{target:{value:'claude_code:exact'}});fireEvent.click(screen.getByRole('button',{name:'保存设置'}));
   await waitFor(()=>expect(api.save).toHaveBeenCalledWith({recoveryEnabled:true,alertTarget:{threadId:'claude_code:exact',generation:3,cwd:'D:\\manager'},fallbackTargets:[]}));expect(await screen.findByText('已保存')).toBeInTheDocument();
  });

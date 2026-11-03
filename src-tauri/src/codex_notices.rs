@@ -38,7 +38,7 @@ pub(crate) fn poll(store:&Arc<RouterStore>,session:&Arc<Mutex<Session>>,epoch:u6
    let page=a.request_with_timeout("thread/turns/list",json!({"threadId":thread,"cursor":null,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"}),Duration::from_secs(3))?;
    let latest=page["data"].as_array().and_then(|r|r.first()).ok_or("CLAUDE_NOTICE_NO_TURN")?;let turn=latest["id"].as_str().ok_or("CLAUDE_NOTICE_NO_TURN")?;let status=latest["status"].as_str().unwrap_or("unknown");
    let cards=a.read_async_owner_questions(&thread,m.pointer("/thread/path").and_then(Value::as_str));store.reconcile_async_answer_replies(&thread,w.generation,&cards)?;
-   let mut questions=pending;for q in cards.into_iter().filter(|q|q["responseSent"]==false){if let(Some(id),Some(turn))=(q["requestId"].as_str(),q["turnId"].as_str().filter(|s|!s.is_empty())){questions.push(Question{request_id:id.into(),turn_id:turn.into(),kind:"USER_INPUT".into()});}}
+   let mut questions=pending;for q in cards.into_iter().filter(|q|q["responseSent"]==false){if let(Some(id),Some(turn))=(q["requestId"].as_str(),q["turnId"].as_str()){questions.push(Question{request_id:id.into(),turn_id:turn.into(),kind:"USER_INPUT".into()});}}
    // TASK/TURN question delivery must not depend on the unrelated optional Goal
    // endpoint. GOAL subscriptions retain their original exact-contract fence.
    let needs_goal=sources.iter().any(|s|s.binding.thread_id==thread&&s.binding.mode=="GOAL");

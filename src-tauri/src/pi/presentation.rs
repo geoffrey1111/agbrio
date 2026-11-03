@@ -187,6 +187,7 @@ pub(crate) fn command(
             .into_iter()
             .find(|r| r["id"] == id)
             .unwrap_or(Value::Null)),
+        ChatCommand::DiscardReply { id, .. } => {core.store.pi_discard_reply(&task.id,&id)?;Ok(json!({"removed":true}))}
         ChatCommand::Abandon { id, .. } => {
             Ok(json!({"cancelled":core.store.pi_abandon_unattempted(&task.id,&id)?}))
         }

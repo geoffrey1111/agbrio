@@ -122,6 +122,7 @@ impl RouterStore {
         tx.execute("INSERT OR IGNORE INTO pi_command_tombstones(task_id,request_id,created_at) SELECT task_id,request_id,?3 FROM pi_commands WHERE task_id=?1 AND generation<?2 AND status='READY'",params![key,generation,now()]).map_err(db_error)?;
         tx.execute("UPDATE pi_commands SET status='NOT_SENT',error_code='PI_OLD_RUNTIME_NEVER_ATTEMPTED',updated_at=?3 WHERE task_id=?1 AND generation<?2 AND status='READY'",params![key,generation,now()]).map_err(db_error)?;
         tx.execute("UPDATE pi_commands SET status='UNKNOWN',error_code='PI_PREVIOUS_RUNTIME_DELIVERY_UNCONFIRMED',updated_at=?3 WHERE task_id=?1 AND generation<?2 AND status IN('SENDING','ACCEPTED')",params![key,generation,now()]).map_err(db_error)?;
+        tx.execute("UPDATE pi_commands SET status='ACKNOWLEDGED',error_code='PI_OWNER_DISCARDED_UNCONFIRMED_REPLY',input_json=CASE WHEN json_type(input_json,'$.attachments')='array' AND json_array_length(input_json,'$.attachments')>0 THEN json_object('attachments',json_extract(input_json,'$.attachments')) ELSE '{}' END WHERE task_id=?1 AND removed_at IS NOT NULL AND status='UNKNOWN'",[key]).map_err(db_error)?;
         tx.commit().map_err(db_error)
     })
     }
@@ -140,7 +141,7 @@ impl RouterStore {
         self.with_connection(|c|{
         let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
         tx.execute("INSERT OR IGNORE INTO pi_command_tombstones(task_id,request_id,created_at) SELECT task_id,request_id,?2 FROM pi_commands WHERE task_id=?1 AND status='READY' AND operation!='CANCEL'",params![key,now()]).map_err(db_error)?;
-        tx.execute("UPDATE pi_commands SET status='NOT_SENT',error_code='PI_CANCELLED_BEFORE_NATIVE_SUBMISSION',updated_at=?2 WHERE task_id=?1 AND status='READY' AND operation!='CANCEL'",params![key,now()]).map_err(db_error)?;
+        tx.execute("UPDATE pi_commands SET removed_at=?2,input_json='{}',status='NOT_SENT',error_code='PI_CANCELLED_BEFORE_NATIVE_SUBMISSION',updated_at=?2 WHERE task_id=?1 AND status='READY' AND operation!='CANCEL'",params![key,now()]).map_err(db_error)?;
         tx.commit().map_err(db_error)
     })
     }
@@ -163,6 +164,12 @@ impl RouterStore {
         tx.commit().map_err(db_error)
     })
     }
+    pub fn pi_discard_reply(&self,key:&str,request:&str)->Result<(),String>{self.with_connection(|c|{
+        let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;task(&tx,key)?;
+        let prior=command(&tx,key,request)?;if !matches!(prior.operation.as_str(),"AUTO"|"SEND"|"STEER"|"QUEUE"){return Err("PI_COMMAND_INVALID".into());}
+        if prior.status=="READY"{tx.execute("INSERT OR IGNORE INTO pi_command_tombstones(task_id,request_id,created_at) VALUES(?1,?2,?3)",params![key,request,now()]).map_err(db_error)?;}
+        tx.execute("UPDATE pi_commands SET removed_at=COALESCE(removed_at,?3),status=CASE WHEN status='READY' THEN 'NOT_SENT' WHEN status='UNKNOWN' THEN 'ACKNOWLEDGED' ELSE status END,error_code=CASE WHEN status='UNKNOWN' THEN 'PI_OWNER_DISCARDED_UNCONFIRMED_REPLY' ELSE error_code END,input_json=CASE WHEN status IN('SENDING','ACCEPTED') THEN input_json WHEN status IN('READY','NOT_SENT','CANCELLED') THEN '{}' ELSE CASE WHEN json_type(input_json,'$.attachments')='array' AND json_array_length(input_json,'$.attachments')>0 THEN json_object('attachments',json_extract(input_json,'$.attachments')) ELSE '{}' END END,updated_at=?3 WHERE task_id=?1 AND request_id=?2",params![key,request,now()]).map_err(db_error)?;
+        tx.commit().map_err(db_error)})}
     pub fn pi_acknowledge_unknown(
         &self,
         key: &str,
@@ -200,7 +207,7 @@ impl RouterStore {
         let status:Option<String>=tx.query_row("SELECT status FROM pi_commands WHERE task_id=?1 AND request_id=?2",params![key,request],|r|r.get(0)).optional().map_err(db_error)?;
         if status.as_deref().is_some_and(|s|!matches!(s,"READY"|"NOT_SENT")){return Ok(false);}
         tx.execute("INSERT OR IGNORE INTO pi_command_tombstones(task_id,request_id,created_at) VALUES(?1,?2,?3)",params![key,request,now()]).map_err(db_error)?;
-        tx.execute("UPDATE pi_commands SET status='NOT_SENT',error_code='PI_ABANDONED_BEFORE_NATIVE_SUBMISSION',updated_at=?3 WHERE task_id=?1 AND request_id=?2 AND status='READY'",params![key,request,now()]).map_err(db_error)?;
+        tx.execute("UPDATE pi_commands SET removed_at=?3,input_json='{}',status='NOT_SENT',error_code='PI_ABANDONED_BEFORE_NATIVE_SUBMISSION',updated_at=?3 WHERE task_id=?1 AND request_id=?2 AND status='READY'",params![key,request,now()]).map_err(db_error)?;
         tx.commit().map_err(db_error)?;Ok(true)
     })
     }
@@ -258,7 +265,7 @@ impl RouterStore {
     }
     pub fn pi_reply_views(&self, key: &str) -> Result<Vec<Value>, String> {
         self.with_connection(|c|{
-        let t=task(c,key)?;let native=t.native_session_id.ok_or("PI_SESSION_ID_UNCONFIRMED")?;let mut statement=c.prepare("SELECT p.id,p.request_id,COALESCE(json_extract(p.result_json,'$.nativeMode'),p.operation),p.input_json,p.status,p.error_code,p.created_at,p.updated_at,(SELECT i.id FROM pi_public_items i WHERE i.task_id=p.task_id AND i.role='user' AND json_extract(i.content_json,'$.clientId')=p.request_id LIMIT 1) FROM pi_commands p WHERE task_id=?1 AND operation IN('AUTO','SEND','STEER','QUEUE') ORDER BY created_at DESC LIMIT 100").map_err(db_error)?;
+        let t=task(c,key)?;let native=t.native_session_id.ok_or("PI_SESSION_ID_UNCONFIRMED")?;let mut statement=c.prepare("SELECT p.id,p.request_id,COALESCE(json_extract(p.result_json,'$.nativeMode'),p.operation),p.input_json,p.status,p.error_code,p.created_at,p.updated_at,(SELECT i.id FROM pi_public_items i WHERE i.task_id=p.task_id AND i.role='user' AND json_extract(i.content_json,'$.clientId')=p.request_id LIMIT 1) FROM pi_commands p WHERE task_id=?1 AND removed_at IS NULL AND operation IN('AUTO','SEND','STEER','QUEUE') ORDER BY created_at DESC LIMIT 100").map_err(db_error)?;
         let rows=statement.query_map([key],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,String>(3)?,r.get::<_,String>(4)?,r.get::<_,Option<String>>(5)?,r.get::<_,i64>(6)?,r.get::<_,i64>(7)?,r.get::<_,Option<String>>(8)?))).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;
         rows.into_iter().map(|(_,request,mode,input,status,error,created,updated,message)|{let input:Value=serde_json::from_str(&input).map_err(|_|"PI_COMMAND_INVALID")?;let mapped=match status.as_str(){"READY"|"SENDING"=>"SENDING","ACCEPTED" if mode=="QUEUE"=>"QUEUED","ACCEPTED"=>"SENDING","CONSUMED"=>"SENT","ACKNOWLEDGED"=>"ACKNOWLEDGED","UNKNOWN"=>"UNKNOWN","NOT_SENT"=>"FAILED","CANCELLED"=>"CANCELLED",_=>"UNKNOWN"};Ok(serde_json::json!({"id":request,"threadId":format!("pi:{native}"),"cwd":t.directory,"payloadHash":command(c,key,&request)?.payload_hash,"generation":command(c,key,&request)?.generation,"sourceSequence":null,"expectedTurnId":null,"mode":if mode=="AUTO"{"SEND"}else{&mode},"text":input["text"].as_str().unwrap_or_default(),"status":mapped,"nativeMessageId":message,"turnId":format!("pi-session:{native}"),"errorCode":error,"createdAt":created,"updatedAt":updated,"options":{"attachments":input["attachments"].as_array().cloned().unwrap_or_default()}}))}).collect()
     })
@@ -421,7 +428,7 @@ impl RouterStore {
         }
         self.with_connection(|c|{let old=command(c,key,request)?;if old.payload_hash!=hash{return Err("PI_COMMAND_INTENT_CHANGED".into());}if status=="APPLIED"&&old.operation!="CANCEL"{return Err("PI_COMMAND_STATUS_INVALID".into());}if old.status=="READY"&&matches!(status,"ACCEPTED"|"CONSUMED"|"UNKNOWN"){return Err("PI_NATIVE_ATTEMPT_NOT_CLAIMED".into());}if matches!(old.status.as_str(),"CONSUMED"|"NOT_SENT"|"CANCELLED")&&old.status!=status{return Err("PI_COMMAND_ALREADY_TERMINAL".into());}
    if matches!(status,"ACCEPTED"|"CONSUMED")&&native_entry.is_none(){return Err("PI_NATIVE_RECEIPT_REQUIRED".into());}
-   c.execute("UPDATE pi_commands SET status=?3,native_entry_id=COALESCE(?4,native_entry_id),error_code=?5,updated_at=?6 WHERE task_id=?1 AND request_id=?2",params![key,request,status,native_entry,error,now()]).map_err(db_error)?;command(c,key,request)
+   c.execute("UPDATE pi_commands SET status=CASE WHEN removed_at IS NOT NULL AND ?3='UNKNOWN' THEN 'ACKNOWLEDGED' ELSE ?3 END,native_entry_id=COALESCE(?4,native_entry_id),error_code=CASE WHEN removed_at IS NOT NULL AND ?3='UNKNOWN' THEN 'PI_OWNER_DISCARDED_UNCONFIRMED_REPLY' ELSE ?5 END,input_json=CASE WHEN removed_at IS NOT NULL AND ?3!='ACCEPTED' THEN CASE WHEN json_type(input_json,'$.attachments')='array' AND json_array_length(input_json,'$.attachments')>0 THEN json_object('attachments',json_extract(input_json,'$.attachments')) ELSE '{}' END ELSE input_json END,updated_at=?6 WHERE task_id=?1 AND request_id=?2",params![key,request,status,native_entry,error,now()]).map_err(db_error)?;command(c,key,request)
   })
     }
     /// Owner-UI operation only. The application layer validates the canonical local
@@ -800,6 +807,14 @@ mod tests {
             )
             .unwrap();
         (d, store, t)
+    }
+    #[test]fn removed_pi_input_keeps_inflight_bytes_then_retires_without_native_replay(){
+      for status in ["READY","SENDING","ACCEPTED"]{let(_d,s,t)=fixture();let id=uuid::Uuid::new_v4().to_string();
+       s.with_connection(|c|{c.execute("UPDATE pi_tasks SET native_session_id='fixture-session' WHERE id=?1",[&t.id]).map_err(db_error)?;c.execute("INSERT INTO pi_commands(id,task_id,request_id,generation,operation,payload_hash,input_json,status,created_at,updated_at) VALUES(?1,?2,'delete-input',1,'SEND','original-hash','{\"text\":\"private cancelled input\"}',?3,1,1)",params![id,t.id,status]).map_err(db_error)?;Ok(())}).unwrap();
+       s.pi_discard_reply(&t.id,"delete-input").unwrap();assert!(s.pi_reply_views(&t.id).unwrap().is_empty());
+       if status=="READY"{assert_eq!(s.pi_command_input(&t.id,"delete-input").unwrap(),serde_json::json!({}));s.with_connection(|c|{assert_eq!(command(c,&t.id,"delete-input").unwrap().status,"NOT_SENT");Ok(())}).unwrap();}
+       else{assert_eq!(s.pi_command_input(&t.id,"delete-input").unwrap()["text"],"private cancelled input");let terminal=if status=="ACCEPTED"{"CONSUMED"}else{"UNKNOWN"};let r=s.pi_finish_command(&t.id,"delete-input","original-hash",terminal,Some("native-entry"),None).unwrap();assert_eq!(r.status,if terminal=="UNKNOWN"{"ACKNOWLEDGED"}else{"CONSUMED"});assert_eq!(s.pi_command_input(&t.id,"delete-input").unwrap(),serde_json::json!({}));}
+      }
     }
     #[test]
     fn derived_error_classification_upgrade_preserves_native_history_immutability(){

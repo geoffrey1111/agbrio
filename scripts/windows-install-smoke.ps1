@@ -90,7 +90,7 @@ if($agbrioPluginManifest.version -cne $agbrioExpectedPluginVersion){throw 'Insta
  $published | Set-Content (Join-Path $agbrioRoot 'published-board-proof.json') -Encoding utf8
  $agbrioWindowType=@'
 using System;using System.Runtime.InteropServices;
-public static class AgbrioSmokeWindow{[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr window,int command);}
+public static class AgbrioSmokeWindow{[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr window,int command);[DllImport("user32.dll")]public static extern bool IsZoomed(IntPtr window);}
 '@
  Add-Type -TypeDefinition $agbrioWindowType
  for($agbrioAttempt=0;$agbrioAttempt -lt 20;$agbrioAttempt++){
@@ -99,6 +99,7 @@ public static class AgbrioSmokeWindow{[DllImport("user32.dll")]public static ext
   Start-Sleep -Milliseconds 500
  }
  if($agbrioProcess.MainWindowHandle -eq [IntPtr]::Zero){throw 'Native application window did not appear.'}
+ if(![AgbrioSmokeWindow]::IsZoomed($agbrioProcess.MainWindowHandle)){throw 'DESKTOP_DID_NOT_START_MAXIMIZED'}
  [AgbrioSmokeWindow]::ShowWindow($agbrioProcess.MainWindowHandle,3)|Out-Null
  $agbrioWebviews=Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'"
  @($agbrioWebviews)|ForEach-Object{@{pid=$_.ProcessId;parent=$_.ParentProcessId;qaFlags=@([regex]::Matches($_.CommandLine,'--(?:remote-debugging[^ ]*|disable-devtools[^ ]*|enable-features=[^ ]*)')|ForEach-Object Value)}}|ConvertTo-Json -Compress

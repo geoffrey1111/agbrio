@@ -123,6 +123,7 @@ pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{
             Ok(json!({"enabled":enabled}))
         },
         ChatCommand::Receipt{thread_id,id}=>{native_id(&thread_id)?;core.store.codex_chat_context(&thread_id)?;let r=core.store.watch_reply(&id)?;if r.as_ref().is_some_and(|r|r.thread_id!=thread_id){return Err("REPLY_TARGET_CHANGED_REFRESH".into());}Ok(json!(r))},
+        ChatCommand::DiscardReply{thread_id,id}=>{native_id(&thread_id)?;core.store.codex_chat_context(&thread_id)?;core.store.discard_watch_reply(&thread_id,&id)?;Ok(json!({"removed":true}))},
         ChatCommand::Cancel{thread_id,id}=>{native_id(&thread_id)?;core.store.codex_chat_context(&thread_id)?;core.store.cancel_watch_reply(&thread_id,&id)?;Ok(json!({"ok":true}))},
         ChatCommand::Abandon{thread_id,id}=>{native_id(&thread_id)?;core.store.codex_chat_context(&thread_id)?;Ok(json!({"cancelled":core.store.abandon_watch_reply(&thread_id,&id)?}))},
         ChatCommand::Options{thread_id}=>{native_id(&thread_id)?;core.store.codex_chat_context(&thread_id)?;Ok(json!({"models":[],"permissions":"INHERITED"}))},

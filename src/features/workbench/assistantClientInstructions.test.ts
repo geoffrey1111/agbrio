@@ -29,11 +29,13 @@ describe("client-independent connection instructions",()=>{
   }
  });
  it("gates event wake and reports instead of claiming every MCP client can run unattended",()=>{
-  const prompt=assistantSetupInstructions(null,"en","workbuddy");
-  expect(prompt).toContain("ON-DEMAND ONLY");expect(prompt).toContain("do not create a polling task");expect(prompt).toContain("not installed tools");expect(prompt).toContain("no pasted bearer token");expect(prompt).toContain("refresh_token");expect(prompt).not.toContain('"mcpServers"');
+  const prompt=assistantSetupInstructions("https://fixture.invalid/mcp","en","workbuddy");
+  expect(prompt).toContain("ON-DEMAND ONLY");expect(prompt).toContain("do not create a polling task");expect(prompt).toContain("not installed tools");expect(prompt).toContain("no pasted bearer token");expect(prompt).toContain("refresh_token");expect(prompt).toContain('"mcpServers"');
   expect(assistantSetupInstructions("https://fixture.invalid/mcp","en","cloud")).toContain("ChatGPT Plugins");
   expect(assistantSetupInstructions("https://fixture.invalid/mcp","en","local")).toContain("local Codex");
  });
 });
 
 it.each(['zh-CN','zh-TW','en'] as const)('creation instructions expose live model, reasoning and speed choices in %s',language=>{const text=assistantTakeoverInstructions(language,'generic');for(const key of ['agbrio_list_codex_models','model','effort','serviceTier','default','settings'])expect(text).toContain(key);});
+
+it.each(['zh-CN','zh-TW','en'] as const)('does not output executable or credential-bearing setup when the address is missing (%s)',language=>{for(const url of [null,'<MCP_URL>','https://user:private-key@fixture.invalid/mcp'])for(const route of ['claude','cloud','workbuddy','generic','local'] as const){const text=assistantSetupInstructions(url,language,route);expect(text).not.toContain('<MCP_URL');expect(text).not.toContain('private-key');expect(text).not.toContain('claude mcp add');expect(text).not.toContain('mcpServers');}});

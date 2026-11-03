@@ -3,6 +3,7 @@ pub(crate) fn url(page:&str)->Result<&'static str,String>{
  match page{
   "CHATGPT_PLUGINS"=>Ok("https://chatgpt.com/plugins"),
   "AUTH_DOCUMENTATION"=>Ok("https://developers.openai.com/plugins/build/auth"),
+  "CLAUDE_CONNECTORS"=>Ok("https://claude.ai/customize/connectors"),
   _=>Err("ASSISTANT_HELP_TARGET_INVALID".into()),
  }
 }

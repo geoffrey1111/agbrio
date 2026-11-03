@@ -18,6 +18,7 @@ pub(crate) enum ChatCommand {
  GoalReceipt { #[serde(rename="threadId")]thread_id:String,id:String },
  Send { #[serde(rename="threadId")]thread_id:String,id:String,generation:i64,#[serde(rename="sourceSequence")]source_sequence:Option<i64>,#[serde(rename="expectedTurnId")]expected_turn_id:Option<String>,mode:String,#[serde(default,rename="queueRequested")]queue_requested:bool,text:String,#[serde(default)]options:ReplyOptions },
  Cancel { #[serde(rename="threadId")]thread_id:String,id:String },
+ DiscardReply { #[serde(rename="threadId")]thread_id:String,id:String },
  Abandon { #[serde(rename="threadId")]thread_id:String,id:String },
  Receipt { #[serde(rename="threadId")]thread_id:String,id:String },
  AcknowledgeUnknown { #[serde(rename="threadId")]thread_id:String,id:String,confirmed:bool },
@@ -33,7 +34,7 @@ pub(crate) enum ChatCommand {
  Upload { #[serde(rename="threadId")]thread_id:String,name:String,data:String },
 }
 
-impl ChatCommand { pub(crate) fn thread_id(&self)->&str {match self {Self::Restore{thread_id,..}|Self::GoalControl{thread_id,..}|Self::GoalReceipt{thread_id,..}|Self::Send{thread_id,..}|Self::Cancel{thread_id,..}|Self::Abandon{thread_id,..}|Self::Receipt{thread_id,..}|Self::AcknowledgeUnknown{thread_id,..}|Self::Stop{thread_id,..}|Self::AsyncRespond{thread_id,..}|Self::Respond{thread_id,..}|Self::Options{thread_id,..}|Self::ChildOpen{thread_id,..}|Self::ClaudeDecision{thread_id,..}|Self::ChildHistory{thread_id,..}|Self::ChildNotifications{thread_id,..}|Self::History{thread_id,..}|Self::Upload{thread_id,..}=>thread_id}}}
+impl ChatCommand { pub(crate) fn thread_id(&self)->&str {match self {Self::Restore{thread_id,..}|Self::GoalControl{thread_id,..}|Self::GoalReceipt{thread_id,..}|Self::Send{thread_id,..}|Self::Cancel{thread_id,..}|Self::DiscardReply{thread_id,..}|Self::Abandon{thread_id,..}|Self::Receipt{thread_id,..}|Self::AcknowledgeUnknown{thread_id,..}|Self::Stop{thread_id,..}|Self::AsyncRespond{thread_id,..}|Self::Respond{thread_id,..}|Self::Options{thread_id,..}|Self::ChildOpen{thread_id,..}|Self::ClaudeDecision{thread_id,..}|Self::ChildHistory{thread_id,..}|Self::ChildNotifications{thread_id,..}|Self::History{thread_id,..}|Self::Upload{thread_id,..}=>thread_id}}}
 #[derive(Serialize)]#[serde(rename_all="camelCase")]
 pub(crate) struct ChatState {runtime:Option<Value>,#[serde(skip_serializing_if="Option::is_none")]provider:Option<&'static str>,#[serde(skip_serializing_if="Option::is_none")]input_ready:Option<bool>,#[serde(skip_serializing_if="Option::is_none")]pi_task:Option<Value>,#[serde(skip_serializing_if="Option::is_none")]history_revision:Option<String>,#[serde(skip_serializing_if="Option::is_none")]pi_children:Option<Vec<Value>>,latest_turn:Option<router_core::codex::adapter::NativeTurnDiagnostic>, pub(crate) watch:CodexWatch,host:String,owned_turn_id:Option<String>,controllable_turn_id:Option<String>,external_busy:bool,replies:Vec<WatchReply>,requests:Vec<MobileCodexRequest>,async_questions:Vec<Value>,goal:Option<MobileCodexGoal>,goal_controls:Option<crate::goal_control::GoalControls>,public_messages:Vec<Value>,activity:Option<String>,checked_at:i64 }
 fn watch(core:&RouterCore,id:&str)->Result<CodexWatch,String>{if id.starts_with("pi:"){crate::pi::presentation::watch(&core.store.pi_task(id)?)}else{core.store.codex_chat_context(id)}}
@@ -246,6 +247,7 @@ fn command_with_deadline(core:&RouterCore,c:ChatCommand,resource_deadline:Option
  ChatCommand::Abandon{thread_id,id}=>{watch(core,&thread_id)?;Ok(json!({"cancelled":core.store.abandon_watch_reply(&thread_id,&id)?}))},
  ChatCommand::Receipt{thread_id,id}=>{watch(core,&thread_id)?;let r=core.store.watch_reply(&id)?;if r.as_ref().is_some_and(|r|r.thread_id!=thread_id){return Err("REPLY_TARGET_CHANGED_REFRESH".into());}serde_json::to_value(r).map_err(|_|"REPLY_RESPONSE_INVALID".into())},
  ChatCommand::AcknowledgeUnknown{thread_id,id,confirmed}=>{watch(core,&thread_id)?;core.store.acknowledge_watch_reply_unknown(&thread_id,&id,confirmed)?;Ok(json!({"ok":true}))},
+ ChatCommand::DiscardReply{thread_id,id}=>{watch(core,&thread_id)?;core.store.discard_watch_reply(&thread_id,&id)?;Ok(json!({"removed":true}))},
  ChatCommand::Cancel{thread_id,id}=>{watch(core,&thread_id)?;core.store.cancel_watch_reply(&thread_id,&id)?;Ok(json!({"ok":true}))},
  ChatCommand::Options{thread_id}=>{let w=watch(core,&thread_id)?;let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;let a=s.adapter.as_mut().ok_or("Codex backend disconnected")?;metadata(a,&w)?;let models=a.request("model/list",json!({"limit":100,"cursor":null}))?;Ok(json!({"models":models["data"],"permissions":"INHERITED"}))},
  ChatCommand::History{thread_id,cursor}=>{let w=watch(core,&thread_id)?;let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;let a=s.adapter.as_mut().ok_or("Codex backend disconnected")?;metadata(a,&w)?;a.read_public_chat_page(&thread_id,cursor.as_deref())},
