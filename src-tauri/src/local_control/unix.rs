@@ -226,7 +226,9 @@ mod tests {
         let temp = directory();
         let path = temp.path().join("private/control.sock");
         tokio::runtime::Runtime::new().unwrap().block_on(async{
-            let address=path.clone();let instance=host.instance_id().to_string();let server=tokio::spawn(serve_at(core,host,address,||{}));
+            // The production Tauri state keeps blocking HTTP clients outside
+            // Tokio. Retain the fixture's last Arc in that same outer scope.
+            let address=path.clone();let instance=host.instance_id().to_string();let server=tokio::spawn(serve_at(core.clone(),host.clone(),address,||{}));
             for _ in 0..100{if path.exists(){break}tokio::time::sleep(std::time::Duration::from_millis(10)).await;}
             let module=Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("tools/agbrio-control/control.mjs");let module=url::Url::from_file_path(module).unwrap().to_string();
             let result=tokio::task::spawn_blocking(move||std::process::Command::new("node").args(["--input-type=module","-e",r#"const {exchange}=await import(process.argv[1]);const [socket,instance]=process.argv.slice(2);const s=await exchange(socket,'STATUS');if(s.instanceId!==instance)throw Error('wrong host');await exchange(socket,'SHUTDOWN',{expectedInstance:instance});console.log('NATIVE_SOCKET_CLIENT_PASS');"#,&module,path.to_str().unwrap(),&instance]).output().unwrap()).await.unwrap();
@@ -248,10 +250,12 @@ mod tests {
                 count.fetch_add(1, Ordering::SeqCst);
             }));
             async fn call(path: &Path, request: &[u8], ack: bool) -> Value {
+                let deadline=std::time::Instant::now()+std::time::Duration::from_secs(3);
                 let mut stream = loop {
                     if let Ok(s) = UnixStream::connect(path).await {
                         break BufReader::new(s);
                     }
+                    assert!(std::time::Instant::now()<deadline,"owned socket did not become ready");
                     tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                 };
                 stream.get_mut().write_all(request).await.unwrap();

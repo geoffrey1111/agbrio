@@ -77,6 +77,9 @@ fn local_reference(decoded:&str)->&str{
 fn reference_path(source:&str)->Result<std::path::PathBuf,String>{
  let source=local_reference(source.split('#').next().unwrap_or(source));
  let path=if source.get(..5).is_some_and(|s|s.eq_ignore_ascii_case("file:")){
+  // The URL parser normalizes file://localhost into an empty host. Preserve
+  // the explicit no-authority rule before that normalization occurs.
+  if source[5..].strip_prefix("//").is_some_and(|rest|!rest.split('/').next().unwrap_or("").is_empty()){return Err("MEDIA_NONLOCAL_REFERENCE".into());}
   let url=url::Url::parse(source).map_err(|_|"MEDIA_NONLOCAL_REFERENCE")?;
   // Preserve the existing local-only boundary; even file://localhost is not a
   // source-authorized filesystem alias. URL decoding occurs exactly once.
