@@ -121,7 +121,27 @@ func guardProfile(_ request: [String: Any]) throws {
             case "guard": try guardProfile(request)
             case "inventory":
                 let root = try profile(request["profile"])
-                if let pid = try singletonPID(root), let item = try inspect(pid) { print(try json([item])) } else { print("[]") }
+                if let pid = try singletonPID(root) {
+                    if let item = try inspect(pid) { print(try json([item])) } else { print("[]") }
+                } else {
+                    // Chromium can unlink SingletonLock before process exit.
+                    // Reconcile the saved native identity read-only so an
+                    // uncertain close cannot look like an empty profile.
+                    let file = root + "/aiwr-browser-session.json"
+                    var info = stat()
+                    if lstat(file, &info) != 0 {
+                        guard errno == ENOENT else { try refuse("SECURITY_BROWSER_IDENTITY_CHANGED") }
+                        print("[]"); return
+                    }
+                    let saved = try ownedJSON(file)
+                    guard saved["schema"] as? String == "AIWR_BROWSER_SESSION_V1",
+                          saved["profile"] as? String == root else { try refuse("SECURITY_BROWSER_IDENTITY_CHANGED") }
+                    if let pid = saved["pid"] as? Int32, let item = try inspect(pid),
+                       item["binary"] as? String == saved["binary"] as? String,
+                       item["started"] as? String == saved["started"] as? String {
+                        print(try json([item]))
+                    } else { print("[]") }
+                }
             case "close":
                 let (app, pid) = try verified(request, closing: true)
                 guard app.terminate() else { try refuse("SECURITY_BROWSER_CLOSE_PENDING") }

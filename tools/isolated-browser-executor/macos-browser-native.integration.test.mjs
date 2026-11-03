@@ -1,7 +1,7 @@
 // Manual, disposable GitHub Mac fixture. No account, provider page or model call.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,rm,writeFile,readFile} from 'node:fs/promises';
+import {mkdtemp,mkdir,rm,writeFile,readFile,rename} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
@@ -53,6 +53,14 @@ test('real Mac Chromium preserves native identity, human-only stop, owned close 
  await runtime.latchAuthRequired();await assert.rejects(runtime.connection(),/AUTH_REQUIRED/);
  const human=await runtime.openHumanSecurity();assert.equal(human.mode,'HUMAN_ONLY');assert.equal(await runtime.authRequired(),true);
  const humanOwner=(await platform.inventory(runtime.profile))[0];assert.equal(humanOwner.automated,false);assert.equal(humanOwner.ownershipUnproven,false);assert.notEqual(humanOwner.pid,initial.pid);
+ // Simulate the lock-unlink/exit gap only in this disposable offline profile.
+ // No second browser is launched and no close is retried while it is absent.
+ const singleton=path.join(runtime.profile,'SingletonLock'),heldSingleton=path.join(runtime.profile,'fixture-held-singleton');
+ await rename(singleton,heldSingleton);
+ try{
+  const closing=(await platform.inventory(runtime.profile))[0];assert.equal(closing.pid,humanOwner.pid);assert.equal(closing.started,humanOwner.started);assert.equal(closing.ownershipUnproven,false);
+  await assert.rejects(runtime.connection(),/AUTH_REQUIRED/);
+ }finally{await rename(heldSingleton,singleton);}
  const reused=await runtime.openHumanSecurity();assert.equal(reused.reused,true);assert.equal((await platform.inventory(runtime.profile))[0].pid,humanOwner.pid);
  const cdpClosed=await new Promise(done=>{const socket=net.createConnection({host:'127.0.0.1',port:9229});socket.once('connect',()=>{socket.destroy();done(false);});socket.once('error',()=>done(true));socket.setTimeout(1000,()=>{socket.destroy();done(false);});});assert.equal(cdpClosed,true,'HUMAN_ONLY must have no CDP listener');
  await runtime.ownerConfirmedAuthentication();assert.equal(await runtime.authRequired(),false);assert.deepEqual(await platform.inventory(runtime.profile),[]);
