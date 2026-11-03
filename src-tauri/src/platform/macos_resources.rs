@@ -320,6 +320,9 @@ fn pending_settled(root: &Path) -> Result<bool, String> {
         || actual["image"] != child["image"])
 }
 fn snapshot(root: &Path) -> Result<Value, String> {
+    // Validate the parent before opening its lock; revalidate the marker once
+    // locked as well, since another owned operation may have just finished.
+    let _ = owner(root)?;
     let _read_guard = if root.join("collector.lock").exists() {
         let lock = OpenOptions::new()
             .read(true)
@@ -637,8 +640,9 @@ fn apply_at(root: &Path, config: Value, is_test: bool) -> Result<Value, String> 
         Ok(()) => {
             let _ = fs::remove_file(root.join("apply-pending.json"));
             let actual = snapshot_locked(root)?;
+            let loaded = check_job(root, &meta)?.is_some();
             drop(lock);
-            if actual["running"] != config["Enabled"] {
+            if actual["running"] != config["Enabled"] || loaded != (config["Enabled"] == true) {
                 return Err("RESOURCE_MONITOR_APPLY_UNCONFIRMED".into());
             }
             Ok(actual)
@@ -807,6 +811,7 @@ mod tests {
             let mut config = snapshot(root).unwrap()["config"].clone();
             config["Enabled"] = json!(false);
             assert_eq!(apply_at(root, config, true).unwrap()["running"], false);
+            assert!(job(&owner(root).unwrap().unwrap().label).unwrap().is_none());
         }
         println!("MACOS_OWNED_LAUNCHD_ROLLBACK_PASS");
     }
