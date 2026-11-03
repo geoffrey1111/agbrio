@@ -8,6 +8,7 @@ import net from 'node:net';
 import http from 'node:http';
 import {pathToFileURL} from 'node:url';
 const pause=ms=>new Promise(done=>setTimeout(done,ms));
+async function checkpoint(name,action){try{return await action();}catch(error){throw Error(`MACOS_FIXTURE_${name}: ${error.message}`,{cause:error});}}
 async function until(action,check){for(let n=0;n<100;n++){const value=await action();if(check(value))return value;await pause(100);}throw Error('OWNED_BROWSER_SETTLEMENT_UNCONFIRMED');}
 test('real Mac Chromium preserves native identity, human-only stop, owned close and unrelated process',{skip:process.platform!=='darwin'||process.env.AGBRIO_MAC_BROWSER_FIXTURE!=='1',timeout:180000},async t=>{
  const base=await mkdtemp(path.join(tmpdir(),'agbrio-browser-native-'));
@@ -51,24 +52,24 @@ test('real Mac Chromium preserves native identity, human-only stop, owned close 
  protectedOwner={...protectedItems[0],binary};await writeFile(path.join(protectedProfile,'aiwr-browser-session.json'),JSON.stringify({...protectedLease,...protectedOwner}),{mode:0o600});
  // AUTH_REQUIRED here is an offline test marker, never a real account challenge.
  await runtime.latchAuthRequired();await assert.rejects(runtime.connection(),/AUTH_REQUIRED/);
- const human=await runtime.openHumanSecurity();assert.equal(human.mode,'HUMAN_ONLY');assert.equal(await runtime.authRequired(),true);
+ const human=await checkpoint('HUMAN_OPEN',()=>runtime.openHumanSecurity());assert.equal(human.mode,'HUMAN_ONLY');assert.equal(await runtime.authRequired(),true);
  const humanOwner=(await platform.inventory(runtime.profile))[0];assert.equal(humanOwner.automated,false);assert.equal(humanOwner.ownershipUnproven,false);assert.notEqual(humanOwner.pid,initial.pid);
  // Simulate the lock-unlink/exit gap only in this disposable offline profile.
  // No second browser is launched and no close is retried while it is absent.
  const singleton=path.join(runtime.profile,'SingletonLock'),heldSingleton=path.join(runtime.profile,'fixture-held-singleton');
  await rename(singleton,heldSingleton);
  try{
-  const closing=(await platform.inventory(runtime.profile))[0];assert.equal(closing.pid,humanOwner.pid);assert.equal(closing.started,humanOwner.started);assert.equal(closing.ownershipUnproven,false);
+  const closing=(await checkpoint('LOCK_UNLINK_INVENTORY',()=>platform.inventory(runtime.profile)))[0];assert.equal(closing.pid,humanOwner.pid);assert.equal(closing.started,humanOwner.started);assert.equal(closing.ownershipUnproven,false);
   await assert.rejects(runtime.connection(),/AUTH_REQUIRED/);
  }finally{await rename(heldSingleton,singleton);}
  const reused=await runtime.openHumanSecurity();assert.equal(reused.reused,true);assert.equal((await platform.inventory(runtime.profile))[0].pid,humanOwner.pid);
  const cdpClosed=await new Promise(done=>{const socket=net.createConnection({host:'127.0.0.1',port:9229});socket.once('connect',()=>{socket.destroy();done(false);});socket.once('error',()=>done(true));socket.setTimeout(1000,()=>{socket.destroy();done(false);});});assert.equal(cdpClosed,true,'HUMAN_ONLY must have no CDP listener');
- await runtime.ownerConfirmedAuthentication();assert.equal(await runtime.authRequired(),false);assert.deepEqual(await platform.inventory(runtime.profile),[]);
+ await checkpoint('OWNER_COMPLETION',()=>runtime.ownerConfirmedAuthentication());assert.equal(await runtime.authRequired(),false);assert.deepEqual(await platform.inventory(runtime.profile),[]);
  const protectedAfter=(await platform.inventory(protectedProfile))[0];assert.equal(protectedAfter.pid,protectedOwner.pid);assert.equal(protectedAfter.started,protectedOwner.started);
  const restarted=new ChromiumRuntime({resourceDirectory:resources,dataDirectory:path.join(base,'primary')});
- await restarted.connection();assert.equal(restarted.profile,runtime.profile);await restarted.shutdown();
+ await restarted.connection();assert.equal(restarted.profile,runtime.profile);await checkpoint('AUTOMATED_RESTART_CLOSE',()=>restarted.shutdown());
  assert.deepEqual(await platform.inventory(runtime.profile),[]);
- await platform.close(protectedOwner);await until(()=>platform.inventory(protectedProfile),items=>items.length===0);protectedOwner=null;protectedStarted=false;
+ await checkpoint('PROTECTED_FIXTURE_CLOSE',()=>platform.close(protectedOwner));await until(()=>platform.inventory(protectedProfile),items=>items.length===0);protectedOwner=null;protectedStarted=false;
  const marker=JSON.parse(await readFile(path.join(runtime.profile,'aiwr-profile-owner.json'),'utf8'));assert.ok(marker.ownerId);settled=true;
 
 });

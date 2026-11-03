@@ -69,8 +69,21 @@ func singletonPID(_ root: String) throws -> Int32? {
         try refuse("SECURITY_BROWSER_IDENTITY_CHANGED")
     }
     guard Int(count) == MemoryLayout<proc_bsdinfo>.size, info.pbi_uid == geteuid() else { try refuse("SECURITY_BROWSER_IDENTITY_CHANGED") }
+    if info.pbi_status == UInt32(AGBRIO_SZOMB) { return nil }
     var image = [CChar](repeating: 0, count: Int(AGBRIO_PROC_PATH_MAXSIZE))
     let length = image.withUnsafeMutableBytes { proc_pidpath(pid, $0.baseAddress, UInt32($0.count)) }
+    // Exit or PID reuse can occur between the two kernel queries. A zombie
+    // cannot use the profile; an inconsistent live identity remains blocked.
+    var confirmed = proc_bsdinfo()
+    let confirmedCount = withUnsafeMutablePointer(to: &confirmed) { proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, $0, Int32(MemoryLayout<proc_bsdinfo>.size)) }
+    if confirmedCount == 0 {
+        if kill(pid, 0) != 0 && errno == ESRCH { return nil }
+        try refuse("SECURITY_BROWSER_IDENTITY_CHANGED")
+    }
+    guard Int(confirmedCount) == MemoryLayout<proc_bsdinfo>.size else { try refuse("SECURITY_BROWSER_IDENTITY_CHANGED") }
+    if confirmed.pbi_status == UInt32(AGBRIO_SZOMB) { return nil }
+    guard confirmed.pbi_uid == info.pbi_uid, confirmed.pbi_start_tvsec == info.pbi_start_tvsec,
+          confirmed.pbi_start_tvusec == info.pbi_start_tvusec else { try refuse("SECURITY_BROWSER_IDENTITY_CHANGED") }
     guard length > 0 else { try refuse("SECURITY_BROWSER_IDENTITY_CHANGED") }
     let binary = URL(fileURLWithPath: String(cString: image)).resolvingSymlinksInPath().path
     return ["pid": pid, "uid": geteuid(), "binary": binary,
