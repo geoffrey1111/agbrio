@@ -29,8 +29,7 @@ fn read_documents(mut root:String,mut text:String,documents:&[String],source:&st
  if !file.filename.to_ascii_lowercase().ends_with(".md") {return Err("MEDIA_TYPE_UNAVAILABLE".into());}
  let bytes=Base64::decode_vec(&file.data).map_err(|_|"MEDIA_FILE_UNAVAILABLE")?;
  let content=String::from_utf8(bytes).map_err(|_|"MEDIA_TYPE_UNAVAILABLE")?;
- let decoded=decode_reference(document.split('#').next().unwrap_or(document));let raw=local_reference(&decoded);
- let path=Path::new(raw);let path=std::fs::canonicalize(if path.is_absolute(){path.to_owned()}else{Path::new(&root).join(path)}).map_err(|_|"MEDIA_FILE_UNAVAILABLE")?;
+ let path=reference_path(document)?;let path=std::fs::canonicalize(if path.is_absolute(){path}else{Path::new(&root).join(path)}).map_err(|_|"MEDIA_FILE_UNAVAILABLE")?;
  root=path.parent().ok_or("MEDIA_ROOT_UNAVAILABLE")?.to_string_lossy().into_owned();
  // canonicalize returns a verbatim drive path on Windows; retain local-drive semantics.
  if let Some(local)=root.strip_prefix(r"\\?\"){if !local.starts_with("UNC"){root=local.to_owned();}}
@@ -70,21 +69,58 @@ fn decode_reference(source:&str)->String{
  let mut out=Vec::new();let bytes=source.as_bytes();let mut i=0;while i<bytes.len(){if bytes[i]==b'%'&&i+2<bytes.len(){if let(Some(a),Some(b))=(hex(bytes[i+1]),hex(bytes[i+2])){out.push(a*16+b);i+=3;continue;}}out.push(bytes[i]);i+=1;}String::from_utf8(out).unwrap_or_else(|_|source.into())
 }
 fn local_reference(decoded:&str)->&str{
- let raw=decoded.strip_prefix("file:///").unwrap_or(decoded);
+ let raw=decoded;
  fn strip(v:&str)->Option<&str>{v.rsplit_once(':').filter(|(_,n)|!n.is_empty()&&n.chars().all(|c|c.is_ascii_digit())).map(|(p,_)|p)}
  // Strip at most two numeric suffixes, never the drive separator.
  let first=strip(raw).unwrap_or(raw);strip(first).unwrap_or(first)
 }
+fn reference_path(source:&str)->Result<std::path::PathBuf,String>{
+ let source=local_reference(source.split('#').next().unwrap_or(source));
+ let path=if source.get(..5).is_some_and(|s|s.eq_ignore_ascii_case("file:")){
+  let url=url::Url::parse(source).map_err(|_|"MEDIA_NONLOCAL_REFERENCE")?;
+  // Preserve the existing local-only boundary; even file://localhost is not a
+  // source-authorized filesystem alias. URL decoding occurs exactly once.
+  if url.host_str().is_some()||url.query().is_some(){return Err("MEDIA_NONLOCAL_REFERENCE".into());}
+  url.to_file_path().map_err(|_|"MEDIA_NONLOCAL_REFERENCE")?
+ }else{std::path::PathBuf::from(decode_reference(source))};
+ let text=path.to_string_lossy();
+ if text.starts_with("\\\\")||text.starts_with("//")||text.contains('\0'){return Err("MEDIA_NONLOCAL_REFERENCE".into());}
+ Ok(path)
+}
+#[cfg(test)]
+mod file_url_tests {
+ use super::*;
+ #[test]
+ fn absolute_file_urls_keep_the_root_and_decode_filename_bytes_once(){
+  let root=tempfile::tempdir().unwrap();
+  let file=root.path().join("图 #100%20.gif");std::fs::write(&file,b"GIF89a exact bytes").unwrap();
+  let source=url::Url::from_file_path(&file).unwrap().to_string();
+  let media=read_file(root.path().to_str().unwrap(),&format!("![图](<{source}>)"),&source,false).unwrap();
+  assert_eq!(media.filename,"图 #100%20.gif");
+  assert_eq!(reference_path(&format!("{source}#L3")).unwrap(),file);
+  assert!(read_file(root.path().to_str().unwrap(),"unrelated",&source,true).is_err());
+ }
+ #[test]
+ fn file_url_authorities_and_encoded_network_paths_are_rejected(){
+  for source in ["file://server.invalid/share/a.gif","file://localhost/tmp/a.gif","FILE://server.invalid/a.gif","file:////server.invalid/a.gif","%2F%2Fserver.invalid/a.gif","file:///tmp/a.gif?token=secret"]{
+   assert_eq!(reference_path(source).unwrap_err(),"MEDIA_NONLOCAL_REFERENCE", "{source}");
+  }
+ }
+ #[test]
+ fn nested_markdown_file_urls_keep_the_document_parent(){
+  let root=tempfile::tempdir().unwrap();let docs=root.path().join("docs");std::fs::create_dir(&docs).unwrap();
+  let file=docs.join("guide.md");std::fs::write(&file,"[data](data.csv)").unwrap();std::fs::write(docs.join("data.csv"),"a,b").unwrap();
+  let source=url::Url::from_file_path(&file).unwrap().to_string();
+  assert_eq!(read_documents(root.path().to_string_lossy().into_owned(),format!("[guide](<{source}>)"),&[source],"data.csv",true).unwrap().filename,"data.csv");
+ }
+}
 fn read_file(root:&str,text:&str,source:&str,user_requested:bool)->Result<MediaFile,String>{
  let decoded=decode_reference(source);
  if source.len()>4096||(!referenced(text,source)&&!referenced(text,&decoded)){return Err("MEDIA_SOURCE_MISMATCH".into());}
- // A literal URL fragment is not part of the file, but percent-encoded # is.
- let decoded_path=decode_reference(source.split('#').next().unwrap_or(source));
- let local=decoded_path.strip_prefix("file:///").unwrap_or(&decoded_path);
- if local.starts_with("\\\\")||local.starts_with("//")||root.starts_with("\\\\")||root.starts_with("//")||(decoded.starts_with("file://")&&!decoded.starts_with("file:///")){return Err("MEDIA_NONLOCAL_REFERENCE".into());}
+ let raw=reference_path(source)?;
+ if root.starts_with("\\\\")||root.starts_with("//"){return Err("MEDIA_NONLOCAL_REFERENCE".into());}
  let root=std::fs::canonicalize(root).map_err(|_|"MEDIA_ROOT_UNAVAILABLE")?;
- let raw=Path::new(local_reference(&decoded_path));
- let path=std::fs::canonicalize(if raw.is_absolute(){raw.to_owned()}else{root.join(raw)}).map_err(|_|"MEDIA_FILE_UNAVAILABLE")?;
+ let path=std::fs::canonicalize(if raw.is_absolute(){raw}else{root.join(raw)}).map_err(|_|"MEDIA_FILE_UNAVAILABLE")?;
  let ext=path.extension().and_then(|s|s.to_str()).unwrap_or("").to_ascii_lowercase();
  // A source-declared raster is previewable even when its original cwd differs.
  if !path.is_file()||(!path.starts_with(&root)&&!user_requested&&!matches!(ext.as_str(),"png"|"jpg"|"jpeg"|"gif"|"webp")){return Err("MEDIA_OUTSIDE_PROJECT".into());}

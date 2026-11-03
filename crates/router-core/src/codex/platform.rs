@@ -10,6 +10,8 @@ pub fn codex_app_server_command() -> Command {
         std::env::var_os("AI_WORK_ROUTER_CODEX_EXECUTABLE").filter(|value| !value.is_empty())
     {
         Command::new(override_path)
+    } else if let Some(executable) = macos_codex_executable() {
+        Command::new(executable)
     } else if let Some(native_executable) = current_user_npm_codex_native_executable() {
         // The JavaScript entrypoint launches this same bundled native CLI, but
         // that extra process produces a visible conhost on Windows.  Start the
@@ -34,6 +36,41 @@ pub fn codex_app_server_command() -> Command {
         command.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
     command
+}
+
+/// Finder-launched apps often have a minimal PATH. Only inspect conventional
+/// executable locations; never source a shell profile or run an installer.
+fn macos_codex_executable()->Option<PathBuf>{
+    #[cfg(target_os="macos")]{
+        let mut candidates=std::env::var_os("PATH").map(|p|std::env::split_paths(&p).filter(|p|p.is_absolute()).map(|p|p.join("codex")).collect::<Vec<_>>()).unwrap_or_default();
+        if let Some(home)=std::env::var_os("HOME").map(PathBuf::from).filter(|p|p.is_absolute()){
+            candidates.push(home.join(".local/bin/codex"));candidates.push(home.join(".npm-global/bin/codex"));
+        }
+        candidates.extend([PathBuf::from("/opt/homebrew/bin/codex"),PathBuf::from("/usr/local/bin/codex")]);
+        first_executable(candidates)
+    }
+    #[cfg(not(target_os="macos"))]{None}
+}
+#[cfg(any(target_os="macos",test))]
+fn first_executable(candidates:impl IntoIterator<Item=PathBuf>)->Option<PathBuf>{
+    candidates.into_iter().find(|path|{
+        if !path.is_absolute(){return false;}
+        let Ok(meta)=std::fs::metadata(path)else{return false;};
+        if !meta.is_file(){return false;}
+        #[cfg(unix)]{use std::os::unix::fs::PermissionsExt;meta.permissions().mode()&0o111!=0}
+        #[cfg(not(unix))]{true}
+    })
+}
+#[cfg(test)]
+mod discovery_tests{
+    use super::*;
+    #[test]
+    fn discovery_preserves_order_and_never_selects_relative_paths_or_directories(){
+        let root=tempfile::tempdir().unwrap();let binary=root.path().join("codex");std::fs::write(&binary,b"fixture only").unwrap();
+        #[cfg(unix)]{use std::os::unix::fs::PermissionsExt;std::fs::set_permissions(&binary,std::fs::Permissions::from_mode(0o700)).unwrap();}
+        assert_eq!(first_executable([PathBuf::from("relative/codex"),root.path().into(),binary.clone()]),Some(binary.clone()));
+        #[cfg(unix)]{use std::os::unix::fs::PermissionsExt;std::fs::set_permissions(&binary,std::fs::Permissions::from_mode(0o600)).unwrap();assert_eq!(first_executable([binary]),None);}
+    }
 }
 /// Uses an explicit process override first, then the current user's npm-managed
 /// Codex CLI when available, and finally the PATH-visible CLI. The Desktop app

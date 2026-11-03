@@ -10,8 +10,7 @@ pub(crate) fn url(page:&str)->Result<&'static str,String>{
 #[tauri::command]
 pub(crate) fn assistant_open_help(page:String)->Result<(),String>{
  let target=url(&page)?;
- #[cfg(windows)]{use std::os::windows::process::CommandExt;std::process::Command::new("rundll32.exe").arg("url.dll,FileProtocolHandler").arg(target).creation_flags(0x08000000).spawn().map_err(|_|"ASSISTANT_HELP_OPEN_FAILED")?;Ok(())}
- #[cfg(not(windows))]{let _=target;Err("ASSISTANT_HELP_PLATFORM_UNSUPPORTED".into())}
+ crate::platform::open_web_url(target).map_err(|_|"ASSISTANT_HELP_OPEN_FAILED".into())
 }
 #[cfg(test)]mod tests{
  use super::*;

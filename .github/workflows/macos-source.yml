@@ -45,6 +45,7 @@ jobs:
         run: |
           npm test -- --maxWorkers=2
           node --test scripts/browser-executor-platform.test.mjs
+          node --test tools/agbrio-control/control.test.mjs
           npm run build
       - name: Stage native Node and helper resources
         run: npm run build:browser-executor

@@ -1,6 +1,23 @@
 //! Desktop platform admission. Unsupported features fail before side effects.
 pub(crate) const UNSUPPORTED: &str = "PLATFORM_NOT_YET_SUPPORTED";
 
+/// Caller owns the URL allowlist. This leaf only invokes the native opener;
+/// no shell, navigation automation or account authorization is performed.
+pub(crate) fn open_web_url(target:&str)->Result<(),String>{
+    let parsed=url::Url::parse(target).map_err(|_|"PLATFORM_URL_INVALID")?;
+    if parsed.scheme()!="https"||parsed.host_str().is_none()||!parsed.username().is_empty()||parsed.password().is_some(){return Err("PLATFORM_URL_INVALID".into());}
+    #[cfg(windows)]{
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("rundll32.exe").arg("url.dll,FileProtocolHandler").arg(target).creation_flags(0x08000000).spawn().map_err(|_|"PLATFORM_URL_OPEN_FAILED")?;
+        Ok(())
+    }
+    #[cfg(target_os="macos")]{
+        std::process::Command::new("/usr/bin/open").arg(target).spawn().map_err(|_|"PLATFORM_URL_OPEN_FAILED")?;
+        Ok(())
+    }
+    #[cfg(not(any(windows,target_os="macos")))]{Err(UNSUPPORTED.into())}
+}
+
 pub(crate) fn require_windows() -> Result<(), String> {
     if cfg!(windows) { Ok(()) } else { Err(UNSUPPORTED.into()) }
 }
@@ -28,6 +45,12 @@ mod tests {
     fn admission_matches_the_implemented_platform() {
         assert_eq!(require_windows().is_ok(), cfg!(windows));
         assert_eq!(node_filename().ends_with(".exe"), cfg!(windows));
+    }
+    #[test]
+    fn native_opener_refuses_non_https_and_embedded_credentials_before_spawn(){
+        for target in ["file:///private/data","javascript:alert(1)","http://example.invalid","https://user:secret@example.invalid"]{
+            assert_eq!(open_web_url(target).unwrap_err(),"PLATFORM_URL_INVALID");
+        }
     }
 }
 

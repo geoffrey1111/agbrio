@@ -173,8 +173,9 @@ fn codex_page_busy(threads:&[serde_json::Value])->Result<bool,String>{
 #[tauri::command]
 pub(crate) fn desktop_update_open_release(state:State<'_,UpdateState>)->Result<(),String>{
  let url=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?.view.release_url.clone().unwrap_or_else(||format!("https://github.com/{REPO}/releases"));
- #[cfg(windows)]{use std::os::windows::process::CommandExt;std::process::Command::new("rundll32.exe").arg("url.dll,FileProtocolHandler").arg(url).creation_flags(0x08000000).spawn().map_err(|_|"UPDATE_OPEN_FAILED")?;Ok(())}
- #[cfg(not(windows))]{let _=url;Err("UPDATE_PLATFORM_UNSUPPORTED".into())}
+ let parsed=url::Url::parse(&url).map_err(|_|"UPDATE_RELEASE_URL_INVALID")?;
+ if parsed.scheme()!="https"||parsed.host_str()!=Some("github.com")||!parsed.path().starts_with(&format!("/{REPO}/releases")){return Err("UPDATE_RELEASE_URL_INVALID".into());}
+ crate::platform::open_web_url(&url).map_err(|_|"UPDATE_OPEN_FAILED".into())
 }
 #[cfg(test)]mod tests{
  use super::*;
