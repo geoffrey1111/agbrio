@@ -24,6 +24,7 @@ jobs:
           targets: aarch64-apple-darwin
       - uses: Swatinem/rust-cache@v2
         with:
+          cache-on-failure: true
           workspaces: src-tauri -> target
       - name: Verify native build platform
         run: |
@@ -45,8 +46,8 @@ jobs:
           codesign --verify --deep --strict "$APP"
           file "$APP/Contents/MacOS/ai-work-router"
           file "$APP/Contents/MacOS/browser-executor-node"
-          lipo -verify_arch arm64 "$APP/Contents/MacOS/ai-work-router"
-          lipo -verify_arch arm64 "$APP/Contents/MacOS/browser-executor-node"
+          lipo "$APP/Contents/MacOS/ai-work-router" -verify_arch arm64
+          lipo "$APP/Contents/MacOS/browser-executor-node" -verify_arch arm64
           test -x "$APP/Contents/MacOS/browser-executor-node"
       - name: Isolated candidate startup
         run: node scripts/macos-startup-smoke.mjs src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Agbrio.app
