@@ -29,8 +29,14 @@ enum ManagedProcess {
  Elevated(super::elevation::Elevated),
 }
 impl ManagedProcess {
- fn exited(&mut self)->Result<bool,String>{match self{Self::Direct{child,_job,..}=>{if child.try_wait().map_err(|_|"PI_PROCESS_UNAVAILABLE")?.is_some(){_job.terminate_and_wait(Duration::from_secs(3))?;Ok(true)}else{Ok(false)}},Self::Elevated(p)=>Ok(p.closed())}}
- fn stop(&mut self){match self{Self::Direct{child,_job,..}=>{let _=child.kill();let _=child.wait();let _=_job.terminate_and_wait(Duration::from_secs(3));},Self::Elevated(p)=>p.stop()}}
+ fn exited(&mut self)->Result<bool,String>{match self{Self::Direct{child,_job,..}=>{
+  #[cfg(target_os="macos")]{if _job.leader_exited()?{_job.terminate_and_wait(Duration::from_secs(3))?;child.wait().map_err(|_|"PI_CLOSE_UNCONFIRMED")?;Ok(true)}else{Ok(false)}}
+  #[cfg(not(target_os="macos"))]{if child.try_wait().map_err(|_|"PI_PROCESS_UNAVAILABLE")?.is_some(){_job.terminate_and_wait(Duration::from_secs(3))?;Ok(true)}else{Ok(false)}}
+ },Self::Elevated(p)=>Ok(p.closed())}}
+ fn stop(&mut self){match self{Self::Direct{child,_job,..}=>{
+  #[cfg(target_os="macos")]{if _job.terminate_and_wait(Duration::from_secs(3)).is_ok(){let _=child.wait();}}
+  #[cfg(not(target_os="macos"))]{let _=child.kill();let _=child.wait();let _=_job.terminate_and_wait(Duration::from_secs(3));}
+ },Self::Elevated(p)=>p.stop()}}
  fn identity(&self)->super::elevation::Identity{match self{Self::Direct{identity,..}=>identity.clone(),Self::Elevated(p)=>p.identity.clone()}}
 }
 pub(super) struct Rpc {
@@ -159,6 +165,8 @@ impl Rpc {
             use std::os::windows::process::CommandExt;
             cmd.creation_flags(0x08000000);
         }
+        #[cfg(target_os="macos")]
+        super::process_group::configure(&mut cmd);
         let (process,input,output,error):(ManagedProcess,Box<dyn Write+Send>,Box<dyn Read+Send>,Box<dyn Read+Send>)=if administrator&&!super::elevation::identity(None)?.administrator{
             let (process,input,output)=super::elevation::start(&cmd,argv,cwd)?;
             (ManagedProcess::Elevated(process),input,output,Box::new(std::io::empty()))

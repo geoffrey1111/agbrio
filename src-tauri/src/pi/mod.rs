@@ -20,6 +20,8 @@ mod failure;
 mod settings;
 mod transport;
 mod windows_job;
+#[cfg(target_os="macos")]
+mod process_group;
 mod elevation;
 mod cohort;
 mod resources;
