@@ -59,3 +59,16 @@ flowchart TD
 </details>
 
 <sub>截圖為目前介面，使用虛構示例資料。</sub>
+
+
+## macOS 預覽候選（Apple Silicon）
+
+macOS 適配仍在進行，尚未與 Windows 功能對齊。手動 macOS candidate DMG Actions 僅產生 macOS 13.5+ / Apple Silicon 的 ad-hoc 簽署 .dmg artifact，不建立 Release、不存放更新私鑰；macOS source 獨立檢查測試原始碼。實際執行成功前編譯打包仍未驗證。部分功能顯示「此平台尚未支援」。
+
+核對校驗和後，將 Agbrio.app 放入 Applications。本人信任的未簽署/ad-hoc 候選若遭阻擋，可到系統設定 → 隱私權與安全性 → 仍要打開，或執行下方命令。應用程式不會自動解除 quarantine。候選不需要 Apple Developer 帳號，但沒有 Developer ID 簽署或公證。
+
+```text
+xattr -dr com.apple.quarantine /Applications/Agbrio.app
+```
+
+僅在實際功能需要時授予通知、所選檔案的檔案與檔案夾/卸除式卷宗權限，以及受保護位置所需的完整磁碟存取。未來恢復唯讀 AX 才需要輔助使用；舊瀏覽器路徑仍停用。Pi 提權、全本地卷宗授權、特權 helper 與簽署的應用程式內更新尚未實作。ad-hoc 身分隨建置改變，更新後可能需要重新授權。CI/打包/啟動通過不代表完整功能或使用者 UAT。

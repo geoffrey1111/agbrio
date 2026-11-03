@@ -22,6 +22,7 @@ pub(crate) fn normalize_directory(value: &str) -> Result<String, String> {
     Ok(plain(&permissions::canonical_directory(value)?))
 }
 pub(crate) fn owner_settings(core: &RouterCore) -> Result<Value, String> {
+    if !cfg!(windows) { return Ok(json!({"platformSupported":false,"installed":false,"version":null,"scopes":[],"tasks":[],"administratorBackend":{"ready":false},"error":crate::platform::UNSUPPORTED})); }
     let installation = super::installation();
     let (version, error) = match installation {
         Ok(i) => (Some(i.version), None),

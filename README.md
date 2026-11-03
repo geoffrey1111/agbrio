@@ -59,3 +59,16 @@ Read linked documents, images and project boards in place. API / MCP is availabl
 </details>
 
 <sub>Screenshots show the current interface with fictional example data.</sub>
+
+
+## macOS preview candidates (Apple Silicon)
+
+macOS support is in progress, without Windows feature parity. The manual macOS candidate DMG Actions workflow creates an ad-hoc-signed .dmg artifact for macOS 13.5+ / Apple Silicon; it does not publish a Release or store updater signing secrets. macOS source checks/tests the code. Until actual runs succeed, builds remain unverified. Integrations may show Not supported on this platform yet.
+
+Verify the checksum, then copy Agbrio.app to Applications. For a trusted unsigned/ad-hoc candidate blocked by macOS, use System Settings → Privacy & Security → Open Anyway, or run the command below yourself. No automatic quarantine removal. No Apple Developer account is required; candidates have no Developer ID signature or notarization.
+
+```text
+xattr -dr com.apple.quarantine /Applications/Agbrio.app
+```
+
+Only implemented features request notifications, Files & Folders/removable volumes for selected files, or Full Disk Access for protected locations. A future read-only AX integration needs Accessibility; the legacy browser integration is currently retired. Pi elevation, all-local-volume authorization, privileged helpers and signed in-app updates remain unimplemented. Ad-hoc identity changes each build; updates may require permission approval again. CI/build/startup smoke is not feature parity or user UAT.

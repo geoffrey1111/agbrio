@@ -1,4 +1,5 @@
 pub mod application;
+pub mod platform;
 pub mod chatgpt;
 pub mod chatgpt_service;
 pub mod codex;

@@ -1,4 +1,5 @@
 mod pi;
+mod platform;
 mod todo_projection;
 #[cfg(test)]mod completed_empty_turn_tests;
 mod attachment_cache;
@@ -79,6 +80,10 @@ mod mobile_connection;
 mod hosted_relay;
 mod web_auth;
 mod web_availability;
+#[cfg(windows)]
+mod shared_codex;
+#[cfg(not(windows))]
+#[path = "platform/shared_codex_unsupported.rs"]
 mod shared_codex;
 use host::HostRuntime;
 use host_application::*;
@@ -1381,6 +1386,7 @@ fn schedule_host_acceptance(app: &tauri::App) {
             let _ = handle.run_on_main_thread(move || quit_host(&quit_handle));
         });
     } else if host_autostart_acceptance_requested() {
+        #[cfg(windows)]
         tauri::async_runtime::spawn(async move {
             use tauri_plugin_autostart::ManagerExt;
             let autostart = handle.autolaunch();
@@ -1440,7 +1446,7 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let node = std::env::current_exe()?
         .parent()
         .ok_or("Host executable directory unavailable")?
-        .join("browser-executor-node.exe");
+        .join(platform::node_filename());
     #[cfg(debug_assertions)]
     let (resources, node) = if resources.join("production-entry.mjs").is_file() {
         (resources, node)
@@ -1448,11 +1454,11 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         let source = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         (
             source.join("resources/browser-executor"),
-            source.join("binaries/browser-executor-node-x86_64-pc-windows-msvc.exe"),
+            source.join("binaries").join(platform::development_node_filename()),
         )
     };
     let data = std::path::PathBuf::from(
-        std::env::var_os("LOCALAPPDATA").ok_or("Router local data unavailable")?,
+        router_core::platform::local_data_base()?,
     )
     .join("AIWorkRouter/browser-executor");
     core.chatgpt
@@ -1462,8 +1468,8 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             data,
         })?;
     let shared_resources=app.path().resource_dir()?.join("codex-shared");
-    let shared_node=std::env::current_exe()?.parent().ok_or("Host directory unavailable")?.join("browser-executor-node.exe");
-    #[cfg(debug_assertions)]let(shared_resources,shared_node)=if shared_resources.join("runtime.mjs").is_file(){(shared_resources,shared_node)}else{let source=std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));(source.join("resources/codex-shared"),source.join("binaries/browser-executor-node-x86_64-pc-windows-msvc.exe"))};
+    let shared_node=std::env::current_exe()?.parent().ok_or("Host directory unavailable")?.join(platform::node_filename());
+    #[cfg(debug_assertions)]let(shared_resources,shared_node)=if shared_resources.join("runtime.mjs").is_file(){(shared_resources,shared_node)}else{let source=std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));(source.join("resources/codex-shared"),source.join("binaries").join(platform::development_node_filename()))};
     let hosted_resources=app.path().resource_dir()?.join("hosted-relay");
     #[cfg(debug_assertions)]let hosted_resources=if hosted_resources.join("connector.mjs").is_file(){hosted_resources}else{std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/hosted-relay")};
     crate::hosted_relay::configure_assets(hosted_resources,shared_node.clone());
@@ -1493,8 +1499,12 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
     #[cfg(debug_assertions)]
     host.record_tray_quit_enabled(quit.is_enabled());
+    #[cfg(not(target_os = "macos"))]
     let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/icon.ico"))?;
+    #[cfg(target_os = "macos")]
+    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))?;
     if let Some(window) = app.get_webview_window("main") {
+        #[cfg(not(target_os = "macos"))]
         window.set_icon(icon.clone())?;
         #[cfg(windows)]
         notification_activation::install_window_identity(&window)?;
@@ -1510,6 +1520,19 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         })
         .build(handle)?;
     Ok(())
+}
+
+#[cfg(not(windows))]
+#[tauri::command]
+fn autostart_enabled(app: AppHandle) -> Result<bool, String> {
+    let _ = app;
+    Err(platform::UNSUPPORTED.into())
+}
+#[cfg(not(windows))]
+#[tauri::command]
+fn set_autostart_enabled(enabled: bool, app: AppHandle) -> Result<(), String> {
+    let _ = (enabled, app);
+    Err(platform::UNSUPPORTED.into())
 }
 
 #[cfg(windows)]
@@ -1580,14 +1603,15 @@ pub fn run() {
         .manage(HostRuntime::default())
         .manage(watch_notifications::NotificationNavigation::default())
         .on_window_event(on_host_window_event);
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     let builder = builder
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             watch_notifications::navigate(app,args);
             let handle = app.clone();
             let _ = app.run_on_main_thread(move || show_dashboard(&handle));
-        }))
-        .plugin(tauri_plugin_autostart::init(Default::default(), None));
+        }));
+    #[cfg(windows)]
+    let builder = builder.plugin(tauri_plugin_autostart::init(Default::default(), None));
     #[cfg(debug_assertions)]
     let builder = builder.setup(|app| {
         configure_host(app)?;

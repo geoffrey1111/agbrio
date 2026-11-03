@@ -7,7 +7,7 @@ export const monitorApi={read:()=>invoke<Snapshot>('resource_monitor_read'),appl
 const gib=(n:number)=>`${(n/1073741824).toFixed(1)} GB`;
 export function ResourceMonitorSettings({api=monitorApi}:{api?:typeof monitorApi}){
  const[snapshot,setSnapshot]=useState<Snapshot|null>(null),[draft,setDraft]=useState<MonitorConfig|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false),[unconfirmed,setUnconfirmed]=useState(false);
- async function read(){if(busy)return;setBusy(true);setError('');try{const s=await api.read();setSnapshot(s);setDraft(s.config);setUnconfirmed(false);}catch{setError(t('暂时无法读取本机磁盘和内存，请重试。'));}finally{setBusy(false);}}
+ async function read(){if(busy)return;setBusy(true);setError('');try{const s=await api.read();setSnapshot(s);setDraft(s.config);setUnconfirmed(false);}catch(reason){setError(t(String(reason).includes('PLATFORM_NOT_YET_SUPPORTED')?'该平台尚未支持':'暂时无法读取本机磁盘和内存，请重试。'));}finally{setBusy(false);}}
  async function save(){if(!draft||busy)return;setBusy(true);setError('');setSaved(false);try{const s=await api.apply(draft);setSnapshot(s);setDraft(s.config);setSaved(true);}catch(e){const code=String(e);if(code.includes('UNCONFIRMED'))setUnconfirmed(true);setError(t(code.includes('CONSENT_CANCELLED')?'已取消系统确认，预警设置未改变。':code.includes('UNCONFIRMED')?'应用结果尚未确认，请先刷新当前设置，不要重复保存。':'未能应用监测设置，请刷新状态后重试。'));}finally{setBusy(false);}}
  function disk(drive:string,change:Partial<DiskRule>){if(!draft)return;setDraft({...draft,Disks:draft.Disks.map(d=>d.Drive===drive?{...d,...change}:d)});setSaved(false);}
  const changed=!!draft&&JSON.stringify(draft)!==JSON.stringify(snapshot?.config);

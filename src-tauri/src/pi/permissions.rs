@@ -104,6 +104,7 @@ pub(super) fn admitted_directory(scope: &str, value: &str) -> Result<PathBuf, St
 mod tests {
     use super::*;
     #[test]
+    #[cfg(windows)]
     fn grants_are_canonical_exact_and_cannot_follow_junctions() {
         let base =
             std::fs::canonicalize(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../runtime"))

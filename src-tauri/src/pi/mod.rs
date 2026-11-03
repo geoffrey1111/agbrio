@@ -32,6 +32,8 @@ pub(crate) struct Installation {
     pub version: String,
 }
 pub(crate) fn installation() -> Result<Installation, String> {
+    crate::platform::require_windows()?;
+
     let node = std::env::var_os("ProgramFiles")
         .map(PathBuf::from)
         .ok_or("PI_NODE_NOT_FOUND")?

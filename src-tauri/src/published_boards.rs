@@ -33,7 +33,7 @@ fn hash(bytes:&[u8])->String{format!("{:x}",Sha256::digest(bytes))}
 fn error(_:impl std::fmt::Debug)->String{"PUBLISHED_BOARD_UNAVAILABLE".into()}
 fn store_path()->Result<PathBuf,String>{
  #[cfg(test)]{return TEST_STORE.lock().map_err(error)?.clone().ok_or_else(||"PUBLISHED_BOARD_TEST_STORE_UNSET".into());}
- #[cfg(not(test))]{std::env::var_os("LOCALAPPDATA").map(|v|PathBuf::from(v).join("AIWorkRouter/data/published-boards.json")).ok_or_else(||"PUBLISHED_BOARD_STORAGE_UNAVAILABLE".into())}
+ #[cfg(not(test))]{router_core::platform::local_data_base().ok().map(|v|PathBuf::from(v).join("AIWorkRouter/data/published-boards.json")).ok_or_else(||"PUBLISHED_BOARD_STORAGE_UNAVAILABLE".into())}
 }
 fn registrations(path:&Path)->Result<Vec<Registration>,String>{
  if !path.exists(){return Ok(vec![])}

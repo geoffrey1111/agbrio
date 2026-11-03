@@ -55,6 +55,8 @@ fn live_publisher(core:&RouterCore)->Result<bool,String>{
 
 /// An explicit native-app action. Page entry/copy/mobile/MCP never invokes it.
 pub(crate) fn connect(core:&RouterCore,host:&crate::HostRuntime,resources:&std::path::Path)->Result<ConnectionResult,String>{
+    crate::platform::require_windows()?;
+
     // Reuse proven registration before discovering or configuring anything.
     let required:serde_json::Value=std::fs::read(resources.join("claude-code-plugin/.claude-plugin/plugin.json")).ok().and_then(|b|serde_json::from_slice(&b).ok()).ok_or("CLAUDE_OBSERVATION_PLUGIN_NOT_PACKAGED")?;
     let required=required["version"].as_str().and_then(|v|semver::Version::parse(v).ok()).ok_or("CLAUDE_PLUGIN_VERSION_UNCONFIRMED")?;

@@ -56,7 +56,7 @@ pub(crate) struct PersistedMobileRuntimeConfig {
 }
 
 pub(crate) fn mobile_runtime_config_path() -> Result<PathBuf, String> {
-    let local = std::env::var_os("LOCALAPPDATA").ok_or("LOCALAPPDATA is unavailable")?;
+    let local = router_core::platform::local_data_base()?;
     Ok(PathBuf::from(local).join("AIWorkRouter").join("data").join("mobile-runtime.json"))
 }
 

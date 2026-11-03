@@ -113,7 +113,7 @@ pub(crate) fn cookie_token(headers:&axum::http::HeaderMap)->Option<String>{
 }
 pub(crate) fn global()->Result<Arc<WebAuth>,String>{
  static AUTH:OnceLock<Result<Arc<WebAuth>,String>>=OnceLock::new();
- AUTH.get_or_init(||{let local=std::env::var_os("LOCALAPPDATA").ok_or("WEB_AUTH_STORE_UNAVAILABLE")?;WebAuth::open(Some(PathBuf::from(local).join("AIWorkRouter/data/web-auth.json"))).map(Arc::new)}).clone()
+ AUTH.get_or_init(||{let local=router_core::platform::local_data_base()?;WebAuth::open(Some(PathBuf::from(local).join("AIWorkRouter/data/web-auth.json"))).map(Arc::new)}).clone()
 }
 pub(crate) fn session_cookie(token:&str,remember:bool)->String {format!("{COOKIE}={token}; Path=/; Secure; HttpOnly; SameSite=Strict{}",if remember{format!("; Max-Age={SESSION_SECONDS}")}else{String::new()})}
 pub(crate) fn clear_cookie()->String {format!("{COOKIE}=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0")}

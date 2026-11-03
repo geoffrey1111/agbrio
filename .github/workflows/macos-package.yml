@@ -1,0 +1,60 @@
+name: macOS candidate DMG
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: macos-package-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  package:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      TMPDIR: ${{ runner.temp }}
+      MACOSX_DEPLOYMENT_TARGET: '13.5'
+      APPLE_SIGNING_IDENTITY: '-'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.98.0'
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - name: Verify native build platform
+        run: |
+          test "$(uname -m)" = arm64
+          sw_vers
+          rustc --version
+          node --version
+      - name: Locked dependencies
+        run: |
+          npm ci
+          npm ci --prefix tools/isolated-browser-executor
+      - name: Build ad-hoc candidate only
+        run: npm run build:macos
+      - name: Verify app and sidecar identities
+        run: |
+          APP=src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Agbrio.app
+          test -d "$APP"
+          codesign --verify --deep --strict "$APP"
+          file "$APP/Contents/MacOS/ai-work-router"
+          file "$APP/Contents/MacOS/browser-executor-node"
+          lipo -verify_arch arm64 "$APP/Contents/MacOS/ai-work-router"
+          lipo -verify_arch arm64 "$APP/Contents/MacOS/browser-executor-node"
+          test -x "$APP/Contents/MacOS/browser-executor-node"
+      - name: Isolated candidate startup
+        run: node scripts/macos-startup-smoke.mjs src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Agbrio.app
+      - name: Checksums
+        working-directory: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg
+        run: shasum -a 256 ./*.dmg > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agbrio-macos-aarch64-candidate
+          if-no-files-found: error
+          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/

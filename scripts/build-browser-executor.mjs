@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { cp, mkdir, readFile, writeFile, copyFile, stat } from 'node:fs/promises';
 import path from 'node:path';
+import {nodeSidecar} from './browser-executor-platform.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const source = path.join(root, 'tools', 'isolated-browser-executor');
@@ -27,7 +28,7 @@ await cp(path.join(staging,'node_modules'),path.join(development,'node_modules')
 
 const files=JSON.parse(await readFile(path.join(source,'chromium-manifest.json'),'utf8')).files;
 await mkdir(path.join(root, 'src-tauri', 'binaries'), { recursive: true });
-const nodeTarget = path.join(root, 'src-tauri', 'binaries', 'browser-executor-node-x86_64-pc-windows-msvc.exe');
+const nodeTarget = path.join(root, 'src-tauri', 'binaries', nodeSidecar(process.platform, process.arch, process.env.TAURI_ENV_TARGET_TRIPLE));
 // An unchanged resident Node executable may be locked by Windows. Keep it in
 // place after exact hash verification; a build never stops/restarts providers.
 const nodeTargetAlreadyMatches = await stat(nodeTarget).catch(() => null)
@@ -64,5 +65,5 @@ await writeFile(path.join(staging, 'PUPPETEER-LICENSE.txt'), await licenseText('
 // Chromium itself retains chrome://credits for its bundled third-party notices.
 await writeFile(path.join(staging, 'CHROMIUM-LICENSE.txt'), await licenseText('CHROMIUM-LICENSE.txt', 'https://chromium.googlesource.com/chromium/src/+/refs/heads/main/LICENSE?format=TEXT', text => Buffer.from(text, 'base64'), 'CHROMIUM_NOTICE_REQUIRED'));
 console.log(JSON.stringify({ status: 'PACKAGE_STAGED', snapshot: policy.snapshot,
-  executableSha256: files['chrome.exe'], runtimeFiles: Object.keys(files).length,
+  executableSha256: files['chrome.exe'], chromiumSupported: process.platform === 'win32', runtimeFiles: Object.keys(files).length,
   dependencies: [...seen].sort(), nodeVersion: process.versions.node, nodeExecutableReused: !!nodeTargetAlreadyMatches }));

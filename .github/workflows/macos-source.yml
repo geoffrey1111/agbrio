@@ -1,0 +1,57 @@
+name: macOS source
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: macos-source-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  source:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      TMPDIR: ${{ runner.temp }}
+      MACOSX_DEPLOYMENT_TARGET: '13.5'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.98.0'
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates -> target
+            src-tauri -> target
+      - name: Verify native build platform
+        run: |
+          test "$(uname -m)" = arm64
+          sw_vers
+          rustc --version
+          node --version
+      - name: Locked frontend and helper dependencies
+        run: |
+          npm ci
+          npm ci --prefix tools/isolated-browser-executor
+      - name: Frontend and platform tests
+        run: |
+          npm test -- --maxWorkers=2
+          node --test scripts/browser-executor-platform.test.mjs
+          npm run build
+      - name: Stage native Node and helper resources
+        run: npm run build:browser-executor
+      - name: Core check and tests
+        run: |
+          cargo check --manifest-path crates/Cargo.toml --locked --target aarch64-apple-darwin
+          cargo test --manifest-path crates/Cargo.toml --locked --target aarch64-apple-darwin
+      - name: Desktop check and tests
+        run: |
+          cargo check --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin -- --test-threads=2

@@ -52,6 +52,7 @@ impl ChatGPTService {
         self.process_for(false)
     }
     fn process_for(&self, owner_security_action: bool) -> Result<Arc<ExecutorProcess>, String> {
+
         if self.1.load(std::sync::atomic::Ordering::SeqCst) {
             return Err("EXECUTOR_STOPPED".into());
         }
@@ -63,6 +64,8 @@ impl ChatGPTService {
         {
             return Err("AUTH_REQUIRED".into());
         }
+        #[cfg(target_os = "macos")]
+        return Err("PLATFORM_NOT_YET_SUPPORTED".into());
         if let Some(process) = &session.process {
             return Ok(Arc::clone(process));
         }
@@ -297,7 +300,7 @@ mod auth_stop_tests {
         assert_eq!(service.status(), "AUTH_REQUIRED");
         assert_eq!(
             service.open_for_authentication().unwrap_err(),
-            "EXECUTOR_START_FAILED"
+            if cfg!(target_os = "macos") { "PLATFORM_NOT_YET_SUPPORTED" } else { "EXECUTOR_START_FAILED" }
         );
         assert_eq!(service.current_binding().unwrap_err(), "AUTH_REQUIRED");
         assert_eq!(

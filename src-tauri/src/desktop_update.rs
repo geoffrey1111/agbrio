@@ -77,9 +77,10 @@ async fn check_manifest(app:&AppHandle,state:&UpdateState,client:&reqwest::Clien
  update.timeout=Some(Duration::from_secs(600));let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;c.view.state="AVAILABLE".into();c.view.total=Some(size);c.candidate=Some(update);Ok(())
 }
 #[tauri::command]
-pub(crate) fn desktop_update_status(app:AppHandle,state:State<'_,UpdateState>)->Result<UpdateView,String>{let mut view=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?.view.clone();view.current_version=app.package_info().version.to_string();Ok(view)}
+pub(crate) fn desktop_update_status(app:AppHandle,state:State<'_,UpdateState>)->Result<UpdateView,String>{let mut view=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?.view.clone();view.current_version=app.package_info().version.to_string();if !cfg!(windows){view.state="UNSUPPORTED".into();view.error=Some(crate::platform::UNSUPPORTED.into());}Ok(view)}
 #[tauri::command]
 pub(crate) async fn desktop_update_check(app:AppHandle,state:State<'_,UpdateState>)->Result<UpdateView,String>{
+ crate::platform::require_windows()?;
  let _busy=guard(&state)?;{let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;*c=Cache::default();c.view.state="CHECKING".into();c.view.current_version=app.package_info().version.to_string();}
  let result:Result<(),String>=async{
   let client=reqwest::Client::builder().timeout(Duration::from_secs(15)).user_agent("Agbrio-update-check").build().map_err(|_|"UPDATE_NETWORK")?;
@@ -107,12 +108,14 @@ pub(crate) async fn desktop_update_check(app:AppHandle,state:State<'_,UpdateStat
 }
 #[tauri::command]
 pub(crate) async fn desktop_update_download(app:AppHandle,version:String,state:State<'_,UpdateState>)->Result<UpdateView,String>{
+ crate::platform::require_windows()?;
  let _busy=guard(&state)?;let update={let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;if c.view.version.as_deref()!=Some(&version)||c.view.state!="AVAILABLE"{return Err("UPDATE_CHANGED".into());}c.view.state="DOWNLOADING".into();c.candidate.clone().ok_or("UPDATE_CHANGED")?};
  let cache=state.cache.clone();let mut emitted=Instant::now();let data=update.download(move|length,total|{if let Ok(mut c)=cache.lock(){c.view.downloaded+=length as u64;if total.is_some(){c.view.total=total;}if emitted.elapsed()>Duration::from_millis(150){let _=app.emit("agbrio-update-progress",c.view.clone());emitted=Instant::now();}}},||{}).await.map_err(|_|fault(&state,"UPDATE_DOWNLOAD_OR_SIGNATURE_FAILED"))?;
  if data.len() as u64>MAX_PACKAGE{return Err(fault(&state,"UPDATE_PACKAGE_INVALID"));}let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;c.view.state="READY".into();c.view.downloaded=data.len() as u64;c.bytes=Some(data);Ok(c.view.clone())
 }
 #[tauri::command]
 pub(crate) fn desktop_update_install(version:String,confirm_restart:Option<bool>,state:State<'_,UpdateState>,core:State<'_,RouterCore>)->Result<(),String>{
+ crate::platform::require_windows()?;
  let _busy=guard(&state)?;
  let confirmed=confirm_restart.unwrap_or(false);
  if confirmed{audit_install(&version,"OWNER_CONFIRMED_FORCE_REQUEST")?;}

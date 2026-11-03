@@ -774,7 +774,7 @@ impl RouterStore {
     }
 
     pub fn open_default() -> Result<Self, String> {
-        let local = std::env::var_os("LOCALAPPDATA").ok_or("LOCALAPPDATA is unavailable")?;
+        let local = crate::platform::local_data_base()?;
         Self::open_at(
             PathBuf::from(local)
                 .join("AIWorkRouter")

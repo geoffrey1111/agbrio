@@ -59,3 +59,16 @@ PC と Agbrio はオンラインにしておいてください。受信端末で
 </details>
 
 <sub>画像は現在の画面を使った架空のデモデータです。</sub>
+
+
+## macOS プレビュー候補（Apple Silicon）
+
+macOS 対応は開発中で Windows と同等の機能はありません。手動 macOS candidate DMG Actions は macOS 13.5+ / Apple Silicon 用 ad-hoc 署名 .dmg artifact のみを生成し、Release 公開や更新秘密鍵の登録を行いません。macOS source で検査・テストします。実行成功まではビルド未検証で、一部機能は未対応です。
+
+チェックサム確認後 Agbrio.app を Applications に移します。信頼した未署名/ad-hoc 候補がブロックされた場合はシステム設定 → プライバシーとセキュリティ → このまま開く、または所有者が下のコマンドを実行します。自動解除しません。Apple Developer アカウントは不要ですが Developer ID 署名・公証はありません。
+
+```text
+xattr -dr com.apple.quarantine /Applications/Agbrio.app
+```
+
+実装済み機能に必要な通知、ファイルとフォルダ/リムーバブルボリューム、保護領域のフルディスクアクセスのみ許可します。将来読み取り専用 AX を復活させる場合はアクセシビリティが必要です。旧ブラウザー経路は無効です。Pi 昇格、全ローカルボリューム権限、特権 helper、署名付きアプリ内更新は未実装です。ad-hoc 署名は毎回変わるため更新後に再許可が必要な場合があります。CI/パッケージ/起動確認は機能同等性やユーザー UAT ではありません。

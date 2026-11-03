@@ -24,7 +24,7 @@ const MAX_EXTRA_ROOTS:usize=16;
 #[derive(Clone,Debug,PartialEq,serde::Serialize,serde::Deserialize)]
 #[serde(tag="kind")]
 pub(crate) enum Source{ #[serde(rename="LOCAL")] Local{root:String,#[serde(default,rename="extraRoots")] extra_roots:Vec<String>}, #[serde(rename="URL")] Url{url:String,#[serde(default,rename="desktopUrl",skip_serializing_if="Option::is_none")] desktop_url:Option<String>} }
-fn source_path()->Option<PathBuf>{std::env::var_os("LOCALAPPDATA").map(|l|PathBuf::from(l).join("AIWorkRouter").join("data").join("board-source.json"))}
+fn source_path()->Option<PathBuf>{router_core::platform::local_data_base().ok().map(|l|PathBuf::from(l).join("AIWorkRouter").join("data").join("board-source.json"))}
 /// None until the owner chooses a board in desktop settings; there is no built-in default.
 pub(crate) fn source()->Option<Source>{
  source_path().and_then(|p|fs::read(p).ok()).filter(|b|b.len()<=16*1024).and_then(|b|serde_json::from_slice::<Source>(&b).ok()).and_then(|s|validate(s).ok())

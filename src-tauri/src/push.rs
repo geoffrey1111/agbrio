@@ -169,7 +169,7 @@ impl PushProviderClass {
 
 fn config_path() -> Result<PathBuf, String> {
     let base =
-        std::env::var("LOCALAPPDATA").map_err(|_| "Push configuration requires LOCALAPPDATA")?;
+        router_core::platform::local_data_base()?;
     Ok(PathBuf::from(base)
         .join("AIWorkRouter")
         .join("push")

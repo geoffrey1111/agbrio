@@ -10,8 +10,8 @@ import type {RuntimePresentation} from './models';
  * backend's actual readiness, never a saved preference. */
 export type OverviewApi={
  shared:()=>Promise<SharedCodexStatus>;
- pi:()=>Promise<{installed:boolean;administratorBackend?:{ready:boolean;preparing?:boolean}}>;
- prepareAdministrator?:()=>Promise<{installed:boolean;administratorBackend?:{ready:boolean;preparing?:boolean}}>;
+ pi:()=>Promise<{platformSupported?:boolean;installed:boolean;administratorBackend?:{ready:boolean;preparing?:boolean}}>;
+ prepareAdministrator?:()=>Promise<{platformSupported?:boolean;installed:boolean;administratorBackend?:{ready:boolean;preparing?:boolean}}>;
  devices:()=>Promise<unknown[]>;
  update:()=>Promise<UpdateView>;
 };
@@ -30,13 +30,13 @@ export function DesktopOverview({api,onNavigate,onPair}:{api:OverviewApi;onNavig
  useEffect(()=>{alive.current=true;void load();const timer=setInterval(()=>{if(document.visibilityState!=='hidden')void load();},15000);return()=>{alive.current=false;clearInterval(timer);};},[api]);
  async function prepare(){if(!api.prepareAdministrator||pending.current)return;pending.current=true;setBusy(true);setNotice('');setError('');try{await api.prepareAdministrator();if(alive.current)setNotice(t('管理员后台已就绪。'));}catch(reason){if(alive.current)setError(t(String(reason).includes('UAC_CANCELLED')?'已取消 Windows 授权，未启动管理员后台。':'管理员后台没有准备好。请到 Pi 子任务页查看后重试。'));}finally{pending.current=false;if(alive.current){setBusy(false);void load();}}}
  const shared=snap?.shared.value,pi=snap?.pi.value,devices=snap?.devices.value,update=snap?.update.value;
- const sharedText=!snap?t('正在读取…'):snap.shared.failed?t('暂时无法读取'):!shared?.enabled?t('未开启'):shared.ready&&shared.desktopConnected?t('已接入'):shared.ready?t('已准备，Desktop 未接入'):t('未就绪');
+ const sharedText=!snap?t('正在读取…'):snap.shared.failed?t('暂时无法读取'):shared?.state==='UNSUPPORTED'?t('该平台尚未支持'):!shared?.enabled?t('未开启'):shared.ready&&shared.desktopConnected?t('已接入'):shared.ready?t('已准备，Desktop 未接入'):t('未就绪');
  const sharedTone=shared?.ready&&shared.desktopConnected?'ok':'muted';
  const adminText=shared?.currentAdministrator===true?t('管理员权限'):shared?.currentAdministrator===false?t('普通权限'):'';
  const piReady=Boolean(pi?.administratorBackend?.ready);
- const piText=!snap?t('正在读取…'):snap.pi.failed?t('暂时无法读取'):!pi?.installed?t('本机尚未安装 Pi'):piReady?t('已就绪'):pi.administratorBackend?.preparing?t('正在准备'):t('未准备');
+ const piText=!snap?t('正在读取…'):snap.pi.failed?t('暂时无法读取'):pi?.platformSupported===false?t('该平台尚未支持'):!pi?.installed?t('本机尚未安装 Pi'):piReady?t('已就绪'):pi.administratorBackend?.preparing?t('正在准备'):t('未准备');
  const deviceText=!snap?t('正在读取…'):snap.devices.failed?t('暂时无法读取'):devices?.length?tc('{0} 台已登录',devices.length):t('还没有配对的手机');
- const updateText=!snap?t('正在读取…'):snap.update.failed?t('暂时无法读取'):update?.state==='UP_TO_DATE'?t('已是最新'):update?.state==='AVAILABLE'||update?.state==='MANUAL_AVAILABLE'?t('有新版本 {0}',update.version??''):update?.state==='READY'?t('更新已下载并验证签名'):t('可以检查新版本');
+ const updateText=!snap?t('正在读取…'):snap.update.failed?t('暂时无法读取'):update?.state==='UNSUPPORTED'?t('该平台尚未支持'):update?.state==='UP_TO_DATE'?t('已是最新'):update?.state==='AVAILABLE'||update?.state==='MANUAL_AVAILABLE'?t('有新版本 {0}',update.version??''):update?.state==='READY'?t('更新已下载并验证签名'):t('可以检查新版本');
  return <section className="v7-overview" aria-label={t('概览')}>
   <h3 className="v7-set-cap">{t('这台电脑')}</h3>
   <div className="v7-set-group">
