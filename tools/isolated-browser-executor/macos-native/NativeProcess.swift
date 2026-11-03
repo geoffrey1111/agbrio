@@ -65,7 +65,7 @@ func singletonPID(_ root: String) throws -> Int32? {
         try refuse("SECURITY_BROWSER_IDENTITY_CHANGED")
     }
     guard Int(count) == MemoryLayout<proc_bsdinfo>.size, info.pbi_uid == geteuid() else { try refuse("SECURITY_BROWSER_IDENTITY_CHANGED") }
-    var image = [CChar](repeating: 0, count: Int(PROC_PIDPATHINFO_MAXSIZE))
+    var image = [CChar](repeating: 0, count: Int(AGBRIO_PROC_PATH_MAXSIZE))
     let length = image.withUnsafeMutableBytes { proc_pidpath(pid, $0.baseAddress, UInt32($0.count)) }
     guard length > 0 else { try refuse("SECURITY_BROWSER_IDENTITY_CHANGED") }
     let binary = URL(fileURLWithPath: String(cString: image)).resolvingSymlinksInPath().path
