@@ -61,14 +61,16 @@ PC와 Agbrio는 온라인 상태여야 합니다. 알림을 받을 기기에서 
 <sub>현재 인터페이스에 가상의 예시 데이터를 사용한 화면입니다.</sub>
 
 
-## macOS 미리 보기 후보 (Apple Silicon)
+## macOS 미리 보기 후보(Apple Silicon)
 
-macOS 지원은 개발 중이며 Windows와 기능이 같지 않습니다. 수동 macOS candidate DMG Actions는 macOS 13.5+ / Apple Silicon용 ad-hoc 서명 .dmg artifact만 생성하며 Release 게시나 업데이트 비밀 키 등록은 하지 않습니다. macOS source에서 검사 및 테스트합니다. 실제 성공 전 빌드는 미검증이며 일부 기능은 미지원으로 표시됩니다.
+macOS 지원은 진행 중이며 Windows와 기능이 완전히 같지는 않습니다. 수동 **macOS candidate DMG** Actions는 ad-hoc 서명 `.dmg` artifact를 만듭니다. Release를 게시하거나 업데이트 서명 secret을 사용하지 않습니다. ARM64 소스 테스트와 이전 DMG 배포 복사본 시작은 GitHub macOS 26.6.2에서 통과했습니다. macOS 13.5는 선언된 배포 대상이며 해당 버전에서는 검증하지 않았습니다.
 
-체크섬 확인 후 Agbrio.app을 Applications에 복사합니다. 신뢰한 미서명/ad-hoc 후보가 차단되면 시스템 설정 → 개인정보 보호 및 보안 → 확인 없이 열기를 사용하거나 소유자가 아래 명령을 실행합니다. 앱은 quarantine을 자동 해제하지 않습니다. Apple Developer 계정은 필요 없지만 Developer ID 서명과 공증은 없습니다.
+경로, 로컬 유지 관리 CLI, Claude 엔진 검색, 알림, 메뉴 막대/Dock, 로그인 설정, 리소스 수집, 제한된 사용자 서비스 복구, 고정 버전 Chromium의 필요 시 다운로드에 Mac 구현과 자동 테스트가 있습니다. 실제 계정, 시스템 권한 창, 알림 클릭, 휴대폰 전체 흐름, 장기 동작은 검증이 필요합니다. 공유 Codex는 아직 지원하지 않습니다. 공식 Mac 설치 파일 SDK 검사에서 HTTP 403이 발생했습니다. Pi 권한 상승/작업 공간 권한, Keychain, 평가판 장치 식별, 손쉬운 사용, 서명된 앱 내 업데이트는 다음 보안 설계 승인이 필요합니다. 폐기된 브라우저 연결/Native Messaging은 복원하지 않습니다.
+
+artifact 체크섬을 확인한 뒤 `Agbrio.app`을 Applications에 복사하세요. 신뢰하는 ad-hoc 후보가 차단되면 **시스템 설정 → 개인정보 보호 및 보안 → 확인 없이 열기**, 또는 아래 명령을 본인이 실행하세요. 앱은 quarantine을 자동 제거하지 않습니다. Apple Developer 계정은 필요 없지만 Developer ID 서명과 공증은 없습니다.
 
 ```text
 xattr -dr com.apple.quarantine /Applications/Agbrio.app
 ```
 
-구현된 기능에 필요한 알림, 선택 파일의 파일 및 폴더/이동식 볼륨, 보호 위치의 전체 디스크 접근만 허용합니다. 향후 읽기 전용 AX 복원 시 손쉬운 사용 권한이 필요합니다. 기존 브라우저 경로는 비활성입니다. Pi 권한 상승, 전체 로컬 볼륨 권한, 특권 helper, 서명된 앱 내 업데이트는 미구현입니다. ad-hoc 서명은 빌드마다 바뀌므로 업데이트 후 권한을 다시 허용해야 할 수 있습니다. CI/패키징/시작 검사는 기능 동등성이나 사용자 UAT가 아닙니다.
+알림 권한은 명시적인 데스크톱 동작으로만 요청합니다. 선택한 파일, 이동식 볼륨, 보호된 위치에는 본인이 파일 및 폴더 또는 전체 디스크 접근 권한을 부여해야 할 수 있습니다. 향후 읽기 전용 AX 기능에는 손쉬운 사용 권한이 필요합니다. ad-hoc 식별 정보는 빌드마다 달라져 업데이트 후 다시 허용해야 할 수 있습니다. CI 통과는 자동 엔지니어링 검증이며 사용자 UAT나 완전한 기능 동등성을 의미하지 않습니다.

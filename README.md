@@ -63,12 +63,14 @@ Read linked documents, images and project boards in place. API / MCP is availabl
 
 ## macOS preview candidates (Apple Silicon)
 
-macOS support is in progress, without Windows feature parity. The manual macOS candidate DMG Actions workflow creates an ad-hoc-signed .dmg artifact for macOS 13.5+ / Apple Silicon; it does not publish a Release or store updater signing secrets. macOS source checks/tests the code. Until actual runs succeed, builds remain unverified. Integrations may show Not supported on this platform yet.
+macOS support is in progress and does not yet have Windows feature parity. The manual **macOS candidate DMG** Actions workflow produces an ad-hoc-signed `.dmg` artifact; it does not publish a Release or use updater signing secrets. ARM64 source tests and an earlier delivered DMG startup have passed on GitHub macOS 26.6.2. macOS 13.5 is the declared deployment target, not a verified OS version.
 
-Verify the checksum, then copy Agbrio.app to Applications. For a trusted unsigned/ad-hoc candidate blocked by macOS, use System Settings → Privacy & Security → Open Anyway, or run the command below yourself. No automatic quarantine removal. No Apple Developer account is required; candidates have no Developer ID signature or notarization.
+Native paths, local maintenance CLI, Claude engine discovery, notification integration, menu bar/Dock behavior, login configuration, resource sampling, bounded user-service recovery, and pinned on-demand Chromium now have Mac implementations and automated tests. Real accounts, system permission prompts, notification clicks, phone end-to-end operation, and long-term behavior still need validation. Shared Codex remains unsupported: its official Mac installer returned HTTP 403 during the SDK probe. Pi elevation/workspace authorization, Keychain secrets, device trial identity, Accessibility, and signed in-app updates require the next security-design phase. The retired browser connector/Native Messaging path stays retired.
+
+Verify the artifact checksum, then copy `Agbrio.app` to Applications. For a trusted ad-hoc candidate blocked by macOS, use **System Settings → Privacy & Security → Open Anyway**, or run the command below yourself. The app never removes quarantine automatically. No Apple Developer account is required; candidates have no Developer ID signature or notarization.
 
 ```text
 xattr -dr com.apple.quarantine /Applications/Agbrio.app
 ```
 
-Only implemented features request notifications, Files & Folders/removable volumes for selected files, or Full Disk Access for protected locations. A future read-only AX integration needs Accessibility; the legacy browser integration is currently retired. Pi elevation, all-local-volume authorization, privileged helpers and signed in-app updates remain unimplemented. Ad-hoc identity changes each build; updates may require permission approval again. CI/build/startup smoke is not feature parity or user UAT.
+Notification permission is requested only by an explicit desktop action. Access to selected files, removable volumes, or protected locations may need Files & Folders or Full Disk Access granted by the owner. Future read-only AX functionality would need Accessibility permission. Ad-hoc identity changes with each build; macOS may ask for permission again after an update. CI checks are automated engineering evidence, not user UAT or full feature parity.

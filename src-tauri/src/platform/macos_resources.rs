@@ -320,7 +320,6 @@ fn pending_settled(root: &Path) -> Result<bool, String> {
         || actual["image"] != child["image"])
 }
 fn snapshot(root: &Path) -> Result<Value, String> {
-    let owner = owner(root)?;
     let _read_guard = if root.join("collector.lock").exists() {
         let lock = OpenOptions::new()
             .read(true)
@@ -334,12 +333,32 @@ fn snapshot(root: &Path) -> Result<Value, String> {
         if !m.is_file() || m.uid() != uid() || m.mode() & 0o777 != 0o600 || m.nlink() != 1 {
             return Err("RESOURCE_MONITOR_STORAGE_UNTRUSTED".into());
         }
-        lock.try_lock()
-            .map_err(|_| "RESOURCE_MONITOR_APPLY_UNCONFIRMED")?;
+        let started = Instant::now();
+        loop {
+            match lock.try_lock() {
+                Ok(()) => break,
+                Err(std::fs::TryLockError::WouldBlock)
+                    if started.elapsed() < Duration::from_secs(2) =>
+                {
+                    // Read-only reconciliation can wait for a short sample or
+                    // an existing writer. It never repeats a native control.
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                Err(_) => return Err("RESOURCE_MONITOR_APPLY_UNCONFIRMED".into()),
+            }
+        }
         Some(lock)
     } else {
         None
     };
+    snapshot_locked(root)
+}
+// Caller retains the validated collector lock whenever the root has one.
+// A configuration transaction must inspect its result before releasing that
+// lock, so a scheduled sample cannot race the final read and look like a lost
+// apply result. This function never dispatches/retries a launchd mutation.
+fn snapshot_locked(root: &Path) -> Result<Value, String> {
+    let owner = owner(root)?;
     if owner.is_some() && !pending_settled(root)? {
         return Err("RESOURCE_MONITOR_APPLY_UNCONFIRMED".into());
     }
@@ -457,7 +476,11 @@ fn control(root: &Path, id: &str, args: &[String]) -> Result<(), ControlError> {
         .env("PATH", "/usr/bin:/bin")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(if cfg!(test){Stdio::inherit()}else{Stdio::null()})
+        .stderr(if cfg!(test) {
+            Stdio::inherit()
+        } else {
+            Stdio::null()
+        })
         .spawn()
         .map_err(|_| ControlError::Failed)?;
     if let Ok(Some(status)) = child.try_wait() {
@@ -613,8 +636,8 @@ fn apply_at(root: &Path, config: Value, is_test: bool) -> Result<Value, String> 
     match result {
         Ok(()) => {
             let _ = fs::remove_file(root.join("apply-pending.json"));
+            let actual = snapshot_locked(root)?;
             drop(lock);
-            let actual = snapshot(root)?;
             if actual["running"] != config["Enabled"] {
                 return Err("RESOURCE_MONITOR_APPLY_UNCONFIRMED".into());
             }
@@ -711,6 +734,16 @@ mod tests {
         assert_eq!(after["running"], false);
         let meta = owner(&root).unwrap().unwrap();
         assert!(job(&meta.label).unwrap().is_none());
+        // A transaction already holding the collector lock can inspect the
+        // coherent result without reacquiring or dropping that lock.
+        let lock = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(root.join("collector.lock"))
+            .unwrap();
+        lock.try_lock().unwrap();
+        assert_eq!(snapshot_locked(&root).unwrap()["running"], false);
+        drop(lock);
         // A modified file is foreign even when its filename is ours.
         fs::write(root.join("collector.plist"), b"foreign fixture").unwrap();
         assert_eq!(

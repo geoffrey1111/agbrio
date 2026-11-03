@@ -63,12 +63,14 @@ flowchart TD
 
 ## macOS 预览候选（Apple Silicon）
 
-macOS 适配仍在进行，尚未与 Windows 功能对齐。手动 macOS candidate DMG Actions 仅生成 macOS 13.5+ / Apple Silicon 的 ad-hoc 签名 .dmg artifact，不建 Release、不包含更新签名私钥；macOS source 独立检查测试源码。实际运行成功前编译打包仍未验证。部分功能暂时显示“该平台尚未支持”。
+macOS 适配仍在进行，尚未与 Windows 功能对齐。手动 **macOS candidate DMG** Actions 生成 ad-hoc 签名 `.dmg` artifact，不建 Release、不使用更新签名 secret。ARM64 源码测试及较早候选 DMG 的交付副本启动已在 GitHub macOS 26.6.2 通过。macOS 13.5 是声明的部署目标，尚未在该系统版本验证。
 
-核对校验和后，将 Agbrio.app 放入 Applications。本人信任的未签名/ad-hoc 候选若被拦截，可到系统设置 → 隐私与安全性 → 仍要打开，或由本人执行下方命令。应用不会自动移除 quarantine。候选无需 Apple Developer 账号，但没有 Developer ID 签名或公证。
+原生路径、本机维护 CLI、Claude 引擎发现、通知集成、菜单栏/Dock、登录启动配置、资源采样、限定用户服务恢复、固定版本按需 Chromium 已有 Mac 实现及自动化测试。真实账号、系统权限弹窗、通知点击、手机端到端与长期运行仍待验证。共享 Codex 仍暂不支持：官方 Mac 安装包在 SDK 探测中返回 HTTP 403。Pi 提权/工作区授权、Keychain 秘密、设备试用身份、辅助功能和签名应用内更新需要后续安全设计批准。已退役的浏览器连接器/Native Messaging 保持退役。
+
+核对 artifact 校验和后，将 `Agbrio.app` 放入 Applications。本人信任的 ad-hoc 候选若被拦截，可到**系统设置 → 隐私与安全性 → 仍要打开**，或由本人执行下方命令。应用不会自动移除 quarantine。无需 Apple Developer 账号；候选没有 Developer ID 签名或公证。
 
 ```text
 xattr -dr com.apple.quarantine /Applications/Agbrio.app
 ```
 
-仅为已实现且使用的功能申请通知、所选文件的文件与文件夹/可移动卷权限，受保护位置按需由本人授予完全磁盘访问。未来若恢复只读 AX 才需要辅助功能；当前旧浏览器路径仍退役。Pi 提权、全本地卷授权、特权 helper 与签名应用内更新尚未实现。ad-hoc 身份每次构建都会变，更新后可能要求重新授权。CI/打包/启动检查通过不代表功能对齐或用户 UAT。
+通知权限只由明确的桌面操作申请。所选文件、可移动卷或受保护位置可能需要本人授予文件与文件夹或完全磁盘访问权限。未来只读 AX 功能才需辅助功能权限。ad-hoc 身份随每次构建变化，更新后系统可能要求重新授权。CI 通过是自动化工程证据，不代表用户 UAT 或完整功能对齐。
