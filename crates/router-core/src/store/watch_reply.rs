@@ -83,10 +83,12 @@ impl RouterStore {
         let context=codex_watch::chat_context(c,thread)?;if context.generation!=generation||!context.enabled{return Err("REPLY_TARGET_CHANGED_REFRESH".into())}
         let mut changed=0;
         for card in cards.iter().filter(|q|q["responseSent"]==true){
-            let(Some(request),Some(hash))=(card["requestId"].as_str(),card["responseHash"].as_str())else{continue};
+            let Some(request)=card["requestId"].as_str()else{continue};
             let id=crate::codex::async_questions::answer_id(thread,request);
             let prior=c.query_row(&format!("SELECT {COLS} FROM watch_replies WHERE id=?1 AND thread_id=?2 AND generation=?3 AND status='UNKNOWN'"),params![id,thread,generation],row).optional().map_err(db_error)?;
-            let Some(prior)=prior else{continue};if crate::codex::async_questions::response_hash(&prior.text).as_deref()!=Some(hash){continue}
+            let Some(prior)=prior else{continue};let Some(expected)=crate::codex::async_questions::response_hash(&prior.text)else{continue};
+            let matched=card["responseHash"].as_str()==Some(expected.as_str())||card["responseHashes"].as_array().is_some_and(|hashes|hashes.iter().any(|hash|hash.as_str()==Some(expected.as_str())));
+            if !matched{continue}
             changed+=c.execute("UPDATE watch_replies SET status='SENT',error_code=NULL,updated_at=?2 WHERE id=?1 AND status='UNKNOWN'",params![id,now()]).map_err(db_error)?;
         }Ok(changed)
     })}
@@ -149,6 +151,20 @@ fn setup()->(tempfile::TempDir,RouterStore,WatchReply){let d=tempfile::tempdir()
  let(d,s,mut r)=setup();let request="exact-question";r.id=crate::codex::async_questions::answer_id(&r.thread_id,request);r.text=format!("<send_user_message_question_reply>{}</send_user_message_question_reply>",serde_json::json!([{"questionItemId":"question-key","answer":"A"}]));s.prepare_watch_reply(&r).unwrap();s.claim_watch_reply(&r.id).unwrap();s.finish_watch_reply(&r.id,"UNKNOWN",Some("turn"),Some("REPLY_ASYNC_ACCEPTED_UNCONFIRMED")).unwrap();
  let hash=crate::codex::async_questions::response_hash(&r.text).unwrap();let wrong=serde_json::json!({"requestId":request,"responseSent":true,"responseHash":"different"});assert_eq!(s.reconcile_async_answer_replies(&r.thread_id,r.generation,&[wrong]).unwrap(),0);assert_eq!(s.watch_reply(&r.id).unwrap().unwrap().status,"UNKNOWN");assert!(s.claim_watch_reply(&r.id).is_err());
  drop(s);let s=RouterStore::open_at(d.path().join("router.db")).unwrap();let card=serde_json::json!({"requestId":request,"responseSent":true,"responseHash":hash});assert!(s.reconcile_async_answer_replies(&r.thread_id,r.generation+1,&[card.clone()]).is_err());assert_eq!(s.reconcile_async_answer_replies(&r.thread_id,r.generation,&[card.clone()]).unwrap(),1);assert_eq!(s.watch_reply(&r.id).unwrap().unwrap().status,"SENT");assert_eq!(s.reconcile_async_answer_replies(&r.thread_id,r.generation,&[card]).unwrap(),0);drop(s);drop(d);
+}
+
+#[test]fn an_earlier_native_answer_unblocks_followup_after_a_later_answer_and_reopen(){
+ use serde_json::json;
+ let(d,s,mut reply)=setup();let request="same-question";let question_id=json!(["request_user_input_async",request,0]).to_string();
+ let text=|answer:&str|format!("<send_user_message_question_reply>{}</send_user_message_question_reply>",json!([{"questionItemId":question_id,"answer":answer}]));
+ reply.id=crate::codex::async_questions::answer_id(&reply.thread_id,request);reply.text=text("wait");s.prepare_watch_reply(&reply).unwrap();s.claim_watch_reply(&reply.id).unwrap();s.finish_watch_reply(&reply.id,"UNKNOWN",Some("original-turn"),Some("REPLY_ASYNC_ACCEPTED_UNCONFIRMED")).unwrap();
+ let path=d.path().join("native.jsonl");let header=json!({"type":"session_meta","payload":{"id":"exact"}});let question=json!({"type":"response_item","payload":{"type":"function_call","name":"request_user_input_async","call_id":request,"arguments":json!({"questions":[{"title":"Choose"}]}).to_string()}});
+ let native_row=|answer:&str|json!({"type":"response_item","payload":{"type":"message","role":"user","content":[{"text":text(answer)}]}});
+ std::fs::write(&path,format!("{header}\n{question}\n{}\n{}\n",native_row("wait"),native_row("allow"))).unwrap();drop(s);
+ let store=RouterStore::open_at(d.path().join("router.db")).unwrap();let cards=crate::codex::async_questions::read(&path,d.path(),"exact");assert_eq!(cards[0]["responseHash"],crate::codex::async_questions::response_hash(&text("allow")).unwrap());assert_eq!(cards[0]["responseHashes"].as_array().unwrap().len(),2);
+ assert!(store.reconcile_async_answer_replies("exact",reply.generation+1,&cards).is_err());let mut wrong=cards.clone();wrong[0]["responseHash"]=json!("wrong");wrong[0]["responseHashes"]=json!(["wrong"]);assert_eq!(store.reconcile_async_answer_replies("exact",reply.generation,&wrong).unwrap(),0);assert_eq!(store.watch_reply(&reply.id).unwrap().unwrap().status,"UNKNOWN");
+ assert_eq!(store.reconcile_async_answer_replies("exact",reply.generation,&cards).unwrap(),1);assert_eq!(store.watch_reply(&reply.id).unwrap().unwrap().status,"SENT");assert_eq!(store.reconcile_async_answer_replies("exact",reply.generation,&cards).unwrap(),0);assert!(store.claim_watch_reply(&reply.id).is_err(),"the settled original must never be replayed");
+ let mut next=reply.clone();next.id=Uuid::new_v4().to_string();next.text="a new independent followup".into();assert!(store.prepare_watch_reply(&next).is_ok());
 }
 
 }

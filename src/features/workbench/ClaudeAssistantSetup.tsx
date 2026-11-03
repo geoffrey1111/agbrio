@@ -1,5 +1,5 @@
 import {useRef,useState,type ReactNode} from 'react';
-import {ArrowLeft,ArrowRight,Check,ExternalLink} from 'lucide-react';
+import {ArrowLeft,ArrowRight,Check} from 'lucide-react';
 import {t,getLanguage,useLanguage} from '../../i18n';
 import {CopyAction} from './NativeReaderActions';
 import {ClaudeNativeConnection} from './ClaudeNativeConnection';
@@ -10,15 +10,15 @@ import {assistantReadOnlyInstructions} from './assistantSetupInstructions';
 import {mcpAddressDiscoveryPowerShell} from './claudeConnectionRecovery';
 import {AssistantDailyReport,type ReportBridge} from './AssistantDailyReport';
 
-export function ClaudeAssistantSetup({mcpUrl,hasGrant,onAddGrant,grantForm,onRefresh,onConfigureConnection,openConnectors,connectClaude,bridges=[]}:{mcpUrl:string|null;hasGrant:boolean;onAddGrant:()=>void;grantForm?:ReactNode;onRefresh?:()=>Promise<void>;onConfigureConnection?:()=>void;openConnectors:()=>Promise<void>;connectClaude?:()=>Promise<ClaudeConnectionResult>;bridges?:ReportBridge[]}){
+export function ClaudeAssistantSetup({mcpUrl,hasGrant,onAddGrant,grantForm,onRefresh,onConfigureConnection,connectClaude,bridges=[]}:{mcpUrl:string|null;hasGrant:boolean;onAddGrant:()=>void;grantForm?:ReactNode;onRefresh?:()=>Promise<void>;onConfigureConnection?:()=>void;connectClaude?:()=>Promise<ClaudeConnectionResult>;bridges?:ReportBridge[]}){
  useLanguage();const [step,setStep]=useState(0),[client,setClient]=useState<'desktop'|'terminal'>('desktop'),[error,setError]=useState(''),[refreshing,setRefreshing]=useState(false);const heading=useRef<HTMLHeadingElement>(null),refreshPending=useRef(false);
  const url=assistantMcpConfig(mcpUrl)?mcpUrl:null,labels=['准备连接','添加并授权','验证工具'];
  function navigate(next:number){setStep(next);setError('');requestAnimationFrame(()=>heading.current?.focus());}
  async function refresh(){if(!onRefresh||refreshPending.current)return;refreshPending.current=true;setRefreshing(true);try{await onRefresh();}catch{setError(t('连接信息读取失败，请稍后重试。'));}finally{refreshPending.current=false;setRefreshing(false);}}
- async function open(){setError('');try{await openConnectors();}catch{setError(t('未能打开浏览器，请复制下方官方网址，在浏览器中打开。'));}}
  const address=<section className="assistant-setup-address" aria-label={t('当前 MCP 地址')}><span>{t('当前 MCP 地址')}</span>{url?<div><code>{url}</code><CopyAction text={url} label={t('复制 MCP 地址')}/></div>:<p>{t('尚未取得连接地址')}</p>}</section>;
  return <section className="assistant-setup" aria-label={t('Claude Code 完整接入')}>
   <header><h2>{t('连接 Claude Code')}</h2><p>{t('让 Claude 查看电脑上的进度、创建 Codex 对话并跟进任务。')}</p></header>
+  <section className="assistant-setup-native" aria-label={t('Claude Code 插件')}><ClaudeNativeConnection connect={connectClaude} mcpUrl={url}/><p className="assistant-setup-note">{t('MCP 负责读取和派发；本机插件负责通知和手机回复。MCP 已连好时，保留原连接，只补装插件即可。')}</p></section>
   <nav className="assistant-setup-steps" aria-label={t('Claude 连接步骤')}>{labels.map((label,index)=><button key={label} type="button" aria-current={step===index?'step':undefined} onClick={()=>navigate(index)}><span>{index+1}</span>{t(["准备","添加","验证"][index])}</button>)}</nav>
   <div className="assistant-setup-panel">
    <h3 ref={heading} tabIndex={-1}>{t(labels[step])}</h3>
@@ -31,13 +31,9 @@ export function ClaudeAssistantSetup({mcpUrl,hasGrant,onAddGrant,grantForm,onRef
    {step===1&&<>
     <div className="assistant-setup-clients" role="group" aria-label={t('Claude 使用方式')}><button type="button" aria-pressed={client==='desktop'} onClick={()=>setClient('desktop')}>{t('Claude 桌面版 Code')}</button><button type="button" aria-pressed={client==='terminal'} onClick={()=>setClient('terminal')}>{t('终端 / VS Code')}</button></div>
     {client==='desktop'?<ol className="assistant-setup-actions">
-     <li><strong>{t('在浏览器打开 Claude 连接器设置')}</strong><p>{t('点击下方按钮，在浏览器登录你使用 Claude 桌面版的同一个账号。然后点击 + Add → Add custom connector。')}</p><button type="button" className="r2-action" onClick={()=>void open()}><ExternalLink size={16}/>{t('打开 Claude 连接器设置')}</button><small>{t('也可自己打开 Claude 的 Customize → Connectors；旧版入口为 Settings → Connectors。')}</small></li>
-     <li><strong>{t('复制下面两项，填进刚打开的添加窗口')}</strong><p>{t('分别点击复制，再切回 Claude 的 Add custom connector 窗口，粘贴到对应输入框。')}</p>
-      <dl className="assistant-setup-fields"><div><dt>{t('名称 · Name')}</dt><dd><code>agbrio</code><CopyAction showLabel text="agbrio" label={t('复制名称')}/></dd></div><div><dt>{t('MCP 服务器地址 · URL')}</dt><dd><code>{url??t('尚未取得连接地址')}</code><CopyAction showLabel text={url} label={t('复制 MCP 地址')}/></dd></div></dl>
-      <small>{t('使用 OAuth；若出现 OAuth client 选项，选 Register automatically，其余凭据留空。')}</small>
-     </li>
-     <li><strong>{t('保存连接，并在 Agbrio 页面允许访问')}</strong><p>{t('在 Claude 点击 Add 保存；若显示 Connect，再点 Connect。跳转到 Agbrio 后，选择第一步准备的授权并点击允许。已有有效登录可以复用。')}</p><details><summary>{t('授权页要求配对，或没有可选授权？')}</summary><p>{t('要求配对时，到电脑 Agbrio 的“设置 → 设备”获取配对码；没有可选授权时，返回第一步创建授权，再回来继续。')}</p></details></li>
-     <li><strong>{t('回到 Claude 桌面版，在管理对话中启用')}</strong><p>{t('打开你要用来管理任务的那条 Code 对话。点击输入框旁的 + → Connectors，打开 agbrio，然后继续下面的验证。')}</p></li>
+     <li><strong>{t('打开 Claude 桌面版的 Code 管理对话')}</strong><p>{t('留在你要用来管理任务的那条 Code 对话中，下面的指令都发给这条对话。')}</p></li>
+     <li><strong>{t('把接入指令发给这条 Code 对话')}</strong><p>{t('点击复制，回到上面那条对话粘贴并发送。MCP 已能使用时，直接复用现有连接。')}</p><CopyAction showLabel text={url?claudeManualConnectionInstructions(url,getLanguage()):null} label={t('复制给 Code 对话')}/></li>
+     <li><strong>{t('在当前 Code 会话完成授权和工具检查')}</strong><p>{t('按这条对话的 /mcp 或连接控制完成本人授权，再实际调用 agbrio_read_app。现有工具可用时无需重新添加。')}</p></li>
     </ol>:<><p>{t('下面的命令都在使用 Claude Code 的这台电脑上操作。')}</p><ol className="assistant-setup-actions"><li><strong>{t('在 PowerShell 检查已有连接')}</strong><CopyAction showLabel text="claude mcp get agbrio" label={t('复制检查命令')}/><code>claude mcp get agbrio</code><p>{t('复制后粘贴到 PowerShell，按回车执行。已存在且地址正确时直接复用。')}</p></li><li><strong>{t('没有连接时，再添加 agbrio')}</strong><CopyAction showLabel text={claudeCodeAddCommand(url)} label={t('复制添加命令')}/><p>{t('同样粘贴到 PowerShell 并执行，然后回到你要管理任务的 Claude Code 会话。')}</p><details><summary>{t('查看添加命令')}</summary><pre>{claudeCodeAddCommand(url)??t('请先完成准备连接')}</pre></details></li><li><strong>{t('在目标会话登录')}</strong><p>{t('在 Claude Code 的消息输入框输入 /mcp，选择 agbrio 完成登录，然后继续下一步验证。')}</p></li></ol></>}
 
     {(!url||!hasGrant)&&<p role="status">{t('连接地址或授权尚未准备好，请返回第一步。')}</p>}
@@ -52,7 +48,7 @@ export function ClaudeAssistantSetup({mcpUrl,hasGrant,onAddGrant,grantForm,onRef
    {error&&<p role="alert">{error}</p>}
    <footer className="assistant-setup-footer">{step>0&&<button type="button" onClick={()=>navigate(step-1)}><ArrowLeft size={16}/>{t('上一步')}</button>}{step<2&&<button type="button" className="r2-action" disabled={step===0&&(!url||!hasGrant)} onClick={()=>navigate(step+1)}>{t(step===0?'去 Claude 添加连接':'查看验证方法')}<ArrowRight size={16}/></button>}</footer>
   </div>
-  <details className="assistant-setup-extra"><summary>{t('接收完成通知与手机回复（可选）')}</summary><p>{t('MCP 读取和派发任务可以先使用。需要 Claude 接收提醒或手机回复时，再安装本机组件。')}</p><ClaudeNativeConnection connect={connectClaude} mcpUrl={url}/></details>
+
   <details className="assistant-setup-extra"><summary>{t('设置日报（可选）')}</summary><AssistantDailyReport bridges={bridges} mcpUrl={url}/></details>
  </section>;
 }

@@ -1706,5 +1706,15 @@
   "在 Claude Code 的消息输入框输入 /mcp，选择 agbrio 完成登录，然后继续下一步验证。": "Enter /mcp in Claude Code’s message box, select agbrio to sign in, then continue to verification.",
   "回到刚才启用 agbrio 的那条 Claude Code 管理对话。点击下面的复制按钮，把指令粘贴到这条对话的消息输入框，再点击发送。": "Return to the Claude Code manager chat where you enabled agbrio. Copy the check below, paste it into that chat’s message box and send it.",
   "查看要发给 Claude 的检查内容": "Preview the check you will send to Claude",
-  "复制名称": "Copy name"
+  "复制名称": "Copy name",
+  "Claude Code 插件": "Claude Code plugin",
+  "安装 Claude Code 插件": "Install Claude Code plugin",
+  "MCP 负责读取和派发；本机插件负责通知和手机回复。MCP 已连好时，保留原连接，只补装插件即可。": "MCP handles reading and task dispatch; the local plugin handles notices and phone replies. Keep your working MCP connection and install only the missing plugin.",
+  "打开 Claude 桌面版的 Code 管理对话": "Open your manager chat in Claude Desktop Code",
+  "留在你要用来管理任务的那条 Code 对话中，下面的指令都发给这条对话。": "Stay in the Code chat you use to manage tasks. Send the following instructions to that chat.",
+  "把接入指令发给这条 Code 对话": "Send setup instructions to this Code chat",
+  "点击复制，回到上面那条对话粘贴并发送。MCP 已能使用时，直接复用现有连接。": "Copy, then paste and send in that Code chat. If MCP already works, reuse the existing connection.",
+  "复制给 Code 对话": "Copy for the Code chat",
+  "在当前 Code 会话完成授权和工具检查": "Authorize and verify tools in the current Code session",
+  "按这条对话的 /mcp 或连接控制完成本人授权，再实际调用 agbrio_read_app。现有工具可用时无需重新添加。": "Complete authorization using /mcp or this chat’s connection controls, then call agbrio_read_app. Do not add another connection when the current tools already work."
 }

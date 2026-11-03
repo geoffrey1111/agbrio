@@ -17,6 +17,8 @@ native-board-acceptance = []
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+dom_query = "=0.27.0"
+futures-util = "0.3"
 router-core = { path = "../crates/router-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -25,7 +27,7 @@ hmac = "0.12"
 hickory-proto = "=0.26.3"
 time = { version = "0.3", features = ["formatting", "local-offset", "parsing"] }
 tauri = { version = "2", features = ["tray-icon", "image-ico"] }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls", "stream"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 url = "2"
 uuid = { version = "1", features = ["v4"] }
