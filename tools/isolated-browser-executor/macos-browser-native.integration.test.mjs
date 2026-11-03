@@ -69,6 +69,8 @@ test('real Mac Chromium preserves native identity, human-only stop, owned close 
  const restarted=new ChromiumRuntime({resourceDirectory:resources,dataDirectory:path.join(base,'primary')});
  await restarted.connection();assert.equal(restarted.profile,runtime.profile);await checkpoint('AUTOMATED_RESTART_CLOSE',()=>restarted.shutdown());
  assert.deepEqual(await platform.inventory(runtime.profile),[]);
+ const protectedAfterRestart=(await checkpoint('PROTECTED_AFTER_RESTART',()=>platform.inventory(protectedProfile)))[0];
+ assert.equal(protectedAfterRestart?.pid,protectedOwner.pid,'primary restart must preserve the independent native process');assert.equal(protectedAfterRestart.started,protectedOwner.started);
  await checkpoint('PROTECTED_FIXTURE_CLOSE',()=>platform.close(protectedOwner));await until(()=>platform.inventory(protectedProfile),items=>items.length===0);protectedOwner=null;protectedStarted=false;
  const marker=JSON.parse(await readFile(path.join(runtime.profile,'aiwr-profile-owner.json'),'utf8'));assert.ok(marker.ownerId);settled=true;
 

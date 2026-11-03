@@ -164,10 +164,19 @@ func guardProfile(_ request: [String: Any]) throws {
                 let deadline = Date().addingTimeInterval(5)
                 while Date() < deadline {
                     if app.isTerminated { print(try json(["status": "CLOSED"])); return }
-                    guard let actual = try inspect(pid) else { print(try json(["status": "CLOSED"])); return }
-                    guard actual["binary"] as? String == request["binary"] as? String,
-                          actual["started"] as? String == request["started"] as? String else {
-                        try refuse("SECURITY_BROWSER_IDENTITY_CHANGED")
+                    // The image query may stop working before the process is
+                    // reaped. No further signal is sent: wait on the exact app
+                    // handle and birth/UID metadata, retaining UNKNOWN on timeout.
+                    var state = proc_bsdinfo()
+                    let count = withUnsafeMutablePointer(to: &state) { proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, $0, Int32(MemoryLayout<proc_bsdinfo>.size)) }
+                    if Int(count) == MemoryLayout<proc_bsdinfo>.size {
+                        let started = "\(state.pbi_start_tvsec):\(state.pbi_start_tvusec)"
+                        if started != request["started"] as? String || state.pbi_status == UInt32(AGBRIO_SZOMB) {
+                            print(try json(["status": "CLOSED"])); return
+                        }
+                        guard state.pbi_uid == geteuid() else { try refuse("SECURITY_BROWSER_IDENTITY_CHANGED") }
+                    } else if count == 0 && kill(pid, 0) != 0 && errno == ESRCH {
+                        print(try json(["status": "CLOSED"])); return
                     }
                     RunLoop.current.run(until: Date().addingTimeInterval(0.05))
                 }
