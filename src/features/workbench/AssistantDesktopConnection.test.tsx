@@ -4,13 +4,14 @@ import {invoke} from "@tauri-apps/api/core";
 import {AssistantSettings,mobileAssistantSettingsApi} from "./AssistantSettings";
 vi.mock('@tauri-apps/api/core',async importOriginal=>({...(await importOriginal<typeof import('@tauri-apps/api/core')>()),invoke:vi.fn()}));
 afterEach(()=>{cleanup();vi.clearAllMocks();});
-it('the actual default desktop API exposes first install with no plugin or grant prerequisite',async()=>{
+it('the desktop API keeps optional native setup available without making it a prerequisite for MCP',async()=>{
  vi.mocked(invoke).mockImplementation(async command=>{
   if(command==='assistant_settings')return {mcpUrl:null,bridges:[],grants:[]} as never;
   if(command==='claude_code_connect')return {phase:'WAITING_SESSION',writesEnabled:false} as never;
   throw Error('Unexpected mutation '+command);
  });
  render(<AssistantSettings/>);fireEvent.click(await screen.findByRole('button',{name:'Claude Code'}));
+ fireEvent.click(screen.getByText('接收完成通知与手机回复（可选）'));
  const install=screen.getByRole('button',{name:'启用 Claude 通知与手机回复'});expect(install).toBeVisible();expect(screen.getByText(/首次使用不用预装插件/)).toBeVisible();
  expect(vi.mocked(invoke).mock.calls.filter(c=>c[0]==='claude_code_connect')).toHaveLength(0);
  fireEvent.click(install);await waitFor(()=>expect(invoke).toHaveBeenCalledWith('claude_code_connect'));

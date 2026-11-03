@@ -8,11 +8,17 @@ function setup(grants:Parameters<typeof AssistantConnectionGuide>[0]["grants"]=[
  const onAddGrant=vi.fn(),onRouteChange=vi.fn(),openHelp=vi.fn().mockResolvedValue(undefined);
  render(<AssistantConnectionGuide mcpUrl={url} grants={grants} onAddGrant={onAddGrant} onRouteChange={onRouteChange} openHelp={openHelp}/>);return {onAddGrant,onRouteChange,openHelp};
 }
-it.each(['zh-CN','zh-TW','en'] as const)('offers a distinct Claude Code route and a real completion checklist in %s',language=>{
+it.each(['zh-CN','zh-TW','en'] as const)('separates the desktop and terminal Claude instructions in %s',language=>{
  setLanguagePreference(language);const a=setup();fireEvent.click(screen.getByRole('button',{name:'Claude Code'}));
- const title=language==='en'?'Connect Claude Code':'Claude Code 完整接入';const steps=screen.getByRole('region',{name:title});
- expect(steps).toHaveTextContent('claude mcp get agbrio');expect(steps).toHaveTextContent('/mcp');expect(steps).toHaveTextContent('agbrio_read_app');
+ const steps=screen.getByRole('region',{name:language==='en'?'Connect Claude Code':'Claude Code 完整接入'});
+ expect(steps).not.toHaveTextContent('claude mcp get agbrio');
+ const nav=within(steps).getByRole('navigation');fireEvent.click(nav.querySelectorAll('button')[1]);
+ expect(steps).toHaveTextContent('Add custom connector');expect(steps).not.toHaveTextContent('claude mcp get agbrio');if(language==='en')expect(steps.textContent).not.toMatch(/[\u3400-\u9fff]/);
+ fireEvent.click(within(steps).getByRole('button',{name:language==='en'?'Terminal / VS Code':language==='zh-TW'?'終端 / VS Code':'终端 / VS Code'}));
+ expect(steps).toHaveTextContent('claude mcp get agbrio');expect(steps).toHaveTextContent('/mcp');
+ fireEvent.click(within(steps).getByText(language==='en'?'View add command':language==='zh-TW'?'查看新增命令':'查看添加命令'));
  expect(steps.querySelector('pre')).toHaveTextContent("--scope user agbrio 'https://instance.fixture.invalid/mcp'");
+ fireEvent.click(nav.querySelectorAll('button')[2]);expect(steps).toHaveTextContent('agbrio_read_app');
  expect(a.onRouteChange).toHaveBeenLastCalledWith('claude');expect(a.onAddGrant).not.toHaveBeenCalled();expect(a.openHelp).not.toHaveBeenCalled();
  if(language==='en')expect(steps.textContent).not.toMatch(/[\u3400-\u9fff]/);
 });
