@@ -96,6 +96,16 @@ fn reference_path(source:&str)->Result<std::path::PathBuf,String>{
 mod file_url_tests {
  use super::*;
  #[test]
+ fn localhost_rejection_uses_an_otherwise_valid_path_on_this_os(){
+  let root=tempfile::tempdir().unwrap();let file=root.path().join("image.gif");
+  let local=url::Url::from_file_path(&file).unwrap().to_string();assert_eq!(reference_path(&local).unwrap(),file);
+  let invalid=local.replacen("file:///","file://localhost/",1);
+  // Url normalizes localhost away. This control prevents a Windows-only
+  // invalid POSIX path from making a missing authority guard look correct.
+  assert_eq!(url::Url::parse(&invalid).unwrap().to_file_path().unwrap(),file);
+  assert_eq!(reference_path(&invalid).unwrap_err(),"MEDIA_NONLOCAL_REFERENCE");
+ }
+ #[test]
  fn absolute_file_urls_keep_the_root_and_decode_filename_bytes_once(){
   let root=tempfile::tempdir().unwrap();
   let file=root.path().join("图 #100%20.gif");std::fs::write(&file,b"GIF89a exact bytes").unwrap();
