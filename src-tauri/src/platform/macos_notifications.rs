@@ -22,7 +22,7 @@ define_class!(
             // Dismissal must not navigate. A default click carries only our
             // exact notification sequence; the normal retained-item read
             // still authorizes the resulting presentation.
-            if response.actionIdentifier().as_ref()==unsafe{UNNotificationDefaultActionIdentifier}{
+            if &*response.actionIdentifier()==unsafe{UNNotificationDefaultActionIdentifier}{
                 if let Some(sequence)=sequence(&response.notification().request().identifier().to_string()){
                     crate::watch_notifications::open_sequence(&self.ivars().app,sequence);
                 }
@@ -41,7 +41,10 @@ unsafe impl Send for Delegate {}
 unsafe impl Sync for Delegate {}
 static DELEGATE:OnceLock<Retained<Delegate>>=OnceLock::new();
 pub(crate) fn init(app:&tauri::AppHandle){
-    let delegate=DELEGATE.get_or_init(||unsafe{msg_send![Delegate::alloc().set_ivars(Ivars{app:app.clone()}),init]});
+    let delegate=DELEGATE.get_or_init(||{
+        let allocated=Delegate::alloc().set_ivars(Ivars{app:app.clone()});
+        unsafe{msg_send![super(allocated),init]}
+    });
     UNUserNotificationCenter::currentNotificationCenter().setDelegate(Some(ProtocolObject::from_ref(&**delegate)));
 }
 fn sequence(identifier:&str)->Option<i64>{

@@ -1518,6 +1518,7 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
     TrayIconBuilder::with_id("ai-work-router-host")
         .icon(icon)
+        .icon_as_template(cfg!(target_os="macos"))
         .tooltip("Agbrio · Agent Bridge")
         .menu(&menu)
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -1529,13 +1530,13 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows,target_os="macos")))]
 #[tauri::command]
 fn autostart_enabled(app: AppHandle) -> Result<bool, String> {
     let _ = app;
     Err(platform::UNSUPPORTED.into())
 }
-#[cfg(not(windows))]
+#[cfg(not(any(windows,target_os="macos")))]
 #[tauri::command]
 fn set_autostart_enabled(enabled: bool, app: AppHandle) -> Result<(), String> {
     let _ = (enabled, app);
@@ -1550,6 +1551,13 @@ fn autostart_enabled(app: AppHandle) -> Result<bool, String> {
         .is_enabled()
         .map_err(|error| format!("Could not read Windows sign-in startup state: {error}"))
 }
+
+#[cfg(target_os="macos")]
+#[tauri::command]
+fn autostart_enabled()->Result<bool,String>{platform::macos_startup::enabled()}
+#[cfg(target_os="macos")]
+#[tauri::command]
+fn set_autostart_enabled(enabled:bool)->Result<(),String>{platform::macos_startup::set(enabled)}
 
 #[cfg(windows)]
 #[tauri::command]
@@ -1803,8 +1811,17 @@ pub fn run() {
         set_autostart_enabled
     ]);
     builder
-        .run(tauri::generate_context!())
-        .expect("error while running AI Work Router");
+        .build(tauri::generate_context!())
+        .expect("error while building AI Work Router")
+        .run(|app,event|{
+            #[cfg(target_os="macos")]
+            match event{
+                tauri::RunEvent::Reopen{..}=>show_dashboard(app),
+                tauri::RunEvent::ExitRequested{code:None,api,..}=>{api.prevent_exit();quit_host(app);},
+                _=>{}
+            }
+            #[cfg(not(target_os="macos"))]let _=(app,event);
+        });
 }
 
 #[cfg(test)]

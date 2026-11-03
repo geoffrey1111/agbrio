@@ -266,7 +266,7 @@ export function UnifiedWorkbenchHost({initialSurface="BRIDGES"}:{initialSurface?
     return { workstreamId: query.get("workstream")?.trim() || null, replyId: query.get("reply")?.trim() || null };
   }, []);
   const hideToTray = useCallback(() => {
-    void getCurrentWindow().hide().catch((error) => setRuntimeError(`窗口未能隐藏到托盘：${String(error)}`));
+    void getCurrentWindow().hide().catch((error) => setRuntimeError(`窗口未能隐藏：${String(error)}`));
   }, []);
 
   const refreshDashboard = useCallback(async () => {
