@@ -14,6 +14,8 @@ fn run_apply(parameters:&[String])->Result<(),String>{let mut command=Command::n
 fn run(args:&[String])->Result<String,String>{let mut command=Command::new(shell());command.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());#[cfg(windows)]{use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}let mut child=command.spawn().map_err(|_|"RESOURCE_MONITOR_UNAVAILABLE")?;let stdout=child.stdout.take().ok_or("RESOURCE_MONITOR_UNAVAILABLE")?;let reader=std::thread::spawn(move||{let mut bytes=Vec::new();let _=stdout.take(131072).read_to_end(&mut bytes);bytes});let start=Instant::now();loop{match child.try_wait(){Ok(Some(status))=>{let bytes=reader.join().map_err(|_|"RESOURCE_MONITOR_UNAVAILABLE")?;if !status.success(){return Err("RESOURCE_MONITOR_COMMAND_FAILED".into());}return String::from_utf8(bytes).map_err(|_|"RESOURCE_MONITOR_RESPONSE_INVALID".into());},Ok(None)if start.elapsed()<Duration::from_secs(25)=>std::thread::sleep(Duration::from_millis(50)),_=>{let _=child.kill();let _=child.wait();let _=reader.join();return Err("RESOURCE_MONITOR_READ_TIMEOUT".into());}}}}
 fn args(mode:&str)->Result<Vec<String>,String>{Ok(vec!["-NoProfile".into(),"-NonInteractive".into(),"-File".into(),script()?.to_string_lossy().into(),"-Mode".into(),mode.into()])}
 pub(crate) fn read()->Result<Value,String>{
+    #[cfg(target_os="macos")]
+    return crate::platform::macos_resources::read();
     crate::platform::require_windows()?;
 serde_json::from_str(&run(&args("Read")?)?).map_err(|_|"RESOURCE_MONITOR_RESPONSE_INVALID".into())}
 fn validate(c:&Config)->Result<(),String>{if c.schema_version!=2||!c.available_memory_percent.is_finite()||!(1.0..=95.0).contains(&c.available_memory_percent)||!c.commit_percent.is_finite()||!(1.0..99.0).contains(&c.commit_percent)||!(60..=3600).contains(&c.sample_seconds)||!(5..=1440).contains(&c.repeat_minutes)||c.disks.len()>26{return Err("RESOURCE_MONITOR_SETTINGS_INVALID".into())}let mut seen=std::collections::HashSet::new();for d in &c.disks{if d.drive.len()!=2||!d.drive.as_bytes()[0].is_ascii_uppercase()||d.drive.as_bytes()[1]!=b':'||!seen.insert(&d.drive)||!d.free_percent.is_finite()||!(0.1..=95.0).contains(&d.free_percent){return Err("RESOURCE_MONITOR_SETTINGS_INVALID".into())}}Ok(())}
@@ -24,6 +26,8 @@ fn validate(c:&Config)->Result<(),String>{if c.schema_version!=2||!c.available_m
  let mut info=SHELLEXECUTEINFOW{cbSize:std::mem::size_of::<SHELLEXECUTEINFOW>()as u32,fMask:SEE_MASK_NOCLOSEPROCESS,lpVerb:PCWSTR(verb.as_ptr()),lpFile:PCWSTR(exe.as_ptr()),lpParameters:PCWSTR(params.as_ptr()),nShow:0,..Default::default()};unsafe{ShellExecuteExW(&mut info).map_err(|e|if e.code().0 as u32&0xffff==1223{"RESOURCE_MONITOR_CONSENT_CANCELLED"}else{"RESOURCE_MONITOR_ADMIN_REQUIRED"}.to_string())?;let result=WaitForSingleObject(info.hProcess,30000);let _=CloseHandle(info.hProcess);if result.0!=0{return Err("RESOURCE_MONITOR_APPLY_UNCONFIRMED".into())}}Ok(())
 }
 pub(crate) fn apply(config:Config)->Result<Value,String>{
+    #[cfg(target_os="macos")]
+    return crate::platform::macos_resources::apply(serde_json::to_value(&config).map_err(|_|"RESOURCE_MONITOR_SETTINGS_INVALID")?);
     crate::platform::require_windows()?;
 validate(&config)?;let _guard=APPLY.get_or_init(Mutex::default).try_lock().map_err(|_|"RESOURCE_MONITOR_BUSY")?;
  let before=read()?;for d in config.disks.iter().filter(|d|d.enabled){if !before["drives"].as_array().is_some_and(|rows|rows.iter().any(|r|r["drive"]==d.drive)){return Err("RESOURCE_MONITOR_DRIVE_UNAVAILABLE".into());}}

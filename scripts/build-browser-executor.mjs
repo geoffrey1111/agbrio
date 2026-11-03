@@ -22,6 +22,10 @@ if(process.platform==='darwin'){
  const helper=path.join(staging,'macos-native-helper');
  execFileSync('/usr/bin/xcrun',['swiftc','-parse-as-library','-swift-version','5','-O','-target',`${process.arch==='arm64'?'arm64':'x86_64'}-apple-macosx13.5`,'-framework','AppKit','-framework','Foundation','-framework','CoreGraphics','-import-objc-header',path.join(source,'macos-native/NativeProcess.h'),path.join(source,'macos-native/NativeProcess.swift'),'-o',helper],{stdio:'inherit',timeout:120000});
  execFileSync('/usr/bin/codesign',['--force','--sign','-','--identifier','com.geoffrey.aiworkrouter.browser-native',helper],{stdio:'inherit',timeout:30000});
+ const samplerDirectory=path.join(root,'src-tauri/resources/macos-platform');await mkdir(samplerDirectory,{recursive:true});
+ const sampler=path.join(samplerDirectory,'mac-resource-sampler'),samplerSource=path.join(root,'tools/macos-platform');
+ execFileSync('/usr/bin/xcrun',['swiftc','-parse-as-library','-swift-version','5','-O','-target',`${process.arch==='arm64'?'arm64':'x86_64'}-apple-macosx13.5`,'-framework','Foundation','-framework','CryptoKit','-import-objc-header',path.join(samplerSource,'ResourceSampler.h'),path.join(samplerSource,'ResourceSampler.swift'),'-o',sampler],{stdio:'inherit',timeout:120000});
+ execFileSync('/usr/bin/codesign',['--force','--sign','-','--identifier','com.geoffrey.aiworkrouter.resource-sampler',sampler],{stdio:'inherit',timeout:30000});
 }
 const lock=JSON.parse(await readFile(path.join(source,'package-lock.json'),'utf8'));const seen=new Set();
 async function copyDependency(name){if(seen.has(name))return;const row=lock.packages[`node_modules/${name}`];if(!row)throw Error(`DEPENDENCY_LOCK_REQUIRED:${name}`);seen.add(name);await cp(path.join(source,'node_modules',name),path.join(staging,'node_modules',name),{recursive:true});for(const dep of Object.keys(row.dependencies??{}))await copyDependency(dep);for(const dep of Object.keys(row.optionalDependencies??{}))if(lock.packages[`node_modules/${dep}`])await copyDependency(dep);}
@@ -71,5 +75,5 @@ await writeFile(path.join(staging, 'PUPPETEER-LICENSE.txt'), await licenseText('
 // Chromium itself retains chrome://credits for its bundled third-party notices.
 await writeFile(path.join(staging, 'CHROMIUM-LICENSE.txt'), await licenseText('CHROMIUM-LICENSE.txt', 'https://chromium.googlesource.com/chromium/src/+/refs/heads/main/LICENSE?format=TEXT', text => Buffer.from(text, 'base64'), 'CHROMIUM_NOTICE_REQUIRED'));
 console.log(JSON.stringify({ status: 'PACKAGE_STAGED', snapshot: policy.snapshot,
-  executableSha256: platformManifest.executableSha256, chromiumSupported: process.platform === 'win32', runtimeFiles: Object.keys(files).length,
+  executableSha256: platformManifest.executableSha256, chromiumSupported: process.platform === 'win32'||process.platform==='darwin'&&process.arch==='arm64', runtimeFiles: Object.keys(files).length,
   dependencies: [...seen].sort(), nodeVersion: process.versions.node, nodeExecutableReused: !!nodeTargetAlreadyMatches }));

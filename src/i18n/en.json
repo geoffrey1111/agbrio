@@ -1719,5 +1719,8 @@
   "邮件提醒等待 macOS 钥匙串适配。": "Email reminders are awaiting macOS Keychain support.",
   "系统通知授权仍未确认，请完成系统提示后再操作。": "Notification permission is still unconfirmed. Complete the system prompt before trying again.",
   "通知接收结果不确定，请先检查通知中心，不自动重发。": "Notification acceptance is uncertain. Check Notification Center; it will not be resent automatically.",
-  "已提交 macOS 测试通知。横幅是否显示由系统通知设置决定。": "The macOS test notification was submitted. System notification settings control whether a banner appears."
+  "已提交 macOS 测试通知。横幅是否显示由系统通知设置决定。": "The macOS test notification was submitted. System notification settings control whether a banner appears.",
+  "macOS 每 {0} 秒观察系统可用内存估计与内存压力；仅管理本工具创建的用户 launchd 任务，不添加登录或开机自启，只提醒，不清理或结束程序。": "macOS checks estimated available memory and memory pressure every {0} seconds. Only this app's user launchd job is managed; no login or boot startup is added. It sends alerts without deleting files or stopping processes.",
+  "进程排行只包含当前用户可读取的 RSS；系统进程未完整覆盖。": "Process rankings contain only RSS readable by the current user; system processes are not fully covered.",
+  "卷列表或采样组件已变化，请核对后保存；读取不会自动重新配置。": "Volumes or the sampler have changed. Review and save to apply changes; reading never reconfigures them automatically."
 }

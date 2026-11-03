@@ -5,6 +5,8 @@ pub(crate) const UNSUPPORTED: &str = "PLATFORM_NOT_YET_SUPPORTED";
 pub(crate) mod macos_notifications;
 #[cfg(target_os="macos")]
 pub(crate) mod macos_startup;
+#[cfg(target_os="macos")]
+pub(crate) mod macos_resources;
 
 pub(crate) fn require_native_desktop()->Result<(),String>{
     if cfg!(any(windows,target_os="macos")){Ok(())}else{Err(UNSUPPORTED.into())}
@@ -68,7 +70,6 @@ mod macos_tests {
     #[test]
     fn unavailable_native_features_fail_before_process_or_settings_work() {
         assert_eq!(crate::pi::installation().err().unwrap(), super::UNSUPPORTED);
-        assert_eq!(crate::resource_monitor::read().unwrap_err(), super::UNSUPPORTED);
         assert!(!crate::shared_codex::status().ready);
         assert_eq!(crate::shared_codex::launch().err().unwrap(), super::UNSUPPORTED);
     }

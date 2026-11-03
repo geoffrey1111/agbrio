@@ -2,6 +2,9 @@
   "bundle": {
     "targets": ["app", "dmg"],
     "createUpdaterArtifacts": false,
+    "resources": {
+      "resources/macos-platform": "macos-platform"
+    },
     "macOS": {
       "minimumSystemVersion": "13.5",
       "signingIdentity": "-"

@@ -32,6 +32,8 @@ func ownedJSON(_ path: String) throws -> [String: Any] {
 func profile(_ value: Any?) throws -> String {
     guard let path = value as? String else { try refuse("SECURITY_PROFILE_INVALID") }
     let root = try plain(path)
+    var directory = stat()
+    guard lstat(root, &directory) == 0, (directory.st_mode & S_IFMT) == S_IFDIR, directory.st_uid == geteuid(), (directory.st_mode & 0o777) == 0o700 else { try refuse("PROFILE_OWNERSHIP_UNPROVEN") }
     let marker = try ownedJSON(root + "/aiwr-profile-owner.json")
     guard marker["schema"] as? String == "AIWR_OWNED_CHROMIUM_PROFILE_V1",
           let identity = marker["ownerId"] as? String, UUID(uuidString: identity) != nil else { try refuse("PROFILE_OWNERSHIP_UNPROVEN") }

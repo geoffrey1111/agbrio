@@ -40,6 +40,7 @@ async function ensureOwnedProfile(data,profile){
   await chmod(profile,0o700);await writeFile(owner,JSON.stringify(record),{flag:'wx',mode:0o600});
  }
  if(record.schema!=='AIWR_OWNED_CHROMIUM_PROFILE_V1'||!/^[a-f0-9-]{36}$/.test(record.ownerId??''))throw Error('PROFILE_OWNERSHIP_UNPROVEN');
+ const directory=await lstat(profile);if(!directory.isDirectory()||directory.uid!==process.geteuid()||(directory.mode&0o777)!==0o700)throw Error('PROFILE_OWNERSHIP_UNPROVEN');
  try{const saved=await marker(location);if(saved.ownerId!==record.ownerId||saved.profile!==profile||saved.schema!==record.schema)throw Error('PROFILE_OWNERSHIP_UNPROVEN');}
  catch(error){if(error.code!=='ENOENT')throw error;await writeFile(location,JSON.stringify({...record,profile}),{flag:'wx',mode:0o600});}
 }

@@ -57,3 +57,4 @@ src-tauri/resources/browser-executor-lite/
 # Generated native macOS sidecars (not source assets).
 src-tauri/binaries/browser-executor-node-aarch64-apple-darwin
 src-tauri/binaries/browser-executor-node-x86_64-apple-darwin
+src-tauri/resources/macos-platform/
