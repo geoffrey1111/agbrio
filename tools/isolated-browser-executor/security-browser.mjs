@@ -3,6 +3,7 @@ import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import {macosSecurityPlatform} from './security-browser-macos.mjs';
 const execute = promisify(execFile);
 const PROFILE_GUARD = String.raw`
 $ErrorActionPreference = 'Stop'
@@ -126,7 +127,7 @@ async function powershell(script, environment) {
     windowsHide: true, timeout: 10000, maxBuffer: 65536, env: { ...process.env, ...environment },
   });
 }
-export const securityPlatform = {
+const windowsSecurityPlatform = {
   withExclusiveProfile,
   async inventory(profile) {
     const { stdout } = await powershell(INVENTORY, { AIWR_SECURITY_PROFILE: profile });
@@ -154,3 +155,4 @@ export const securityPlatform = {
     }
   },
 };
+export const securityPlatform=process.platform==='darwin'?macosSecurityPlatform:windowsSecurityPlatform;

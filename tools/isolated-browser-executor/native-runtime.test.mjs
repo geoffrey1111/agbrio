@@ -4,6 +4,7 @@ import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ChromiumRuntime } from './native-runtime.mjs';
+await mkdir(fileURLToPath(new URL('../../runtime/isolated-browser-executor/',import.meta.url)),{recursive:true});
 
 test('a durable auth stop survives Executor recreation and opens no browser', async t => {
   const root = fileURLToPath(new URL('../../runtime/isolated-browser-executor/', import.meta.url)).replace(/[\\/]$/, '');

@@ -65,9 +65,12 @@ jobs:
           node --test scripts/browser-executor-platform.test.mjs
           node --test tools/agbrio-control/control.test.mjs
           node --test scripts/claude-usage-statusline.test.mjs
+          node --test tools/isolated-browser-executor/browser-package-macos.test.mjs
           npm run build
       - name: Stage native Node and helper resources
         run: npm run build:browser-executor
+      - name: Native macOS profile boundary tests
+        run: node --test tools/isolated-browser-executor/macos-native.test.mjs tools/isolated-browser-executor/native-runtime.test.mjs
       - name: Core check and tests
         run: |
           cargo check --manifest-path crates/Cargo.toml --locked --target aarch64-apple-darwin

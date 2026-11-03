@@ -341,7 +341,7 @@ mod tests {
         let temp=tempfile::tempdir().unwrap();
         assert_eq!(engine_at(&[temp.path().into()]).unwrap_err(),"CLAUDE_DESKTOP_ENGINE_NOT_FOUND");
         let executable=temp.path().join("claude-code/2.1.285/build").join(engine_filename());
-        fs::create_dir_all(executable.parent().unwrap()).unwrap();fs::write(executable,b"fixture").unwrap();
+        write_engine(&executable);
         assert_eq!(engine_at(&[temp.path().into()]).unwrap_err(),"CLAUDE_DESKTOP_ENGINE_TOO_OLD");
     }
     #[test]
