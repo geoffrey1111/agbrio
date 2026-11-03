@@ -107,6 +107,7 @@ jobs:
           npm ci --prefix tools/isolated-browser-executor
       - name: Frontend and platform tests
         run: |
+          /bin/sh -n src/features/workbench/claudeManualInstall.macos.sh
           npm test -- --maxWorkers=2
           node --test scripts/browser-executor-platform.test.mjs
           node --test tools/agbrio-control/control.test.mjs

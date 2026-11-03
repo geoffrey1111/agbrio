@@ -1726,5 +1726,9 @@
   "进程排行使用系统允许读取的 RSS；无法读取的进程不计入排行。": "Process rankings use RSS allowed by the system; unreadable processes are excluded.",
   "此 Cloudflared 使用系统权限，Mac 授权方案尚待审查，当前不会接管。": "This Cloudflared service uses system privileges. The macOS authorization design is pending review; it will not be taken over.",
   "请先在本机启动已配置的用户 Cloudflared 服务，再启用自动恢复；不会读取凭据或新建隧道。": "Start the configured user Cloudflared service locally before enabling recovery. Credentials will not be read and no tunnel will be created.",
-  "上次服务恢复结果尚未确认，请先核对当前服务，不要重复操作。": "The previous service recovery remains unconfirmed. Inspect the current service before taking another action."
+  "上次服务恢复结果尚未确认，请先核对当前服务，不要重复操作。": "The previous service recovery remains unconfirmed. Inspect the current service before taking another action.",
+  "保持已安装的 Agbrio 桌面客户端运行。Windows 使用普通 PowerShell，macOS 使用终端；选择对应系统的手动安装命令。遇到失败会停止，请保留错误代码。": "Keep the installed Agbrio desktop app running. Use ordinary PowerShell on Windows or Terminal on macOS; choose the command for that system. A failure stops installation; keep the error code.",
+  "网页和手机不能安装本机组件。请打开已安装的 Agbrio 桌面客户端，在本页完成安装；不要先执行 /reload-plugins。": "Web and phone cannot install local components. Open the installed Agbrio desktop app and install here; do not run /reload-plugins first.",
+  "复制 macOS 手动安装命令": "Copy macOS installation command",
+  "查看 macOS 终端命令": "View macOS Terminal command"
 }
