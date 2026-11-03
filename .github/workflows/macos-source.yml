@@ -13,7 +13,6 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 45
     env:
-      TMPDIR: ${{ runner.temp }}
       MACOSX_DEPLOYMENT_TARGET: '13.5'
       CARGO_PROFILE_DEV_DEBUG: '0'
     steps:
@@ -33,6 +32,7 @@ jobs:
       - name: Verify native build platform
         run: |
           test "$(uname -m)" = arm64
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
           sw_vers
           rustc --version
           node --version
