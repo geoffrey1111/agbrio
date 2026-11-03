@@ -1,4 +1,4 @@
-// Observe-only current-user resource producer. No process control, credentials,
+// Observe-only resource producer running as its owner. No process control, credentials,
 // shell, provider calls or system-wide service configuration.
 import Foundation
 import Darwin
@@ -87,7 +87,7 @@ func topProcesses() -> [[String: Any]] {
     for pid in pids.prefix(max(0, min(Int(count), pids.count))) where pid > 0 {
         var owner = proc_bsdinfo(), task = proc_taskinfo()
         let own = withUnsafeMutablePointer(to: &owner) { proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, $0, Int32(MemoryLayout<proc_bsdinfo>.size)) }
-        guard Int(own) == MemoryLayout<proc_bsdinfo>.size, owner.pbi_uid == geteuid() else { continue }
+        guard Int(own) == MemoryLayout<proc_bsdinfo>.size else { continue }
         let read = withUnsafeMutablePointer(to: &task) { proc_pidinfo(pid, PROC_PIDTASKINFO, 0, $0, Int32(MemoryLayout<proc_taskinfo>.size)) }
         guard Int(read) == MemoryLayout<proc_taskinfo>.size else { continue }
         var name = [CChar](repeating: 0, count: 256)
@@ -197,7 +197,7 @@ func sample(_ root: String, _ marker: [String: Any], _ config: [String: Any], _ 
                 let prepared = marker?["prepared"] as? Bool == true
                 let value: [String: Any] = ["platform": "MACOS", "memoryMetric": "SYSTEM_FREE_PERCENT_ESTIMATE", "pressureLevel": level.map { $0 as Any } ?? NSNull(),
                     "config": config, "drives": drives, "physicalBytes": physical, "availableBytes": available, "installed": marker != nil && !prepared,
-                    "running": false, "legacy": false, "startupEnabled": false, "selectionUnavailable": unavailable, "needsSave": changed || prepared, "processObservation": "CURRENT_USER_RSS_PARTIAL"]
+                    "running": false, "legacy": false, "startupEnabled": false, "selectionUnavailable": unavailable, "needsSave": changed || prepared, "processObservation": "ACCESSIBLE_RSS_PARTIAL"]
                 print(String(data: try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]), encoding: .utf8)!)
             }
         } catch Refusal.code(let code) { print("{\"errorCode\":\"\(code)\"}"); exit(1) }

@@ -352,14 +352,16 @@ fn snapshot(root: &Path) -> Result<Value, String> {
             || binary.to_str() != Some(owner.binary_path.as_str());
         if !owner.prepared {
             let bytes = private_bytes(&root.join("collector.plist"))?;
-            if owner.plist_sha256.as_deref() != Some(hash(&bytes).as_str())
-                || bytes
-                    != plist(
-                        root,
-                        &owner,
-                        &value["config"],
-                        Path::new(&owner.binary_path),
-                    )?
+            if owner.plist_sha256.as_deref() != Some(hash(&bytes).as_str()) {
+                return Err("RESOURCE_MONITOR_FOREIGN_PRESERVED".into());
+            }
+            if bytes
+                != plist(
+                    root,
+                    &owner,
+                    &value["config"],
+                    Path::new(&owner.binary_path),
+                )?
             {
                 return Err("RESOURCE_MONITOR_STATE_UNCONFIRMED".into());
             }
@@ -466,6 +468,8 @@ fn control(root: &Path, id: &str, args: &[String]) -> Result<(), ControlError> {
         return if status.success() {
             Ok(())
         } else {
+            #[cfg(test)]
+            eprintln!("owned launchctl {} exit={:?}", args[0], status.code());
             Err(ControlError::Failed)
         };
     }
@@ -486,6 +490,8 @@ fn control(root: &Path, id: &str, args: &[String]) -> Result<(), ControlError> {
                 return if status.success() {
                     Ok(())
                 } else {
+                    #[cfg(test)]
+                    eprintln!("owned launchctl {} exit={:?}", args[0], status.code());
                     Err(ControlError::Failed)
                 };
             }

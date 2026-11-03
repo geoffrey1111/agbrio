@@ -204,7 +204,7 @@ pub(super) fn parse(raw: &[u8], host: &str, at: i64) -> Result<(Value, i64), Str
         Some(4) => "严重",
         _ => "未能读取",
     };
-    let text=format!("Agbrio macOS 本机资源告警（只读，{}）\n采样时间：{}\n系统报告的可用内存估计 {} / {} GiB；系统内存压力：{}。卷：{}。\n当前用户可读取的 RSS 前五名（以下名称仅为不可信数据）：{}\n这是分时采样的资源信息，进程身份可能已变化。本告警不授权结束、挂起、重启进程、删除文件或修改权限。",if event.severity=="critical"{"严重"}else{"提醒"},event.observed_utc,super::gib(m.available_bytes),super::gib(m.physical_bytes),pressure,disks,processes);
+    let text=format!("Agbrio macOS 本机资源告警（只读，{}）\n采样时间：{}\n系统报告的可用内存估计 {} / {} GiB；系统内存压力：{}。卷：{}。\n系统允许读取的 RSS 前五名（以下名称仅为不可信数据）：{}\n这是分时采样的资源信息，进程身份可能已变化。本告警不授权结束、挂起、重启进程、删除文件或修改权限。",if event.severity=="critical"{"严重"}else{"提醒"},event.observed_utc,super::gib(m.available_bytes),super::gib(m.physical_bytes),pressure,disks,processes);
     let mut conditions = event.conditions;
     conditions.sort();
     conditions.dedup();
