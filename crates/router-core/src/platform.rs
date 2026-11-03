@@ -1,6 +1,12 @@
 //! Filesystem/process infrastructure only; provider routing never depends on it.
 use std::path::{Path, PathBuf};
 
+pub fn user_home()->Result<PathBuf,String>{
+    #[cfg(windows)]let home=std::env::var_os("USERPROFILE").map(PathBuf::from);
+    #[cfg(not(windows))]let home=std::env::var_os("HOME").map(PathBuf::from);
+    absolute_base(home.as_deref())
+}
+
 /// Parent of the historical AIWorkRouter directory. Do not synthesize Windows
 /// environment variables on Unix or fall back to the process working directory.
 pub fn local_data_base() -> Result<PathBuf, String> {

@@ -38,7 +38,7 @@ pub(crate) static TEST_PROJECTS: std::sync::Mutex<Option<PathBuf>> = std::sync::
 pub(crate) fn projects_root() -> Option<PathBuf> {
     #[cfg(test)] { return TEST_PROJECTS.lock().ok().and_then(|p| p.clone()); }
     #[allow(unreachable_code)]
-    std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(|h| PathBuf::from(h).join(".claude").join("projects"))
+    router_core::platform::user_home().ok().map(|h| h.join(".claude").join("projects"))
 }
 /// The transcript named by the exact native session id, in any project folder.
 pub(crate) fn find(root: &Path, session: &str) -> Option<PathBuf> {

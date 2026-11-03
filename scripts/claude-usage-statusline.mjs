@@ -4,7 +4,9 @@
 // %LOCALAPPDATA%\AIWorkRouter\data\claude-usage.json for the Agbrio Host to read.
 // Nothing else from the session (paths, model text, transcript) is stored.
 import {mkdirSync,renameSync,writeFileSync} from 'node:fs';
-import {join} from 'node:path';
+import {join,isAbsolute} from 'node:path';
+
+const base=process.platform==='win32'?process.env.LOCALAPPDATA:process.platform==='darwin'&&process.env.HOME?join(process.env.HOME,'Library','Application Support'):null;
 
 let input='';
 process.stdin.setEncoding('utf8');
@@ -13,9 +15,9 @@ process.stdin.on('end',()=>{
  let data={};try{data=JSON.parse(input);}catch{/* print a plain line below */}
  const pick=w=>w&&Number.isFinite(w.used_percentage)&&w.used_percentage>=0&&w.used_percentage<=100?{usedPercentage:w.used_percentage,resetsAt:Number.isFinite(w.resets_at)?Math.trunc(w.resets_at):null}:null;
  const fiveHour=pick(data.rate_limits?.five_hour),sevenDay=pick(data.rate_limits?.seven_day);
- if((fiveHour||sevenDay)&&process.env.LOCALAPPDATA){
+ if((fiveHour||sevenDay)&&base&&isAbsolute(base)){
   try{
-   const dir=join(process.env.LOCALAPPDATA,'AIWorkRouter','data'),file=join(dir,'claude-usage.json'),temp=file+'.tmp';
+   const dir=join(base,'AIWorkRouter','data'),file=join(dir,'claude-usage.json'),temp=file+'.tmp';
    mkdirSync(dir,{recursive:true});
    writeFileSync(temp,JSON.stringify({observedAt:Date.now(),...(fiveHour&&{fiveHour}),...(sevenDay&&{sevenDay})}));
    renameSync(temp,file);

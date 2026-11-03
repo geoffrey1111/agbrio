@@ -1,6 +1,10 @@
 //! Desktop platform admission. Unsupported features fail before side effects.
 pub(crate) const UNSUPPORTED: &str = "PLATFORM_NOT_YET_SUPPORTED";
 
+pub(crate) fn require_native_desktop()->Result<(),String>{
+    if cfg!(any(windows,target_os="macos")){Ok(())}else{Err(UNSUPPORTED.into())}
+}
+
 /// Caller owns the URL allowlist. This leaf only invokes the native opener;
 /// no shell, navigation automation or account authorization is performed.
 pub(crate) fn open_web_url(target:&str)->Result<(),String>{
