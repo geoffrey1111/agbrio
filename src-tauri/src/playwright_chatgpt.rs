@@ -918,23 +918,25 @@ mod tests {
 
     #[test]
     fn bundled_sidecar_binary_candidate_stays_next_to_the_desktop_executable() {
-        let executable = PathBuf::from(r"D:\\preview\\AI Work Router.exe");
+        let preview = std::env::temp_dir().join("preview");
+        let executable = preview.join("AI Work Router.exe");
         assert_eq!(
             bundled_sidecar_binary_candidate(&executable).unwrap(),
-            PathBuf::from(r"D:\\preview\\chatgpt-playwright-sidecar.exe")
+            preview.join("chatgpt-playwright-sidecar.exe")
         );
     }
 
     #[test]
     fn bundled_normal_chrome_observer_stays_with_its_explicit_runtime_and_script() {
-        let executable = PathBuf::from(r"D:\\preview\\AI Work Router.exe");
+        let preview = std::env::temp_dir().join("preview");
+        let executable = preview.join("AI Work Router.exe");
         assert_eq!(
             bundled_normal_chrome_node_candidate(&executable).unwrap(),
-            PathBuf::from(r"D:\\preview\\normal-chrome-observer-node.exe")
+            preview.join("normal-chrome-observer-node.exe")
         );
         assert_eq!(
             bundled_normal_chrome_script_candidate(&executable).unwrap(),
-            PathBuf::from(r"D:\\preview\\normal-chrome\\normal-chrome-observer.mjs")
+            preview.join("normal-chrome/normal-chrome-observer.mjs")
         );
     }
 

@@ -137,7 +137,8 @@ fn strong_candidates(lines: &[&str]) -> Vec<RawCandidate> {
             }
         }
     }
-    candidates.retain(|candidate| is_windows_absolute(&candidate.raw_path));
+    candidates.retain(|candidate| is_windows_absolute(&candidate.raw_path)
+        || (cfg!(target_os = "macos") && candidate.raw_path.starts_with('/') && !candidate.raw_path.starts_with("//")));
     candidates
 }
 
@@ -196,6 +197,19 @@ fn is_windows_absolute(value: &str) -> bool {
         && (bytes[2] == b'\\' || bytes[2] == b'/')
 }
 
+// A POSIX path candidate retains the existing file/hash/review gates. macOS
+// scripts and executable files must not gain default selection from that support.
+fn macos_executable(path: &Path, extension: Option<&str>) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        matches!(extension, Some("sh" | "bash" | "zsh" | "command" | "pkg" | "dylib" | "so"))
+            || fs::metadata(path).is_ok_and(|m| m.permissions().mode() & 0o111 != 0)
+    }
+    #[cfg(not(target_os = "macos"))]
+    { let _ = (path, extension); false }
+}
+
 fn generic_path(line: &str) -> Option<String> {
     let bytes = line.as_bytes();
     for start in 0..bytes.len().saturating_sub(2) {
@@ -250,7 +264,8 @@ fn build_candidate(
     }
     let dangerous = extension
         .as_deref()
-        .is_some_and(|value| DANGEROUS_EXTENSIONS.contains(&value));
+        .is_some_and(|value| DANGEROUS_EXTENSIONS.contains(&value))
+        || macos_executable(path, extension.as_deref());
     if dangerous {
         warnings.push("Executable or script-like files are not selected by default.".to_string());
     }
@@ -360,6 +375,20 @@ mod tests {
         let candidates = detect("message-a", &format!("ARTIFACT:\n`{path}`"));
         assert_eq!(candidates[0].raw_path, path);
         assert!(candidates[0].exists);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn posix_candidates_keep_network_relative_and_executable_guards() {
+        assert!(detect("guard", "ARTIFACT: //server/share/file.zip").is_empty());
+        assert!(detect("guard", "ARTIFACT: ../file.zip").is_empty());
+        assert!(detect("guard", "ARTIFACT: https://example.invalid/file.zip").is_empty());
+        let temp = tempfile::tempdir().unwrap();
+        let script = file(temp.path(), "task.command", b"not executed");
+        let items = detect("guard", &format!("ARTIFACT: {script}"));
+        assert_eq!(items.len(), 1);
+        assert!(!items[0].default_selected);
+        assert!(!items[0].warnings.is_empty());
     }
 
     #[test]

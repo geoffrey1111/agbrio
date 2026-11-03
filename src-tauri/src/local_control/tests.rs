@@ -18,9 +18,9 @@ fn request(command:&str,expected:Option<&str>)->Vec<u8>{serde_json::to_vec(&json
     assert!(core.session.lock().unwrap().adapter.is_none());assert!(core.store.codex_watches().unwrap().is_empty());
 }
 #[test]fn diagnostic_reads_do_not_disclose_private_rows_or_invent_provider_health(){
-    let(_temp,core,host)=fixture();core.store.enable_codex_watch("private-native-id","private-conversation-title","C:/private-path",&router_core::store::codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some("private-turn".into()),item_id:Some("private-item".into()),text:"PRIVATE-CHAT-CONTENT".into()}).unwrap();
+    let(_temp,core,host)=fixture();let private_root=_temp.path().to_string_lossy().replace('\\',"/");core.store.enable_codex_watch("private-native-id","private-conversation-title",private_root.as_str(),&router_core::store::codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some("private-turn".into()),item_id:Some("private-item".into()),text:"PRIVATE-CHAT-CONTENT".into()}).unwrap();
     let value=app_control::diagnostics(&core,Some(&host)).unwrap();let text=value.to_string();
-    for secret in ["private-native-id","private-conversation-title","C:/private-path","private-turn","PRIVATE-CHAT-CONTENT"]{assert!(!text.contains(secret));}
+    for secret in ["private-native-id","private-conversation-title",private_root.as_str(),"private-turn","PRIVATE-CHAT-CONTENT"]{assert!(!text.contains(secret));}
     assert_eq!(value["providerProbePerformed"],false);assert_eq!(value["watches"]["total"],1);assert_eq!(value["codex"]["connected"],false);
     let lock=core.session.lock().unwrap();assert_eq!(app_control::diagnostics(&core,Some(&host)).unwrap()["codex"]["observation"],"BUSY");drop(lock);
 }

@@ -579,13 +579,13 @@ mod tests {
             let _ = socket.read(&mut request);
             thread::sleep(Duration::from_millis(200));
         });
+        // Time the bounded transport, not first-use client/runtime initialization.
+        let client = push_http_client(Duration::from_millis(20), Duration::from_millis(50)).unwrap();
         let started = Instant::now();
-        let result = push_http_client(Duration::from_millis(20), Duration::from_millis(50))
-            .unwrap()
-            .get(format!("http://{address}/stalled"))
+        let result = client.get(format!("http://{address}/stalled"))
             .send();
         assert!(result.is_err());
-        assert!(started.elapsed() < Duration::from_millis(180));
+        assert!(started.elapsed() < Duration::from_millis(180), "transport elapsed: {:?}", started.elapsed());
         server.join().unwrap();
     }
 
