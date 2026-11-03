@@ -44,10 +44,10 @@ fn rules()->Vec<BriefRule>{vec![BriefRule{id:"routine".into(),text:"Carry out ro
 }
 #[test]fn revoking_instance_authority_blocks_a_delayed_direct_reply_at_its_physical_claim(){
  let d=tempfile::tempdir().unwrap();let s=RouterStore::open_at(d.path().join("test.db")).unwrap();let g=global(&s);
- let snapshot=codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()};s.enable_codex_watch("demo-thread","Demo","D:\\demo",&snapshot).unwrap();
+ let snapshot=codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()};s.enable_codex_watch("demo-thread","Demo",&crate::store::test_cwd(),&snapshot).unwrap();
  let a=s.prepare_assistant_action(&g.id,ActionInput{request_id:"direct".into(),operation:"SEND_CHAT".into(),input:serde_json::json!({"threadId":"demo-thread","text":"Demo message"})}).unwrap();
  s.claim_assistant_action(&g.id,ActionApproval{action_id:a.id.clone(),expected_hash:a.payload_hash.clone(),rule_id:Some("routine".into()),use_owner_answer:false,assessment:"Covered follow-up".into()}).unwrap();
- s.prepare_watch_reply(&watch_reply::WatchReply{id:a.id.clone(),thread_id:"demo-thread".into(),cwd:"D:\\demo".into(),generation:1,source_sequence:None,expected_turn_id:None,mode:"QUEUE".into(),text:"Demo message".into(),options:serde_json::json!({"attachments":[]}),payload_hash:String::new(),status:String::new(),turn_id:None,error_code:None,created_at:0,updated_at:0}).unwrap();
+ s.prepare_watch_reply(&watch_reply::WatchReply{id:a.id.clone(),thread_id:"demo-thread".into(),cwd:crate::store::test_cwd(),generation:1,source_sequence:None,expected_turn_id:None,mode:"QUEUE".into(),text:"Demo message".into(),options:serde_json::json!({"attachments":[]}),payload_hash:String::new(),status:String::new(),turn_id:None,error_code:None,created_at:0,updated_at:0}).unwrap();
  s.finish_assistant_action(&a.id,Ok(serde_json::json!({"status":"QUEUED"}))).unwrap();s.revoke_assistant_grant(&g.id).unwrap();
  assert!(s.claim_watch_reply(&a.id).unwrap_err().contains("REVOKED"));assert_eq!(s.watch_reply(&a.id).unwrap().unwrap().status,"QUEUED");
 }
@@ -69,7 +69,7 @@ fn rules()->Vec<BriefRule>{vec![BriefRule{id:"routine".into(),text:"Carry out ro
 }
 fn global(s:&RouterStore)->assistant::AssistantGrant{s.create_assistant_instance_grant(InstanceGrantInput{label:"QA assistant".into(),rules:rules(),expires_at:now()+600000}).unwrap()}
 fn bridge(s:&RouterStore,p:&str,name:&str)->String{
- let w=s.create_workstream(p,name.into()).unwrap();let side=|suffix:&str|role_bridge::RoleBindingInput{provider:"CODEX".into(),external_id:format!("demo-{name}-{suffix}"),label:suffix.into(),cwd:Some("D:\\demo".into())};
+ let w=s.create_workstream(p,name.into()).unwrap();let side=|suffix:&str|role_bridge::RoleBindingInput{provider:"CODEX".into(),external_id:format!("demo-{name}-{suffix}"),label:suffix.into(),cwd:Some(crate::store::test_cwd())};
  s.bind_role_bridge(&w.id,0,side("d"),side("e")).unwrap();w.id
 }
 #[test]fn global_authority_includes_future_bridges_while_old_token_stays_scoped(){
@@ -108,7 +108,7 @@ fn bridge(s:&RouterStore,p:&str,name:&str)->String{
 }
 #[test]fn seen_notifications_are_exact_persistent_and_do_not_delete_or_pause(){
  let d=tempfile::tempdir().unwrap();let path=d.path().join("test.db");let s=RouterStore::open_at(&path).unwrap();let snap=|id:&str|codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some(id.into()),item_id:Some("item".into()),text:id.into()};
- s.enable_codex_watch("qa","Demo","D:\\demo",&snap("baseline")).unwrap();s.record_codex_watch("qa",1,&snap("one")).unwrap();s.record_codex_watch("qa",1,&snap("two")).unwrap();let events=s.codex_watch_feed(0).unwrap().events;
+ s.enable_codex_watch("qa","Demo",&crate::store::test_cwd(),&snap("baseline")).unwrap();s.record_codex_watch("qa",1,&snap("one")).unwrap();s.record_codex_watch("qa",1,&snap("two")).unwrap();let events=s.codex_watch_feed(0).unwrap().events;
  s.mark_codex_watch_event_seen(events[0].sequence).unwrap();let at=s.codex_watch_event(events[0].sequence).unwrap().seen_at;assert!(at.is_some());s.mark_codex_watch_event_seen(events[0].sequence).unwrap();assert_eq!(s.codex_watch_event(events[0].sequence).unwrap().seen_at,at);
  assert!(s.codex_watch_event(events[1].sequence).unwrap().seen_at.is_none());assert_eq!(s.codex_watch_feed(0).unwrap().events.len(),2);assert!(s.codex_watches().unwrap()[0].enabled);
  drop(s);let s=RouterStore::open_at(path).unwrap();assert_eq!(s.codex_watch_event(events[0].sequence).unwrap().seen_at,at);
@@ -153,12 +153,12 @@ fn reviewed(h:&HandoffHistoryItem)->assistant::ApprovalInput{assistant::Approval
  let input=watch_reply::WatchReply{id:Uuid::new_v4().to_string(),thread_id:thread.into(),cwd:context.cwd.clone(),generation:context.generation,source_sequence:None,expected_turn_id:None,mode:"SEND".into(),text:"Add a compact reward preview".into(),options:serde_json::json!({"attachments":[]}),payload_hash:String::new(),status:String::new(),turn_id:None,error_code:None,created_at:0,updated_at:0};
  s.prepare_watch_reply(&input).unwrap();assert!(s.codex_watches().unwrap().is_empty());s.claim_watch_reply(&input.id).unwrap();assert!(s.claim_watch_reply(&input.id).is_err());s.finish_watch_reply(&input.id,"SENT",Some("demo-turn"),None).unwrap();
  let mut stale=input;stale.id=Uuid::new_v4().to_string();s.prepare_watch_reply(&stale).unwrap();
- let side=|id:&str|role_bridge::RoleBindingInput{provider:"CODEX".into(),external_id:id.into(),label:id.into(),cwd:Some("D:\\demo".into())};s.bind_role_bridge(&wid,1,side(thread),side("new-execution")).unwrap();
+ let side=|id:&str|role_bridge::RoleBindingInput{provider:"CODEX".into(),external_id:id.into(),label:id.into(),cwd:Some(crate::store::test_cwd())};s.bind_role_bridge(&wid,1,side(thread),side("new-execution")).unwrap();
  assert_ne!(s.codex_chat_context(thread).unwrap().generation,stale.generation);assert!(s.claim_watch_reply(&stale.id).unwrap_err().contains("TARGET_CHANGED"));s.trash_workstream(&wid).unwrap();assert!(s.codex_chat_context(thread).is_err());
 }
 #[test]fn bound_conversations_are_hidden_from_independent_list_without_destroying_user_watch(){
  let d=tempfile::tempdir().unwrap();let s=RouterStore::open_at(d.path().join("test.db")).unwrap();let snapshot=codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()};
- s.enable_codex_watch("demo-Existing-d","Explicit watch","D:\\demo",&snapshot).unwrap();assert_eq!(s.codex_watches().unwrap().len(),1);
+ s.enable_codex_watch("demo-Existing-d","Explicit watch",&crate::store::test_cwd(),&snapshot).unwrap();assert_eq!(s.codex_watches().unwrap().len(),1);
  let p=s.create_project("Demo".into(),None).unwrap();let wid=bridge(&s,&p.id,"Existing");assert!(s.codex_watches().unwrap().is_empty());assert!(s.registered_codex_watch("demo-Existing-d").is_ok());s.trash_workstream(&wid).unwrap();assert_eq!(s.codex_watches().unwrap().len(),1);
 }
 

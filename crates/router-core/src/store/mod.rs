@@ -7648,3 +7648,8 @@ mod completion_tests;
 #[cfg(test)]
 #[path="instance_tests.rs"]
 mod instance_tests;
+
+
+/// Absolute metadata-only test root; never relax production path admission.
+#[cfg(test)]
+pub(crate) fn test_cwd() -> String { std::env::temp_dir().to_string_lossy().into_owned() }

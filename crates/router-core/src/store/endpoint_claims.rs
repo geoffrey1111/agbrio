@@ -55,7 +55,7 @@ pub(super) fn migrate(c: &mut Connection, path: &Path) -> Result<(), String> {
 mod tests {
     use super::*;
     use super::super::role_bridge::RoleBindingInput;
-    fn binding(name: &str) -> RoleBindingInput { RoleBindingInput { provider: "CODEX".into(), external_id: name.into(), label: name.into(), cwd: Some("D:\\fixture".into()) } }
+    fn binding(name: &str) -> RoleBindingInput { RoleBindingInput { provider: "CODEX".into(), external_id: name.into(), label: name.into(), cwd: Some(crate::store::test_cwd()) } }
 
     #[test]
     #[ignore = "Explicit isolated SQLite copy only; never the production DB"]

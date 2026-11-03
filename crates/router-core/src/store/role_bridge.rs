@@ -458,7 +458,7 @@ mod tests {
             provider: provider.into(),
             external_id: id.into(),
             label: id.into(),
-            cwd: (provider == "CODEX").then(|| "D:\\role-fixture".into()),
+            cwd: (provider == "CODEX").then(|| crate::store::test_cwd()),
         }
     }
     fn fixture() -> (tempfile::TempDir, RouterStore, String) {

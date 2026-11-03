@@ -310,7 +310,7 @@ mod auth_stop_tests {
             "AUTH_REQUIRED"
         );
         assert!(service.0.lock().unwrap().process.is_none());
-        assert_eq!(service.owner_confirmed_authentication().unwrap_err(), "EXECUTOR_START_FAILED");
+        assert_eq!(service.owner_confirmed_authentication().unwrap_err(), if cfg!(target_os = "macos") { "PLATFORM_NOT_YET_SUPPORTED" } else { "EXECUTOR_START_FAILED" });
         assert_eq!(service.status(), "AUTH_REQUIRED");
         assert!(service.0.lock().unwrap().process.is_none());
     }
