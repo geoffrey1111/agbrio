@@ -43,9 +43,9 @@ Delegated sends target Codex. You can reply to Claude Code yourself from your ph
 
 ## Get started
 
-1. Download the Windows app and connect the agent you already use.
-2. Choose a conversation to watch, or connect a manager and executor.
-3. Pair your phone in Settings → Devices, then open your Agbrio address.
+1. Download and open the Windows app. Choose Codex, Claude Code, or both.
+2. Follow the first-run guide to connect your agents, authorize access and pair your phone.
+3. Choose a conversation and follow up from your phone. Skip setup whenever you want, or reopen it from Settings.
 
 Keep your computer and Agbrio online. Enable notifications on the receiving device.
 

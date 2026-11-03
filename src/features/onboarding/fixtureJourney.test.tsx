@@ -1,0 +1,20 @@
+import {act,fireEvent,screen,waitFor} from '@testing-library/react';
+import {expect,it} from 'vitest';
+it('the actual preview entry completes native configuration and automatic code preparation without manual input',async()=>{
+ document.body.innerHTML='<div id="root"></div>';
+ await act(async()=>{await import('../../../tests/first-run/fixture');});
+ fireEvent.click(await screen.findByLabelText(/Claude Code安装/));
+ const next=async()=>{await act(async()=>{fireEvent.click(document.querySelector('.first-run-primary')!);});};
+ for(let i=0;i<5;i++)await next();
+ const phone=document.querySelector('.demo-companion input') as HTMLInputElement;expect(phone.value).toBe('123456');expect(phone.readOnly).toBe(true);
+ for(let i=0;i<4;i++)await next();
+ expect(screen.getByRole('heading',{name:'在电脑的 Agbrio 授权页登录'})).toBeVisible();
+ await next();expect(screen.getByText('已自动登录演示授权页。')).toBeVisible();expect(document.querySelector('.demo-companion input')).toBeNull();
+ await next();await next();expect(screen.getByText(/agbrio_read_app 成功/)).toBeVisible();await next();
+ fireEvent.click(await screen.findByLabelText(/Claude Code · 我的管理助手/));await next();
+ await next();expect(screen.getByText('手机已同步助手回复：收到。')).toBeVisible();await next();
+ for(let i=0;i<3;i++)await next();expect(screen.getByText('演示 MCP 读取成功')).toBeVisible();await next();
+ await waitFor(()=>expect(screen.getByRole('heading',{name:'完整引导体验结束'})).toBeVisible());
+ const events=(window as unknown as {firstRunDemo:{events:string[]}}).firstRunDemo.events;
+ for(const required of ['MCP_CONFIGURED','OAUTH_ALLOWED','MCP_READ_VERIFIED','PHONE_REPLY_VERIFIED'])expect(events).toContain(required);
+});

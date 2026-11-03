@@ -61,7 +61,7 @@ $agbrioProcess=[Diagnostics.Process]::Start($agbrioStart)
 try{
  $agbrioDeadline=(Get-Date).AddSeconds(60)
  do{
-  if($agbrioProcess.HasExited){throw 'Fresh installed application exited during startup.'}
+  if($agbrioProcess.HasExited){$detached=Get-Process -Name ai-work-router -ErrorAction SilentlyContinue | Where-Object {$_.Path -ieq $agbrioExecutable} | Select-Object -First 1;if($detached){$agbrioProcess=$detached}else{Start-Sleep -Milliseconds 250;continue}}
   try{$agbrioSession=Invoke-RestMethod 'http://127.0.0.1:47114/v1/mobile/auth/session';break}catch{Start-Sleep -Milliseconds 500}
  }while((Get-Date) -lt $agbrioDeadline)
  if(!$agbrioSession){throw 'Fresh installed Host did not start.'}
@@ -119,6 +119,9 @@ public static class AgbrioSmokeWindow{[DllImport("user32.dll")]public static ext
 }
 
 if($Installer){
+ $priorQaData=$env:LOCALAPPDATA;$priorQaProfile=$env:WEBVIEW2_USER_DATA_FOLDER
+ $env:LOCALAPPDATA=$agbrioData;$env:WEBVIEW2_USER_DATA_FOLDER=(Join-Path $agbrioRoot 'webview-profile')
+ try {
  # Actual shell entry -> application -> exact version, after the initial app
  # has exited. No provider credentials or model activity on this fresh runner.
  Start-Process -FilePath $qaShortcut | Out-Null
@@ -143,4 +146,5 @@ if($Installer){
  }finally{
   $qaRelaunched.Refresh();if(!$qaRelaunched.HasExited){Stop-Process -Id $qaRelaunched.Id}
  }
+ } finally {$env:LOCALAPPDATA=$priorQaData;$env:WEBVIEW2_USER_DATA_FOLDER=$priorQaProfile}
 }

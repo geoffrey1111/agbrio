@@ -17,6 +17,8 @@ fn is_retired_native_transport_launch(arguments: impl IntoIterator<Item = String
     })
 }
 
+mod independent_startup;
+
 fn main() {
     if is_retired_native_transport_launch(std::env::args()) {
         // Reject a retained old registration; never dispatch its protocol or
@@ -24,6 +26,7 @@ fn main() {
         eprintln!("LEGACY_CHATGPT_TRANSPORT_RETIRED");
         return;
     }
+    if independent_startup::relay_if_needed() { return; }
     ai_work_router_lib::run();
 }
 

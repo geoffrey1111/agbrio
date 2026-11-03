@@ -35,10 +35,12 @@ OutFile "__BINARY__"
 !include "Win\COM.nsh"
 !include "__UTILS__"
 !define MAINBINARYNAME "ai-work-router"
+!define BUNDLEID "com.agbrio.isolated.fixture"
 !define MANUKEY "Software\AgbrioIsolatedFixture"
 !include "__HOOK__"
 Section
  !insertmacro AGBRIO_REPAIR_LINKS "__LINKS__" "__OLD__" "__NEW__"
+ !insertmacro AGBRIO_CREATE_CANONICAL_ENTRIES "__LINKS__\Desktop" "__LINKS__\Programs" "__NEW__"
 SectionEnd
 '@
  foreach($pair in @(@('__BINARY__',$binary),@('__UTILS__',$utils),@('__HOOK__',$hook),@('__LINKS__',$links),@('__OLD__',$old),@('__NEW__',$current))){$source=$source.Replace($pair[0],$pair[1])}
@@ -56,9 +58,10 @@ SectionEnd
    $link=$shell.CreateShortcut($file.FullName)
    if($link.TargetPath -ine $newExe -or $link.Arguments -cne '--fixture-preserve'){throw 'REPAIRED_LINK_TARGET_OR_ARGUMENTS_WRONG'}
   }
+  foreach($canonical in @((Join-Path $links 'Desktop/Agbrio.lnk'),(Join-Path $links 'Programs/Agbrio/Agbrio.lnk'))){if(!(Test-Path -LiteralPath $canonical)){throw 'CANONICAL_LINK_MISSING'};$canonicalLink=$shell.CreateShortcut($canonical);if($canonicalLink.TargetPath -ine $newExe){throw 'CANONICAL_LINK_TARGET_INVALID'};[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($canonicalLink)}
   if((Get-FileHash -LiteralPath $foreign).Hash -cne $foreignHash){throw 'FOREIGN_SHORTCUT_CHANGED'}
  }
- @{productionNSISRepair='PASS';repairedLinks=5;pathWithSpaces=$true;repeatSafe=$true;argumentsPreserved=$true;unrelatedPreserved=$true;realShellChanges=0}|ConvertTo-Json -Compress
+ @{productionNSISRepair='PASS';repairedLinks=5;canonicalLinks=2;pathWithSpaces=$true;repeatSafe=$true;argumentsPreserved=$true;unrelatedPreserved=$true;realShellChanges=0}|ConvertTo-Json -Compress
 } finally {
  if($link){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($link)}
  [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)
