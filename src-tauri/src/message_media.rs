@@ -79,8 +79,10 @@ fn reference_path(source:&str)->Result<std::path::PathBuf,String>{
  let path=if source.get(..5).is_some_and(|s|s.eq_ignore_ascii_case("file:")){
   // The URL parser normalizes file://localhost into an empty host. Preserve
   // the explicit no-authority rule before that normalization occurs.
-  if source[5..].strip_prefix("//").is_some_and(|rest|!rest.split('/').next().unwrap_or("").is_empty()){return Err("MEDIA_NONLOCAL_REFERENCE".into());}
+  let remainder=&source[5..];
+  if !remainder.starts_with("///")||remainder.starts_with("////"){return Err("MEDIA_NONLOCAL_REFERENCE".into());}
   let url=url::Url::parse(source).map_err(|_|"MEDIA_NONLOCAL_REFERENCE")?;
+  if decode_reference(url.path()).starts_with("//"){return Err("MEDIA_NONLOCAL_REFERENCE".into());}
   // Preserve the existing local-only boundary; even file://localhost is not a
   // source-authorized filesystem alias. URL decoding occurs exactly once.
   if url.host_str().is_some()||url.query().is_some(){return Err("MEDIA_NONLOCAL_REFERENCE".into());}
@@ -105,7 +107,7 @@ mod file_url_tests {
  }
  #[test]
  fn file_url_authorities_and_encoded_network_paths_are_rejected(){
-  for source in ["file://server.invalid/share/a.gif","file://localhost/tmp/a.gif","FILE://server.invalid/a.gif","file:////server.invalid/a.gif","%2F%2Fserver.invalid/a.gif","file:///tmp/a.gif?token=secret"]{
+  for source in ["file://server.invalid/share/a.gif","file://localhost/tmp/a.gif","FILE://server.invalid/a.gif","file:////server.invalid/a.gif","file:///%2Fserver.invalid/a.gif","file:/tmp/a.gif","%2F%2Fserver.invalid/a.gif","file:///tmp/a.gif?token=secret"]{
    assert_eq!(reference_path(source).unwrap_err(),"MEDIA_NONLOCAL_REFERENCE", "{source}");
   }
  }
