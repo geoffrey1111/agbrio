@@ -3950,6 +3950,7 @@ mod tests {
                         "mcp_events",
                         "mobile_chatgpt_inbound_reviews",
                         "mobile_codex_outbound_reviews",
+                        "native_secret_references",
                         "pi_command_tombstones", "pi_commands", "pi_directory_scopes",
                         "pi_owner_questions", "pi_public_items", "pi_scope_policies", "pi_task_access", "pi_tasks", "pi_tool_decisions",
                         "projects",
