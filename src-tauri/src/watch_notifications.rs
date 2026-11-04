@@ -430,7 +430,7 @@ pub fn register_windows() -> Result<(), String> {
     unsafe { windows::Win32::UI::Shell::SHChangeNotify(windows::Win32::UI::Shell::SHCNE_ASSOCCHANGED, windows::Win32::UI::Shell::SHCNF_IDLIST, None, None); }
     Ok(())
 }
-#[cfg(not(any(windows,target_os="macos")))]
+#[cfg(not(windows))]
 pub fn register_windows() -> Result<(), String> {
     Ok(())
 }
