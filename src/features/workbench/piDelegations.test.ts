@@ -9,3 +9,9 @@ it('groups only the declared native parent and matching canonical project, never
  expect(piDelegations([other,child]).nested.size).toBe(0);
  expect(piDelegations([{...parent,cwd:'D:/different'},child]).nested.size).toBe(0);
 });
+it('uses owner-assigned current management without changing the original native parent',()=>{
+ const old=watch('claude_code:old'),current=watch('manager');
+ const child={...watch('pi:child'),piParent:{provider:'CLAUDE_CODE',externalId:'old',cwd:'D:/work'},management:{zoneId:'zone',managerId:'manager',managerCwd:'D:/work',revision:3}};
+ const result=piDelegations([old,current,child]);expect(result.children.get('manager')).toEqual([child]);expect(result.children.has(old.threadId)).toBe(false);
+ expect(child.piParent.externalId).toBe('old');expect(piDelegations([old,{...current,cwd:'D:/different'},child]).nested.size).toBe(0);
+});

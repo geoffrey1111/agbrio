@@ -1,3 +1,9 @@
+# 2026-11-04 — Owner-selected management areas (Windows task)
+
+Owner requests multiple management areas, Claude Code or Codex managers, one area per executor, and owner UI appointment/atomic transfer without manual subscription churn. This authorizes fixed task metadata notifications to the exact selected manager through the existing Claude plugin or guarded Codex writer; it does not authorize arbitrary result/body relays, business prompt replay, native task interruption, account changes or permission expansion. Preserve original Pi parents and native identities. Owner desktop/PWA operations are revision-bound and idempotent; MCP may read the associations but cannot appoint itself or edit them. Assignment is not authenticated native MCP caller attestation. Keep UNKNOWN native attempts fenced; only an atomically journalled never-admitted metadata intent may continue under the same request ID, with the current route rechecked inside the physical writer claim. Follow the owner’s current release instruction; preserve the unrelated Mac work.
+
+Owner subsequently selected fixed metadata at the next original Claude main-session text tool-result append while busy, with idle plugin prompts as fallback. Preserve all original tool bytes and fields, native denials, other plugins, descendants and stopped-session behavior. Append only Host-authenticated fixed task notices, not business results or owner decisions. Claim/nonce/native-row receipts fence both paths; an ambiguous append is never resent. This exception does not allow arbitrary tool-result rewriting, asUser, model helpers or permission changes.
+
 # Agbrio source development
 
 Read README.md and docs/SETUP.md before setup. Windows + Codex + PWA is the current alpha scope; Mac and other agent adapters are not accepted runtime targets yet.

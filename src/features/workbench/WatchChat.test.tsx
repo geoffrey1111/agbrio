@@ -7,6 +7,11 @@ import type { ChatMessage, WatchChatApi, WatchChatState, WatchReply } from "./wa
 const original={sequence:17,threadId:"exact-original",label:"原对话",cwd:"D:\\project-a",snapshot:{state:"RESULT_READY",turnId:"turn-a",itemId:"item-a",text:"完整原文"},observedAt:1};
 const state:WatchChatState={watch:{...original,enabled:true,generation:2,checkedAt:1,errorCode:null},host:"电脑A",ownedTurnId:null,externalBusy:false,replies:[],requests:[],goal:null};
 const response=(id:string,status:WatchReply["status"]="SENT"):WatchReply=>({id,threadId:original.threadId,sourceSequence:17,expectedTurnId:"turn-a",mode:"SEND",text:"第一条回复",status,turnId:"turn-b",errorCode:null,createdAt:1,options:{attachments:[]}});
+it('uses the latest native title in an already open conversation',async()=>{
+ const current={...state,watch:{...state.watch,label:'更新后的原生名称'}};
+ render(<WatchChat original={original} api={{state:async()=>current,command:async()=>({messages:[],nextCursor:null}) as never}} onBack={()=>{}}/>);
+ expect(await screen.findByRole('heading',{name:'更新后的原生名称'})).toBeVisible();expect(screen.queryByRole('heading',{name:'原对话'})).toBeNull();
+});
 it('renders a native Pi image once without a contradictory unavailable attachment preview',async()=>{
  const media=vi.spyOn(mediaModule,'messageMedia').mockImplementation(()=>Object.assign(vi.fn(async()=>({filename:'input.jpg',mime:'image/jpeg',data:''})),{scopeKey:'pi-image-fixture'}));
  const native={...original,threadId:'pi:exact-session'};

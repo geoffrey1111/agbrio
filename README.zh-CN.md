@@ -1,5 +1,7 @@
 # Agbrio
 
+按业务建立管理区，一键更换管理对话或转移执行对话；Codex 和 Claude Code 都能担任管理。
+
 **电脑上的 Agent 继续工作，你在手机上掌握进展。**
 
 [![Download](https://img.shields.io/github/v/release/geoffrey1111/agbrio?label=download)](https://github.com/geoffrey1111/agbrio/releases/latest)

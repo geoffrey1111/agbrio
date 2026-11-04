@@ -26,7 +26,7 @@ pub(crate) fn register(core:&RouterCore,token:&str,p:&Command)->Result<Value,Str
 }
 pub(crate) fn poll(store:&Arc<RouterStore>,session:&Arc<Mutex<Session>>,epoch:u64,cursor:&mut Option<String>){
  let _=store.observe_pi_manager_notices();
- let Ok(sources)=store.codex_notice_sources(None)else{return};let ids=crate::observer_batch::next_ids(sources.iter().filter(|s|!s.binding.thread_id.starts_with("pi:")).map(|s|s.binding.thread_id.as_str()),cursor,crate::observer_batch::WATCH_READS_PER_PASS);
+ let Ok(sources)=store.codex_notice_sources(None)else{return};let ids=crate::observer_batch::next_ids(sources.iter().filter(|s|!s.binding.thread_id.starts_with("pi:")&&!s.binding.thread_id.starts_with("claude_code:")).map(|s|s.binding.thread_id.as_str()),cursor,crate::observer_batch::WATCH_READS_PER_PASS);
  for thread in ids{
   let Ok(w)=store.codex_chat_context(&thread)else{continue};if !w.enabled{continue;}
   let Ok(mut s)=session.try_lock()else{continue};if s.codex_observer_epoch!=epoch{return;}
@@ -56,7 +56,8 @@ pub(crate) fn reconcile(core:&RouterCore){
  if rows.is_empty(){*cursor=None;rows=core.store.pending_codex_native_receipts_page(None).unwrap_or_default();}
  *cursor=rows.last().map(|(n,_)|n.id.clone());drop(cursor);
  // Native append may have succeeded while a callback/HTTP acknowledgement was lost.
- for(n,s)in rows.into_iter().take(16){if crate::claude_code::observed_session(core,&s.binding.receiver_sid,Some(&s.binding.receiver_cwd)).is_err(){continue;}let Some(path)=crate::claude_transcript::projects_root().and_then(|root|crate::claude_transcript::find(&root,&s.binding.receiver_sid))else{continue};if let Some(id)=crate::claude_transcript::find_plugin_prompt(&path,&s.binding.receiver_sid,&n.text,n.created_at){let _=core.store.reconcile_codex_notice(&n.id,&id);}}
+ for(n,s)in rows.into_iter().take(16){if s.receiver_provider!="CLAUDE_CODE"{continue;}if crate::claude_code::observed_session(core,&s.binding.receiver_sid,Some(&s.binding.receiver_cwd)).is_err(){continue;}let Some(path)=crate::claude_transcript::projects_root().and_then(|root|crate::claude_transcript::find(&root,&s.binding.receiver_sid))else{continue};let inline=core.store.codex_notice_claim_evidence(&n.id).ok().flatten().filter(|v|v.delivery_channel=="INLINE_OR_PROMPT"&&v.released_at.is_none()).and_then(|v|v.proof_nonce).and_then(|nonce|crate::claude_transcript::find_plugin_inline_notice(&path,&s.binding.receiver_sid,&n.id,&n.text,&nonce,n.created_at));
+ if let Some(id)=inline.or_else(||crate::claude_transcript::find_plugin_prompt(&path,&s.binding.receiver_sid,&n.text,n.created_at)){let _=core.store.reconcile_codex_notice(&n.id,&id);}}
 }
 /// Compatibility for precise-turn registrations whose UI event was pruned or missed.
 pub(crate) fn legacy_probe(core:&RouterCore,token:&str,p:&router_core::store::claude_codex_wait::WaitProbe,reconcile_native:bool)->Result<Value,String>{

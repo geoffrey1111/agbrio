@@ -2,6 +2,8 @@
 //! Router-owned command vocabulary instead of forwarding Tauri commands or
 //! provider identifiers over HTTP.
 
+#[cfg(test)]#[path="management_zones_http_tests.rs"]mod management_zones_tests;
+
 use crate::{
     send_chatgpt_request_for_workstream, EndpointPairingInput, EndpointPairingSideInput,
     ExternalProjectLinkInput, MobileApproveInput, MobileAttachmentSelectionInput, MobileCodexGoalControlInput,
@@ -248,6 +250,7 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         .route("/v1/mobile/character-board/review",post(character_board_review))
         .route("/v1/mobile/cache",get(app_cache_status))
         .route("/v1/mobile/cache/cleanup",post(app_cache_cleanup))
+        .route("/v1/mobile/management-zones",get(management_zones_read).post(management_zones_change))
         .route("/v1/mobile/board-source",get(board_source_read))
         .route("/v1/mobile/review-boards/{id}/frame/", get(review_board_root).post(review_board_root).layer::<_,std::convert::Infallible>(tower_http::compression::CompressionLayer::new()).layer::<_,std::convert::Infallible>(axum::extract::DefaultBodyLimit::max(64*1024)))
         .route("/v1/mobile/review-boards/{id}/frame/{*rest}", get(review_board_path).post(review_board_path).layer::<_,std::convert::Infallible>(tower_http::compression::CompressionLayer::new()).layer::<_,std::convert::Infallible>(axum::extract::DefaultBodyLimit::max(64*1024)))
@@ -676,6 +679,14 @@ struct WatchFeedQuery { #[serde(default)] after:i64, #[serde(default)] wait_seco
 async fn codex_watches(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<Vec<serde_json::Value>> {
     authenticated(&headers,&state,false).await?;
     Ok(Json(crate::todo_projection::watches(&state.core).map_err(|e|ApiError(StatusCode::BAD_REQUEST,e))?))
+}
+async fn management_zones_read(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<serde_json::Value>{
+    authenticated(&headers,&state,false).await?;
+    Ok(Json(run_core_blocking("Management zones",move||crate::management_zones::read(&state.core)).await?))
+}
+async fn management_zones_change(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<router_core::store::management_zones::Change>)->ApiResult<serde_json::Value>{
+    authenticated(&headers,&state,true).await?;
+    Ok(Json(run_core_blocking("Management handover",move||state.core.store.change_management_zone(&input)).await?))
 }
 async fn computer_identity(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<serde_json::Value>{authenticated(&headers,&state,false).await?;Ok(Json(crate::todo_projection::computer_identity()))}
 async fn assistant_settings_view(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<serde_json::Value>{

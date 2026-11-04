@@ -172,6 +172,7 @@ pub(crate) fn watches(core: &RouterCore) -> Result<Vec<Value>, String> {
             let w = &row.watch;
             let mut out = serde_json::to_value(&row).map_err(|_| "WATCH_RESPONSE_INVALID")?;
             out["unreadResult"] = json!(core.store.todo_unread_result(&w.thread_id)?);
+            out["management"] = json!(core.store.management_assignment(&w.thread_id)?);
             let (mut pending, mut available) = (vec![], true);
             if w.thread_id.starts_with("pi:") {
                 let t = core.store.pi_task(&w.thread_id)?;

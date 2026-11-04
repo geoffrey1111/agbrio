@@ -5,6 +5,12 @@ const root=(value:string)=>value.replace(/^\\\\\?\\/,'').replaceAll('\\','/').re
 export function piDelegations(watches:CodexWatch[]){
  const children=new Map<string,CodexWatch[]>(),nested=new Set<string>();
  for(const child of watches){
+  if(child.threadId.startsWith('pi:')&&child.management){
+   const current=child.management;
+   const original=watches.find(w=>w.threadId===current.managerId&&current.managerCwd&&root(w.cwd)===root(current.managerCwd));
+   if(original){children.set(original.threadId,[...(children.get(original.threadId)??[]),child]);nested.add(child.threadId);}
+   continue;
+  }
   const parent=child.piParent;if(!child.threadId.startsWith('pi:')||!parent)continue;
   const parentId=parent.provider==='CLAUDE_CODE'?`claude_code:${parent.externalId}`:parent.provider==='CODEX'?parent.externalId:null;
   const original=watches.find(w=>w.threadId===parentId&&root(w.cwd)===root(parent.cwd));
