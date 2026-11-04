@@ -84,4 +84,3 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  assert!(call(&core,&grant.id,"management_zones_change",json!({"action":"CREATE","name":"must not create"})).is_err());
  assert_eq!(store.management_zones().unwrap()["zones"],json!([]));assert!(core.session.lock().unwrap().adapter.is_none());
 }
-
