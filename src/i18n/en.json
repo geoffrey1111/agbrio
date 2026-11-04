@@ -1739,5 +1739,17 @@
   "请先在 Google 账号生成应用专用密码。密码保存在当前用户的 macOS 登录钥匙串，不写入通知记录。": "Generate an app password in your Google account first. It is stored in your macOS login keychain and excluded from notification records.",
   "ad-hoc 升级后可能再次提示钥匙串授权；请本人选择「始终允许」。本应用不迁移或放宽访问权限，后台读取不弹窗。": "After an ad-hoc upgrade, Keychain may ask again. Choose “Always Allow” yourself. The app does not migrate or broaden access permissions; background reads do not show prompts.",
   "钥匙串读取已获准。没有发送邮件或开启提醒。": "Keychain access is authorized. No email was sent and notifications were not enabled.",
-  "授权读取钥匙串": "Authorize Keychain access"
+  "授权读取钥匙串": "Authorize Keychain access",
+  "事件钥匙串状态暂时不可用，请稍后重试。": "Events Keychain status is unavailable. Try again later.",
+  "本批访问检查已完成。请继续检查下一批；没有发送测试通知。": "This batch is checked. Continue with the next batch; no test notification was sent.",
+  "本批访问检查已完成；没有发送测试通知。": "This batch is checked; no test notification was sent.",
+  "macOS 需要本人授权或解锁。请完成系统提示后再试。": "macOS needs your authorization or unlocking. Complete the system prompt, then try again.",
+  "事件钥匙串操作未完成，请检查系统状态后重试。": "The Events Keychain operation did not complete. Check the system state, then try again.",
+  "MCP 事件钥匙串": "MCP Events Keychain",
+  "事件密钥保存在当前用户的登录钥匙串。升级后系统可能需要本人重新授权，后台不会弹出提示。": "Event keys are stored in your login keychain. An upgrade may require your authorization again; background access does not show prompts.",
+  "请本人在系统提示中选择「始终允许」。此操作不创建订阅，已有通知沿用原有发送规则。": "Choose “Always Allow” yourself in the system prompt. This action creates no subscriptions; existing notification rules continue to apply.",
+  "仍有 {0} 项旧密钥等待后台核对或清理。请保持钥匙串可用。": "{0} old keys are awaiting background reconciliation or cleanup. Keep the keychain available.",
+  "正在等待钥匙串…": "Waiting for Keychain…",
+  "继续检查下一批": "Check the next batch",
+  "授权读取事件密钥": "Authorize event key access"
 }

@@ -97,3 +97,15 @@ ad-hoc更新可改变代码身份；这是已知平台差异，不承诺无提�
 受维护的原生读写/锁定/精确删除测试仅限GitHub临时Mac runner，创建专用临时keychain，固定假密码，不读取login keychain、不主动设置默认钥匙串或全局search list；结束删除准确自有keychain并断言成功。该测试与新Mac代码尚未获本批push许可、尚未运行。Windows契约/迁移/界面结果单列，不能提升为Mac Keychain已通过。
 
 Owner追加：D6后与群友清单一起准备公开仓库中文Mac部署说明和用户可交给自己Codex的指令：架构检查、精确版本/SHA源码、构建安装；系统安全和Keychain提示由本人操作。当前不抢先制作、不合并、不发布Release。
+
+## 2026-11-04 D5第二批Events候选（渲染已验，未提交，新Mac CI待验）
+
+第一批8b4076431843f8ac7de0f7854f43729990c1cb2a工程CI已全通过：Mac两条source、专用临时Keychain原生fixture1项；Windows build和独立clean install通过。该证据不等于真实账号/ad-hoc升级/群友真机验证，也不替代本第二批的Mac检查。
+
+第二批把Mac Events签名密钥存入与邮件分离的固定generic-password service，数据库只存版本化随机引用、grant/subscription绑定及生命周期元数据。Windows DPAPI原函数和既有事件发送重试预算与8b完全相同。新表039_mcp_native_secret_refs在原生Add前预留；Add完成后由同一个blocking操作结算，即使HTTP等待者取消也不丢回执。相同目标的未完成创建保持围栏，并沿用每grant32个订阅的限制；同密钥续期重用引用，轮换保留既有五分钟重叠。
+
+保存订阅在同一SQLite事务中核对引用/主体/状态/创建结算；SQL trigger与现有轮换、撤销、到期和级联删除原子登记退役。既有Events worker在发送步骤结束后处理准确引用的清理，不新增服务、不影响当前投递lease，不重置通知预算。删除receipt绑定lease与revision，晚到创建使旧receipt失效；创建意图不是条目归属证明，只有原生Add已确认成功的条目才允许原生删除。冲突/未创建只完成元数据回收，未确认创建保留待核对状态和最少ID围栏，不删除可能外来的条目。已删除引用保留无秘密的最少tombstone，防止重用/误复活。
+
+后台原生创建/读/删都不允许系统弹窗。桌面新增只返回metadata的status和明确authorize IPC；只有本人点击才能解锁本用户login Keychain、读取已确认拥有的条目并请求系统授权，不输出secret、不创建订阅、不发送测试通知。输入cursor在原生操作前校验，授权按64项分页，手机号/PWA/MCP不提供该授权入口。code不修改已有ACL或trusted applications，ad-hoc“始终允许”仍由机器本人操作。
+
+当前本地Windows候选完整Core330/7ignored、前端875/109、Host417/69ignored通过；私有Core345/7ignored通过。包含请求方取消后晚到创建、旧删除receipt与新结算、拒绝/未确认创建不进行原生删除等故障测试。原空间20失效后Owner已明确批准恢复；在新空间24用公开导出候选完成1440桌面授权分页/拒绝、390手机隐藏与Windows隐藏检查，无横向溢出。只访问本地模拟页，无真实Keychain/账号/通知操作；这是AUTOMATED_UI_EMULATION，不是真机或USER_UAT。新Mac编译和扩展双service原生fixture未执行，须新批报告/Git授权后CI。D5尚未整体完成，D4/D6及阶段4交付物未开始。

@@ -22,6 +22,7 @@ pub mod codex_watch;
 pub mod conversation_message_time;
 pub mod watch_delivery;
 pub mod native_secrets;
+pub mod mcp_native_secrets;
 pub mod child_results;
 pub mod claude_owner_requests;
 pub mod claude_child_contexts;
@@ -98,6 +99,7 @@ const NORMAL_FEATURE_MIGRATIONS: &[(&str, &str)] = &[
     ("watch-visibility-v1", include_str!("../../migrations/normal/027_watch_visibility.sql")),
     ("removed-reply-presentations-v1", include_str!("../../migrations/normal/035_removed_reply_presentations.sql")),
     ("native-secret-references-v1", include_str!("../../migrations/normal/038_native_secret_references.sql")),
+    ("mcp-native-secret-references-v1", include_str!("../../migrations/normal/039_mcp_native_secret_refs.sql")),
 ];
 
 const MIGRATIONS: &[(i64, &str)] = &[
@@ -3948,6 +3950,7 @@ mod tests {
                         "mcp_event_request_tombstones",
                         "mcp_event_subscriptions",
                         "mcp_events",
+                        "mcp_native_secret_refs",
                         "mobile_chatgpt_inbound_reviews",
                         "mobile_codex_outbound_reviews",
                         "native_secret_references",

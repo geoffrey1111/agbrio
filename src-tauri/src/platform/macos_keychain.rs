@@ -34,7 +34,8 @@ extern "C" {
     static kSecUseAuthenticationUIFail: CFStringRef;
     static kSecUseAuthenticationUIAllow: CFStringRef;
 }
-const SERVICE: &str = "com.geoffrey.aiworkrouter.email.v1";
+const EMAIL_SERVICE: &str = "com.geoffrey.aiworkrouter.email.v1";
+const EVENT_SERVICE: &str = "com.geoffrey.aiworkrouter.events.v1";
 fn error(code: i32) -> String {
     match code {
         -25300 => "EMAIL_APP_PASSWORD_REQUIRED",
@@ -59,6 +60,8 @@ fn pair(k: CFStringRef, v: CFType) -> (CFString, CFType) {
 }
 struct NativeVault {
     keychain: SecKeychain,
+    service: &'static str,
+    label: &'static str,
 }
 impl NativeVault {
     fn login() -> Result<Self, String> {
@@ -92,6 +95,63 @@ impl NativeVault {
         }
         Ok(Self {
             keychain: SecKeychain::open(path).map_err(|e| error(e.code()))?,
+            service: EMAIL_SERVICE,
+            label: "Agbrio Gmail app password",
+        })
+    }
+    fn unlock_for_owner(&self) -> Result<(), String> {
+        let mut status = 0;
+        check(unsafe { SecKeychainGetStatus(self.keychain.as_concrete_TypeRef(), &mut status) })?;
+        if status & 1 == 0 {
+            let mut owned = self.keychain.clone();
+            owned.unlock(None).map_err(|e| error(e.code()))?;
+        }
+        Ok(())
+    }
+    fn events() -> Result<Self, String> {
+        let mut vault = Self::login()?;
+        vault.service = EVENT_SERVICE;
+        vault.label = "Agbrio MCP Events signing key";
+        Ok(vault)
+    }
+    fn add(&self, reference: &str, secret: &[u8], owner_action: bool) -> Result<(), String> {
+        if secret.is_empty() || secret.len() > 16384 {
+            return Err("KEYCHAIN_INVALID_DATA".into());
+        }
+        // Validate exact reference and, for background creation, check the lock
+        // without a prompt before attempting Add. No duplicate-item overwrite.
+        self.query(reference, owner_action)?;
+        let label = CFString::new(self.label);
+        let mut access = ptr::null_mut();
+        check(unsafe { SecAccessCreate(label.as_concrete_TypeRef(), ptr::null(), &mut access) })?;
+        if access.is_null() {
+            return Err("KEYCHAIN_UNAVAILABLE".into());
+        }
+        let access = unsafe { SecAccess::wrap_under_create_rule(access) };
+        let pairs = unsafe {
+            vec![
+                pair(kSecClass, string_constant(kSecClassGenericPassword)),
+                pair(kSecAttrService, CFString::new(self.service).into_CFType()),
+                pair(kSecAttrAccount, CFString::new(reference).into_CFType()),
+                pair(kSecUseKeychain, self.keychain.as_CFType()),
+                pair(kSecAttrLabel, label.into_CFType()),
+                pair(kSecAttrAccess, access.into_CFType()),
+                pair(kSecValueData, CFData::from_buffer(secret).into_CFType()),
+                pair(
+                    kSecUseAuthenticationUI,
+                    string_constant(if owner_action {
+                        kSecUseAuthenticationUIAllow
+                    } else {
+                        kSecUseAuthenticationUIFail
+                    }),
+                ),
+            ]
+        };
+        check(unsafe {
+            SecItemAdd(
+                CFDictionary::from_CFType_pairs(&pairs).as_concrete_TypeRef(),
+                ptr::null_mut(),
+            )
         })
     }
     fn query(
@@ -114,7 +174,7 @@ impl NativeVault {
         Ok(unsafe {
             vec![
                 pair(kSecClass, string_constant(kSecClassGenericPassword)),
-                pair(kSecAttrService, CFString::new(SERVICE).into_CFType()),
+                pair(kSecAttrService, CFString::new(self.service).into_CFType()),
                 pair(kSecAttrAccount, CFString::new(reference).into_CFType()),
                 pair(
                     kSecMatchSearchList,
@@ -164,36 +224,7 @@ impl Vault for NativeVault {
                     SecItemUpdate(q.as_concrete_TypeRef(), update.as_concrete_TypeRef())
                 })
             }
-            Err(e) if e == "EMAIL_APP_PASSWORD_REQUIRED" => {
-                let label = CFString::new("Agbrio Gmail app password");
-                let mut access = ptr::null_mut();
-                check(unsafe {
-                    SecAccessCreate(label.as_concrete_TypeRef(), ptr::null(), &mut access)
-                })?;
-                if access.is_null() {
-                    return Err("KEYCHAIN_UNAVAILABLE".into());
-                }
-                let access = unsafe { SecAccess::wrap_under_create_rule(access) };
-                let pairs = unsafe {
-                    vec![
-                        pair(kSecClass, string_constant(kSecClassGenericPassword)),
-                        pair(kSecAttrService, CFString::new(SERVICE).into_CFType()),
-                        pair(kSecAttrAccount, CFString::new(reference).into_CFType()),
-                        pair(kSecUseKeychain, self.keychain.as_CFType()),
-                        pair(kSecAttrLabel, label.into_CFType()),
-                        pair(kSecAttrAccess, access.into_CFType()),
-                        pair(kSecValueData, CFData::from_buffer(secret).into_CFType()),
-                    ]
-                };
-                // A concurrent duplicate is an error; never overwrite an
-                // unexpected item via a duplicate-Add fallback or broaden its ACL.
-                check(unsafe {
-                    SecItemAdd(
-                        CFDictionary::from_CFType_pairs(&pairs).as_concrete_TypeRef(),
-                        ptr::null_mut(),
-                    )
-                })
-            }
+            Err(e) if e == "EMAIL_APP_PASSWORD_REQUIRED" => self.add(reference, secret, true),
             Err(e) => Err(e),
         }
     }
@@ -226,6 +257,33 @@ pub(crate) fn forget(store: &router_core::store::RouterStore, account: &str) -> 
 }
 pub(crate) fn status(result: &Result<String, String>) -> &'static str {
     email_keychain::status(result)
+}
+
+fn event_error(error: String) -> String {
+    if error == "EMAIL_APP_PASSWORD_REQUIRED" {
+        "MCP_EVENT_SECRET_REQUIRED".into()
+    } else {
+        error
+    }
+}
+pub(crate) fn authorize_event_store() -> Result<(), String> {
+    NativeVault::events()?.unlock_for_owner()
+}
+pub(crate) fn create_event(reference: &[u8], secret: &[u8]) -> Result<(), String> {
+    let account = router_core::store::mcp_native_secrets::native_key_account(reference)?;
+    NativeVault::events()?.add(&account, secret, false)
+}
+pub(crate) fn read_event(reference: &[u8], owner_action: bool) -> Result<Vec<u8>, String> {
+    let account = router_core::store::mcp_native_secrets::native_key_account(reference)?;
+    let vault = NativeVault::events()?;
+    if owner_action {
+        vault.unlock_for_owner()?;
+    }
+    vault.read(&account, owner_action).map_err(event_error)
+}
+pub(crate) fn delete_event(reference: &[u8]) -> Result<(), String> {
+    let account = router_core::store::mcp_native_secrets::native_key_account(reference)?;
+    NativeVault::events()?.delete(&account)
 }
 
 #[cfg(test)]
@@ -271,7 +329,11 @@ mod tests {
         keychain
             .unlock(Some("fixture-only-not-a-user-secret"))
             .unwrap();
-        let vault = NativeVault { keychain };
+        let vault = NativeVault {
+            keychain,
+            service: EMAIL_SERVICE,
+            label: "Agbrio Gmail app password",
+        };
         let db = tempfile::tempdir().unwrap();
         let store = router_core::store::RouterStore::open_at(db.path().join("fixture.db")).unwrap();
         email_keychain::save(&vault, &store, "one@example.invalid", "abcdefghijklmnop").unwrap();
@@ -296,6 +358,32 @@ mod tests {
             .unwrap();
         email_keychain::forget(&vault, &store, "one@example.invalid").unwrap();
         assert!(email_keychain::read(&vault, &store, "one@example.invalid", false).is_err());
+        assert_eq!(
+            email_keychain::read(&vault, &store, "two@example.invalid", false).unwrap(),
+            "ponmlkjihgfedcba"
+        );
+        // Equal account IDs in the two services never alias or delete each other.
+        let account = store
+            .email_secret_reference(&email_keychain::identity("two@example.invalid"), false)
+            .unwrap()
+            .unwrap();
+        let events = NativeVault {
+            keychain: vault.keychain.clone(),
+            service: EVENT_SERVICE,
+            label: "Agbrio MCP Events signing key",
+        };
+        events.add(&account, b"fake-events-key", false).unwrap();
+        assert!(events.add(&account, b"must-not-overwrite", false).is_err());
+        assert_eq!(events.read(&account, false).unwrap(), b"fake-events-key");
+        check(unsafe { SecKeychainLock(vault.keychain.as_concrete_TypeRef()) }).unwrap();
+        assert_eq!(
+            events.read(&account, false).unwrap_err(),
+            "KEYCHAIN_OWNER_ACTION_REQUIRED"
+        );
+        owned
+            .unlock(Some("fixture-only-not-a-user-secret"))
+            .unwrap();
+        events.delete(&account).unwrap();
         assert_eq!(
             email_keychain::read(&vault, &store, "two@example.invalid", false).unwrap(),
             "ponmlkjihgfedcba"
