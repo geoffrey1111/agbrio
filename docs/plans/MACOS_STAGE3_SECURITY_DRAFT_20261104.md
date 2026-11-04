@@ -109,3 +109,15 @@ Owner追加：D6后与群友清单一起准备公开仓库中文Mac部署说明�
 后台原生创建/读/删都不允许系统弹窗。桌面新增只返回metadata的status和明确authorize IPC；只有本人点击才能解锁本用户login Keychain、读取已确认拥有的条目并请求系统授权，不输出secret、不创建订阅、不发送测试通知。输入cursor在原生操作前校验，授权按64项分页，手机号/PWA/MCP不提供该授权入口。code不修改已有ACL或trusted applications，ad-hoc“始终允许”仍由机器本人操作。
 
 当前本地Windows候选完整Core330/7ignored、前端875/109、Host417/69ignored通过；私有Core345/7ignored通过。包含请求方取消后晚到创建、旧删除receipt与新结算、拒绝/未确认创建不进行原生删除等故障测试。原空间20失效后Owner已明确批准恢复；在新空间24用公开导出候选完成1440桌面授权分页/拒绝、390手机隐藏与Windows隐藏检查，无横向溢出。只访问本地模拟页，无真实Keychain/账号/通知操作；这是AUTOMATED_UI_EMULATION，不是真机或USER_UAT。新Mac编译和扩展双service原生fixture未执行，须新批报告/Git授权后CI。D5尚未整体完成，D4/D6及阶段4交付物未开始。
+
+## 2026-11-04 D4第一批：无私钥产包/本地签验签工具候选（未提交）
+
+D5的b98924f两条Mac source和Windows build/独立clean install已经全部SUCCESS；D5工程门闭合，真实账号/ad-hoc升级仍阶段4。下述是独立、未提交的D4a工具准备，不是D4完成。应用内Mac更新check/download/install的Unsupported门未解除，Windows运行时更新和Windows workflow原样。
+
+Mac package workflow候选新增unsigned updater artifact：在已有严格ad-hoc/ARM64、DMG交付/隔离启动验证之后，将精确Agbrio.app打为版本化.app.tar.gz与MACOS_UPDATE_MANIFEST.json，归一uid/gid/mtime，不带签名私钥。manifest绑定source SHA、版本、darwin-aarch64、压缩包SHA和关闭的类型/mode/hash文件清单。解析器验证app标识/Info.plist版本与13.5下限、主程序/Node ARM64 Mach-O和真实load-command最低系统；拒绝绝对/穿越/大小写Unicode别名、特殊文件、硬链接、悬空/逃逸/父路径symlink、privileged modes、Pi资源。允许Framework受限相对symlink链。打包/ZIP准备不覆盖原产物，失败独占create不删除另一writer刚创建的输出。
+
+sign-macos-update.ps1只在本机Windows PowerShell7、非GITHUB_ACTIONS运行：按明确repo/ref/SHA/run/artifact取当前成功Mac package provenance，核ZIP digest，安全解包/核tar+manifest后才读既有Windows agbrio-updater.key与DPAPI password。没有generate、上传、Release或安装命令。私钥路径/密码只给本地固定Tauri CLI签名子进程；不透传给Cargo验证，stdout/stderr不作为敏感日志输出，调用者环境保持原样。新增ignored Rust gate复用固定公钥验证原始归档并拒绝改字节，必须出现精确hash的PASS marker（避免0测试exit0误通过）。真实签名尚未执行，只有fixture验证和隔离测试，不能记已签或可发布。
+
+Mac fragment生成器只产本地candidate。若合并Windows manifest，必须同版本和固定repo/asset，保留Windows及其他平台字段与notes/date；不覆盖live latest.json。不提供新的Mac release key。第一批没有修改public key或凭据，也没有读私钥/DPAPI文件；真实归档、签名与篡改实证须本批获准push后先由MacCI产物再本地执行。发布另问。
+
+本地候选：归档/ZIP/来源/危险路径/文件归属/最低系统11项PASS；Mac fragment/保留Windows2项PASS；PS隔离/CI拒绝/PASS marker checks PASS；现有更新器9PASS/4ignored（含新增实际Mac签名gate未执行）。Mac workflow语法可解析不是实际运行。新Mac archive与签名流程须批准新批Git后CI/本机核验。安装事务会另批实现：当前锁定updater2.12.0默认Mac install没有满足批准的同卷/回滚边界，不能直接解除门；不借Pi relay、不静默信任CA、不宣称Developer ID/公证。

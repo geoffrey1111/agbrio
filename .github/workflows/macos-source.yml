@@ -89,6 +89,8 @@ jobs:
           node --test scripts/browser-executor-platform.test.mjs
           node --test tools/agbrio-control/control.test.mjs
           node --test tools/shared-codex-macos/lifecycle.test.mjs
+          python3 -m unittest discover -s scripts -p test_macos_update_package.py
+          node --test scripts/create-macos-update-manifest.test.mjs
           node --test scripts/claude-usage-statusline.test.mjs
           node --test tools/isolated-browser-executor/browser-package-macos.test.mjs
           npm run build

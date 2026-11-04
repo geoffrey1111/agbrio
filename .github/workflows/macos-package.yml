@@ -64,6 +64,21 @@ jobs:
           codesign --verify --deep --strict "$INSTALLED/Agbrio.app"
           node scripts/macos-startup-smoke.mjs "$INSTALLED/Agbrio.app"
           node scripts/macos-cli-lifecycle-smoke.mjs "$INSTALLED/Agbrio.app"
+      - name: Prepare unsigned Mac update archive
+        run: |
+          python3 -m unittest discover -s scripts -p test_macos_update_package.py
+          APP=src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Agbrio.app
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          OUT="$RUNNER_TEMP/agbrio-macos-update"
+          mkdir -p "$OUT"
+          python3 scripts/macos-update-package.py pack --app "$APP" --archive "$OUT/Agbrio_${VERSION}_aarch64.app.tar.gz" --manifest "$OUT/MACOS_UPDATE_MANIFEST.json" --version "$VERSION" --source "$GITHUB_SHA"
+          cd "$OUT"
+          shasum -a 256 ./*.app.tar.gz > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agbrio-macos-aarch64-update-unsigned
+          if-no-files-found: error
+          path: ${{ runner.temp }}/agbrio-macos-update/
       - name: Checksums
         working-directory: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg
         run: |

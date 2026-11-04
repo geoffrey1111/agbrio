@@ -238,6 +238,22 @@ pub(crate) fn desktop_update_open_release(state:State<'_,UpdateState>)->Result<(
   assert!(key.verify(include_bytes!("../test-fixtures/updater-signature-sample.txt"),&signature,true).is_ok());assert!(key.verify(b"changed fixture bytes",&signature,true).is_err());
  }
  #[test]fn mutation_guard_cannot_reenter_and_is_released_on_failure(){let state=UpdateState::default();{let _guard=guard(&state).unwrap();assert!(guard(&state).is_err());}assert!(guard(&state).is_ok());}
+ #[test]#[ignore="Publisher-local Mac archive signature gate; never publishes, launches or installs"]
+ fn actual_macos_updater_signature(){
+  use base64ct::{Base64,Encoding};use sha2::{Digest,Sha256};
+  let path=std::path::PathBuf::from(std::env::var("AGBRIO_MAC_SIGNED_ARCHIVE").expect("explicit local Mac archive"));
+  assert!(!std::fs::symlink_metadata(&path).unwrap().file_type().is_symlink());
+  assert!(path.file_name().unwrap().to_str().unwrap().ends_with("_aarch64.app.tar.gz"));
+  let mut bytes=std::fs::read(&path).unwrap();assert!(!bytes.is_empty()&&bytes.len() as u64<=MAX_PACKAGE);
+  let expected=std::env::var("AGBRIO_MAC_EXPECTED_ARCHIVE_SHA256").expect("exact approved archive hash");
+  assert_eq!(format!("{:x}",Sha256::digest(&bytes)),expected);
+  let config:serde_json::Value=serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+  let public=String::from_utf8(Base64::decode_vec(config["plugins"]["updater"]["pubkey"].as_str().unwrap()).unwrap()).unwrap();
+  let raw=String::from_utf8(Base64::decode_vec(std::fs::read_to_string(format!("{}.sig",path.display())).unwrap().trim()).unwrap()).unwrap();
+  let key=minisign_verify::PublicKey::decode(&public).unwrap();let signature=minisign_verify::Signature::decode(&raw).unwrap();
+  assert!(key.verify(&bytes,&signature,true).is_ok());let last=bytes.len()-1;bytes[last]^=1;assert!(key.verify(&bytes,&signature,true).is_err());
+  println!("AGBRIO_MAC_SIGNATURE_GATE_PASS:{expected}");
+ }
  #[test]#[ignore="Explicit local installer signing gate; never publishes or installs"]
  fn actual_installer_signature_accepts_original_and_rejects_tampering(){
   use base64ct::{Base64,Encoding};
