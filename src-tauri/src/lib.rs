@@ -4,6 +4,11 @@ mod todo_projection;
 mod attachment_cache;
 mod local_safety;
 mod codex_notices;
+mod management_zones;
+#[tauri::command]
+async fn management_zones_read(state:tauri::State<'_,RouterState>)->Result<serde_json::Value,String>{let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||management_zones::read(&core)).await.map_err(|_|"MANAGEMENT_READ_UNAVAILABLE")?}
+#[tauri::command]
+async fn management_zones_change(state:tauri::State<'_,RouterState>,input:router_core::store::management_zones::Change)->Result<serde_json::Value,String>{let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||core.store.change_management_zone(&input)).await.map_err(|_|"MANAGEMENT_CHANGE_UNCONFIRMED")?}
 mod resource_monitor;
 #[tauri::command]
 async fn resource_monitor_read()->Result<serde_json::Value,String>{tauri::async_runtime::spawn_blocking(resource_monitor::read).await.map_err(|_|"RESOURCE_MONITOR_UNAVAILABLE")?}
@@ -305,6 +310,8 @@ async fn claude_code_connect(app:AppHandle,state:State<'_,RouterState>,host:Stat
 }
 #[tauri::command]
 async fn claude_code_setup_mcp(host:State<'_,HostRuntime>)->Result<claude_mcp_setup::SetupResult,String>{let host=host.inner().clone();tauri::async_runtime::spawn_blocking(move||claude_mcp_setup::start_login(&host)).await.map_err(|_|"CLAUDE_MCP_SETUP_UNAVAILABLE".to_string())?}
+#[tauri::command]
+async fn claude_code_configure_mcp(host:State<'_,HostRuntime>)->Result<claude_mcp_setup::SetupResult,String>{let host=host.inner().clone();tauri::async_runtime::spawn_blocking(move||claude_mcp_setup::configure(&host)).await.map_err(|_|"CLAUDE_MCP_SETUP_UNAVAILABLE".to_string())?}
 #[tauri::command]
 fn claude_code_mcp_status()->Result<claude_mcp_setup::LoginStatus,String>{claude_mcp_setup::login_status()}
 #[tauri::command]
@@ -1608,8 +1615,8 @@ pub fn run() {
     let builder = builder.setup(|app| configure_host(app));
     #[cfg(debug_assertions)]
     let builder = builder.invoke_handler(tauri::generate_handler![
-        pi_settings,pi_prepare_administrator,pi_authorize_directory,pi_authorize_workspace,pi_revoke_directory,resource_monitor_read,resource_monitor_apply,local_safety_status,local_safety_save,app_cache_status,app_cache_cleanup,review_board_publish,review_board_desktop_url,published_board_remove,published_boards_list,published_board_publish,published_board_snapshot,published_board_asset,app_capabilities,app_diagnostics,character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
-        claude_code_sessions,claude_code_connections,claude_code_setup,claude_code_connect,claude_code_setup_mcp,claude_code_mcp_status,claude_code_authorizations,claude_code_open_authorization,claude_code_revoke,
+        pi_settings,pi_prepare_administrator,pi_authorize_directory,pi_authorize_workspace,pi_revoke_directory,resource_monitor_read,resource_monitor_apply,local_safety_status,local_safety_save,app_cache_status,app_cache_cleanup,management_zones_read,management_zones_change,review_board_publish,review_board_desktop_url,published_board_remove,published_boards_list,published_board_publish,published_board_snapshot,published_board_asset,app_capabilities,app_diagnostics,character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
+        claude_code_sessions,claude_code_connections,claude_code_setup,claude_code_connect,claude_code_setup_mcp,claude_code_configure_mcp,claude_code_mcp_status,claude_code_authorizations,claude_code_open_authorization,claude_code_revoke,
         desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,hosted_connection_trial,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_set_launch_administrator, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
         claude_watch_chat,claude_watch_chat_command,codex_watch_candidates,codex_watch_list, codex_watch_enable, codex_watch_show, codex_watch_pause, codex_watch_remove, computer_identity, codex_watch_mark_thread_read, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
@@ -1697,8 +1704,8 @@ pub fn run() {
     ]);
     #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(tauri::generate_handler![
-        pi_settings,pi_prepare_administrator,pi_authorize_directory,pi_authorize_workspace,pi_revoke_directory,resource_monitor_read,resource_monitor_apply,local_safety_status,local_safety_save,app_cache_status,app_cache_cleanup,review_board_publish,review_board_desktop_url,published_board_remove,published_boards_list,published_board_publish,published_board_snapshot,published_board_asset,app_capabilities,app_diagnostics,character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
-        claude_code_sessions,claude_code_connections,claude_code_setup,claude_code_connect,claude_code_setup_mcp,claude_code_mcp_status,claude_code_authorizations,claude_code_open_authorization,claude_code_revoke,
+        pi_settings,pi_prepare_administrator,pi_authorize_directory,pi_authorize_workspace,pi_revoke_directory,resource_monitor_read,resource_monitor_apply,local_safety_status,local_safety_save,app_cache_status,app_cache_cleanup,management_zones_read,management_zones_change,review_board_publish,review_board_desktop_url,published_board_remove,published_boards_list,published_board_publish,published_board_snapshot,published_board_asset,app_capabilities,app_diagnostics,character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
+        claude_code_sessions,claude_code_connections,claude_code_setup,claude_code_connect,claude_code_setup_mcp,claude_code_configure_mcp,claude_code_mcp_status,claude_code_authorizations,claude_code_open_authorization,claude_code_revoke,
         desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,hosted_connection_trial,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_set_launch_administrator, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
         read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,

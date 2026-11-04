@@ -10,6 +10,7 @@ pub mod assistant_report;
 pub mod goal_control;
 pub mod local_safety;
 pub mod codex_notices;
+pub mod management_zones;
 pub mod mcp_events;
 pub mod dispatch;
 pub mod migration;
@@ -96,6 +97,8 @@ const NORMAL_FEATURE_MIGRATIONS: &[(&str, &str)] = &[
     ("codex-reply-fifo-v1", include_str!("../../migrations/normal/026_codex_reply_fifo.sql")),
     ("watch-visibility-v1", include_str!("../../migrations/normal/027_watch_visibility.sql")),
     ("removed-reply-presentations-v1", include_str!("../../migrations/normal/035_removed_reply_presentations.sql")),
+    ("management-zones-v1", include_str!("../../migrations/normal/036_management_zones.sql")),
+    ("inline-task-notices-v1", include_str!("../../migrations/normal/037_inline_task_notices.sql")),
 ];
 
 const MIGRATIONS: &[(i64, &str)] = &[
@@ -3938,6 +3941,10 @@ mod tests {
                         "local_safety_receiver_leases",
                         "local_safety_resource_events",
                         "local_safety_settings",
+                        "management_changes",
+                        "management_codex_attempts",
+                        "management_members",
+                        "management_zones",
                         "mcp_event_actions",
                         "mcp_event_deliveries",
                         "mcp_event_initial_observations",

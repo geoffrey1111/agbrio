@@ -238,6 +238,20 @@ pub(crate) fn assistant_response_command(core:&RouterCore,thread:&str,request:&s
 }
 pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{if c.thread_id().starts_with("pi:"){return crate::pi::presentation::command(core,c);}command_with_deadline(core,c,None)}
 pub(crate) fn resource_notice_command(core:&RouterCore,c:ChatCommand,deadline:i64)->Result<Value,String>{if !matches!(&c,ChatCommand::Send{mode,..}if mode!="QUEUE"){return Err("SAFETY_NOTICE_MODE_INVALID".into())}command_with_deadline(core,c,Some(deadline))}
+/// Resume only an atomically journalled, never-admitted fixed management notice.
+/// This has no HTTP/MCP entry. The physical claim revalidates its owner route,
+/// immutable metadata bytes and native target inside the SQLite transaction.
+pub(crate) fn management_notice_command(core:&RouterCore,id:&str)->Result<(),String>{
+ let r=core.store.watch_reply(id)?.ok_or("MANAGEMENT_RECEIPT_INVALID")?;
+ if r.status!="QUEUED"{return Ok(());}
+ core.store.require_management_intent(id)?;
+ let w=watch(core,&r.thread_id)?;
+ let outcome=(||{let mut s=core.session.lock().map_err(|_|"Router session unavailable")?;dispatch(core,&mut s,&w,&r,None)})();
+ match outcome{Ok(_)=>Ok(()),Err(error)=>{
+  let status=core.store.watch_reply(id)?.map(|r|r.status);
+  let _=core.store.finish_watch_reply(id,if status.as_deref()==Some("SENDING"){"UNKNOWN"}else{"FAILED"},None,Some(&error));Err(error)
+ }}
+}
 fn command_with_deadline(core:&RouterCore,c:ChatCommand,resource_deadline:Option<i64>)->Result<Value,String>{let _cache=if matches!(&c,ChatCommand::Send{..}|ChatCommand::Upload{..}){Some(crate::attachment_cache::guard()?)}else{None};match c{
  ChatCommand::Restore{..}=>Err("PI_OPERATION_ONLY".into()),
  ChatCommand::ChildOpen{..}|ChatCommand::ClaudeDecision{..}|ChatCommand::ChildHistory{..}|ChatCommand::ChildNotifications{..}=>Err("CLAUDE_OPERATION_NOT_SUPPORTED".into()),

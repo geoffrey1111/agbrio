@@ -6,7 +6,7 @@ import {claudeTaskSummary} from "./ClaudeTaskStatus";
 import {t as uiText,tc,useLanguage,getLanguage} from "../../i18n";
 import {useEffect,useMemo,useRef,useState,type ReactNode} from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import {ChevronDown,ChevronLeft,ChevronRight,Link2,MessageSquare,Search,X} from "lucide-react";
+import {GitBranch,ChevronDown,ChevronLeft,ChevronRight,Link2,MessageSquare,Search,X} from "lucide-react";
 import {SwipeDeleteRow} from "./SwipeDeleteRow";
 import {AnimatePresence,LayoutGroup,motion,useReducedMotion} from "motion/react";
 import {avatarFor} from "./avatarPool";
@@ -91,8 +91,8 @@ export function bridgeTone(row:BridgeActivity|undefined,age:number,item:Workbenc
 const expandedKey="agbrio.child-tree-expanded.v1";
 function readExpanded(){try{const v=JSON.parse(localStorage.getItem(expandedKey)??"[]");return new Set<string>(Array.isArray(v)?v.filter((x):x is string=>typeof x==="string").slice(-200):[]);}catch{return new Set<string>();}}
 
-export function ConversationHome({selectedKey,bridges,activity,activityClock,watchApi,quotaPanel,addRequest,onOpenBridge,onOpenWatch,onCreateBridge,onDeleteBridge,onRefreshList,scrollContainer}:{
- onRefreshList?:()=>Promise<unknown>;scrollContainer?:import("react").RefObject<HTMLElement|null>;
+export function ConversationHome({onOpenManagement,selectedKey,bridges,activity,activityClock,watchApi,quotaPanel,addRequest,onOpenBridge,onOpenWatch,onCreateBridge,onDeleteBridge,onRefreshList,scrollContainer}:{
+ onOpenManagement?:()=>void;onRefreshList?:()=>Promise<unknown>;scrollContainer?:import("react").RefObject<HTMLElement|null>;
  /** Row key (`w:<threadId>` / `b:<bridgeId>`) open beside the list on wide desktops. */
  selectedKey?:string;
  bridges:WorkbenchItem[];activity:ActivityRows;activityClock:number;watchApi?:NotificationApi;quotaPanel?:ReactNode;addRequest:number;
@@ -162,6 +162,7 @@ export function ConversationHome({selectedKey,bridges,activity,activityClock,wat
  const chips:[Filter,string,number?][]=[["ALL",uiText("全部")],["RUN",uiText("执行中"),counts.run],["BRIDGE","Bridge"]];
  async function refreshList(){const results=await Promise.allSettled([refreshWatches(),onRefreshList?.()]);if(results.some(r=>r.status==="rejected"))throw Error("LIST_REFRESH_INCOMPLETE");}
  return <PullToRefresh enabled={Boolean(onRefreshList)} onRefresh={refreshList} scrollContainer={scrollContainer}><section className="v6-home" data-mode="ALL" aria-label={uiText("对话")}>
+  {onOpenManagement&&<button type="button" className="v6-management-entry" onClick={onOpenManagement}><GitBranch size={17} aria-hidden/>{uiText("管理区")}<ChevronRight size={16} aria-hidden/></button>}
   <label className="v6-search"><Search size={16} aria-hidden/><input type="search" aria-label={uiText("搜索对话、子对话或项目")} placeholder={uiText("搜索对话、子对话或项目")} value={query} onChange={e=>setQuery(e.target.value)}/>{query&&<button type="button" aria-label={uiText("清除搜索")} onClick={()=>setQuery("")}><X size={16}/></button>}</label>
   <LayoutGroup id="v6-chips"><div className="v6-chips" role="group" aria-label={uiText("筛选")}>{chips.map(([id,label,n])=><motion.button key={id} type="button" whileTap={{scale:.92}} aria-pressed={filter===id} onClick={()=>setFilter(id)}>{filter===id&&<motion.span className="v6-chip-fill" layoutId="v6-chip-fill" transition={spring}/>}<span>{label}{n?<b>{n}</b>:null}</span></motion.button>)}</div></LayoutGroup>
   {visible.length>0&&<div className="v6-list"><AnimatePresence>{[...active.map(item),...(rest.length?[<motion.small layout="position" key="section" className="v6-section">{active.length?uiText("其他"):uiText("最近")}</motion.small>]:[]),...rest.map(item)]}</AnimatePresence></div>}

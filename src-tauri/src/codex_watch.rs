@@ -204,7 +204,7 @@ pub(crate) fn poll(
             .as_mut()
             .filter(|a| !a.is_closed())
             .ok_or("Codex backend disconnected")?;
-        let (_, cwd, mut snapshot) = inspect(a, &watch.thread_id)?;
+        let (label, cwd, mut snapshot) = inspect(a, &watch.thread_id)?;
         let owned=a.active_turn_id(&watch.thread_id);
         if let Some(request)=s.pending_codex_requests.values().find(|r|r.thread_id==watch.thread_id&&!r.responded&&owned.as_deref()==Some(&r.turn_id)){
             if let Some(public)=mobile_codex_request_projection(request){snapshot.state="ACTION_REQUIRED".into();snapshot.turn_id=Some(request.turn_id.clone());snapshot.item_id=Some(request.action_id.clone());snapshot.text=if public.kind=="USER_INPUT"{"Codex 需要你的回答。请打开原对话查看当前请求。".into()}else{"Codex 需要你确认执行请求。请打开原对话查看详情。".into()};}
@@ -212,6 +212,7 @@ pub(crate) fn poll(
         if cwd != watch.cwd {
             return Err("WATCH_PROJECT_CHANGED".into());
         }
+        store.refresh_codex_watch_label(&watch.thread_id,watch.generation,&cwd,&label)?;
         if let Some(a)=s.adapter.as_ref(){crate::conversation_message_time::codex(store,a,&watch.thread_id,&cwd);}
         store.record_codex_watch(&watch.thread_id, watch.generation, &snapshot)
     })();

@@ -1,5 +1,7 @@
 # Agbrio
 
+Group work into management areas, change managers, and transfer executors in one place. Codex and Claude Code can both manage an area.
+
 **Your agents keep working. Stay in control from your phone.**
 
 [![Download](https://img.shields.io/github/v/release/geoffrey1111/agbrio?label=download)](https://github.com/geoffrey1111/agbrio/releases/latest)

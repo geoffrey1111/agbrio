@@ -9,6 +9,7 @@ import {assistantMcpConfig} from './assistantClientInstructions';
 import {assistantReadOnlyInstructions} from './assistantSetupInstructions';
 import {mcpAddressDiscoveryPowerShell} from './claudeConnectionRecovery';
 import {AssistantDailyReport,type ReportBridge} from './AssistantDailyReport';
+import {ClaudeMcpScopeSetup} from './ClaudeMcpScopeSetup';
 
 export function ClaudeAssistantSetup({mcpUrl,hasGrant,onAddGrant,grantForm,onRefresh,onConfigureConnection,connectClaude,bridges=[]}:{mcpUrl:string|null;hasGrant:boolean;onAddGrant:()=>void;grantForm?:ReactNode;onRefresh?:()=>Promise<void>;onConfigureConnection?:()=>void;connectClaude?:()=>Promise<ClaudeConnectionResult>;bridges?:ReportBridge[]}){
  useLanguage();const [step,setStep]=useState(0),[client,setClient]=useState<'desktop'|'terminal'>('desktop'),[error,setError]=useState(''),[refreshing,setRefreshing]=useState(false);const heading=useRef<HTMLHeadingElement>(null),refreshPending=useRef(false);
@@ -29,6 +30,7 @@ export function ClaudeAssistantSetup({mcpUrl,hasGrant,onAddGrant,grantForm,onRef
     <p className="assistant-setup-note">{t('地址和授权准备好后，仍需在实际使用的 Claude 对话中添加连接。')}</p>
    </>}
    {step===1&&<>
+    <ClaudeMcpScopeSetup/>
     <div className="assistant-setup-clients" role="group" aria-label={t('Claude 使用方式')}><button type="button" aria-pressed={client==='desktop'} onClick={()=>setClient('desktop')}>{t('Claude 桌面版 Code')}</button><button type="button" aria-pressed={client==='terminal'} onClick={()=>setClient('terminal')}>{t('终端 / VS Code')}</button></div>
     {client==='desktop'?<ol className="assistant-setup-actions">
      <li><strong>{t('打开 Claude 桌面版的 Code 管理对话')}</strong><p>{t('留在你要用来管理任务的那条 Code 对话中，下面的指令都发给这条对话。')}</p></li>

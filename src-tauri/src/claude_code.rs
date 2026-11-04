@@ -48,9 +48,12 @@ pub(crate) fn selectable_cwd(core:&RouterCore,external:&str)->Result<String,Stri
 #[serde(rename_all="camelCase")]
 pub(crate) struct ConnectionResult {pub phase:String,pub writes_enabled:bool}
 fn connection_result(phase:&str)->ConnectionResult{ConnectionResult{phase:phase.into(),writes_enabled:false}}
-fn live_publisher(core:&RouterCore)->Result<bool,String>{
-    let now=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
-    Ok(core.store.claude_catalog()?.sessions.iter().any(|s|s.lease_until>now&&s.state!="SESSION_END"))
+fn compatible_live_publisher(core:&RouterCore,required:&semver::Version)->Result<bool,String>{
+    let now=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()as i64;
+    let sessions:Vec<_>=core.store.claude_catalog()?.sessions.into_iter().filter(|s|s.lease_until>now&&s.state!="SESSION_END").collect();
+    if sessions.is_empty(){return Ok(false);}
+    let Some(versions)=PLUGIN_VERSIONS.get()else{return Ok(false)};let versions=versions.lock().map_err(|_|"CLAUDE_PLUGIN_VERSION_UNCONFIRMED")?;
+    Ok(sessions.iter().all(|s|versions.get(&s.session_id).is_some_and(|(v,at)|at.elapsed().as_secs()<90&&semver::Version::parse(v).is_ok_and(|v|v>=*required))))
 }
 
 /// An explicit native-app action. Page entry/copy/mobile/MCP never invokes it.
@@ -58,9 +61,7 @@ pub(crate) fn connect(core:&RouterCore,host:&crate::HostRuntime,resources:&std::
     // Reuse proven registration before discovering or configuring anything.
     let required:serde_json::Value=std::fs::read(resources.join("claude-code-plugin/.claude-plugin/plugin.json")).ok().and_then(|b|serde_json::from_slice(&b).ok()).ok_or("CLAUDE_OBSERVATION_PLUGIN_NOT_PACKAGED")?;
     let required=required["version"].as_str().and_then(|v|semver::Version::parse(v).ok()).ok_or("CLAUDE_PLUGIN_VERSION_UNCONFIRMED")?;
-    let versions=plugin_versions();let reported=versions["selfReportedLiveVersions"].as_object();
-    let compatible=reported.is_some_and(|v|!v.is_empty()&&v.keys().all(|v|semver::Version::parse(v).is_ok_and(|v|v>=required)));
-    if live_publisher(core)?&&compatible{return Ok(connection_result("CONNECTED"));}
+    if compatible_live_publisher(core,&required)?{return Ok(connection_result("CONNECTED"));}
     static CONFIGURE:std::sync::Mutex<()>=std::sync::Mutex::new(());
     let _guard=CONFIGURE.try_lock().map_err(|_|"CLAUDE_CONNECTION_BUSY")?;
     let executable=crate::claude_code_desktop::engine_at(&crate::claude_code_desktop::engine_roots())?;
@@ -68,10 +69,13 @@ pub(crate) fn connect(core:&RouterCore,host:&crate::HostRuntime,resources:&std::
     connect_admin(core,host,resources,&crate::claude_code_desktop::OfficialCli{executable},&std::path::PathBuf::from(profile).join(".claude/plugins/cache"))
 }
 fn connect_admin(core:&RouterCore,host:&crate::HostRuntime,resources:&std::path::Path,admin:&dyn crate::claude_code_desktop::PluginAdmin,cache_root:&std::path::Path)->Result<ConnectionResult,String>{
-    if live_publisher(core)? {return Ok(connection_result("CONNECTED"));}
+    // The public entry already reuses a proven compatible publisher. A live
+    // older publisher must not skip the explicit package-version/update gate.
     let package=resources.join("claude-code-plugin");
     let manifest:serde_json::Value=std::fs::read(package.join(".claude-plugin/plugin.json")).ok().and_then(|b|serde_json::from_slice(&b).ok()).ok_or("CLAUDE_OBSERVATION_PLUGIN_NOT_PACKAGED")?;
     if manifest["name"]!="agbrio-bridge"||manifest["userConfig"]["token"]["sensitive"]!=true {return Err("CLAUDE_OBSERVATION_PLUGIN_NOT_PACKAGED".into());}
+    let required=manifest["version"].as_str().and_then(|v|semver::Version::parse(v).ok()).ok_or("CLAUDE_PLUGIN_VERSION_UNCONFIRMED")?;
+    if compatible_live_publisher(core,&required)?{return Ok(connection_result("CONNECTED"));}
     let address=host.mobile_address().filter(|a|a.ip().is_loopback()&&a.port()>0).ok_or("CLAUDE_OBSERVATION_HOST_UNAVAILABLE")?;
     let origin=format!("http://{address}");
     let args=|values:&[&str]|values.iter().map(|s|s.to_string()).collect::<Vec<_>>();
@@ -231,4 +235,4 @@ pub(crate) fn setup(core:&RouterCore,host:&crate::HostRuntime,resources:&std::pa
 // Self-reported version on an authenticated adapter heartbeat; diagnostic only.
 static PLUGIN_VERSIONS:std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String,(String,std::time::Instant)>>> =std::sync::OnceLock::new();
 pub(crate) fn record_plugin_version(session:&str,version:&str){if version.len()>24||version.split('.').count()!=3||version.split('.').any(|n|n.is_empty()||!n.bytes().all(|b|b.is_ascii_digit())){return;}let Ok(mut rows)=PLUGIN_VERSIONS.get_or_init(Default::default).lock()else{return;};rows.retain(|_,(_,at)|at.elapsed().as_secs()<90);if rows.len()<512||rows.contains_key(session){rows.insert(session.into(),(version.into(),std::time::Instant::now()));}}
-pub(crate) fn plugin_versions()->serde_json::Value{let mut versions=std::collections::BTreeMap::<String,usize>::new();if let Ok(rows)=PLUGIN_VERSIONS.get_or_init(Default::default).lock(){for(version,at)in rows.values().filter(|(_,at)|at.elapsed().as_secs()<90){let _=at;*versions.entry(version.clone()).or_default()+=1;}}serde_json::json!({"selfReportedLiveVersions":versions,"requiredForExpandedWaits":"0.1.11","requiredForDurableTaskNotices":"0.1.19","source":"AUTHENTICATED_HEARTBEAT"})}
+pub(crate) fn plugin_versions()->serde_json::Value{let mut versions=std::collections::BTreeMap::<String,usize>::new();if let Ok(rows)=PLUGIN_VERSIONS.get_or_init(Default::default).lock(){for(version,at)in rows.values().filter(|(_,at)|at.elapsed().as_secs()<90){let _=at;*versions.entry(version.clone()).or_default()+=1;}}serde_json::json!({"selfReportedLiveVersions":versions,"requiredForExpandedWaits":"0.1.11","requiredForDurableTaskNotices":"0.1.19","requiredForInlineTaskNotices":"0.1.23","source":"AUTHENTICATED_HEARTBEAT"})}

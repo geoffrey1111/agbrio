@@ -1,4 +1,20 @@
 import {expect,test,mock} from 'claude-code/testing';
+
+test('native busy main-session tool result receives fixed metadata before turn completion',async(driver,on)=>{
+ mock.store(on);const clock=mock.clock(on,{now:1791777600000});let offered=false,submits=0;const acknowledgements:any[]=[];
+ const sid='10000000-0000-4000-8000-000000000001',turn='30000000-0000-4000-8000-000000000001',row='40000000-0000-4000-8000-000000000001',id='e'.repeat(64);
+ const text=`Agbrio Codex task notice (metadata only)\nnoticeId: ${id}\nthreadId: executor\nkind: QUESTION\n`;
+ on('command.register',()=>({value:undefined}));on('tool.register',()=>({value:undefined}));on('ui.log',()=>({value:undefined}));
+ on('session.id',()=>({value:sid}));on('session.cwd',()=>({value:'D:\\fixture'}));on('session.version',()=>({value:{version:'2.1.317'}}));on('session.start',()=>({cwd:'D:\\fixture'}));
+ on('turn.start',($,e)=>({turnId:e.turnId}));on('session.append',($,e,next)=>next(e));on('prompt.submit',()=>{submits++;return{text:'must not submit'};});
+ on('http.fetch',($,e)=>{let body:any={};if(e.url.endsWith('/codex-notices')){const p=JSON.parse(e.init.body??'{}');if(p.action==='CLAIM'){expect(p.deliveryChannel).toBe('INLINE_OR_PROMPT');body={accepted:true};}else if(p.action==='ACK'){acknowledgements.push(p);body={accepted:true};}else{body={subscriptions:[],inlineNoticeProtocol:1,notice:offered?null:{id,text},settled:[]};offered=true;}}return{value:{ok:true,status:200,headers:{},text:JSON.stringify(body)}};});
+ await driver.session.start({surface:'desktop',isInteractive:true,cwd:'D:\\fixture'});
+ await driver.turn.start({turnId:turn});await clock.advance(1000);expect(submits).toBe(0);
+ const result=await driver.session.append({uuid:row,door:'tool',origin:{kind:'tool'},message:{type:'user',role:'user',content:[{type:'tool_result',tool_use_id:'real-native-tool',content:'ORIGINAL TOOL BYTES',is_error:true}]}});
+ const block=result.message.content[0];expect(block.content.startsWith('ORIGINAL TOOL BYTES')).toBe(true);expect(block.content).toContain(text);expect(block.is_error).toBe(true);expect(block.tool_use_id).toBe('real-native-tool');
+ await clock.advance(1000);expect(submits).toBe(0);expect(acknowledgements.length).toBe(1);expect(acknowledgements[0].messageId).toBe(row);expect(acknowledgements[0].deliveryChannel).toBe('INLINE_TOOL_RESULT');
+ const next=await driver.session.append({uuid:'40000000-0000-4000-8000-000000000002',door:'tool',origin:{kind:'tool'},message:{type:'user',role:'user',content:[{type:'tool_result',tool_use_id:'another-native-tool',content:'UNCHANGED'}]}});expect(next.message.content[0].content).toBe('UNCHANGED');
+});
 test('native SDK delivers separate durable Codex question/result and Pi result notices without a model helper',async(driver,on)=>{
  mock.store(on);const clock=mock.clock(on,{now:1791777600000});let stage=0,submits=0;const delivered=new Set<string>();
  const sid='10000000-0000-4000-8000-000000000001',threadId='20000000-0000-4000-8000-000000000001',turnId='30000000-0000-4000-8000-000000000001';
