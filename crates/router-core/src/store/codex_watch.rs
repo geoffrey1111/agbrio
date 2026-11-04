@@ -404,12 +404,19 @@ mod tests {
             final_reply.text
         );
         assert!(s.codex_watch_feed(f.next_cursor).unwrap().events.is_empty());
+        let checked_before_failure=s.codex_watches().unwrap().remove(0).checked_at;
+        let unavailable_started_at=now();
         s.codex_watch_unavailable("thread-a", 3).unwrap();
+        let unavailable_finished_at=now();
         let after_failure = s.codex_watches().unwrap().remove(0);
-        assert!(after_failure.checked_at <= now() && now() - after_failure.checked_at < 10_000);
+        // A failed read does not make the last successful observation fresher.
+        assert_eq!(after_failure.checked_at,checked_before_failure);
+        // Bound the scheduling instant by the call, not by later database reads
+        // or runner scheduling. This tests the 30s policy, not an IO/CPU SLA.
         assert!(
-            after_failure.retry_after >= now() + 29_000
-                && after_failure.retry_after <= now() + 30_000
+            after_failure.retry_after >= unavailable_started_at + 30_000
+                && after_failure.retry_after <= unavailable_finished_at + 30_000,
+            "retry={} outside call [{},{}] +30s",after_failure.retry_after,unavailable_started_at,unavailable_finished_at
         );
         assert_eq!(s.codex_watches().unwrap()[0].snapshot.state, "UNKNOWN");
         assert_eq!(s.codex_watches().unwrap()[0].snapshot.text,final_reply.text);
