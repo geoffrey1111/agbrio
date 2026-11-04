@@ -56,6 +56,9 @@ objc2-foundation = "=0.3.2"
 objc2-user-notifications = { version = "=0.3.2", default-features = false, features = ["std", "UNUserNotificationCenter", "UNNotification", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationSettings", "UNNotificationTrigger", "bitflags", "block2"] }
 block2 = "=0.6.2"
 libc = "=0.2.189"
+core-foundation = "=0.10.1"
+security-framework = "=3.7.0"
+security-framework-sys = "=2.17.0"
 
 
 [target.'cfg(windows)'.dev-dependencies]

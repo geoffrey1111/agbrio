@@ -104,3 +104,5 @@ jobs:
         run: |
           cargo check --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin
           cargo test --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin -- --test-threads=2
+      - name: Isolated Keychain credential lifecycle
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin platform::macos_keychain::tests::isolated_native_roundtrip_and_unrelated_item_survives -- --ignored --exact --test-threads=1

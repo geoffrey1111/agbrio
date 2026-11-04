@@ -1732,5 +1732,12 @@
   "复制 macOS 手动安装命令": "Copy macOS installation command",
   "查看 macOS 终端命令": "View macOS Terminal command",
   "Codex 共享连接和 AI 助手。": "Codex shared connection and AI assistants.",
-  "共享 Codex 和应用更新在电脑上设置。": "Configure shared Codex and app updates on the computer."
+  "共享 Codex 和应用更新在电脑上设置。": "Configure shared Codex and app updates on the computer.",
+  "macOS 钥匙串需要本人授权或解锁。请在桌面点击授权读取；不会自动重发邮件。": "macOS Keychain needs your authorization or unlocking. Authorize access on the desktop; no email will be resent automatically.",
+  "当前用户的 macOS 登录钥匙串不可用。不会改用明文保存密码。": "The current user’s macOS login keychain is unavailable. The password will not be stored as plaintext.",
+  "钥匙串条目标识冲突，保存已停止。请勿扩大访问权限。": "A Keychain item identifier conflicted. Saving stopped. Do not broaden access permissions.",
+  "请先在 Google 账号生成应用专用密码。密码保存在当前用户的 macOS 登录钥匙串，不写入通知记录。": "Generate an app password in your Google account first. It is stored in your macOS login keychain and excluded from notification records.",
+  "ad-hoc 升级后可能再次提示钥匙串授权；请本人选择「始终允许」。本应用不迁移或放宽访问权限，后台读取不弹窗。": "After an ad-hoc upgrade, Keychain may ask again. Choose “Always Allow” yourself. The app does not migrate or broaden access permissions; background reads do not show prompts.",
+  "钥匙串读取已获准。没有发送邮件或开启提醒。": "Keychain access is authorized. No email was sent and notifications were not enabled.",
+  "授权读取钥匙串": "Authorize Keychain access"
 }

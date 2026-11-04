@@ -1,4 +1,8 @@
 //! Desktop platform admission. Unsupported features fail before side effects.
+#[cfg(any(test,target_os="macos"))]
+mod email_keychain;
+#[cfg(target_os="macos")]
+pub(crate) mod macos_keychain;
 pub(crate) const UNSUPPORTED: &str = "PLATFORM_NOT_YET_SUPPORTED";
 pub(crate) fn pi_offered() -> bool { !cfg!(target_os="macos") }
 pub(crate) fn require_pi_offered() -> Result<(),String> {

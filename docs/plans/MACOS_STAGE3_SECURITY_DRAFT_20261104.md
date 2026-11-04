@@ -83,3 +83,17 @@ ad-hoc更新可改变代码身份；这是已知平台差异，不承诺无提�
 ## 来源核对与未证实项
 
 以上链接于本轮核对；Apple Developer的JS壳页改读其官方Markdown。对无账号SMAppService身份、root/TCC继承与ad-hoc跨版本Keychain不确定处均明确留原生硬门，没有依据搜索摘要宣称已可用。本轮无任何阶段3运行验证。
+
+## 2026-11-04 D5第一批实施候选（尚未提交）
+
+前序Mac去Pi已验证：6a7c986两条Mac source与Windows build/独立clean install全部SUCCESS。当前D5拆为先平台叶子+邮件，再Events密钥生命周期；后者完成前不称D5完成、不进入D4。
+
+第一批使用已锁定的core-foundation 0.10.1、security-framework 3.7.0和sys 2.17.0，在Host内调用Security.framework。Core新增native-secret-references-v1迁移，只存邮件账号哈希和v1随机UUID条目引用。先预留引用后写Keychain，意外退出可按同一引用重试；没有明文/环境变量替代。当前用户UID必须普通且与effective UID相同，login.keychain-db通过当前系统用户目录定位，固定service和随机条目引用，并显式限定Keychain查询范围，不搜索System/default全局列表。
+
+新条目使用SecAccessCreate(trustedlist=nil)，既有条目只更新值，不修改ACL/可信应用或访问组；不要求Developer Team entitlement。Apple TN3137说明data-protection需要授权entitlement，file-based与SecItem shim有差异；本项目沿用Owner批准的file-based方案，不能把官方示例或Windows测试当Mac运行证明。来源：[TN3137](https://developer.apple.com/documentation/technotes/tn3137-on-mac-keychains)、[SecAccessCreate](https://developer.apple.com/documentation/security/secaccesscreate(_:_:_:))、[SecItemUpdate](https://developer.apple.com/documentation/security/secitemupdate(_:_:))。
+
+后台read和delete检查锁状态并使用AuthenticationUIFail；Locked/Denied保留NEEDS_OWNER_ACTION。桌面新增AUTHORIZE_EMAIL_KEYCHAIN，显式读取可展示原生授权，返回值只有AUTHORIZED、不回传secret、不发邮件/不开提醒/不补发旧记录；PWA既有desktop-setup拒绝边界保留。失败删除保留准确引用，不假称已清除。ad-hoc升级提示本人点“始终允许”，不做ACL迁移，仍需阶段4外部测试者真机验证。
+
+受维护的原生读写/锁定/精确删除测试仅限GitHub临时Mac runner，创建专用临时keychain，固定假密码，不读取login keychain、不主动设置默认钥匙串或全局search list；结束删除准确自有keychain并断言成功。该测试与新Mac代码尚未获本批push许可、尚未运行。Windows契约/迁移/界面结果单列，不能提升为Mac Keychain已通过。
+
+Owner追加：D6后与群友清单一起准备公开仓库中文Mac部署说明和用户可交给自己Codex的指令：架构检查、精确版本/SHA源码、构建安装；系统安全和Keychain提示由本人操作。当前不抢先制作、不合并、不发布Release。
