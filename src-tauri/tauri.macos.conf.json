@@ -1,9 +1,13 @@
 {
   "bundle": {
-    "targets": ["app", "dmg"],
+    "targets": [
+      "app",
+      "dmg"
+    ],
     "createUpdaterArtifacts": false,
     "resources": {
-      "resources/macos-platform": "macos-platform"
+      "resources/macos-platform": "macos-platform",
+      "../tools/shared-codex-macos/lifecycle.mjs": "shared-codex-macos/lifecycle.mjs"
     },
     "macOS": {
       "minimumSystemVersion": "13.5",

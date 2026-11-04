@@ -12,35 +12,12 @@ on:
         description: Run the disposable offline Chromium native lifecycle fixture without accounts
         type: boolean
         default: false
-      probe_codex_desktop:
-        description: Inspect the official signed Mac Desktop SDK without accounts or model calls
-        type: boolean
-        default: false
 permissions:
   contents: read
 concurrency:
   group: macos-source-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
-  codex-sdk-probe:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe_codex_desktop }}
-    runs-on: macos-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24.16.0
-      - name: Probe signed Desktop SDK without app UI or accounts
-        run: |
-          export AGBRIO_PROBE_NODE="$(command -v node)"
-          python3 scripts/probe-macos-codex-sdk.py
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: macos-codex-sdk-probe
-          path: ${{ runner.temp }}/agbrio-codex-sdk/probe.json
-          if-no-files-found: warn
   browser-boundary:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.native_browser_check }}
     runs-on: macos-latest
@@ -111,6 +88,7 @@ jobs:
           npm test -- --maxWorkers=2
           node --test scripts/browser-executor-platform.test.mjs
           node --test tools/agbrio-control/control.test.mjs
+          node --test tools/shared-codex-macos/lifecycle.test.mjs
           node --test scripts/claude-usage-statusline.test.mjs
           node --test tools/isolated-browser-executor/browser-package-macos.test.mjs
           npm run build

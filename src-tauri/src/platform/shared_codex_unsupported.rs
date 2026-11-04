@@ -1,4 +1,6 @@
-//! Stage 1: no Windows controller, environment change, or alternate backend.
+//! Production Mac gate remains closed until stage-4 real-package validation.
+//! tools/shared-codex-macos contains the internal app-server lifecycle candidate;
+//! its fixture readiness must never enable this product entry or Desktop status.
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, process::Command};
 
