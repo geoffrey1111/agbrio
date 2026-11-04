@@ -1,5 +1,9 @@
 //! Desktop platform admission. Unsupported features fail before side effects.
 pub(crate) const UNSUPPORTED: &str = "PLATFORM_NOT_YET_SUPPORTED";
+pub(crate) fn pi_offered() -> bool { !cfg!(target_os="macos") }
+pub(crate) fn require_pi_offered() -> Result<(),String> {
+    if pi_offered(){Ok(())}else{Err("PI_NOT_OFFERED_ON_MAC".into())}
+}
 
 #[cfg(target_os="macos")]
 pub(crate) mod macos_notifications;
@@ -60,6 +64,20 @@ mod tests {
         assert_eq!(node_filename().ends_with(".exe"), cfg!(windows));
     }
     #[test]
+    fn platform_resource_merge_excludes_pi_only_from_the_mac_bundle() {
+        use tauri::utils::{config::parse::read_from,platform::Target};
+        let root=std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let (mac,_)=read_from(Target::MacOS,root).unwrap();
+        let (windows,_)=read_from(Target::Windows,root).unwrap();
+        assert!(mac["bundle"]["resources"].get("../tools/pi-adapter").is_none());
+        assert_eq!(windows["bundle"]["resources"]["../tools/pi-adapter"],"pi-adapter");
+        for key in ["resources/browser-executor-lite","../tools/claude-code-plugin","../tools/agbrio-control"] {
+            assert_eq!(mac["bundle"]["resources"][key],windows["bundle"]["resources"][key]);
+        }
+        let _:tauri::utils::config::Config=serde_json::from_value(mac).unwrap();
+        let _:tauri::utils::config::Config=serde_json::from_value(windows).unwrap();
+    }
+    #[test]
     fn native_opener_refuses_non_https_and_embedded_credentials_before_spawn(){
         for target in ["file:///private/data","javascript:alert(1)","http://example.invalid","https://user:secret@example.invalid"]{
             assert_eq!(open_web_url(target).unwrap_err(),"PLATFORM_URL_INVALID");
@@ -69,6 +87,17 @@ mod tests {
 
 #[cfg(all(test, target_os = "macos"))]
 mod macos_tests {
+    #[test]
+    fn owner_omitted_pi_is_neither_discovered_nor_accepted() {
+        assert!(!super::pi_offered());
+        let caps=crate::app_control::capabilities("INSTANCE");
+        assert!(caps["providers"].get("PI").is_none());
+        let tools=crate::assistant_mcp::tools();
+        let encoded=serde_json::to_string(&tools).unwrap();
+        assert!(!encoded.contains("agbrio_list_pi_models"));
+        assert!(!encoded.contains("Pi "));
+        assert!(crate::assistant_operations::decode("CREATE_CHAT",serde_json::json!({"provider":"PI","directory":"not-even-a-native-path"})).is_err());
+    }
     #[test]
     fn unavailable_native_features_fail_before_process_or_settings_work() {
         assert_eq!(crate::pi::installation().err().unwrap(), super::UNSUPPORTED);

@@ -1730,5 +1730,7 @@
   "保持已安装的 Agbrio 桌面客户端运行。Windows 使用普通 PowerShell，macOS 使用终端；选择对应系统的手动安装命令。遇到失败会停止，请保留错误代码。": "保持已安裝的 Agbrio 桌面客戶端執行。Windows 使用一般 PowerShell，macOS 使用終端；選擇對應系統的手動安裝命令。失敗會停止，請保留錯誤代碼。",
   "网页和手机不能安装本机组件。请打开已安装的 Agbrio 桌面客户端，在本页完成安装；不要先执行 /reload-plugins。": "網頁和手機不能安裝本機元件。請開啟已安裝的 Agbrio 桌面客戶端，在本頁完成安裝；不要先執行 /reload-plugins。",
   "复制 macOS 手动安装命令": "複製 macOS 手動安裝命令",
-  "查看 macOS 终端命令": "檢視 macOS 終端命令"
+  "查看 macOS 终端命令": "檢視 macOS 終端命令",
+  "Codex 共享连接和 AI 助手。": "Codex 共享連接和 AI 助手。",
+  "共享 Codex 和应用更新在电脑上设置。": "共享 Codex 和應用程式更新在電腦上設定。"
 }

@@ -65,7 +65,7 @@ flowchart TD
 
 macOS 適配仍在進行，尚未與 Windows 功能對齊。手動 **macOS candidate DMG** Actions 產生 ad-hoc 簽名 `.dmg` artifact，不建立 Release、不使用更新簽名 secret。ARM64 原始碼測試及較早候選 DMG 的交付副本啟動已在 GitHub macOS 26.6.2 通過。macOS 13.5 是宣告的部署目標，尚未在該系統版本驗證。
 
-原生路徑、本機維護 CLI、Claude 引擎探索、通知整合、選單列/Dock、登入啟動設定、資源採樣、限定使用者服務復原、固定版本隨需 Chromium 已有 Mac 實作與自動化測試。實際帳號、系統權限提示、通知點擊、手機端到端與長期執行仍待驗證。共享 Codex 已有依 app-server 協定撰寫的準備/啟用/關閉內部候選及模擬測試；正式 Mac 入口在階段4雲 Mac 實包驗證前維持不支援。儲存庫/CI 不再下載或散布 OpenAI 安裝包。Pi 提權/工作區授權、Keychain 秘密、裝置試用身分、輔助使用和簽名應用程式內更新需要後續安全設計批准。已退役的瀏覽器連接器/Native Messaging 維持退役。
+原生路徑、本機維護 CLI、Claude 引擎探索、通知整合、選單列/Dock、登入啟動設定、資源採樣、限定使用者服務復原、固定版本隨需 Chromium 已有 Mac 實作與自動化測試。實際帳號、系統權限提示、通知點擊、手機端到端與長期執行仍待驗證。共享 Codex 已有依 app-server 協定撰寫的準備/啟用/關閉內部候選及模擬測試；正式 Mac 入口在階段4群友自有 Mac 實包驗證前維持不支援。儲存庫/CI 不再下載或散布 OpenAI 安裝包。Mac 依所有者決定不提供 Pi（無入口與適配器資源）。Keychain 秘密、裝置試用身分、輔助使用和簽名應用程式內更新需要後續安全設計批准。已退役的瀏覽器連接器/Native Messaging 維持退役。
 
 核對 artifact 校驗和後，將 `Agbrio.app` 放入 Applications。本人信任的 ad-hoc 候選若被攔截，可至**系統設定 → 隱私權與安全性 → 強制打開**，或由本人執行以下命令。應用程式不會自動移除 quarantine。無需 Apple Developer 帳號；候選沒有 Developer ID 簽名或公證。
 

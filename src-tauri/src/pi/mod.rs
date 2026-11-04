@@ -145,4 +145,4 @@ mod tests {
     }
 }
 
-pub(crate) fn prepare_administrator()->Result<Value,String>{cohort::prepare()}
+pub(crate) fn prepare_administrator()->Result<Value,String>{crate::platform::require_pi_offered()?;cohort::prepare()}

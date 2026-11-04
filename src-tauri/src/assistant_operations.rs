@@ -39,7 +39,11 @@ fn normalize_pi_control(operation:&str,input:&mut Value)->Result<(),String>{
   let object=input.as_object_mut().ok_or("ASSISTANT_ARGUMENTS_INVALID")?;object.remove("runtimeEpoch");object.insert("turnId".into(),json!(epoch));
  }Ok(())
 }
+fn reject_unoffered_pi(input:&Value)->Result<(),String>{
+ if !crate::platform::pi_offered()&&(input["provider"]=="PI"||input["threadId"].as_str().is_some_and(|s|s.starts_with("pi:"))||input.get("pi").is_some_and(|v|!v.is_null())||input.get("piAccess").is_some_and(|v|!v.is_null())){return Err("PI_NOT_OFFERED_ON_MAC".into());}Ok(())
+}
 pub(crate) fn normalize(input:&mut router_core::store::assistant_actions::ActionInput)->Result<(),String>{
+ reject_unoffered_pi(&input.input)?;
  normalize_pi_control(&input.operation,&mut input.input)?;
  let op=decode(&input.operation,input.input.clone())?;
  match op {
@@ -50,6 +54,7 @@ pub(crate) fn normalize(input:&mut router_core::store::assistant_actions::Action
  }Ok(())
 }
 pub(crate) fn decode(operation:&str,mut input:Value)->Result<Operation,String>{
+ reject_unoffered_pi(&input)?;
  normalize_pi_control(operation,&mut input)?;
  if operation=="RESPOND_CHAT"{validate_response_shape(&input)?;}
  if operation=="CREATE_CHAT"{validate_create_shape(&input)?;}

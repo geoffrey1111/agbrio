@@ -91,6 +91,7 @@ pub(crate) fn watch(task: &Task) -> Result<CodexWatch, String> {
     })
 }
 pub(crate) fn children(core: &RouterCore, id: &str, cwd: &str) -> Result<Vec<Value>, String> {
+    if !crate::platform::pi_offered(){return Ok(vec![]);}
     let (provider, native) = if let Some(id) = id.strip_prefix("claude_code:") {
         ("CLAUDE_CODE", id)
     } else {

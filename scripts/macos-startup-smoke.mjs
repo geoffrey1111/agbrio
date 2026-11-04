@@ -1,6 +1,6 @@
 // Isolated startup on an ephemeral runner; no provider/login/profile operation.
 import {spawn} from 'node:child_process';
-import {mkdtemp, mkdir, stat, rm} from 'node:fs/promises';
+import {mkdtemp, mkdir, stat, lstat, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -10,6 +10,7 @@ const app=path.resolve(process.argv[2]??'');
 if(!app.endsWith('/Agbrio.app'))throw Error('EXACT_CANDIDATE_APP_REQUIRED');
 const binary=path.join(app,'Contents/MacOS/ai-work-router');
 if(!(await stat(binary)).isFile())throw Error('CANDIDATE_EXECUTABLE_MISSING');
+try{await lstat(path.join(app,'Contents/Resources/pi-adapter'));throw Error('MAC_PI_RESOURCE_MUST_NOT_BE_BUNDLED');}catch(error){if(error.code!=='ENOENT')throw error;}
 const root=await mkdtemp(path.join(tmpdir(),'agbrio-macos-startup-'));
 const home=path.join(root,'home');await mkdir(home);
 const env={...process.env,HOME:home,CODEX_HOME:path.join(home,'.codex'),AI_WORK_ROUTER_CODEX_EXECUTABLE:path.join(root,'provider-disabled')};
@@ -23,7 +24,7 @@ try{
   await delay(8000);
   if(failure||!started||exited)throw Error('CANDIDATE_STARTUP_FAILED: '+(failure?.message??stderr));
   if(!(await stat(path.join(home,'Library/Application Support/AIWorkRouter/data/router.db'))).isFile())throw Error('ISOLATED_DATABASE_NOT_CREATED');
-  console.log('AUTOMATED_VALIDATION_PASS: isolated startup/database; providers disabled; not feature parity or USER_UAT_PASS');
+  console.log('AUTOMATED_VALIDATION_PASS: isolated startup/database; Pi adapter absent; providers disabled; not feature parity or USER_UAT_PASS');
 }finally{
   if(started&&!exited){child.kill('SIGTERM');for(let i=0;i<30&&!exited;i++)await delay(100);}
   if(started&&!exited){child.kill('SIGKILL');for(let i=0;i<30&&!exited;i++)await delay(100);}

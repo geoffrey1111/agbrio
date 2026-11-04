@@ -7,7 +7,8 @@
     "createUpdaterArtifacts": false,
     "resources": {
       "resources/macos-platform": "macos-platform",
-      "../tools/shared-codex-macos/lifecycle.mjs": "shared-codex-macos/lifecycle.mjs"
+      "../tools/shared-codex-macos/lifecycle.mjs": "shared-codex-macos/lifecycle.mjs",
+      "../tools/pi-adapter": null
     },
     "macOS": {
       "minimumSystemVersion": "13.5",
