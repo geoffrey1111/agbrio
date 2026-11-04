@@ -6,6 +6,9 @@ import {promisify} from 'node:util';
 import {mkdir,mkdtemp,writeFile,copyFile,readdir,lstat,unlink,rmdir} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 const exec=promisify(execFile),scratch=resolve('runtime/shared-native-compatibility');
+// Includes cold Windows PowerShell startup and native helper compilation under
+// concurrent CI load. This finite fixture watchdog is not a discovery SLA.
+const FIXTURE_WATCHDOG_MS=60_000;
 async function fixture(scenario){
  await mkdir(scratch,{recursive:true});const root=await mkdtemp(join(scratch,'desktop-discovery-'));
  const quote=value=>"'"+value.replaceAll("'","''")+"'";
@@ -33,7 +36,7 @@ function Get-CimInstance {param($ClassName,$Filter)
 function Invoke-CimMethod {param($InputObject,$MethodName) @{Sid=$InputObject.Owner}}
 & (Join-Path $PSScriptRoot 'desktop-runtime.ps1')
 `);
-  return JSON.parse((await exec('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',helper],{windowsHide:true,timeout:10000,maxBuffer:16384})).stdout);
+  return JSON.parse((await exec('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',helper],{windowsHide:true,timeout:FIXTURE_WATCHDOG_MS,maxBuffer:16384})).stdout);
  }finally{for(const name of await readdir(root)){assert.equal((await lstat(join(root,name))).isSymbolicLink(),false);await unlink(join(root,name));}await rmdir(root);}
 }
 test('registered D-drive Desktop uses its exact current cached backend',async()=>{const value=await fixture('running');assert.ok(value.desktop.startsWith('D:\\WindowsApps\\'));assert.ok(value.binary.endsWith('OpenAI\\Codex\\bin\\fixture\\codex.exe'));});
