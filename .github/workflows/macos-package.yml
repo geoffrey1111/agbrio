@@ -9,9 +9,10 @@ concurrency:
 jobs:
   package:
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
       AGBRIO_HOSTED_CONTROL_ORIGIN: https://agbrio-connect.geoffreygroup.cc
+      CARGO_PROFILE_DEV_DEBUG: '0'
       MACOSX_DEPLOYMENT_TARGET: '13.5'
       APPLE_SIGNING_IDENTITY: '-'
     steps:
@@ -65,6 +66,19 @@ jobs:
           codesign --verify --deep --strict "$INSTALLED/Agbrio.app"
           node scripts/macos-startup-smoke.mjs "$INSTALLED/Agbrio.app"
           node scripts/macos-cli-lifecycle-smoke.mjs "$INSTALLED/Agbrio.app"
+      - name: Delivered DMG Node hosted TLS WSS and PWA transport
+        shell: bash
+        env:
+          AGBRIO_FIXTURE_PRIVILEGED_SERVICE: '1'
+          AGBRIO_FIXTURE_NODE: ${{ runner.temp }}/agbrio-installed-${{ github.run_id }}/Agbrio.app/Contents/MacOS/browser-executor-node
+        run: |
+          set -euo pipefail
+          npm ci --prefix tools/hosted-relay-fixture
+          npx playwright install chromium
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin --lib --no-run --message-format=json > "$RUNNER_TEMP/agbrio-delivered-hosted-test-build.jsonl"
+          node tools/hosted-relay-fixture/e2e.mjs --cargo-messages "$RUNNER_TEMP/agbrio-delivered-hosted-test-build.jsonl" | tee "$RUNNER_TEMP/agbrio-delivered-hosted-e2e.log"
+          grep -Fx 'MACOS_HOSTED_E2E_PASS' "$RUNNER_TEMP/agbrio-delivered-hosted-e2e.log"
+          codesign --verify --deep --strict "$RUNNER_TEMP/agbrio-installed-$GITHUB_RUN_ID/Agbrio.app"
       - name: Prepare unsigned Mac update archive
         run: |
           python3 -m unittest discover -s scripts -p test_macos_update_package.py
