@@ -4,13 +4,14 @@ import {chromium} from 'playwright';
 import fs from 'node:fs/promises';import path from 'node:path';import os from 'node:os';
 import {spawn,execFileSync} from 'node:child_process';import https from 'node:https';import {randomBytes,createHash,X509Certificate} from 'node:crypto';import {fileURLToPath,pathToFileURL} from 'node:url';import assert from 'node:assert/strict';
 const repo=path.resolve(fileURLToPath(new URL('../..',import.meta.url)));
+const serviceOnly=process.argv[2]==='--service-only';
 let selected=process.argv[2];
 if(selected==='--cargo-messages'){
  const messages=(await fs.readFile(process.argv[3],'utf8')).split('\n').flatMap(line=>{try{return [JSON.parse(line)];}catch{return [];}});
  const binaries=messages.filter(m=>m.reason==='compiler-artifact'&&m.target?.name==='ai_work_router_lib'&&m.profile?.test&&m.executable).map(m=>m.executable);
  assert.equal(binaries.length,1,'exact one Rust lib test executable');selected=binaries[0];
 }
-const binary=path.resolve(selected??'');assert((await fs.stat(binary)).isFile(),'exact Rust test binary required');
+const binary=path.resolve(selected??'');if(!serviceOnly)assert((await fs.stat(binary)).isFile(),'exact Rust test binary required');
 const root=await fs.mkdtemp(path.join(process.env.RUNNER_TEMP??(process.platform==='win32'?'D:/desktop/临时处理':os.tmpdir()),'agbrio-hosted-e2e-'));let service,serviceChild,browser,child;let logs='';
 const admin=randomBytes(32).toString('hex');const tenant='a'.repeat(32),trialTenant='b'.repeat(32);
 const control='https://control.agbrio.localhost';
@@ -25,13 +26,15 @@ try{
  if(privileged){
   assert.notEqual(process.getuid(),0,'application driver must remain unprivileged');
   const tmp=path.join(root,'service-tmp');await fs.mkdir(tmp);
-  serviceChild=spawn('/usr/bin/sudo',['-n',process.execPath,path.join(repo,'tools/hosted-relay-fixture/service.mjs'),'--ci-listener',root],{env:{PATH:process.env.PATH,HOME:tmp,TMPDIR:tmp,GITHUB_ACTIONS:'true'},stdio:['pipe','ignore','pipe']});
+  serviceChild=spawn('/usr/bin/sudo',['-n','/usr/bin/env','GITHUB_ACTIONS=true','HOME='+tmp,'TMPDIR='+tmp,process.execPath,path.join(repo,'tools/hosted-relay-fixture/service.mjs'),'--ci-listener',root],{env:{PATH:process.env.PATH,HOME:tmp,TMPDIR:tmp,GITHUB_ACTIONS:'true'},stdio:['pipe','ignore','pipe']});
   serviceChild.stderr.on('data',b=>{logs=(logs+b).slice(-12000);});
   const end=Date.now()+30000;let ready=false;
   while(Date.now()<end){if(await fs.stat(path.join(root,'service-ready.json')).catch(()=>null)){ready=true;break;}if(serviceChild.exitCode!==null)throw Error('CI fixture listener startup failed '+logs);await new Promise(r=>setTimeout(r,100));}
   assert(ready,'CI fixture listener deadline');
  }else{service=await createService(root);await service.ready;}
  const request=(url,body,adminRequest=false)=>new Promise((resolve,reject)=>{const u=new URL(url);const req=https.request(u,{method:body?'POST':'GET',ca:cert,lookup:(_host,options,cb)=>options.all?cb(null,[{address:'127.0.0.1',family:4}]):cb(null,'127.0.0.1',4),headers:{...(body?{'content-type':'application/json'}:{}),...(adminRequest?{authorization:'Bearer '+admin}:{})},timeout:10000},res=>{const chunks=[];res.on('data',c=>chunks.push(c));res.on('end',()=>resolve({status:res.statusCode,text:Buffer.concat(chunks).toString()}));});req.on('error',reject);req.on('timeout',()=>req.destroy(Error('fixture request timeout')));req.end(body?JSON.stringify(body):undefined);});
+ if(serviceOnly){assert.equal((await request(control+'/health')).status,200);console.log('HOSTED_TEST_SERVICE_PASS');}
+ else{
  const codes=[7,30].map(days=>({days,code:'AGB'+days+'-'+randomBytes(32).toString('hex'),tenantId:tenant}));
  // Different code batches may renew one existing tenant without changing server policy.
  for(const c of codes){c.hash=createHash('sha256').update(c.code).digest('hex');const result=await request(control+'/admin/issue',{codes:[{days:c.days,hash:c.hash,tenantId:c===codes[0]?tenant:'c'.repeat(32)}]},true);assert.equal(result.status,200,result.text);}
@@ -69,4 +72,5 @@ try{
   receipts.push({operation:trial?'TRIAL':'CODE_AND_RENEWAL',realTls:true,realWss:true,unchangedWorkerSource:true,fixtureCompatibilityDate:'2026-08-06',deployedCompatibilityDate:'2026-10-01',productionConnector:true,productionRustActivation:true,applicationUnprivileged:process.platform!=='darwin'||process.getuid()>0,privilegedFixtureService:privileged,pairedBrowser:true,messageSendAndRead:true,replaySuppressed:true,syntheticNativeProvider:true,macRunner:process.platform==='darwin',physicalDevice:false});
  }
  console.log(JSON.stringify({status:'HOSTED_E2E_PASS',receipts}));if(process.platform==='darwin')console.log('MACOS_HOSTED_E2E_PASS');
+ }
 }catch(error){console.error('Native fixture failure log:',logs);for(const name of ['code-profile','trial-profile']){console.error('Protocol trace',await fs.readFile(path.join(root,name,'native-protocol-errors.jsonl'),'utf8').catch(()=>''));}throw error;}finally{if(child&&child.exitCode===null){child.kill();await new Promise(resolve=>child.once('exit',resolve));}await browser?.close();await service?.dispose();if(serviceChild&&serviceChild.exitCode===null){serviceChild.stdin.end();await new Promise(resolve=>serviceChild.once('exit',resolve));}assert(path.basename(root).startsWith('agbrio-hosted-e2e-')&&!(await fs.lstat(root)).isSymbolicLink());await fs.rm(root,{recursive:true,force:true});}

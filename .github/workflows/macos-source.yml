@@ -99,6 +99,15 @@ jobs:
         run: npm run build:browser-executor
       - name: Native macOS profile boundary tests
         run: node --test tools/isolated-browser-executor/macos-native.test.mjs tools/isolated-browser-executor/native-runtime.test.mjs
+      - name: Isolated TLS listener preflight (CI service only)
+        shell: bash
+        env:
+          AGBRIO_FIXTURE_PRIVILEGED_SERVICE: '1'
+        run: |
+          set -euo pipefail
+          npm ci --prefix tools/hosted-relay-fixture
+          node tools/hosted-relay-fixture/e2e.mjs --service-only | tee "$RUNNER_TEMP/agbrio-hosted-listener.log"
+          grep -Fx 'HOSTED_TEST_SERVICE_PASS' "$RUNNER_TEMP/agbrio-hosted-listener.log"
       - name: Core check and tests
         run: |
           cargo check --manifest-path crates/Cargo.toml --locked --target aarch64-apple-darwin
@@ -120,7 +129,6 @@ jobs:
           AGBRIO_FIXTURE_NODE: ${{ github.workspace }}/src-tauri/binaries/browser-executor-node-aarch64-apple-darwin
         run: |
           set -euo pipefail
-          npm ci --prefix tools/hosted-relay-fixture
           npx playwright install chromium
           cargo test --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin --lib --no-run --message-format=json > "$RUNNER_TEMP/agbrio-hosted-test-build.jsonl"
           node tools/hosted-relay-fixture/e2e.mjs --cargo-messages "$RUNNER_TEMP/agbrio-hosted-test-build.jsonl" | tee "$RUNNER_TEMP/agbrio-hosted-e2e.log"
