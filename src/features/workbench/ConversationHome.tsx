@@ -104,7 +104,9 @@ export function ConversationHome({onOpenManagement,selectedKey,bridges,activity,
  const seen=useSeenResults();
  const [hiddenWatches,setHiddenWatches]=useState<string[]>([]);
  const [watched,refreshWatches]=useWatches(watchApi);
- const watches=watched.filter(w=>!hiddenWatches.includes(w.threadId));
+ const locallyHiddenChildren=piDelegations(watched).children;
+ const hiddenIds=new Set(hiddenWatches.flatMap(id=>[id,...(locallyHiddenChildren.get(id)??[]).map(w=>w.threadId)]));
+ const watches=watched.filter(w=>!hiddenIds.has(w.threadId));
  const [undo,setUndo]=useState<CodexWatch|null>(null);
  useEffect(()=>{if(!undo)return;const timer=setTimeout(()=>setUndo(null),6000);return()=>clearTimeout(timer);},[undo]);
  // Swiping a watched conversation only stops Agbrio's tracking; the chat itself is untouched and can be restored.
@@ -153,7 +155,7 @@ export function ConversationHome({onOpenManagement,selectedKey,bridges,activity,
    <span className="v6-row-body"><span className="v6-row-top"><strong>{r.title}</strong>{r.newResult&&<i className="v7-result-dot" role="img" aria-label={uiText("有新结果")}/>}{r.at?<time>{when(r.at)}</time>:null}</span><span className="v6-row-meta"><span className="v7-meta-text" title={r.meta}>{r.source}</span>{r.watch&&<ModelBadge runtime={watchRuntime(r.watch)}/>}</span>{r.preview&&<span className="v6-row-preview">{r.preview}</span>}{r.state&&<motion.span key={r.state} className="v6-state" data-tone={r.tone} initial={reduced?false:{opacity:.5}} animate={{opacity:1}} transition={{duration:reduced?0:.12}}>{r.tone==="run"&&<i aria-hidden/>}{r.state}</motion.span>}</span>
    <AnimatePresence>{r.unread&&<motion.i className="v6-unread" aria-label={uiText("需要你处理")} initial={{scale:0}} animate={{scale:1}} exit={{scale:0}} transition={{type:"spring",stiffness:600,damping:14}}/>}</AnimatePresence>
   </motion.button>;
-  const inner=r.bridge&&onDeleteBridge?<SwipeDeleteRow label={r.title} onDelete={()=>onDeleteBridge(r.bridge!)}>{body}</SwipeDeleteRow>:r.watch&&!r.watch.threadId.startsWith("pi:")&&watchApi?.remove?<SwipeDeleteRow label={r.title} onDelete={()=>void stopWatching(r.watch!)}>{body}</SwipeDeleteRow>:body;
+  const inner=r.bridge&&onDeleteBridge?<SwipeDeleteRow label={r.title} onDelete={()=>onDeleteBridge(r.bridge!)}>{body}</SwipeDeleteRow>:r.watch&&watchApi?.remove?<SwipeDeleteRow label={r.title} onDelete={()=>void stopWatching(r.watch!)}>{body}</SwipeDeleteRow>:body;
   const showTree=Boolean(r.tree&&(expanded.has(r.key)||childHit(r)));
   const selectedChild=selectedKey?.startsWith("w:")?selectedKey.slice(2):undefined;
   const grouped=r.tree?.total?<div className="v7-tree-parent">{inner}<button type="button" className="v7-tree-toggle" aria-expanded={showTree} onClick={()=>toggleTree(r.key)}>{showTree?<ChevronDown size={14} aria-hidden/>:<ChevronRight size={14} aria-hidden/>}<span>{childTreeSummary(r.tree)}</span></button>{showTree&&<div className="v7-tree-list"><ChildTreeList model={r.tree} selectedKey={selectedChild} label={uiText("{0} 的子对话",r.title)} onOpen={e=>openChild(r,e)}/></div>}</div>:inner;

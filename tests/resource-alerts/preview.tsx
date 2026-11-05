@@ -1,0 +1,12 @@
+import {createRoot} from 'react-dom/client';
+import {LocalSafetySettings} from '../../src/features/workbench/LocalSafetySettings';
+import {setLanguagePreference} from '../../src/i18n';
+import '../../src/styles/warm-workbench.css';import '../../src/styles/unified-workbench-v3.css';import '../../src/styles/conversation-v6.css';
+import '../../src/styles/agbrio-v6-theme.css';import '../../src/styles/agbrio-v7.css';import '../../src/styles/agbrio-v7-r2.css';
+setLanguagePreference('zh-CN');
+let settings={recoveryEnabled:true,alertTarget:{threadId:'claude_code:old',generation:1,cwd:'D:/fixture/old'},fallbackTargets:[] as {threadId:string;generation:number;cwd:string}[]};
+const candidates=[{id:'claude_code:current-manager',label:'当前游戏开发管理',projectProvenance:'D:/fixture/总控台',recencyAt:1793808000},{id:'codex-current',label:'工程与资源检查',projectProvenance:'D:/fixture/开发',recencyAt:1793807900},{id:'claude_code:ui',label:'界面与交互优化',projectProvenance:'D:/fixture/工具',recencyAt:1793807800}];
+let targets=[{threadId:'claude_code:old',generation:1,cwd:'D:/fixture/old',label:'旧管理对话'}];
+const api={read:async()=>({settings,collectorAvailable:true,recent:[],targets}),save:async(input:typeof settings)=>{settings=input;return api.read();},catalog:async()=>({complete:true,threads:candidates}),select:async(id:string)=>{const row=candidates.find(c=>c.id===id)!;const selected={threadId:id,generation:4,cwd:row.projectProvenance,label:row.label};targets.push(selected);return selected;}};
+const monitor={read:async()=>({config:{SchemaVersion:2,Enabled:true,SampleSeconds:120,AvailableMemoryPercent:2,CommitPercent:90,RepeatMinutes:30,Disks:[]},drives:[],availableBytes:8e9,physicalBytes:32e9,running:false,installed:true,legacy:false,startupEnabled:false}),apply:async()=>{throw Error('READ_ONLY_PREVIEW');}};
+createRoot(document.getElementById('root')!).render(<main className="r2-router" style={{maxWidth:720,margin:'0 auto',padding:24,fontFamily:'var(--r2-font,sans-serif)',color:'var(--v7-ink)'}}><p>隔离交互预览 · 所有对话、监测状态均为假数据，不连接真实任务</p><div className="r2-settings"><LocalSafetySettings api={api} monitor={monitor}/></div></main>);

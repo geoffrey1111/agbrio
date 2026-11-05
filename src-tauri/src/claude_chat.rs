@@ -3,6 +3,9 @@ use crate::host_application::RouterCore;
 use router_core::store::{claude_manual::{native_id,PREFIX},codex_watch::WatchSnapshot,watch_reply::WatchReply};
 use serde_json::{json,Value};
 use crate::watch_chat::ChatCommand;
+#[cfg(all(test,windows))]
+#[path="watch_group_tests.rs"]
+mod watch_group_tests;
 
 #[derive(serde::Serialize)]
 #[serde(rename_all="camelCase")]
@@ -15,7 +18,7 @@ pub(crate) struct WatchView {
 /// Directory projection; a child's activity is not a parent sending state.
 pub(crate) fn list(core:&RouterCore)->Result<Vec<WatchView>,String>{
     let mut watches=core.store.codex_watches()?;
-    for task in core.store.pi_tasks()?{if let Ok(watch)=crate::pi::presentation::watch(&task){if !watches.iter().any(|w|w.thread_id==watch.thread_id){watches.push(watch);}}}
+    for task in core.store.pi_tasks()?{if let Ok(watch)=crate::pi::presentation::watch(&task){if !core.store.is_codex_watch_removed(&watch.thread_id)?&&!watches.iter().any(|w|w.thread_id==watch.thread_id){watches.push(watch);}}}
     Ok(watches.into_iter().map(|mut watch|{
         let mut tree=None;
         if watch.thread_id.starts_with("pi:"){
