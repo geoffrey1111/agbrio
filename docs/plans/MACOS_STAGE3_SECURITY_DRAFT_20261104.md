@@ -1,6 +1,6 @@
-# macOS阶段3安全设计草案 — 待所有者审阅
+# macOS阶段3安全设计 — 审阅结论与实施进度
 
-状态：PARTIALLY_APPROVED / D1_D2_EXCLUDED / D3_REJECTED / D4_D5_D6_APPROVED。日期：2026-11-04，Asia/Singapore。
+状态：PARTIALLY_APPROVED / D1_D2_EXCLUDED / D3_REJECTED / D4_D5_D6_APPROVED。审阅：2026-11-04；进度：2026-11-05，Asia/Singapore。
 
 Owner已审阅本稿：Mac不提供Pi；D1/D2不进入本阶段，D3不批准；D4复用既有Windows发布密钥，D5不做ACL迁移、授权提示由本人点“始终允许”，D6批准。实施顺序为Mac去Pi → D5 → D4 → D6。每批先报告差异/验证，再问是否commit/push到原草稿PR4；不合并、不发布。此设计批准不等于以后每批的Git或Release许可。
 
@@ -8,13 +8,13 @@ Owner已审阅本稿：Mac不提供Pi；D1/D2不进入本阶段，D3不批准；
 
 | 项 | Owner结论 | 当前状态 |
 | --- | --- | --- |
-| Mac去Pi | Mac无Pi入口、无pi-adapter资源、界面不显示Pi；进程组源码可留但不启用 | 第一批本地候选实施/验证中，未提交推送 |
+| Mac去Pi | Mac无Pi入口、无pi-adapter资源、界面不显示Pi；进程组源码可留但不启用 | 已实现，313源码/DMG工程验证通过；阶段4外部真机待验 |
 | D1 Pi提权 | 不进入本阶段 | 不实现 |
 | D2 Pi全部磁盘工作区 | 不进入本阶段 | 不实现 |
 | D3 AX读取 | 不批准，双方现行均退役 | Mac不新增；M20双方均退役 |
-| D4 更新签名 | 批准，复用现有Windows发布签名密钥，不新建Mac key | 排在D5后，当前批次不实现、不读私钥、不发布 |
-| D5 Keychain | 批准，无ACL迁移，ad-hoc升级后本人点“始终允许”为已知差异 | 排在去Pi后，当前批次不实现 |
-| D6 证书/连接信任 | 批准 | 排在D4后，当前批次不实现 |
+| D4 更新签名 | 批准，复用现有Windows发布签名密钥，不新建Mac key | D4a真实产包/本机签验/篡改通过；D4b事务5文件候选本地测试过、Mac原生CI待审批。安装入口仍Unsupported |
+| D5 Keychain | 批准，无ACL迁移，ad-hoc升级后本人点“始终允许”为已知差异 | 工程实现/双平台CI及专用Mac Keychain fixture通过；真实账号/ad-hoc升级阶段4待验 |
+| D6 证书/连接信任 | 批准 | 未开始，排在D4其余实现和工程验证后 |
 
 阶段4改为有Mac的群友协助，不租云Mac。群友仅用自己账号/机器；材料在去Pi→D5→D4→D6完成后准备，不在当前批次抢先制作。结果标为“外部测试者真机验证”，不是所有者UAT；分发只提出pre-release（另批发布批准）与所有者手动转发DMG两种选项，现在无Release。
 
@@ -121,3 +121,17 @@ sign-macos-update.ps1只在本机Windows PowerShell7、非GITHUB_ACTIONS运行�
 Mac fragment生成器只产本地candidate。若合并Windows manifest，必须同版本和固定repo/asset，保留Windows及其他平台字段与notes/date；不覆盖live latest.json。不提供新的Mac release key。第一批没有修改public key或凭据，也没有读私钥/DPAPI文件；真实归档、签名与篡改实证须本批获准push后先由MacCI产物再本地执行。发布另问。
 
 本地候选：归档/ZIP/来源/危险路径/文件归属/最低系统11项PASS；Mac fragment/保留Windows2项PASS；PS隔离/CI拒绝/PASS marker checks PASS；现有更新器9PASS/4ignored（含新增实际Mac签名gate未执行）。Mac workflow语法可解析不是实际运行。新Mac archive与签名流程须批准新批Git后CI/本机核验。安装事务会另批实现：当前锁定updater2.12.0默认Mac install没有满足批准的同卷/回滚边界，不能直接解除门；不借Pi relay、不静默信任CA、不宣称Developer ID/公证。
+
+## 2026-11-05 D4a已通过真实产包和本机密码学门
+
+313ca54 Mac source两条、Windows build/clean-install及Mac package41864619914 attempt3均SUCCESS；前两次package是hosted ARM64容量失败而非代码失败。CI构建/原生codesign/DMG隔离启动与更新归档通过。artifact13346934030原ZIP摘要7236d5653ff2a8414b817d3574be00cd86767a6dc7f945273d1bd82f842130a1精确匹配；本机只复用原Windows key实际签archive d09a36377048d888d681073535ee5f2bf285f3e1fb38b2c4fb32038c02e5522d，固定公钥验签及篡改负例PASS。未上传私钥、未新建key、未安装/Release。签名工具在本机运行并完成真实gate，不再是只有fixture。Mac应用内check/download/install仍Unsupported，D4b将另批完成受限暂存、安装身份、同卷替换/回滚、备份审计、owner确认/授权与重开；本批工具完成不等于Mac updater完成。阶段4仍群友自有Mac/账号外部测试，不是所有者UAT。
+
+## 2026-11-05 D4b第一批：未接入口的同卷安装事务候选
+
+新增独立事务叶子与Darwin驱动，尚未commit/push，也未接check/download/install。绑定UUID、升级版本、archive SHA256、父目录/工作目录/当前包/候选包的dev/inode/UID/mode；当前用户拥有的包、0700私有workspace、同卷且非链接。父路径逐组件openat/O_NOFOLLOW，固定两个Agbrio.app名称；当前用户flock租约、不可覆盖的应用级active intent及workspace journal先durable写入，再用Darwin RENAME_SWAP一次交换，旧包保留。明确拒绝才追加rollback intent并交换一次；未知读/写/flush/验证结果只保留原对象供对账。现存active intent也阻止新UUID绕过。无递归删除、shell/通用执行、权限授权、进程控制或新密钥。
+
+这批只为后续受限安装建立底层：生产调用方仍须先做签名/完整包验证、绑定桌面本人确认和一致备份、核对原进程确实退出；归档安全提取、系统权限授权、正常退出/重开和最终清算另批接入。root/别的UID当前拒绝而不回落；这不是完整更新路径，也不声称缺权限分支已实现。Mac正式更新入口仍Unsupported。
+
+新增跨平台故障注入覆盖10项，以及GitHub临时Mac专用原生fixture：只操作RUNNER_TEMP下自建目录，真实同卷交换/回滚、备份保留、全局intent跨UUID围栏、外来journal/lease/链接与改名工作区保护；不启动任何app、账号、模型或业务进程。专用CI必须同时cargo通过和出现精确native PASS marker，0测试不能代替成功。当前Mac编译和原生fixture尚待本批另获Git许可后运行；Windows模拟状态机不等同Mac原生证据。
+
+最终本地验证：私有事务10PASS，公开完整Host427PASS/70明确ignored；最后补强的rollback flush失败保持Unknown、driver自身紧邻操作再核精确身份与成功flush后才能记phase也已在该最终代码快照内。公开Cargos/Windows workflow/前端/更新器生产入口字节无变，Mac原生编译和隔离fixture待新批Git许可后CI。不把本机Windows状态机或YAML解析当Mac原生成功。

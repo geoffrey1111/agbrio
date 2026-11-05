@@ -108,3 +108,9 @@ jobs:
           cargo test --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin -- --test-threads=2
       - name: Isolated Keychain credential lifecycle
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin platform::macos_keychain::tests::isolated_native_roundtrip_and_unrelated_item_survives -- --ignored --exact --test-threads=1
+      - name: Isolated same-volume update transaction
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin platform::macos_update_transaction::native::tests::isolated_same_volume_exchange_and_rollback -- --ignored --exact --test-threads=1 --nocapture | tee "$RUNNER_TEMP/agbrio-update-transaction.log"
+          grep -Fx 'MACOS_UPDATE_TRANSACTION_NATIVE_PASS' "$RUNNER_TEMP/agbrio-update-transaction.log"

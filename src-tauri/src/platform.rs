@@ -1,4 +1,7 @@
 //! Desktop platform admission. Unsupported features fail before side effects.
+// D4 transaction leaf only: no desktop command or installer admission yet.
+#[cfg(any(test,target_os="macos"))]
+pub(crate) mod macos_update_transaction;
 #[cfg(any(test,target_os="macos"))]
 mod email_keychain;
 #[cfg(target_os="macos")]
