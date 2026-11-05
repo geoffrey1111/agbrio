@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const MAX_BYTES: u64 = 8 * 1024;
 
 pub(crate) fn usage_path() -> Option<PathBuf> {
-    std::env::var_os("LOCALAPPDATA").map(|local| PathBuf::from(local).join("AIWorkRouter").join("data").join("claude-usage.json"))
+    router_core::platform::local_data_base().ok().map(|local| local.join("AIWorkRouter").join("data").join("claude-usage.json"))
 }
 fn now() -> i64 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as i64 }
 fn unavailable(reason: &'static str) -> Quota { Quota { status: "UNAVAILABLE", reason: Some(reason), observed_at: now(), buckets: vec![] } }
@@ -51,7 +51,7 @@ pub(crate) fn read() -> Quota {
     // redirected LocalCache. Read only its bounded usage file, never credentials.
     let roots = crate::claude_code_desktop::data_roots();
     if let Some(desktop) = desktop_at(&roots, None, now()) { return desktop; }
-    let logs = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(|h| PathBuf::from(h).join(".claude").join("projects"));
+    let logs = router_core::platform::user_home().ok().map(|h| h.join(".claude").join("projects"));
     logs.as_deref().map(|root| estimate(root, now())).unwrap_or_else(|| unavailable("NOT_ENABLED"))
 }
 

@@ -15,7 +15,8 @@ pub(crate) struct WatchView {
 /// Directory projection; a child's activity is not a parent sending state.
 pub(crate) fn list(core:&RouterCore)->Result<Vec<WatchView>,String>{
     let mut watches=core.store.codex_watches()?;
-    for task in core.store.pi_tasks()?{if let Ok(watch)=crate::pi::presentation::watch(&task){if !watches.iter().any(|w|w.thread_id==watch.thread_id){watches.push(watch);}}}
+    if crate::platform::pi_offered(){for task in core.store.pi_tasks()?{if let Ok(watch)=crate::pi::presentation::watch(&task){if !watches.iter().any(|w|w.thread_id==watch.thread_id){watches.push(watch);}}}}
+    watches.retain(|w|crate::platform::pi_offered()||!w.thread_id.starts_with("pi:"));
     Ok(watches.into_iter().map(|mut watch|{
         let mut tree=None;
         if watch.thread_id.starts_with("pi:"){

@@ -21,6 +21,8 @@ pub mod claude_codex_wait;
 pub mod codex_watch;
 pub mod conversation_message_time;
 pub mod watch_delivery;
+pub mod native_secrets;
+pub mod mcp_native_secrets;
 pub mod child_results;
 pub mod claude_owner_requests;
 pub mod claude_child_contexts;
@@ -96,6 +98,8 @@ const NORMAL_FEATURE_MIGRATIONS: &[(&str, &str)] = &[
     ("codex-reply-fifo-v1", include_str!("../../migrations/normal/026_codex_reply_fifo.sql")),
     ("watch-visibility-v1", include_str!("../../migrations/normal/027_watch_visibility.sql")),
     ("removed-reply-presentations-v1", include_str!("../../migrations/normal/035_removed_reply_presentations.sql")),
+    ("native-secret-references-v1", include_str!("../../migrations/normal/038_native_secret_references.sql")),
+    ("mcp-native-secret-references-v1", include_str!("../../migrations/normal/039_mcp_native_secret_refs.sql")),
 ];
 
 const MIGRATIONS: &[(i64, &str)] = &[
@@ -774,7 +778,7 @@ impl RouterStore {
     }
 
     pub fn open_default() -> Result<Self, String> {
-        let local = std::env::var_os("LOCALAPPDATA").ok_or("LOCALAPPDATA is unavailable")?;
+        let local = crate::platform::local_data_base()?;
         Self::open_at(
             PathBuf::from(local)
                 .join("AIWorkRouter")
@@ -3946,8 +3950,10 @@ mod tests {
                         "mcp_event_request_tombstones",
                         "mcp_event_subscriptions",
                         "mcp_events",
+                        "mcp_native_secret_refs",
                         "mobile_chatgpt_inbound_reviews",
                         "mobile_codex_outbound_reviews",
+                        "native_secret_references",
                         "pi_command_tombstones", "pi_commands", "pi_directory_scopes",
                         "pi_owner_questions", "pi_public_items", "pi_scope_policies", "pi_task_access", "pi_tasks", "pi_tool_decisions",
                         "projects",
@@ -7648,3 +7654,8 @@ mod completion_tests;
 #[cfg(test)]
 #[path="instance_tests.rs"]
 mod instance_tests;
+
+
+/// Absolute metadata-only test root; never relax production path admission.
+#[cfg(test)]
+pub(crate) fn test_cwd() -> String { std::env::temp_dir().to_string_lossy().into_owned() }

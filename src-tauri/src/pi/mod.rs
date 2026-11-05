@@ -20,6 +20,8 @@ mod failure;
 mod settings;
 mod transport;
 mod windows_job;
+#[cfg(target_os="macos")]
+mod process_group;
 mod elevation;
 mod cohort;
 mod resources;
@@ -32,6 +34,8 @@ pub(crate) struct Installation {
     pub version: String,
 }
 pub(crate) fn installation() -> Result<Installation, String> {
+    crate::platform::require_windows()?;
+
     let node = std::env::var_os("ProgramFiles")
         .map(PathBuf::from)
         .ok_or("PI_NODE_NOT_FOUND")?
@@ -141,4 +145,4 @@ mod tests {
     }
 }
 
-pub(crate) fn prepare_administrator()->Result<Value,String>{cohort::prepare()}
+pub(crate) fn prepare_administrator()->Result<Value,String>{crate::platform::require_pi_offered()?;cohort::prepare()}

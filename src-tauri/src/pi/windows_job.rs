@@ -175,9 +175,11 @@ impl Drop for OwnedJob {
         }
     }
 }
-#[cfg(not(windows))]
+#[cfg(target_os="macos")]
+pub(super) use super::process_group::OwnedGroup as OwnedJob;
+#[cfg(not(any(windows,target_os="macos")))]
 pub(super) struct OwnedJob;
-#[cfg(not(windows))]
+#[cfg(not(any(windows,target_os="macos")))]
 impl OwnedJob {
     pub fn terminate_and_wait(&self,_:std::time::Duration)->Result<(),String>{Err("PI_PLATFORM_UNVERIFIED".into())}
     pub fn attach(_: &std::process::Child) -> Result<Self, String> {

@@ -1,0 +1,122 @@
+name: macOS source
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      audit_chromium:
+        description: Audit the fixed official Mac Chromium archive without starting a browser
+        type: boolean
+        default: false
+      native_browser_check:
+        description: Run the disposable offline Chromium native lifecycle fixture without accounts
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: macos-source-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  browser-boundary:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.native_browser_check }}
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+      - name: Install locked browser helper dependencies
+        run: npm ci --prefix tools/isolated-browser-executor
+      - name: Stage native helper without downloading Chromium
+        run: node scripts/build-browser-executor.mjs
+      - name: Run disposable native browser fixture
+        env:
+          AGBRIO_MAC_BROWSER_FIXTURE: '1'
+        run: |
+          export TMPDIR="$RUNNER_TEMP"
+          node --test tools/isolated-browser-executor/macos-browser-native.integration.test.mjs
+  chromium-audit:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.audit_chromium }}
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit pinned official Chromium archive
+        run: python3 scripts/audit-macos-chromium.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-chromium-audit
+          path: ${{ runner.temp }}/agbrio-chromium-audit/*.json
+          if-no-files-found: error
+  source:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '13.5'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.98.0'
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          workspaces: |
+            crates -> target
+            src-tauri -> target
+      - name: Verify native build platform
+        run: |
+          test "$(uname -m)" = arm64
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          sw_vers
+          rustc --version
+          node --version
+      - name: Locked frontend and helper dependencies
+        run: |
+          npm ci
+          npm ci --prefix tools/isolated-browser-executor
+      - name: Frontend and platform tests
+        run: |
+          /bin/sh -n src/features/workbench/claudeManualInstall.macos.sh
+          npm test -- --maxWorkers=2
+          node --test scripts/browser-executor-platform.test.mjs
+          node --test tools/agbrio-control/control.test.mjs
+          node --test tools/shared-codex-macos/lifecycle.test.mjs
+          python3 -m unittest discover -s scripts -p test_macos_update_package.py
+          node --test scripts/create-macos-update-manifest.test.mjs
+          node --test scripts/claude-usage-statusline.test.mjs
+          node --test tools/isolated-browser-executor/browser-package-macos.test.mjs
+          npm run build
+      - name: Stage native Node and helper resources
+        run: npm run build:browser-executor
+      - name: Native macOS profile boundary tests
+        run: node --test tools/isolated-browser-executor/macos-native.test.mjs tools/isolated-browser-executor/native-runtime.test.mjs
+      - name: Core check and tests
+        run: |
+          cargo check --manifest-path crates/Cargo.toml --locked --target aarch64-apple-darwin
+          cargo test --manifest-path crates/Cargo.toml --locked --target aarch64-apple-darwin
+      - name: Desktop check and tests
+        run: |
+          cargo check --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin -- --test-threads=2
+      - name: Isolated Keychain credential lifecycle
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin platform::macos_keychain::tests::isolated_native_roundtrip_and_unrelated_item_survives -- --ignored --exact --test-threads=1
+      - name: Isolated same-volume update transaction
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin platform::macos_update_transaction::native::tests::isolated_same_volume_exchange_and_rollback -- --ignored --exact --test-threads=1 --nocapture | tee "$RUNNER_TEMP/agbrio-update-transaction.log"
+          grep -Fx 'MACOS_UPDATE_TRANSACTION_NATIVE_PASS' "$RUNNER_TEMP/agbrio-update-transaction.log"
+      - name: Isolated signed-format archive staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin platform::macos_update_archive::native::tests::isolated_native_archive_staging_and_tamper_rejection -- --ignored --exact --test-threads=1 --nocapture | tee "$RUNNER_TEMP/agbrio-archive-staging.log"
+          grep -Fx 'MACOS_ARCHIVE_STAGING_NATIVE_PASS' "$RUNNER_TEMP/agbrio-archive-staging.log"

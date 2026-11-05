@@ -23,7 +23,9 @@ pub struct SettingsView {
     #[serde(flatten)]
     pub settings: DeliverySettings,
     pub has_secret: bool,
+    pub credential_status: &'static str,
     pub windows_status: String,
+    pub desktop_platform: &'static str,
     pub history: Vec<DeliveryRecord>,
 }
 #[derive(Deserialize)]
@@ -40,6 +42,7 @@ pub enum DeliveryCommand {
         password: Option<String>,
     },
     ForgetPassword,
+    AuthorizeEmailKeychain,
     Test {
         channel: String,
     },
@@ -52,7 +55,7 @@ fn valid_addresses(account: &str, recipient: &str) -> Result<(), String> {
     Ok(())
 }
 #[cfg(windows)]
-fn password(account: &str) -> Result<String, String> {
+fn password(_store: &RouterStore, account: &str) -> Result<String, String> {
     use windows::{core::HSTRING, Security::Credentials::PasswordVault};
     let vault = PasswordVault::new().map_err(|_| "EMAIL_CREDENTIAL_STORE_UNAVAILABLE")?;
     let p = vault
@@ -65,7 +68,7 @@ fn password(account: &str) -> Result<String, String> {
         .map_err(|_| "EMAIL_CREDENTIAL_STORE_UNAVAILABLE".into())
 }
 #[cfg(windows)]
-fn store_password(account: &str, secret: &str) -> Result<(), String> {
+fn store_password(_store: &RouterStore, account: &str, secret: &str) -> Result<(), String> {
     use windows::{
         core::HSTRING,
         Security::Credentials::{PasswordCredential, PasswordVault},
@@ -90,7 +93,7 @@ fn store_password(account: &str, secret: &str) -> Result<(), String> {
         .map_err(|_| "EMAIL_CREDENTIAL_STORE_UNAVAILABLE".into())
 }
 #[cfg(windows)]
-fn forget_password(account: &str) -> Result<(), String> {
+fn forget_password(_store: &RouterStore, account: &str) -> Result<(), String> {
     use windows::{core::HSTRING, Security::Credentials::PasswordVault};
     let vault = PasswordVault::new().map_err(|_| "EMAIL_CREDENTIAL_STORE_UNAVAILABLE")?;
     if let Ok(p) = vault.Retrieve(&HSTRING::from(VAULT_RESOURCE), &HSTRING::from(account)) {
@@ -100,27 +103,48 @@ fn forget_password(account: &str) -> Result<(), String> {
     }
     Ok(())
 }
-#[cfg(not(windows))]
-fn password(_: &str) -> Result<String, String> {
+#[cfg(not(any(windows,target_os="macos")))]
+fn password(_: &RouterStore, _: &str) -> Result<String, String> {
     Err("EMAIL_CREDENTIAL_STORE_UNAVAILABLE".into())
 }
-#[cfg(not(windows))]
-fn store_password(_: &str, _: &str) -> Result<(), String> {
+#[cfg(not(any(windows,target_os="macos")))]
+fn store_password(_: &RouterStore, _: &str, _: &str) -> Result<(), String> {
     Err("EMAIL_CREDENTIAL_STORE_UNAVAILABLE".into())
 }
-#[cfg(not(windows))]
-fn forget_password(_: &str) -> Result<(), String> {
+#[cfg(not(any(windows,target_os="macos")))]
+fn forget_password(_: &RouterStore, _: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os="macos")]
+fn password(store:&RouterStore,account:&str)->Result<String,String>{
+    if account.is_empty(){return Err("EMAIL_APP_PASSWORD_REQUIRED".into())}
+    crate::platform::macos_keychain::read(store,account,false)
+}
+#[cfg(target_os="macos")]
+fn store_password(store:&RouterStore,account:&str,secret:&str)->Result<(),String>{
+    let secret:String=secret.chars().filter(|c|!c.is_ascii_whitespace()).collect();
+    if secret.len()!=16||!secret.bytes().all(|b|b.is_ascii_alphabetic()){return Err("EMAIL_APP_PASSWORD_FORMAT_INVALID".into())}
+    crate::platform::macos_keychain::save(store,account,&secret)
+}
+#[cfg(target_os="macos")]
+fn forget_password(store:&RouterStore,account:&str)->Result<(),String>{crate::platform::macos_keychain::forget(store,account)}
+fn credential_status(value:&Result<String,String>)->&'static str{
+    #[cfg(target_os="macos")]{crate::platform::macos_keychain::status(value)}
+    #[cfg(not(target_os="macos"))]{if value.is_ok(){"READY"}else{"MISSING"}}
+}
 pub fn view(store: &RouterStore) -> Result<SettingsView, String> {
     let settings = store.watch_delivery_settings()?;
-    let has_secret = password(&settings.account).is_ok();
+    let secret = password(store,&settings.account);
+    let has_secret = secret.is_ok();
+    let credential_status=credential_status(&secret);
     Ok(SettingsView {
         notification_types:crate::push::notification_types()?,
         settings,
         has_secret,
+        credential_status,
         windows_status: windows_status(),
+        desktop_platform: if cfg!(target_os="macos"){"MACOS"}else if cfg!(windows){"WINDOWS"}else{"UNSUPPORTED"},
         history: store.watch_delivery_history()?,
     })
 }
@@ -131,11 +155,11 @@ pub fn command(store: &RouterStore, input: DeliveryCommand) -> Result<String, St
             if enabled && channel == "EMAIL" {
                 let s = store.watch_delivery_settings()?;
                 valid_addresses(&s.account, &s.recipient)?;
-                password(&s.account)?;
+                password(store,&s.account)?;
                 notification_url(Some(1))?;
             }
             if enabled && channel == "WINDOWS" && windows_status() != "ENABLED" {
-                return Err("WINDOWS_NOTIFICATIONS_DISABLED".into());
+                return Err(if cfg!(target_os="macos"){"MACOS_NOTIFICATIONS_DISABLED"}else{"WINDOWS_NOTIFICATIONS_DISABLED"}.into());
             }
             store.set_watch_delivery_channel(&channel, enabled)?;
             Ok("SAVED".into())
@@ -156,20 +180,24 @@ pub fn command(store: &RouterStore, input: DeliveryCommand) -> Result<String, St
                 store.set_watch_delivery_channel("EMAIL", false)?;
             }
             if let Some(secret) = secret.filter(|v| !v.is_empty()) {
-                store_password(&account, &secret)?;
+                store_password(store,&account, &secret)?;
             }
             store.set_watch_email_addresses(&account, &recipient)?;
             Ok("SAVED".into())
         }
         DeliveryCommand::ForgetPassword => {
             store.set_watch_delivery_channel("EMAIL", false)?;
-            forget_password(&store.watch_delivery_settings()?.account)?;
+            forget_password(store,&store.watch_delivery_settings()?.account)?;
             Ok("REMOVED".into())
+        }
+        DeliveryCommand::AuthorizeEmailKeychain => {
+            #[cfg(target_os="macos")]{let account=store.watch_delivery_settings()?.account;crate::platform::macos_keychain::read(store,&account,true)?;Ok("AUTHORIZED".into())}
+            #[cfg(not(target_os="macos"))]{Err("PLATFORM_NOT_YET_SUPPORTED".into())}
         }
         DeliveryCommand::Test { channel } => {
             let s = store.watch_delivery_settings()?;
             let id = format!("aiwr-{}-test-{}", s.host_id, uuid::Uuid::new_v4());
-            let (status, code) = deliver(&channel, &s, &id, None);
+            let (status, code) = deliver(store,&channel, &s, &id, None);
             if status == "SENT" {
                 Ok("ACCEPTED".into())
             } else {
@@ -225,6 +253,7 @@ fn email_message(
         .map_err(|_| "EMAIL_MESSAGE_INVALID".into())
 }
 fn deliver(
+    store: &RouterStore,
     channel: &str,
     s: &DeliverySettings,
     id: &str,
@@ -233,6 +262,9 @@ fn deliver(
     match channel {
         "WINDOWS" => match show_windows(event) {
             Ok(()) => ("SENT", None),
+            Err(code) if cfg!(target_os="macos")&&code=="MACOS_NOTIFICATION_ACCEPTANCE_UNKNOWN" => ("UNKNOWN",Some("MACOS_NOTIFICATION_ACCEPTANCE_UNKNOWN")),
+            Err(code) if cfg!(target_os="macos")&&code=="MACOS_NOTIFICATIONS_DISABLED" => ("SKIPPED",Some("MACOS_NOTIFICATIONS_DISABLED")),
+            Err(_) if cfg!(target_os="macos") => ("SKIPPED",Some("MACOS_NOTIFICATION_REJECTED")),
             Err(_) => ("SKIPPED", Some("WINDOWS_NOTIFICATION_REJECTED")),
         },
         "WEB" => {
@@ -247,9 +279,7 @@ fn deliver(
             }
         }
         "EMAIL" => {
-            let Ok(secret) = password(&s.account) else {
-                return ("SKIPPED", Some("EMAIL_APP_PASSWORD_REQUIRED"));
-            };
+            let secret=match password(store,&s.account){Ok(s)=>s,Err(e)=>return ("SKIPPED",Some(match e.as_str(){"KEYCHAIN_OWNER_ACTION_REQUIRED"=>"KEYCHAIN_OWNER_ACTION_REQUIRED","KEYCHAIN_UNAVAILABLE"=>"KEYCHAIN_UNAVAILABLE",_=>"EMAIL_APP_PASSWORD_REQUIRED"}))};
             let Ok(link) = notification_url(event.map(|e| e.sequence)) else {
                 return ("SKIPPED", Some("NOTIFICATION_WEB_URL_UNAVAILABLE"));
             };
@@ -300,7 +330,7 @@ pub fn start(core: crate::host_application::RouterCore) {
                 }
                 if let Ok(s) = store.watch_delivery_settings() {
                     let id = format!("aiwr-{}-{}", s.host_id, event.sequence);
-                    let _=deliver_claimed_event_with(&store,&channel,&event,||deliver(&channel,&s,&id,Some(&event)));
+                    let _=deliver_claimed_event_with(&store,&channel,&event,||deliver(&store,&channel,&s,&id,Some(&event)));
                 } else {
                     let _ = store.finish_watch_delivery(
                         event.sequence,
@@ -422,10 +452,12 @@ fn windows_status() -> String {
     }
     .into()
 }
-#[cfg(not(windows))]
+#[cfg(not(any(windows,target_os="macos")))]
 fn windows_status() -> String {
     "UNSUPPORTED".into()
 }
+#[cfg(target_os="macos")]
+fn windows_status()->String{crate::platform::macos_notifications::status()}
 fn xml(value: &str) -> String {
     value
         .replace('&', "&amp;")
@@ -566,10 +598,12 @@ pub fn repair_legacy_toasts(store: &RouterStore) -> Result<usize, String> {
 fn windows_toast_xml(kind: &str, label: &str, launch: &str) -> String {
     format!("<toast activationType=\"protocol\" launch=\"{}\"><visual><binding template=\"ToastGeneric\"><text>{}</text><text>{}</text><text>点击在 AI Work Router 查看原文并回复</text></binding></visual></toast>",xml(launch),xml(kind),xml(&label.chars().take(120).collect::<String>()))
 }
-#[cfg(not(windows))]
+#[cfg(not(any(windows,target_os="macos")))]
 fn show_windows(_: Option<&WatchEvent>) -> Result<(), String> {
     Err("WINDOWS_UNSUPPORTED".into())
 }
+#[cfg(target_os="macos")]
+fn show_windows(event:Option<&WatchEvent>)->Result<(),String>{crate::platform::macos_notifications::show(event)}
 
 #[cfg(test)]
 mod tests {
@@ -714,5 +748,11 @@ mod tests {
             assert!(body.contains("Message-ID: <fixture-stable-id@ai-work-router.local>"));
             assert!(body.contains("To: geoffreyzjx826@gmail.com"));
         }
+    }
+}
+
+#[cfg(test)]mod macos_permission_boundary_tests{
+    #[test]fn native_permission_request_is_not_a_shared_http_delivery_command(){
+        assert!(serde_json::from_value::<super::DeliveryCommand>(serde_json::json!({"action":"AUTHORIZE_DESKTOP"})).is_err());
     }
 }

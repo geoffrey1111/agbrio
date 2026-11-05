@@ -52,6 +52,7 @@ impl ChatGPTService {
         self.process_for(false)
     }
     fn process_for(&self, owner_security_action: bool) -> Result<Arc<ExecutorProcess>, String> {
+
         if self.1.load(std::sync::atomic::Ordering::SeqCst) {
             return Err("EXECUTOR_STOPPED".into());
         }

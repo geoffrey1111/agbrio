@@ -93,8 +93,18 @@ fn protect(bytes: &[u8], decrypt: bool) -> Result<Vec<u8>, String> {
 fn protect(_bytes: &[u8], _decrypt: bool) -> Result<Vec<u8>, String> {
     Err("MCP_EVENT_SECRET_STORE_UNSUPPORTED".into())
 }
-fn reveal(bytes: &[u8]) -> Result<String, String> {
-    String::from_utf8(protect(bytes, true)?).map_err(|_| "MCP_EVENT_SECRET_STORE".into())
+async fn reveal(core:&RouterCore,sid:&str,bytes: &[u8]) -> Result<String, String> {
+    #[cfg(target_os="macos")]{crate::event_keychain::read(core,sid,bytes).await}
+    #[cfg(not(target_os="macos"))]{let _=(core,sid);String::from_utf8(protect(bytes, true)?).map_err(|_| "MCP_EVENT_SECRET_STORE".into())}
+}
+async fn same_secret(core:&RouterCore,sub:&EventSubscription,secret:&str)->Result<bool,String>{
+    #[cfg(target_os="macos")]
+    if sub.status!="ACTIVE"||sub.expires_at<=now()||sub.secret.is_empty(){return Ok(false)}
+    match reveal(core,&sub.id,&sub.secret).await{
+        Ok(key)=>Ok(equal(key.as_bytes(),secret.as_bytes())),
+        #[cfg(target_os="macos")] Err(e)=>Err(e),
+        #[cfg(not(target_os="macos"))] Err(_)=>Ok(false)
+    }
 }
 fn public_ip(ip: IpAddr) -> bool {
     match ip {
@@ -288,12 +298,12 @@ async fn post(
         &current
     };
     let at = now() / 1000;
-    let key = reveal(&s.secret)?;
+    let key = reveal(core,&s.id,&s.secret).await?;
     let mut signature = sign(&key, id, at, &body)?;
     if !verification && s.rotation_until.is_some_and(|until| until > now()) {
         if let Some(old) = &s.previous_secret {
             signature.push(' ');
-            signature.push_str(&sign(&reveal(old)?, id, at, &body)?);
+            signature.push_str(&sign(&reveal(core,&s.id,old).await?, id, at, &body)?);
         }
     }
     client
@@ -394,17 +404,20 @@ async fn subscribe(
     }
     let expiry = (at + ttl.min(86400000) as i64).min(grant.expires_at);
     let old = core.store.event_subscription(&sid)?;
-    let same = old
-        .as_ref()
-        .and_then(|s| reveal(&s.secret).ok())
-        .is_some_and(|key| equal(key.as_bytes(), secret.as_bytes()));
+    let same=if let Some(old)=&old{same_secret(core,old,&secret).await?}else{false};
+    #[cfg(target_os="macos")]
+    let pending_key=if same{None}else{Some(crate::event_keychain::prepare(core,gid,&sid,&secret).await?)};
+    #[cfg(target_os="macos")]
+    let protected=if let Some(key)=&pending_key{key.reference()}else{old.as_ref().ok_or("MCP_EVENT_SECRET_REFERENCE_UNCONFIRMED")?.secret.clone()};
+    #[cfg(not(target_os="macos"))]
+    let protected=protect(secret.as_bytes(),false)?;
     let mut sub = EventSubscription {
         id: sid,
         grant_id: gid.into(),
         name: args.name,
         filter: args.arguments,
         callback_url: args.delivery.url,
-        secret: protect(secret.as_bytes(), false)?,
+        secret: protected,
         previous_secret: None,
         rotation_until: None,
         verified_at: at,
@@ -423,15 +436,10 @@ async fn subscribe(
             sub.rotation_until = Some(at + 300000);
         }
     }
-    let cached = core
-        .store
-        .recently_verified_event_callbacks(gid, &sub.callback_url)?
-        .into_iter()
-        .find(|s| {
-            reveal(&s.secret)
-                .ok()
-                .is_some_and(|key| equal(key.as_bytes(), secret.as_bytes()))
-        });
+    let mut cached=None;
+    for candidate in core.store.recently_verified_event_callbacks(gid,&sub.callback_url)?{
+        if same_secret(core,&candidate,&secret).await?{cached=Some(candidate);break}
+    }
     if cached.is_none() {
         let challenge = format!(
             "{}{}",
@@ -472,6 +480,8 @@ async fn subscribe(
         sub.verified_at = verified.verified_at;
     }
     core.store.save_event_subscription(&sub)?;
+    #[cfg(target_os="macos")]
+    if let Some(key)=pending_key{key.disarm();}
     Ok(json!({"id":sub.id,"refreshBefore":iso(expiry)?,"cursor":null,"truncated":false}))
 }
 pub(crate) async fn rpc(core: &RouterCore, gid: &str, input: Value) -> Value {
@@ -530,7 +540,7 @@ pub(crate) async fn rpc(core: &RouterCore, gid: &str, input: Value) -> Value {
     match result {
         Ok(result) => json!({"jsonrpc":"2.0","id":id,"result":result}),
         Err(e) => {
-            let (code, reason) = if e == "MCP_EVENT_METHOD_UNSUPPORTED" {
+            let (code, reason) = if e=="KEYCHAIN_OWNER_ACTION_REQUIRED"{(-32000,"needs_owner_action")}else if e=="MCP_EVENT_SECRET_REQUIRED"{(-32000,"secret_missing")}else if e=="MCP_EVENT_SECRET_REFERENCE_PENDING"||e=="MCP_EVENT_SECRET_REFERENCE_UNCONFIRMED"{(-32000,"state_unconfirmed")}else if e == "MCP_EVENT_METHOD_UNSUPPORTED" {
                 (-32601, "method_not_found")
             } else if e.starts_with("MCP_EVENT_CALLBACK") {
                 (
@@ -554,7 +564,11 @@ pub(crate) async fn rpc(core: &RouterCore, gid: &str, input: Value) -> Value {
         }
     }
 }
-pub(crate) async fn dispatch_one(core: &RouterCore) {
+pub(crate) async fn dispatch_one(core:&RouterCore){
+    dispatch_delivery(core).await;
+    #[cfg(target_os="macos")] crate::event_keychain::cleanup(core).await;
+}
+async fn dispatch_delivery(core: &RouterCore) {
     let Ok(Some(delivery)) = core.store.claim_event_delivery() else {
         return;
     };

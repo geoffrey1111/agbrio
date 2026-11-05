@@ -8,7 +8,8 @@ import puppeteer from 'puppeteer-core';
 import { securityPlatform } from './security-browser.mjs';
 
 export const CHROMIUM_DEBUGGING_PORT = 9229;
-const BINARY_SHA = 'ac2b50c11c536aff132304f1c9ec33709e43ae7f34357153f7359e52fe35f12c';
+const BINARY_SHA = process.platform==='darwin'?'b0170371b54da26fc49bac55533df471ec55a937bc0c6f778722016ba31cc480':'ac2b50c11c536aff132304f1c9ec33709e43ae7f34357153f7359e52fe35f12c';
+function binaryKey(value){const resolved=path.resolve(value);return process.platform==='win32'?resolved.toLowerCase():resolved;}
 export async function fileSha256(filename) {
   const hash = createHash('sha256');
   for await (const chunk of createReadStream(filename)) hash.update(chunk);
@@ -111,7 +112,14 @@ export class ChromiumRuntime {
           `--remote-debugging-port=${CHROMIUM_DEBUGGING_PORT}`, '--disable-extensions', '--no-first-run',
           '--no-default-browser-check', 'about:blank'],
       });
+      if(this.platform.rememberOwnedLaunch){
+        const owner=await this.platform.rememberOwnedLaunch(this.profile,this.browser.process()?.pid,binary,true);
+        this.lease={...this.lease,...owner,binary};await writeFile(this.leasePath(),JSON.stringify(this.lease),{mode:0o600});
+      }
     } catch (error) {
+      // A launch whose native identity was not attested must not become a
+      // reusable browser connection. Retain its lease while any owner exists.
+      this.browser = null;
       if (!(await this.platform.inventory(this.profile)).length) await this.releaseLease();
       throw error;
     }
@@ -126,6 +134,7 @@ export class ChromiumRuntime {
     // browserPackage verified every manifest file before selection/publication.
     this.binaryPath = binary;
     await mkdir(this.profile, { recursive: true });
+    await this.platform.ensureOwnedProfile?.(this.data,this.profile);
     return binary;
   }
   leasePath() { return path.join(this.profile, 'aiwr-browser-session.json'); }
@@ -150,7 +159,7 @@ export class ChromiumRuntime {
   matchesOwner(record, owner) {
     return record.schema === 'AIWR_BROWSER_SESSION_V1' && record.profile === this.profile
       && record.pid === owner.pid && record.started === owner.started
-      && path.resolve(record.binary).toLowerCase() === path.resolve(owner.binary).toLowerCase() && !owner.automated;
+      && binaryKey(record.binary) === binaryKey(owner.binary) && !owner.automated && !owner.ownershipUnproven;
   }
   async openHumanSecurity() {
     if (!await this.authRequired()) throw new Error('SECURITY_RECOVERY_NOT_REQUIRED');
@@ -187,7 +196,7 @@ export class ChromiumRuntime {
       if (owners.length || existing.schema !== 'AIWR_BROWSER_SESSION_V1'
         || existing.mode !== 'HUMAN_ONLY' || existing.profile !== this.profile
         || !Number.isSafeInteger(existing.pid) || !existing.started
-        || path.resolve(existing.binary ?? '').toLowerCase() !== path.resolve(binary).toLowerCase()) throw new Error('PROFILE_IN_USE');
+        || binaryKey(existing.binary ?? '') !== binaryKey(binary)) throw new Error('PROFILE_IN_USE');
       assertHeld();
       await this.releaseLease();
     }
@@ -203,7 +212,7 @@ export class ChromiumRuntime {
       for (;;) {
         const owners = await this.platform.inventory(this.profile);
         const owner = owners.find(item => item.pid === pid && !item.automated
-          && path.resolve(item.binary).toLowerCase() === path.resolve(binary).toLowerCase());
+          && binaryKey(item.binary) === binaryKey(binary) && !item.ownershipUnproven);
         if (owners.length === 1 && owner?.visible) {
           assertHeld();
           this.lease = { ...this.lease, ...owner, binary };
@@ -233,7 +242,7 @@ export class ChromiumRuntime {
     const owner = owners.length === 1 ? owners[0] : null;
     const pid = browser.process()?.pid;
     if (!owner || owner.pid !== pid || !owner.automated
-      || path.resolve(owner.binary).toLowerCase() !== path.resolve(this.binaryPath??path.join(this.resources, 'chromium', 'chrome.exe')).toLowerCase()) {
+      || binaryKey(owner.binary) !== binaryKey(this.binaryPath??path.join(this.resources, 'chromium', 'chrome.exe')) || owner.ownershipUnproven) {
       throw new Error('SECURITY_BROWSER_IDENTITY_CHANGED');
     }
     const focus = await this.platform.focus(owner);

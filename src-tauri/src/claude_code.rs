@@ -55,6 +55,8 @@ fn live_publisher(core:&RouterCore)->Result<bool,String>{
 
 /// An explicit native-app action. Page entry/copy/mobile/MCP never invokes it.
 pub(crate) fn connect(core:&RouterCore,host:&crate::HostRuntime,resources:&std::path::Path)->Result<ConnectionResult,String>{
+    crate::platform::require_native_desktop()?;
+
     // Reuse proven registration before discovering or configuring anything.
     let required:serde_json::Value=std::fs::read(resources.join("claude-code-plugin/.claude-plugin/plugin.json")).ok().and_then(|b|serde_json::from_slice(&b).ok()).ok_or("CLAUDE_OBSERVATION_PLUGIN_NOT_PACKAGED")?;
     let required=required["version"].as_str().and_then(|v|semver::Version::parse(v).ok()).ok_or("CLAUDE_PLUGIN_VERSION_UNCONFIRMED")?;
@@ -64,8 +66,8 @@ pub(crate) fn connect(core:&RouterCore,host:&crate::HostRuntime,resources:&std::
     static CONFIGURE:std::sync::Mutex<()>=std::sync::Mutex::new(());
     let _guard=CONFIGURE.try_lock().map_err(|_|"CLAUDE_CONNECTION_BUSY")?;
     let executable=crate::claude_code_desktop::engine_at(&crate::claude_code_desktop::engine_roots())?;
-    let profile=std::env::var_os("USERPROFILE").ok_or("CLAUDE_PLUGIN_CACHE_UNAVAILABLE")?;
-    connect_admin(core,host,resources,&crate::claude_code_desktop::OfficialCli{executable},&std::path::PathBuf::from(profile).join(".claude/plugins/cache"))
+    let profile=router_core::platform::user_home().map_err(|_|"CLAUDE_PLUGIN_CACHE_UNAVAILABLE")?;
+    connect_admin(core,host,resources,&crate::claude_code_desktop::OfficialCli{executable},&profile.join(".claude/plugins/cache"))
 }
 fn connect_admin(core:&RouterCore,host:&crate::HostRuntime,resources:&std::path::Path,admin:&dyn crate::claude_code_desktop::PluginAdmin,cache_root:&std::path::Path)->Result<ConnectionResult,String>{
     if live_publisher(core)? {return Ok(connection_result("CONNECTED"));}

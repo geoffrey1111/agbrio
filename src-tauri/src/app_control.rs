@@ -10,7 +10,7 @@ pub(crate) fn version() -> &'static str {
 
 pub(crate) fn capabilities(scope: &str) -> Value {
     let instance = matches!(scope,"INSTANCE"|"OWNER");
-    json!({
+    let mut value=json!({
         "apiVersion":API_VERSION,"appVersion":version(),"scope":scope,
         "tools":crate::assistant_mcp::tools_for_scope(scope)["tools"],
         "discoveryOnly":true,"delegationRequired":true,
@@ -25,7 +25,9 @@ pub(crate) fn capabilities(scope: &str) -> Value {
         },
         "localMaintenance":{"transport":"WINDOWS_CURRENT_USER_NAMED_PIPE","commands":["STATUS","CAPABILITIES","DIAGNOSTICS","SHUTDOWN","PUBLISH_BOARD","PUBLISH_REVIEW_BOARD"],"start":"external local CLI","shutdownRequiresExactInstance":true,"remoteShutdown":false},
         "rules":["Discovery is not delegation or runtime readiness","Use stable native identities and existing review/receipt commands","After uncertain writes inspect the original receipt; never resend automatically","No shell, credentials, provider restart or permission changes"]
-    })
+    });
+    if !crate::platform::pi_offered(){value["providers"].as_object_mut().unwrap().remove("PI");}
+    value
 }
 
 pub(crate) fn diagnostics(core: &RouterCore, host: Option<&HostRuntime>) -> Result<Value, String> {

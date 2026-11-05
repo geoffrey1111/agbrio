@@ -48,7 +48,7 @@ fn store_path() -> Result<PathBuf, String> {
             .ok_or("REVIEW_BOARD_TEST_STORE_UNSET".into());
     }
     #[allow(unreachable_code)]
-    std::env::var_os("LOCALAPPDATA")
+    router_core::platform::local_data_base().ok()
         .map(|p| PathBuf::from(p).join("AIWorkRouter/data/review-boards.json"))
         .ok_or("REVIEW_BOARD_STORE_UNAVAILABLE".into())
 }

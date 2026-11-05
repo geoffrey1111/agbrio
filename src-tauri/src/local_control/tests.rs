@@ -1,11 +1,11 @@
 use super::*;
 use std::sync::{Arc,Mutex,atomic::{AtomicUsize,Ordering}};
-fn fixture()->(tempfile::TempDir,RouterCore,HostRuntime){
+pub(super) fn fixture()->(tempfile::TempDir,RouterCore,HostRuntime){
     let temp=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
     let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Default::default())),completed_chatgpt_responses:Arc::new(Mutex::new(Default::default()))};
     (temp,core,HostRuntime::default())
 }
-fn request(command:&str,expected:Option<&str>)->Vec<u8>{serde_json::to_vec(&json!({"apiVersion":1,"requestId":uuid::Uuid::new_v4().to_string(),"command":command,"expectedInstance":expected})).unwrap()}
+pub(super) fn request(command:&str,expected:Option<&str>)->Vec<u8>{serde_json::to_vec(&json!({"apiVersion":1,"requestId":uuid::Uuid::new_v4().to_string(),"command":command,"expectedInstance":expected})).unwrap()}
 #[test]fn publication_requires_current_host_and_never_becomes_a_remote_path_reader(){let(_temp,core,host)=fixture();let mut seen=HashMap::new();assert_eq!(dispatch(&core,&host,&request("PUBLISH_BOARD",None),&mut seen).0["errorCode"],"APP_CONTROL_EXPECTED_INSTANCE_REQUIRED");assert_eq!(dispatch(&core,&host,&request("PUBLISH_BOARD",Some("old")),&mut seen).0["errorCode"],"APP_CONTROL_INSTANCE_CHANGED");assert_eq!(dispatch(&core,&host,&request("PUBLISH_BOARD",Some(host.instance_id())),&mut seen).0["errorCode"],"PUBLISHED_BOARD_FOLDER_REQUIRED");assert!(core.session.lock().unwrap().adapter.is_none());}
 #[test]fn shutdown_pins_exact_host_and_cannot_replay_or_become_a_shell(){
     let(_temp,core,host)=fixture();let mut seen=HashMap::new();
@@ -18,9 +18,9 @@ fn request(command:&str,expected:Option<&str>)->Vec<u8>{serde_json::to_vec(&json
     assert!(core.session.lock().unwrap().adapter.is_none());assert!(core.store.codex_watches().unwrap().is_empty());
 }
 #[test]fn diagnostic_reads_do_not_disclose_private_rows_or_invent_provider_health(){
-    let(_temp,core,host)=fixture();core.store.enable_codex_watch("private-native-id","private-conversation-title","C:/private-path",&router_core::store::codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some("private-turn".into()),item_id:Some("private-item".into()),text:"PRIVATE-CHAT-CONTENT".into()}).unwrap();
+    let(_temp,core,host)=fixture();let private_root=_temp.path().to_string_lossy().replace('\\',"/");core.store.enable_codex_watch("private-native-id","private-conversation-title",private_root.as_str(),&router_core::store::codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some("private-turn".into()),item_id:Some("private-item".into()),text:"PRIVATE-CHAT-CONTENT".into()}).unwrap();
     let value=app_control::diagnostics(&core,Some(&host)).unwrap();let text=value.to_string();
-    for secret in ["private-native-id","private-conversation-title","C:/private-path","private-turn","PRIVATE-CHAT-CONTENT"]{assert!(!text.contains(secret));}
+    for secret in ["private-native-id","private-conversation-title",private_root.as_str(),"private-turn","PRIVATE-CHAT-CONTENT"]{assert!(!text.contains(secret));}
     assert_eq!(value["providerProbePerformed"],false);assert_eq!(value["watches"]["total"],1);assert_eq!(value["codex"]["connected"],false);
     let lock=core.session.lock().unwrap();assert_eq!(app_control::diagnostics(&core,Some(&host)).unwrap()["codex"]["observation"],"BUSY");drop(lock);
 }

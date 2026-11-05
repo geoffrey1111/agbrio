@@ -17,6 +17,8 @@ native-board-acceptance = []
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+futures-util = "0.3"
+dom_query = "=0.27.0"
 router-core = { path = "../crates/router-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -24,8 +26,8 @@ sha2 = "0.10"
 hmac = "0.12"
 hickory-proto = "=0.26.3"
 time = { version = "0.3", features = ["formatting", "local-offset", "parsing"] }
-tauri = { version = "2", features = ["tray-icon", "image-ico"] }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+tauri = { version = "2", features = ["tray-icon", "image-ico", "image-png"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls", "stream"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 url = "2"
 uuid = { version = "1", features = ["v4"] }
@@ -47,9 +49,29 @@ winreg = "0.55"
 windows-core = "0.61.2"
 windows = { version = "0.61.3", features = ["Data_Xml_Dom", "UI_Notifications", "Security_Credentials", "Win32_System_WinRT", "Win32_Foundation", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_UI_Notifications", "Win32_UI_Shell", "Win32_UI_Shell_PropertiesSystem", "Win32_System_Variant", "Win32_System_Ole", "Win32_Storage_FileSystem", "Win32_Security_Cryptography", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_System_JobObjects"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+flate2 = "=1.1.9"
+tar = "=0.4.46"
+plist = "=1.10.0"
+minisign-verify = "=0.2.5"
+tauri-plugin-single-instance = "2.4.4"
+objc2 = "=0.6.4"
+objc2-foundation = "=0.3.2"
+objc2-user-notifications = { version = "=0.3.2", default-features = false, features = ["std", "UNUserNotificationCenter", "UNNotification", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationSettings", "UNNotificationTrigger", "bitflags", "block2"] }
+block2 = "=0.6.2"
+libc = "=0.2.189"
+core-foundation = "=0.10.1"
+security-framework = "=3.7.0"
+security-framework-sys = "=2.17.0"
+
+
 [target.'cfg(windows)'.dev-dependencies]
 windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Accessibility", "Win32_UI_WindowsAndMessaging", "Win32_System_Ole", "Win32_UI_Notifications", "System"] }
 
 [dev-dependencies]
+flate2 = "=1.1.9"
+tar = "=0.4.46"
+plist = "=1.10.0"
+
 tempfile = "3"
 minisign-verify = "=0.2.5"

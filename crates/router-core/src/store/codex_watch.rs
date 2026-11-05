@@ -319,7 +319,7 @@ mod tests {
     use super::*;
     #[test]
     fn unavailable_source_marks_unknown_preserves_history_and_recovery_does_not_repeat_completion(){
-        let d=tempfile::tempdir().unwrap();let s=RouterStore::open_at(d.path().join("router.db")).unwrap();let snap=WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some("t".into()),item_id:Some("final".into()),text:"previous result".into()};s.enable_codex_watch("one","one","D:/fixture",&snap).unwrap();let generation=s.registered_codex_watch("one").unwrap().generation;let count=s.codex_watch_feed(0).unwrap().events.len();s.codex_watch_unavailable_reason("one",generation,"WATCH_THREAD_ARCHIVED").unwrap();let w=s.registered_codex_watch("one").unwrap();assert_eq!(w.snapshot.state,"UNKNOWN");assert_eq!(w.snapshot.text,snap.text);assert_eq!(w.error_code.as_deref(),Some("WATCH_THREAD_ARCHIVED"));assert!(!s.record_codex_watch("one",generation,&snap).unwrap());assert_eq!(s.codex_watch_feed(0).unwrap().events.len(),count);assert!(s.registered_codex_watch("one").unwrap().error_code.is_none());
+        let d=tempfile::tempdir().unwrap();let s=RouterStore::open_at(d.path().join("router.db")).unwrap();let snap=WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some("t".into()),item_id:Some("final".into()),text:"previous result".into()};s.enable_codex_watch("one","one",&crate::store::test_cwd(),&snap).unwrap();let generation=s.registered_codex_watch("one").unwrap().generation;let count=s.codex_watch_feed(0).unwrap().events.len();s.codex_watch_unavailable_reason("one",generation,"WATCH_THREAD_ARCHIVED").unwrap();let w=s.registered_codex_watch("one").unwrap();assert_eq!(w.snapshot.state,"UNKNOWN");assert_eq!(w.snapshot.text,snap.text);assert_eq!(w.error_code.as_deref(),Some("WATCH_THREAD_ARCHIVED"));assert!(!s.record_codex_watch("one",generation,&snap).unwrap());assert_eq!(s.codex_watch_feed(0).unwrap().events.len(),count);assert!(s.registered_codex_watch("one").unwrap().error_code.is_none());
     }
     #[test]fn twenty_existing_watches_do_not_block_an_exact_claude_watch_and_capacity_is_bounded(){
         let d=tempfile::tempdir().unwrap();let s=RouterStore::open_at(d.path().join("capacity.db")).unwrap();let cwd=d.path().to_str().unwrap();let baseline=snapshot("IDLE","turn","baseline");
@@ -404,12 +404,19 @@ mod tests {
             final_reply.text
         );
         assert!(s.codex_watch_feed(f.next_cursor).unwrap().events.is_empty());
+        let checked_before_failure=s.codex_watches().unwrap().remove(0).checked_at;
+        let unavailable_started_at=now();
         s.codex_watch_unavailable("thread-a", 3).unwrap();
+        let unavailable_finished_at=now();
         let after_failure = s.codex_watches().unwrap().remove(0);
-        assert!(after_failure.checked_at <= now() && now() - after_failure.checked_at < 10_000);
+        // A failed read does not make the last successful observation fresher.
+        assert_eq!(after_failure.checked_at,checked_before_failure);
+        // Bound the scheduling instant by the call, not by later database reads
+        // or runner scheduling. This tests the 30s policy, not an IO/CPU SLA.
         assert!(
-            after_failure.retry_after >= now() + 29_000
-                && after_failure.retry_after <= now() + 30_000
+            after_failure.retry_after >= unavailable_started_at + 30_000
+                && after_failure.retry_after <= unavailable_finished_at + 30_000,
+            "retry={} outside call [{},{}] +30s",after_failure.retry_after,unavailable_started_at,unavailable_finished_at
         );
         assert_eq!(s.codex_watches().unwrap()[0].snapshot.state, "UNKNOWN");
         assert_eq!(s.codex_watches().unwrap()[0].snapshot.text,final_reply.text);

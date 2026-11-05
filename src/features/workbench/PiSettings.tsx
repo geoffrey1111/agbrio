@@ -4,7 +4,7 @@ import {t,useLanguage} from '../../i18n';
 
 type Workspace={roots:string[];machineScope:boolean;writable:boolean;terminal:boolean;administrator:boolean;inheritContext:boolean;grantIds:string[]};
 type Scope={id:string;root:string;generation:number;writable:boolean;enabled:boolean;policy?:Workspace|null};
-type View={administratorBackend?:{ready:boolean;preparing?:boolean};installed:boolean;version:string|null;scopes:Scope[];assistantGrants?:{id:string;label:string}[]};
+type View={platformSupported?:boolean;administratorBackend?:{ready:boolean;preparing?:boolean};installed:boolean;version:string|null;scopes:Scope[];assistantGrants?:{id:string;label:string}[]};
 export const piSettingsApi={prepareAdministrator:()=>invoke<View>('pi_prepare_administrator'),authorizeWorkspace:(input:Workspace)=>invoke<View>('pi_authorize_workspace',{input}),read:()=>invoke<View>('pi_settings'),authorize:(root:string,writable:boolean)=>invoke<View>('pi_authorize_directory',{root,writable}),revoke:(scopeId:string,generation:number)=>invoke<View>('pi_revoke_directory',{scopeId,generation})};
 export function PiSettings({api=piSettingsApi}:{api?:Omit<typeof piSettingsApi,'authorizeWorkspace'|'prepareAdministrator'>&{authorizeWorkspace?:typeof piSettingsApi.authorizeWorkspace;prepareAdministrator?:typeof piSettingsApi.prepareAdministrator}}){
  useLanguage();const [view,setView]=useState<View|null>(null),[root,setRoot]=useState(''),[writable,setWritable]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');const mounted=useRef(true),pending=useRef(false),seeded=useRef(false);
@@ -13,6 +13,7 @@ export function PiSettings({api=piSettingsApi}:{api?:Omit<typeof piSettingsApi,'
  useEffect(()=>{mounted.current=true;void api.read().then(v=>{if(mounted.current){setView(v);if(!seeded.current){seeded.current=true;if(v.assistantGrants?.length===1)setGrantIds([v.assistantGrants[0].id]);}}}).catch(()=>{if(mounted.current)setError(t('暂时无法读取 Pi 设置，请重试。'));});return()=>{mounted.current=false;};},[api]);
  async function act(work:()=>Promise<View>,success=''){if(pending.current)return;pending.current=true;setBusy(true);setError('');setNotice('');try{const next=await work();if(mounted.current){setView(next);setNotice(success);}}catch(reason){if(mounted.current){const code=String(reason);setError(t(code.includes('UAC_CANCELLED')?'已取消 Windows 授权，未启动管理员后台。':code.includes('ADMIN_BACKEND')?'管理员后台尚未就绪，请在电脑上点击“准备管理员后台”并确认 Windows 弹窗。':code.includes('IN_USE')?'该目录仍有 Pi 对话打开，请先停止这些 Pi 任务，再调整目录权限。':code.includes('PROTECTED')||code.includes('TOO_BROAD')?'请选择具体项目文件夹，不能授权整个磁盘、用户目录或系统目录。':code.includes('LINK')?'这个路径经过链接或映射目录，请填写项目的真实本地路径。':code.includes('DIRECTORY')?'未找到可用的本地项目文件夹，请检查路径后重试。':'未能保存 Pi 设置，请重试。'));}}finally{pending.current=false;if(mounted.current)setBusy(false);}}
  const scopes=view?.scopes.filter(s=>s.enabled)??[];
+ if(view?.platformSupported===false)return <section className="pi-settings"><h2>{t("Pi 子任务")}</h2><p role="status">{t("该平台尚未支持")}</p></section>;
  return <section className="v4-shared-codex pi-settings" aria-label={t('Pi 执行对话')}>
   <h2>{t('Pi 执行对话')}</h2><p>{t('让管理对话把独立任务交给 Pi，在 Agbrio 查看进度、跟进和读取结果。')}</p>
   {!view&&!error&&<p role="status">{t('正在读取本机 Pi…')}</p>}

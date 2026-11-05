@@ -63,16 +63,31 @@ pub fn supported_version(value: &str) -> bool {
 /// and deletes that folder once a spare becomes a real conversation. The session
 /// keeps reporting the spare path, so it is matched by its exact text.
 pub fn spare_root(cwd: &str) -> bool {
+    #[cfg(windows)]{
     let lower = cwd.replace('/', "\\").to_lowercase();
     lower.contains("\\.claude\\spares\\spare-") && !lower.contains("..")
+    }
+    #[cfg(not(windows))]{cwd.contains("/.claude/spares/spare-")&&!cwd.contains("..")&&!cwd.contains('\\')}
 }
 /// Comparable identity of a session root: the canonical folder, or for a spare
 /// folder that may already be gone, its exact path text.
 pub fn root_key(cwd: &str) -> Option<std::path::PathBuf> {
-    std::fs::canonicalize(cwd).ok().or_else(|| spare_root(cwd).then(|| std::path::PathBuf::from(cwd.replace('/', "\\").to_lowercase())))
+    std::fs::canonicalize(cwd).ok().or_else(|| {
+        if !spare_root(cwd){return None;}
+        #[cfg(windows)]{Some(std::path::PathBuf::from(cwd.replace('/', "\\").to_lowercase()))}
+        #[cfg(not(windows))]{let path=std::path::PathBuf::from(cwd);path.is_absolute().then_some(path)}
+    })
 }
 pub fn same_root(a: &str, b: &str) -> bool {
-    match (root_key(a), root_key(b)) { (Some(a), Some(b)) => a == b || (spare_root(&a.to_string_lossy()) && a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()), _ => false }
+    match (root_key(a), root_key(b)) { (Some(a), Some(b)) => a == b || (cfg!(windows) && spare_root(&a.to_string_lossy()) && a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()), _ => false }
+}
+#[cfg(all(test,unix))]
+mod unix_root_tests{
+    #[test]fn deleted_spare_identity_retains_case_and_posix_separators(){
+        let root=tempfile::tempdir().unwrap();let spare=root.path().join(".claude/spares/spare-AbC123");let a=spare.to_str().unwrap();
+        assert!(super::same_root(a,a));assert!(!super::same_root(a,&a.replace("AbC123","abc123")));
+        assert_eq!(super::root_key(a).unwrap(),spare);assert!(super::root_key("relative/.claude/spares/spare-x").is_none());
+    }
 }
 /// The session's working directory is its root or a folder inside it (Claude may run
 /// a turn in a subfolder), or both are the same spare folder.

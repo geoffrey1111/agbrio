@@ -84,7 +84,7 @@ fn preclaim_diagnostic_preserves_approval_and_cannot_overwrite_an_attempt(){
     s.claim_role_handoff(&h.id).unwrap();assert!(s.claim_role_handoff(&h.id).is_err());
 }
 #[test]fn pending_decision_blocks_rule_bypass_then_one_off_answer_resumes(){
-    let(_,s,_,g,h)=fixture();let d=s.ask_assistant_decision(&g.id,&h.id,&h.payload_hash,"A or B?").unwrap();
+    let(_directory,s,_,g,h)=fixture();let d=s.ask_assistant_decision(&g.id,&h.id,&h.payload_hash,"A or B?").unwrap();
     assert_eq!(d.id,s.ask_assistant_decision(&g.id,&h.id,&h.payload_hash,"A or B?").unwrap().id);
     assert!(s.approve_assistant_handoff(&g.id,approval(&h)).unwrap_err().contains("PENDING"));
     s.answer_assistant_decision(&g.id,&d.id,&h.payload_hash,"A","assistant-chat/user-message-42").unwrap();
@@ -93,26 +93,26 @@ fn preclaim_diagnostic_preserves_approval_and_cannot_overwrite_an_attempt(){
     assert!(s.answer_assistant_decision(&g.id,&d.id,&h.payload_hash,"B","later").is_err());
 }
 #[test]fn revocation_between_approval_and_physical_claim_stops_send(){
-    let(_,s,_,g,h)=fixture();s.approve_assistant_handoff(&g.id,approval(&h)).unwrap();s.revoke_assistant_grant(&g.id).unwrap();
+    let(_directory,s,_,g,h)=fixture();s.approve_assistant_handoff(&g.id,approval(&h)).unwrap();s.revoke_assistant_grant(&g.id).unwrap();
     assert!(s.claim_role_handoff(&h.id).unwrap_err().contains("REVOKED"));assert_eq!(s.role_handoff(&h.id).unwrap().status,"APPROVED");
 }
 #[test]fn newer_source_invalidates_an_approved_delegate_handoff(){
-    let(_,s,w,g,h)=fixture();s.approve_assistant_handoff(&g.id,approval(&h)).unwrap();
+    let(_directory,s,w,g,h)=fixture();s.approve_assistant_handoff(&g.id,approval(&h)).unwrap();
     let source=s.role_bridge(&w).unwrap().decision.unwrap().endpoint.id;s.record_reply_observation(&w,&source,Some("turn:two"),"changed result",None).unwrap();
     assert!(s.claim_role_handoff(&h.id).unwrap_err().contains("SOURCE_CHANGED"));
 }
 #[test]fn edit_invalidates_pending_answer_and_old_payload_approval(){
-    let(_,s,_,g,h)=fixture();let d=s.ask_assistant_decision(&g.id,&h.id,&h.payload_hash,"Choose").unwrap();
+    let(_directory,s,_,g,h)=fixture();let d=s.ask_assistant_decision(&g.id,&h.id,&h.payload_hash,"Choose").unwrap();
     let edited=s.edit_role_handoff(&h.id,&h.payload_hash,"different bytes").unwrap();
     assert!(s.answer_assistant_decision(&g.id,&d.id,&edited.payload_hash,"yes","reply").is_err());assert!(s.approve_assistant_handoff(&g.id,approval(&h)).is_err());
 }
 #[test]fn unknown_rule_and_wrong_grant_cannot_approve(){
-    let(_,s,w,g,h)=fixture();let mut a=approval(&h);a.rule_id=Some("invented".into());assert!(s.approve_assistant_handoff(&g.id,a).is_err());
+    let(_directory,s,w,g,h)=fixture();let mut a=approval(&h);a.rule_id=Some("invented".into());assert!(s.approve_assistant_handoff(&g.id,a).is_err());
     let other=s.create_assistant_grant(GrantInput{workstream_id:w,source_role:"EXECUTION".into(),binding_revision:g.binding_revision,label:"other".into(),rules:g.rules,expires_at:now()+60000}).unwrap();
     assert!(s.approve_assistant_handoff(&other.id,approval(&h)).is_err());
 }
 #[test]fn two_way_grant_can_review_the_reverse_reply_but_still_pins_the_same_bridge(){
-    let(_,s,w,g,_)=fixture();let b=s.role_bridge(&w).unwrap();
+    let(_directory,s,w,g,_)=fixture();let b=s.role_bridge(&w).unwrap();
     let grant=s.create_assistant_grant(GrantInput{workstream_id:w.clone(),source_role:"BOTH".into(),binding_revision:b.binding_revision,label:"Dot two-way".into(),rules:g.rules,expires_at:now()+60000}).unwrap();
     s.record_reply_observation(&w,&b.execution.unwrap().endpoint.id,Some("reverse-result"),"Return for management review",None).unwrap();
     let obs=s.reply_observations_for_workstream(&w).unwrap().into_iter().find(|o|o.assistant_identity.as_deref()==Some("reverse-result")).unwrap();

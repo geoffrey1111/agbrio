@@ -43,7 +43,7 @@ export interface UnifiedWorkbenchProps {
   /** Settings › 概览 status reads over existing interfaces (desktop). */
   overviewApi?:import("./SettingsHome").OverviewApi;
   /** Phone settings computer card name (Transport T7). */
-  computerIdentity?:()=>Promise<{hostName:string|null}>;
+  computerIdentity?:()=>Promise<import('./HostPiAvailability').ComputerIdentity>;
   onOpenWebAccess?:()=>void;
   onCreateBridge?: (name:string)=>Promise<void>;
   items: WorkbenchItem[];

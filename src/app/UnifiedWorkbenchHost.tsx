@@ -5,7 +5,7 @@ import {desktopBridgeActivity} from "../features/workbench/bridgeActivity";
 import {flushSync} from "react-dom";
 import {NotificationDeliveryPanel} from "../features/workbench/NotificationDeliveryPanel";
 import {SharedCodexConnection} from "../features/workbench/SharedCodexConnection";
-import {desktopOverviewApi} from "../features/workbench/SettingsHome";
+import {desktopOverviewApi,desktopComputerIdentity} from "../features/workbench/SettingsHome";
 import {LocalSafetySettings} from "../features/workbench/LocalSafetySettings";
 import {PiSettings} from "../features/workbench/PiSettings";
 import {DesktopWebAccess} from "../features/workbench/DesktopWebAccess";
@@ -266,7 +266,7 @@ export function UnifiedWorkbenchHost({initialSurface="BRIDGES"}:{initialSurface?
     return { workstreamId: query.get("workstream")?.trim() || null, replyId: query.get("reply")?.trim() || null };
   }, []);
   const hideToTray = useCallback(() => {
-    void getCurrentWindow().hide().catch((error) => setRuntimeError(`窗口未能隐藏到托盘：${String(error)}`));
+    void getCurrentWindow().hide().catch((error) => setRuntimeError(`窗口未能隐藏：${String(error)}`));
   }, []);
 
   const refreshDashboard = useCallback(async () => {
@@ -1468,7 +1468,7 @@ export function UnifiedWorkbenchHost({initialSurface="BRIDGES"}:{initialSurface?
     selectedWorkstreamId={selectedWorkstreamId}
     reply={reply}
     roleCompatible={roleMode}
-    assistantPanel={<AssistantSettings/>} piSettingsPanel={<PiSettings/>} codexConnectionPanel={<SharedCodexConnection/>} runtimeProtectionPanel={<LocalSafetySettings/>} overviewApi={desktopOverviewApi} onOpenWebAccess={()=>setWebAccessRequest(v=>v+1)} watchApi={desktopNotificationApi} globalActions={<><CodexNotifications onDetailChange={setNotificationDetail} onCountChange={setNotificationCount} api={desktopNotificationApi} workbenchPage={{active:surface==="NOTIFICATION_LOG",open:()=>setSurface("NOTIFICATION_LOG")}}/><DesktopWebAccess openRequest={webAccessRequest}/></>}
+    computerIdentity={desktopComputerIdentity} assistantPanel={<AssistantSettings/>} piSettingsPanel={<PiSettings/>} codexConnectionPanel={<SharedCodexConnection/>} runtimeProtectionPanel={<LocalSafetySettings/>} overviewApi={desktopOverviewApi} onOpenWebAccess={()=>setWebAccessRequest(v=>v+1)} watchApi={desktopNotificationApi} globalActions={<><CodexNotifications onDetailChange={setNotificationDetail} onCountChange={setNotificationCount} api={desktopNotificationApi} workbenchPage={{active:surface==="NOTIFICATION_LOG",open:()=>setSurface("NOTIFICATION_LOG")}}/><DesktopWebAccess openRequest={webAccessRequest}/></>}
     criticalNotice={(chatGptAccountSecurityRequired || hostEnvironment?.chatgptBrowserMode === "AUTH_REQUIRED") ? <BridgeStatus recoveryOnly name={selected?.name || "AI Work Router"} recoveryError={runtimeError} showErrors decision={selectedChatGptEndpoint} execution={selectedCodexEndpoint} authenticationRequired={chatGptAccountSecurityRequired || hostEnvironment?.chatgptBrowserMode === "AUTH_REQUIRED"} executionConnected={codexConnected} nextAction={items.find(item => item.id === selectedWorkstreamId)?.attentionItems?.[0]?.message} onManage={() => openProject()} onOpenBrowser={openHostBrowserSetup} onAuthenticationCompleted={() => codexApi.confirmChatGptAuthenticationCompleted().then(() => { setChatGptAccountSecurityRequired(false); return refreshHostEnvironment(); }).catch(error => setRuntimeError(securityRecoveryError(error, "COMPLETE")))} /> : null}
     bridgePanel={<>{!roleMode && (selected && !(chatGptAccountSecurityRequired || hostEnvironment?.chatgptBrowserMode === "AUTH_REQUIRED") ? <BridgeStatus name={selected?.name || "AI Work Router"} recoveryError={runtimeError} showErrors decision={selectedChatGptEndpoint} execution={selectedCodexEndpoint} authenticationRequired={chatGptAccountSecurityRequired || hostEnvironment?.chatgptBrowserMode === "AUTH_REQUIRED"} executionConnected={codexConnected} nextAction={items.find(item => item.id === selectedWorkstreamId)?.attentionItems?.[0]?.message} onManage={requestBinding} onOpenBrowser={openHostBrowserSetup} onAuthenticationCompleted={() => codexApi.confirmChatGptAuthenticationCompleted().then(() => { setChatGptAccountSecurityRequired(false); return refreshHostEnvironment(); }).catch(error => setRuntimeError(securityRecoveryError(error, "COMPLETE")))} /> : null)} {selectedWorkstreamId && <RoleBridgePanel key={selectedWorkstreamId} workstreamId={selectedWorkstreamId} workstreamName={items.find(item => item.id === selectedWorkstreamId)?.name} api={desktopRoleBridgeApi} readerActive={surface==="WORKSPACE"} onOpenConnection={()=>setSurface("RUNTIME")} bindingRequest={bindingRequest} externalBindingEntry={Boolean(selected && !(chatGptAccountSecurityRequired || hostEnvironment?.chatgptBrowserMode === "AUTH_REQUIRED"))} onModeChange={setRoleMode} onBindingsChanged={() => { void refreshIndex(); }} />}</>}
     draft={workbenchDraft}

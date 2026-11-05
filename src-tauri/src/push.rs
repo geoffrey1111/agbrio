@@ -169,7 +169,7 @@ impl PushProviderClass {
 
 fn config_path() -> Result<PathBuf, String> {
     let base =
-        std::env::var("LOCALAPPDATA").map_err(|_| "Push configuration requires LOCALAPPDATA")?;
+        router_core::platform::local_data_base()?;
     Ok(PathBuf::from(base)
         .join("AIWorkRouter")
         .join("push")
@@ -515,7 +515,7 @@ mod tests {
         assert_eq!(current.subscriptions.iter().map(|s|s.endpoint.as_str()).collect::<Vec<_>>(),vec!["updated","new"]);
     }
     use super::*;
-    use std::io::Read;
+    use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::thread;
 
@@ -573,19 +573,35 @@ mod tests {
     fn bounded_push_http_client_times_out_a_stalled_transport() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
+        let (accepted, observed) = std::sync::mpsc::sync_channel(1);
+        let (release, held) = std::sync::mpsc::sync_channel(1);
         let server = thread::spawn(move || {
+            // Establish actual HTTP readiness before measuring the stalled request.
+            // The warm-up is not part of the timeout under test.
+            {
+                let (mut socket, _) = listener.accept().unwrap();
+                let mut request = [0u8; 512];
+                assert!(socket.read(&mut request).unwrap() > 0);
+                socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+            }
             let (mut socket, _) = listener.accept().unwrap();
             let mut request = [0u8; 512];
-            let _ = socket.read(&mut request);
-            thread::sleep(Duration::from_millis(200));
+            assert!(socket.read(&mut request).unwrap() > 0);
+            accepted.send(()).unwrap();
+            // Keep the peer open until the client has returned. A timeout must
+            // be caused by the configured client deadline, not peer EOF. The
+            // watchdog makes a removed/broken client timeout fail finitely.
+            held.recv_timeout(Duration::from_secs(5)).unwrap();
         });
-        let started = Instant::now();
-        let result = push_http_client(Duration::from_millis(20), Duration::from_millis(50))
-            .unwrap()
-            .get(format!("http://{address}/stalled"))
+        // Time the bounded transport, not first-use client/runtime initialization.
+        let client = push_http_client(Duration::from_millis(20), Duration::from_millis(50)).unwrap();
+        assert!(client.get(format!("http://{address}/ready")).timeout(Duration::from_secs(2)).send().unwrap().status().is_success());
+        let result = client.get(format!("http://{address}/stalled"))
             .send();
-        assert!(result.is_err());
-        assert!(started.elapsed() < Duration::from_millis(180));
+        observed.recv_timeout(Duration::from_secs(2)).unwrap();
+        let error = result.unwrap_err();
+        assert!(error.is_timeout(), "stalled transport must hit its configured deadline: {error:?}");
+        release.send(()).unwrap();
         server.join().unwrap();
     }
 

@@ -1,4 +1,5 @@
 mod pi;
+mod platform;
 mod todo_projection;
 #[cfg(test)]mod completed_empty_turn_tests;
 mod attachment_cache;
@@ -79,6 +80,10 @@ mod mobile_connection;
 mod hosted_relay;
 mod web_auth;
 mod web_availability;
+#[cfg(windows)]
+mod shared_codex;
+#[cfg(not(windows))]
+#[path = "platform/shared_codex_unsupported.rs"]
 mod shared_codex;
 use host::HostRuntime;
 use host_application::*;
@@ -95,6 +100,7 @@ mod runtime_reconciler;
 mod role_bridge;
 mod assistant_mcp;
 mod assistant_events;
+mod event_keychain;
 mod assistant_help;
 mod assistant_connection_endpoint;
 mod assistant_operations;
@@ -205,7 +211,12 @@ fn web_paired_devices()->Result<Vec<web_auth::Device>,String>{web_auth::global()
 fn web_revoke_device(device_id:String)->Result<(),String>{web_auth::global()?.revoke(Some(&device_id),None)}
 
 #[tauri::command]
-fn codex_delivery_settings(state:State<'_,RouterState>)->Result<watch_notifications::SettingsView,String>{watch_notifications::view(&state.store)}
+async fn codex_delivery_settings(state:State<'_,RouterState>)->Result<watch_notifications::SettingsView,String>{let store=state.store.clone();tauri::async_runtime::spawn_blocking(move||watch_notifications::view(&store)).await.map_err(|_|"DELIVERY_SETTINGS_UNAVAILABLE".to_string())?}
+#[tauri::command]
+async fn codex_request_desktop_notifications()->Result<(),String>{
+    #[cfg(target_os="macos")]{tauri::async_runtime::spawn_blocking(platform::macos_notifications::request_permission).await.map_err(|_|"MACOS_NOTIFICATION_UNAVAILABLE".to_string())?}
+    #[cfg(not(target_os="macos"))]{Err(platform::UNSUPPORTED.into())}
+}
 #[tauri::command]
 async fn codex_delivery_command(input:watch_notifications::DeliveryCommand,state:State<'_,RouterState>)->Result<String,String>{let store=state.store.clone();tauri::async_runtime::spawn_blocking(move||watch_notifications::command(&store,input)).await.map_err(|_|"DELIVERY_COMMAND_FAILED".to_string())?}
 #[tauri::command]
@@ -1381,6 +1392,7 @@ fn schedule_host_acceptance(app: &tauri::App) {
             let _ = handle.run_on_main_thread(move || quit_host(&quit_handle));
         });
     } else if host_autostart_acceptance_requested() {
+        #[cfg(windows)]
         tauri::async_runtime::spawn(async move {
             use tauri_plugin_autostart::ManagerExt;
             let autostart = handle.autolaunch();
@@ -1416,6 +1428,8 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let core = app.state::<RouterCore>().inner().clone();
     // Notification registration affects this application's own Windows identity only.
     let _ = watch_notifications::register_windows();
+    #[cfg(target_os="macos")]
+    platform::macos_notifications::init(app.handle());
     #[cfg(windows)]
     let _ = notification_activation::register(app.handle());
     #[cfg(windows)]
@@ -1440,7 +1454,7 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let node = std::env::current_exe()?
         .parent()
         .ok_or("Host executable directory unavailable")?
-        .join("browser-executor-node.exe");
+        .join(platform::node_filename());
     #[cfg(debug_assertions)]
     let (resources, node) = if resources.join("production-entry.mjs").is_file() {
         (resources, node)
@@ -1448,11 +1462,11 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         let source = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         (
             source.join("resources/browser-executor"),
-            source.join("binaries/browser-executor-node-x86_64-pc-windows-msvc.exe"),
+            source.join("binaries").join(platform::development_node_filename()),
         )
     };
     let data = std::path::PathBuf::from(
-        std::env::var_os("LOCALAPPDATA").ok_or("Router local data unavailable")?,
+        router_core::platform::local_data_base()?,
     )
     .join("AIWorkRouter/browser-executor");
     core.chatgpt
@@ -1462,8 +1476,8 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             data,
         })?;
     let shared_resources=app.path().resource_dir()?.join("codex-shared");
-    let shared_node=std::env::current_exe()?.parent().ok_or("Host directory unavailable")?.join("browser-executor-node.exe");
-    #[cfg(debug_assertions)]let(shared_resources,shared_node)=if shared_resources.join("runtime.mjs").is_file(){(shared_resources,shared_node)}else{let source=std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));(source.join("resources/codex-shared"),source.join("binaries/browser-executor-node-x86_64-pc-windows-msvc.exe"))};
+    let shared_node=std::env::current_exe()?.parent().ok_or("Host directory unavailable")?.join(platform::node_filename());
+    #[cfg(debug_assertions)]let(shared_resources,shared_node)=if shared_resources.join("runtime.mjs").is_file(){(shared_resources,shared_node)}else{let source=std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));(source.join("resources/codex-shared"),source.join("binaries").join(platform::development_node_filename()))};
     let hosted_resources=app.path().resource_dir()?.join("hosted-relay");
     #[cfg(debug_assertions)]let hosted_resources=if hosted_resources.join("connector.mjs").is_file(){hosted_resources}else{std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/hosted-relay")};
     crate::hosted_relay::configure_assets(hosted_resources,shared_node.clone());
@@ -1493,14 +1507,19 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
     #[cfg(debug_assertions)]
     host.record_tray_quit_enabled(quit.is_enabled());
+    #[cfg(not(target_os = "macos"))]
     let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/icon.ico"))?;
+    #[cfg(target_os = "macos")]
+    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))?;
     if let Some(window) = app.get_webview_window("main") {
+        #[cfg(not(target_os = "macos"))]
         window.set_icon(icon.clone())?;
         #[cfg(windows)]
         notification_activation::install_window_identity(&window)?;
     }
     TrayIconBuilder::with_id("ai-work-router-host")
         .icon(icon)
+        .icon_as_template(cfg!(target_os="macos"))
         .tooltip("Agbrio · Agent Bridge")
         .menu(&menu)
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -1512,6 +1531,19 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[cfg(not(any(windows,target_os="macos")))]
+#[tauri::command]
+fn autostart_enabled(app: AppHandle) -> Result<bool, String> {
+    let _ = app;
+    Err(platform::UNSUPPORTED.into())
+}
+#[cfg(not(any(windows,target_os="macos")))]
+#[tauri::command]
+fn set_autostart_enabled(enabled: bool, app: AppHandle) -> Result<(), String> {
+    let _ = (enabled, app);
+    Err(platform::UNSUPPORTED.into())
+}
+
 #[cfg(windows)]
 #[tauri::command]
 fn autostart_enabled(app: AppHandle) -> Result<bool, String> {
@@ -1520,6 +1552,13 @@ fn autostart_enabled(app: AppHandle) -> Result<bool, String> {
         .is_enabled()
         .map_err(|error| format!("Could not read Windows sign-in startup state: {error}"))
 }
+
+#[cfg(target_os="macos")]
+#[tauri::command]
+fn autostart_enabled()->Result<bool,String>{platform::macos_startup::enabled()}
+#[cfg(target_os="macos")]
+#[tauri::command]
+fn set_autostart_enabled(enabled:bool)->Result<(),String>{platform::macos_startup::set(enabled)}
 
 #[cfg(windows)]
 #[tauri::command]
@@ -1580,14 +1619,15 @@ pub fn run() {
         .manage(HostRuntime::default())
         .manage(watch_notifications::NotificationNavigation::default())
         .on_window_event(on_host_window_event);
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     let builder = builder
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             watch_notifications::navigate(app,args);
             let handle = app.clone();
             let _ = app.run_on_main_thread(move || show_dashboard(&handle));
-        }))
-        .plugin(tauri_plugin_autostart::init(Default::default(), None));
+        }));
+    #[cfg(windows)]
+    let builder = builder.plugin(tauri_plugin_autostart::init(Default::default(), None));
     #[cfg(debug_assertions)]
     let builder = builder.setup(|app| {
         configure_host(app)?;
@@ -1600,10 +1640,10 @@ pub fn run() {
     let builder = builder.invoke_handler(tauri::generate_handler![
         pi_settings,pi_prepare_administrator,pi_authorize_directory,pi_authorize_workspace,pi_revoke_directory,resource_monitor_read,resource_monitor_apply,local_safety_status,local_safety_save,app_cache_status,app_cache_cleanup,review_board_publish,review_board_desktop_url,published_board_remove,published_boards_list,published_board_publish,published_board_snapshot,published_board_asset,app_capabilities,app_diagnostics,character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
         claude_code_sessions,claude_code_connections,claude_code_setup,claude_code_connect,claude_code_revoke,
-        desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,hosted_connection_trial,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_set_launch_administrator, shared_codex_setup, shared_codex_launch, shared_codex_disable,
+        desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,hosted_connection_trial,event_keychain::assistant_event_keychain_status,event_keychain::assistant_event_keychain_authorize,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_set_launch_administrator, shared_codex_setup, shared_codex_launch, shared_codex_disable,
         read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
         claude_watch_chat,claude_watch_chat_command,codex_watch_candidates,codex_watch_list, codex_watch_enable, codex_watch_show, codex_watch_pause, codex_watch_remove, computer_identity, codex_watch_mark_thread_read, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
-        codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
+        codex_delivery_settings, codex_request_desktop_notifications, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
         workspace_snapshot,
         workstream_snapshot,
         native_window_monitor_evidence,
@@ -1689,8 +1729,8 @@ pub fn run() {
     let builder = builder.invoke_handler(tauri::generate_handler![
         pi_settings,pi_prepare_administrator,pi_authorize_directory,pi_authorize_workspace,pi_revoke_directory,resource_monitor_read,resource_monitor_apply,local_safety_status,local_safety_save,app_cache_status,app_cache_cleanup,review_board_publish,review_board_desktop_url,published_board_remove,published_boards_list,published_board_publish,published_board_snapshot,published_board_asset,app_capabilities,app_diagnostics,character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
         claude_code_sessions,claude_code_connections,claude_code_setup,claude_code_connect,claude_code_revoke,
-        desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,hosted_connection_trial,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_set_launch_administrator, shared_codex_setup, shared_codex_launch, shared_codex_disable,
-        codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
+        desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,hosted_connection_trial,event_keychain::assistant_event_keychain_status,event_keychain::assistant_event_keychain_authorize,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_set_launch_administrator, shared_codex_setup, shared_codex_launch, shared_codex_disable,
+        codex_delivery_settings, codex_request_desktop_notifications, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
         read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
         claude_watch_chat,claude_watch_chat_command,codex_watch_candidates,codex_watch_list, codex_watch_enable, codex_watch_show, codex_watch_pause, codex_watch_remove, computer_identity, codex_watch_mark_thread_read, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
         workspace_snapshot,
@@ -1772,8 +1812,17 @@ pub fn run() {
         set_autostart_enabled
     ]);
     builder
-        .run(tauri::generate_context!())
-        .expect("error while running AI Work Router");
+        .build(tauri::generate_context!())
+        .expect("error while building AI Work Router")
+        .run(|app,event|{
+            #[cfg(target_os="macos")]
+            match event{
+                tauri::RunEvent::Reopen{..}=>show_dashboard(app),
+                tauri::RunEvent::ExitRequested{code:None,api,..}=>{api.prevent_exit();quit_host(app);},
+                _=>{}
+            }
+            #[cfg(not(target_os="macos"))]let _=(app,event);
+        });
 }
 
 #[cfg(test)]

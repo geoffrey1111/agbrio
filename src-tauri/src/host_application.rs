@@ -1023,7 +1023,7 @@ impl RouterCore {
     pub(crate) fn create_mobile_verified_local_backup(
         &self,
     ) -> Result<persistence::VerifiedBackup, String> {
-        let local = std::env::var_os("LOCALAPPDATA").ok_or("LOCALAPPDATA is unavailable")?;
+        let local = router_core::platform::local_data_base()?;
         let backup_directory = std::path::PathBuf::from(local)
             .join("AIWorkRouter")
             .join("backups");
@@ -4117,7 +4117,7 @@ pub(crate) fn unprojected_thread_directory(
             Ok(path)
         }
         None => {
-            let local = std::env::var_os("LOCALAPPDATA").ok_or("LOCALAPPDATA is unavailable")?;
+            let local = router_core::platform::local_data_base()?;
             let path = std::path::PathBuf::from(local)
                 .join("AIWorkRouter")
                 .join("scratch")
@@ -5836,7 +5836,7 @@ pub(crate) fn service_pair_workstream_endpoints(
 pub(crate) fn service_create_verified_local_backup(
     state: &RouterState,
 ) -> Result<persistence::VerifiedBackup, String> {
-    let local = std::env::var_os("LOCALAPPDATA").ok_or("LOCALAPPDATA is unavailable")?;
+    let local = router_core::platform::local_data_base()?;
     let backup_directory = std::path::PathBuf::from(local)
         .join("AIWorkRouter")
         .join("backups");

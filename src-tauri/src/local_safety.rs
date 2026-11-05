@@ -7,6 +7,9 @@ use sha2::{Digest,Sha256};
 use std::{path::{Path,PathBuf},sync::{Mutex,OnceLock},time::{SystemTime,UNIX_EPOCH},io::Read};
 static PASS:OnceLock<Mutex<(i64,bool)>>=OnceLock::new();
 static RECEIPT_CURSOR:OnceLock<Mutex<Option<String>>>=OnceLock::new();
+#[cfg(any(target_os="macos",test))]
+#[path="local_safety/macos.rs"]
+mod macos;
 pub(crate) fn now()->i64{SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as i64}
 fn native_request_id(id:&str)->String{let hash=Sha256::digest(format!("agbrio-local-safety-v1:{id}"));let mut bytes=[0_u8;16];bytes.copy_from_slice(&hash[..16]);bytes[6]=(bytes[6]&15)|128;bytes[8]=(bytes[8]&63)|128;uuid::Uuid::from_bytes(bytes).to_string()}
 #[cfg(windows)]
@@ -18,8 +21,9 @@ fn inbox()->Option<PathBuf>{
  if !Path::new(&desktop).is_absolute(){return None;}
  Some(PathBuf::from(desktop).join("工具").join("内存保护").join("outbox"))
 }
-#[cfg(not(windows))]fn inbox()->Option<PathBuf>{None}
-fn collector_available()->bool{inbox().and_then(|p|p.parent().map(Path::to_path_buf)).is_some_and(|p|(p.join("MemoryAlert.ps1").is_file()||p.join("ResourceCapture.ps1").is_file())&&p.join("settings.json").is_file())}
+#[cfg(target_os="macos")]fn inbox()->Option<PathBuf>{crate::platform::macos_resources::root().map(|p|p.join("outbox"))}
+#[cfg(not(any(windows,target_os="macos")))]fn inbox()->Option<PathBuf>{None}
+fn collector_available()->bool{#[cfg(target_os="macos")]return crate::platform::macos_resources::available();inbox().and_then(|p|p.parent().map(Path::to_path_buf)).is_some_and(|p|(p.join("MemoryAlert.ps1").is_file()||p.join("ResourceCapture.ps1").is_file())&&p.join("settings.json").is_file())}
 pub(crate) fn collector_root()->Option<PathBuf>{inbox().and_then(|p|p.parent().map(Path::to_path_buf))}
 pub(crate) fn recoverable(d:&router_core::codex::adapter::NativeTurnDiagnostic)->bool{
  d.confirmed_terminal && d.status=="failed" && d.will_retry==Some(false) && matches!(d.error_code.as_deref(),Some("modelCapacity"|"serverOverloaded"|"internalServerError"|"flexUnavailable"))
@@ -87,6 +91,7 @@ fn summary(e:&Event,stamp:i64)->Value{
  json!({"eventId":e.event_id,"observedAt":stamp,"severity":e.severity,"conditions":conditions,"text":text})
 }
 fn import(core:&RouterCore,at:i64)->Result<(),String>{
+ #[cfg(target_os="macos")]{let Some(host)=crate::platform::macos_resources::host_id()else{return Ok(())};let Some(dir)=inbox()else{return Ok(())};return import_at(core,at,&dir,&host);}
  let Some(dir)=inbox()else{return Ok(())};import_at(core,at,&dir,&std::env::var("COMPUTERNAME").unwrap_or_default())
 }
 fn import_at(core:&RouterCore,at:i64,dir:&Path,host:&str)->Result<(),String>{
@@ -99,13 +104,18 @@ fn import_at(core:&RouterCore,at:i64,dir:&Path,host:&str)->Result<(),String>{
  for path in paths{
   if path.extension().and_then(|s|s.to_str())!=Some("json")||linked(&path)||!path.is_file(){continue;}
   let mut bytes=Vec::new();if std::fs::File::open(&path).and_then(|f|f.take(65537).read_to_end(&mut bytes)).is_err(){continue;}
-  let Ok((event,stamp))=parse(&bytes,host,at)else{continue;};
+  let Ok((event,stamp))=resource_notice(&bytes,host,at)else{continue;};
   if newest.as_ref().is_none_or(|(_,old)|stamp>*old){newest=Some((event,stamp));}
  }
- if let Some((event,stamp))=newest{let id=format!("resource:{}",event.event_id);core.store.prepare_resource_event(&id,&summary(&event,stamp),stamp)?;}
+ if let Some((event,stamp))=newest{let id=format!("resource:{}",event["eventId"].as_str().ok_or("SAFETY_EVENT_INVALID")?);core.store.prepare_resource_event(&id,&event,stamp)?;}
  // Producer owns its bounded outbox. Never delete files to imply delivery or
  // remove a newer overflow-latest event that replaced the one we just read.
  Ok(())
+}
+fn resource_notice(bytes:&[u8],host:&str,at:i64)->Result<(Value,i64),String>{
+ if let Ok((event,stamp))=parse(bytes,host,at){return Ok((summary(&event,stamp),stamp));}
+ #[cfg(target_os="macos")]return macos::parse(bytes,host,at);
+ #[cfg(not(target_os="macos"))]Err("SAFETY_EVENT_INVALID".into())
 }
 fn receiver_available(core:&RouterCore,t:&Target,at:i64)->bool{
  let Ok(w)=core.store.codex_chat_context(&t.thread_id)else{return false};if !w.enabled||w.generation!=t.generation||w.cwd!=t.cwd{return false;}

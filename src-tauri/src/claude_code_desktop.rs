@@ -6,10 +6,14 @@ use std::{collections::HashMap, fs, io::{BufReader, Read, Write}, path::{Path, P
 
 pub(crate) fn data_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
+    #[cfg(windows)]{
     if let Some(roaming) = std::env::var_os("APPDATA") { roots.push(PathBuf::from(roaming).join("Claude")); }
     if let Some(local) = std::env::var_os("LOCALAPPDATA") {
         roots.push(PathBuf::from(local).join("Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude"));
     }
+    }
+    #[cfg(target_os="macos")]
+    if let Ok(home)=router_core::platform::user_home(){roots.push(home.join("Library/Application Support/Claude"));}
     roots.into_iter().filter_map(|p| fs::canonicalize(p).ok()).fold(Vec::new(), |mut result, p| {
         if !result.contains(&p) { result.push(p); } result
     })
@@ -24,7 +28,10 @@ fn engine_roots_at(mut roots: Vec<PathBuf>, local: Option<&Path>) -> Vec<PathBuf
     roots
 }
 pub(crate) fn engine_roots() -> Vec<PathBuf> {
+    #[cfg(windows)]
     let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+    #[cfg(not(windows))]
+    let local:Option<PathBuf>=None;
     engine_roots_at(data_roots(), local.as_deref())
 }
 
@@ -169,9 +176,12 @@ pub(crate) fn engine_at(roots: &[PathBuf]) -> Result<PathBuf,String> {
         for version in children(&boundary, &mut budget) {
             let Some(name) = version.file_name().to_str().map(str::to_owned) else { continue; };
             let Ok(version_number) = semver::Version::parse(&name) else { continue; };
-            for build in children(&version.path(), &mut budget) {
-                let Ok(executable) = fs::canonicalize(build.path().join("claude.exe")) else { continue; };
-                if executable.is_file() && executable.starts_with(&boundary) {
+            let mut candidates=Vec::new();
+            #[cfg(target_os="macos")]candidates.push(version.path().join(engine_filename()));
+            candidates.extend(children(&version.path(), &mut budget).into_iter().map(|build|build.path().join(engine_filename())));
+            for candidate in candidates {
+                let Ok(executable) = fs::canonicalize(candidate) else { continue; };
+                if executable.is_file() && executable.starts_with(&boundary) && executable_mode(&executable) {
                     if version_number < semver::Version::new(2,1,286) { older_engine = true; }
                     else { engines.push((version_number.clone(),executable)); }
                 }
@@ -180,6 +190,13 @@ pub(crate) fn engine_at(roots: &[PathBuf]) -> Result<PathBuf,String> {
     }
     engines.sort_by(|a,b| a.0.cmp(&b.0));
     engines.pop().map(|(_,path)| path).ok_or_else(|| if older_engine { "CLAUDE_DESKTOP_ENGINE_TOO_OLD" } else { "CLAUDE_DESKTOP_ENGINE_NOT_FOUND" }.into())
+}
+fn engine_filename()->&'static str{
+    if cfg!(target_os="macos"){"claude.app/Contents/MacOS/claude"}else{"claude.exe"}
+}
+fn executable_mode(path:&Path)->bool{
+    #[cfg(unix)]{use std::os::unix::fs::PermissionsExt;fs::metadata(path).is_ok_and(|m|m.permissions().mode()&0o111!=0)}
+    #[cfg(not(unix))]{let _=path;true}
 }
 
 /// Fixed administrative argv only. Secret values, stdout and stderr are never
@@ -231,6 +248,17 @@ impl PluginAdmin for OfficialCli {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn write_engine(path:&Path){
+        fs::create_dir_all(path.parent().unwrap()).unwrap();fs::write(path,b"fixture").unwrap();
+        #[cfg(unix)]{use std::os::unix::fs::PermissionsExt;fs::set_permissions(path,fs::Permissions::from_mode(0o700)).unwrap();}
+    }
+    #[cfg(target_os="macos")]
+    #[test]fn direct_mac_bundle_is_bounded_executable_and_versioned(){
+        let root=tempfile::tempdir().unwrap();let file=root.path().join("claude-code/2.1.310").join(engine_filename());write_engine(&file);
+        assert_eq!(engine_at(&[root.path().into()]).unwrap(),fs::canonicalize(&file).unwrap());
+        use std::os::unix::fs::PermissionsExt;fs::set_permissions(&file,fs::Permissions::from_mode(0o600)).unwrap();assert!(engine_at(&[root.path().into()]).is_err());
+        fs::remove_file(&file).unwrap();let foreign=tempfile::tempdir().unwrap();let target=foreign.path().join("foreign");write_engine(&target);std::os::unix::fs::symlink(&target,&file).unwrap();assert!(engine_at(&[root.path().into()]).is_err());
+    }
     #[test] fn admin_refusal_reports_fixed_stage_and_exit_without_paths_or_values() {
         let args=|v:&[&str]|v.iter().map(|v|v.to_string()).collect::<Vec<_>>();
         assert_eq!(admin_refusal(&args(&["plugin","install","private-id","--scope","user","--json"]),Some(1)),"CLAUDE_PLUGIN_ADMIN_REFUSED:INSTALL:1");
@@ -279,15 +307,15 @@ mod tests {
     }
     #[test] fn engine_discovery_is_bounded_to_supported_desktop_versions() {
         let temp=tempfile::tempdir().unwrap();
-        for version in ["2.1.285","2.1.295","2.1.300"] {let p=temp.path().join(format!("claude-code/{version}/build"));fs::create_dir_all(&p).unwrap();fs::write(p.join("claude.exe"),b"fixture").unwrap();}
+        for version in ["2.1.285","2.1.295","2.1.300"] {let p=temp.path().join(format!("claude-code/{version}/build"));fs::create_dir_all(&p).unwrap();write_engine(&p.join(engine_filename()));}
         assert!(engine_at(&[temp.path().into()]).unwrap().to_string_lossy().contains("2.1.300"));
     }
     #[test] fn engine_discovery_supports_claude_data_without_widening_metadata_roots() {
         let temp=tempfile::tempdir().unwrap();
         let local=temp.path().join("Local");
         let root=local.join("Claude-Data/claude_pzs8sxrjxfjjc");
-        let executable=root.join("claude-code/2.1.308/c17a819afb40/claude.exe");
-        fs::create_dir_all(executable.parent().unwrap()).unwrap();fs::write(&executable,b"fixture").unwrap();
+        let executable=root.join("claude-code/2.1.308/c17a819afb40").join(engine_filename());
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();write_engine(&executable);
         // This is the legacy-only lookup which failed on the reported machine.
         assert_eq!(engine_at(&[]).unwrap_err(),"CLAUDE_DESKTOP_ENGINE_NOT_FOUND");
         let roots=engine_roots_at(Vec::new(),Some(&local));
@@ -300,11 +328,11 @@ mod tests {
         let legacy=temp.path().join("Roaming/Claude");
         let local=temp.path().join("Local");
         for root in [&legacy,&local.join("Claude-Data/claude_pzs8sxrjxfjjc")] {
-            let executable=root.join("claude-code/2.1.308/build/claude.exe");
+            let executable=root.join("claude-code/2.1.308/build").join(engine_filename());
             fs::create_dir_all(executable.parent().unwrap()).unwrap();fs::write(executable,b"fixture").unwrap();
         }
-        let newer=legacy.join("claude-code/2.1.309/build/claude.exe");
-        fs::create_dir_all(newer.parent().unwrap()).unwrap();fs::write(&newer,b"fixture").unwrap();
+        let newer=legacy.join("claude-code/2.1.309/build").join(engine_filename());
+        fs::create_dir_all(newer.parent().unwrap()).unwrap();write_engine(&newer);
         let roots=engine_roots_at(vec![fs::canonicalize(&legacy).unwrap()],Some(&local));
         assert_eq!(roots.len(),2);
         assert_eq!(engine_at(&roots).unwrap(),fs::canonicalize(newer).unwrap());
@@ -312,8 +340,8 @@ mod tests {
     #[test] fn engine_discovery_distinguishes_old_runtime_from_missing_runtime() {
         let temp=tempfile::tempdir().unwrap();
         assert_eq!(engine_at(&[temp.path().into()]).unwrap_err(),"CLAUDE_DESKTOP_ENGINE_NOT_FOUND");
-        let executable=temp.path().join("claude-code/2.1.285/build/claude.exe");
-        fs::create_dir_all(executable.parent().unwrap()).unwrap();fs::write(executable,b"fixture").unwrap();
+        let executable=temp.path().join("claude-code/2.1.285/build").join(engine_filename());
+        write_engine(&executable);
         assert_eq!(engine_at(&[temp.path().into()]).unwrap_err(),"CLAUDE_DESKTOP_ENGINE_TOO_OLD");
     }
     #[test]

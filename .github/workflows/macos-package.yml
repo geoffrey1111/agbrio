@@ -1,0 +1,91 @@
+name: macOS candidate DMG
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: macos-package-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  package:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '13.5'
+      APPLE_SIGNING_IDENTITY: '-'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.98.0'
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          workspaces: src-tauri -> target
+      - name: Verify native build platform
+        run: |
+          test "$(uname -m)" = arm64
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          sw_vers
+          rustc --version
+          node --version
+      - name: Locked dependencies
+        run: |
+          npm ci
+          npm ci --prefix tools/isolated-browser-executor
+      - name: Build ad-hoc candidate only
+        run: npm run build:macos
+      - name: Verify app and sidecar identities
+        run: |
+          APP=src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Agbrio.app
+          test -d "$APP"
+          codesign --verify --deep --strict "$APP"
+          file "$APP/Contents/MacOS/ai-work-router"
+          file "$APP/Contents/MacOS/browser-executor-node"
+          lipo "$APP/Contents/MacOS/ai-work-router" -verify_arch arm64
+          lipo "$APP/Contents/MacOS/browser-executor-node" -verify_arch arm64
+          test -x "$APP/Contents/MacOS/browser-executor-node"
+      - name: Delivered DMG and isolated installed startup
+        run: |
+          APP=src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Agbrio.app
+          MOUNT="$RUNNER_TEMP/agbrio-dmg-$GITHUB_RUN_ID"
+          INSTALLED="$RUNNER_TEMP/agbrio-installed-$GITHUB_RUN_ID"
+          mkdir -p "$MOUNT" "$INSTALLED"
+          set -- src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          test "$#" -eq 1
+          hdiutil attach "$1" -readonly -nobrowse -mountpoint "$MOUNT"
+          ditto "$MOUNT/Agbrio.app" "$INSTALLED/Agbrio.app"
+          hdiutil detach "$MOUNT"
+          diff -qr "$APP" "$INSTALLED/Agbrio.app"
+          codesign --verify --deep --strict "$INSTALLED/Agbrio.app"
+          node scripts/macos-startup-smoke.mjs "$INSTALLED/Agbrio.app"
+          node scripts/macos-cli-lifecycle-smoke.mjs "$INSTALLED/Agbrio.app"
+      - name: Prepare unsigned Mac update archive
+        run: |
+          python3 -m unittest discover -s scripts -p test_macos_update_package.py
+          APP=src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Agbrio.app
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          OUT="$RUNNER_TEMP/agbrio-macos-update"
+          mkdir -p "$OUT"
+          python3 scripts/macos-update-package.py pack --app "$APP" --archive "$OUT/Agbrio_${VERSION}_aarch64.app.tar.gz" --manifest "$OUT/MACOS_UPDATE_MANIFEST.json" --version "$VERSION" --source "$GITHUB_SHA"
+          cd "$OUT"
+          shasum -a 256 ./*.app.tar.gz > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agbrio-macos-aarch64-update-unsigned
+          if-no-files-found: error
+          path: ${{ runner.temp }}/agbrio-macos-update/
+      - name: Checksums
+        working-directory: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg
+        run: |
+          shasum -a 256 ./*.dmg > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agbrio-macos-aarch64-candidate
+          if-no-files-found: error
+          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/

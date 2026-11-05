@@ -1,4 +1,5 @@
 import {failedAttentionKey,useDismissedAttention} from './attentionDismissals';
+import {usePiAvailable} from './HostPiAvailability';
 import {piDelegations} from './piDelegations';
 import {PullToRefresh} from './PullToRefresh';
 import {isQuietWatch,watchStartError,threadProviderLabel,threadAvatarKind} from './watchPresentation';
@@ -104,7 +105,8 @@ export function ConversationHome({selectedKey,bridges,activity,activityClock,wat
  const seen=useSeenResults();
  const [hiddenWatches,setHiddenWatches]=useState<string[]>([]);
  const [watched,refreshWatches]=useWatches(watchApi);
- const watches=watched.filter(w=>!hiddenWatches.includes(w.threadId));
+ const piAvailable=usePiAvailable();
+ const watches=watched.filter(w=>!hiddenWatches.includes(w.threadId)&&(piAvailable||!w.threadId.startsWith('pi:')));
  const [undo,setUndo]=useState<CodexWatch|null>(null);
  useEffect(()=>{if(!undo)return;const timer=setTimeout(()=>setUndo(null),6000);return()=>clearTimeout(timer);},[undo]);
  // Swiping a watched conversation only stops Agbrio's tracking; the chat itself is untouched and can be restored.
@@ -173,7 +175,7 @@ export function ConversationHome({selectedKey,bridges,activity,activityClock,wat
 }
 
 function AddSheet({mode,setMode,watchApi,watched,quietIds,onCreateBridge,onWatched}:{mode:"CHOOSE"|"WATCH"|"BRIDGE"|null;setMode:(m:"CHOOSE"|"WATCH"|"BRIDGE"|null)=>void;watchApi?:NotificationApi;watched:CodexWatch[];quietIds:Set<string>;onCreateBridge?:(name:string)=>Promise<void>;onWatched:(w:CodexWatch)=>void}){
- useLanguage();
+ useLanguage();const piAvailable=usePiAvailable();
  const [threads,setThreads]=useState<ExistingCodexThreadCandidate[]|null>(null),[query,setQuery]=useState(""),[kind,setKind]=useState<"ALL"|"CODEX"|"CLAUDE">("ALL");
  const [name,setName]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null);
  const [reload,setReload]=useState(0);
@@ -214,7 +216,7 @@ function AddSheet({mode,setMode,watchApi,watched,quietIds,onCreateBridge,onWatch
    <motion.button type="button" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{...spring,delay:.04}} whileTap={{scale:.97}} className="v6-choice" disabled={!watchApi} onClick={()=>setMode("WATCH")}><span className="v6-glyph"><MessageSquare size={22}/></span><span><strong>{uiText("监听一个对话")}</strong><small>{uiText("选电脑上的 Codex 或 Claude Code 对话。回复到达时通知你，可以直接回复。")}</small></span></motion.button>
    <motion.button type="button" initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{...spring,delay:.1}} whileTap={{scale:.97}} className="v6-choice" disabled={!onCreateBridge} onClick={()=>setMode("BRIDGE")}><span className="v6-glyph"><Link2 size={22}/></span><span><strong>{uiText("新建 Bridge")}</strong><small>{uiText("把两个对话连起来，一个做决策，一个做执行。每次转发都由你审阅和批准。")}</small></span></motion.button>
   </div>}
-  {mode==="WATCH"&&<p className="v7-sheet-note">{uiText("Pi 子任务会出现在派单的主对话下面，可以用搜索找到。")}</p>}{mode==="WATCH"&&<>
+  {mode==="WATCH"&&piAvailable&&<p className="v7-sheet-note">{uiText("Pi 子任务会出现在派单的主对话下面，可以用搜索找到。")}</p>}{mode==="WATCH"&&<>
    <label className="v6-search"><Search size={16} aria-hidden/><input type="search" aria-label={uiText("搜索标题或项目")} placeholder={uiText("搜索标题或项目")} value={query} onChange={e=>setQuery(e.target.value)}/></label>
    <div className="v6-chips">{([["ALL",uiText("全部")],["CODEX","Codex"],["CLAUDE","Claude Code"]] as const).map(([id,label])=><button key={id} type="button" aria-pressed={kind===id} onClick={()=>setKind(id)}>{label}</button>)}</div>
    {error&&<div className="v6-watch-error"><p role="alert" className="v6-error">{error}</p><button type="button" disabled={busy||threads===null} onClick={()=>setReload(n=>n+1)}>{uiText("刷新列表")}</button></div>}

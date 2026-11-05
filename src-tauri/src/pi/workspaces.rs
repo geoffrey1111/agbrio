@@ -12,6 +12,7 @@ pub(crate) struct WorkspaceInput {
  pub terminal:bool,pub administrator:bool,pub inherit_context:bool,pub grant_ids:Vec<String>,
 }
 pub(crate) fn owner_authorize(core:&RouterCore,input:WorkspaceInput)->Result<serde_json::Value,String>{
+ crate::platform::require_pi_offered()?;
  let mut roots=if input.machine_scope{local_drives()?}else{input.roots.iter().map(|p|permissions::authorize_root(p)).collect::<Result<Vec<_>,_>>()?};
  roots.sort();roots.dedup();if roots.is_empty()||roots.len()>16{return Err("PI_ACCESS_INVALID".into());}
  if input.terminal&&!input.writable{return Err("PI_TERMINAL_REQUIRES_WRITE_SCOPE".into());}

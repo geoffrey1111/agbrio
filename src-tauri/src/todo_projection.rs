@@ -264,7 +264,7 @@ pub(crate) fn computer_identity() -> Value {
     identity(std::env::var("COMPUTERNAME").ok().as_deref())
 }
 fn identity(name: Option<&str>) -> Value {
-    json!({"hostName":name.filter(|s|!s.trim().is_empty()).map(|s|s.chars().filter(|c|!c.is_control()).take(255).collect::<String>())})
+    json!({"platform":std::env::consts::OS,"features":{"pi":crate::platform::pi_offered()},"hostName":name.filter(|s|!s.trim().is_empty()).map(|s|s.chars().filter(|c|!c.is_control()).take(255).collect::<String>())})
 }
 
 pub(crate) fn bridge_activity(core: &RouterCore, ids: &[String]) -> Result<Vec<Value>, String> {

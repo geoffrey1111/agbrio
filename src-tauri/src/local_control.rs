@@ -1,8 +1,11 @@
-//! Windows-local maintenance. No TCP listener, browser or provider control.
+//! Owner-local maintenance. No TCP listener, browser or provider control.
 use crate::{app_control,host_application::RouterCore,HostRuntime};
 use serde::Deserialize;
 use serde_json::{json,Value};
 use std::collections::HashMap;
+
+#[cfg(target_os="macos")]
+mod unix;
 
 #[derive(Clone,PartialEq,Eq,Deserialize)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]
@@ -123,7 +126,13 @@ pub(crate) fn start(app:tauri::AppHandle,core:RouterCore,host:HostRuntime){
             if pipe::serve(core,host,name,sid,shutdown).await.is_err(){eprintln!("APP_CONTROL_LISTENER_UNAVAILABLE");}
         });
     }
-    #[cfg(not(windows))]let _=(app,core,host);
+    #[cfg(target_os="macos")]{
+        tauri::async_runtime::spawn(async move{
+            let shutdown=move||{let handle=app.clone();let _=app.run_on_main_thread(move||crate::quit_host(&handle));};
+            if unix::serve(core,host,shutdown).await.is_err(){eprintln!("APP_CONTROL_LISTENER_UNAVAILABLE");}
+        });
+    }
+    #[cfg(not(any(windows,target_os="macos")))]let _=(app,core,host);
 }
 
 #[cfg(test)]

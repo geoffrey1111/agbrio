@@ -19,9 +19,11 @@ pub(crate) struct CreateInput {
     pub thinking: Option<String>,
 }
 pub(crate) fn normalize_directory(value: &str) -> Result<String, String> {
+    crate::platform::require_pi_offered()?;
     Ok(plain(&permissions::canonical_directory(value)?))
 }
 pub(crate) fn owner_settings(core: &RouterCore) -> Result<Value, String> {
+    if !cfg!(windows) { return Ok(json!({"platformSupported":false,"installed":false,"version":null,"scopes":[],"tasks":[],"administratorBackend":{"ready":false},"error":crate::platform::UNSUPPORTED})); }
     let installation = super::installation();
     let (version, error) = match installation {
         Ok(i) => (Some(i.version), None),
@@ -36,6 +38,7 @@ pub(crate) fn owner_authorize(
     root: &str,
     writable: bool,
 ) -> Result<Value, String> {
+    crate::platform::require_pi_offered()?;
     let root = permissions::authorize_root(root)?;
     let pi = core
         .session
@@ -55,6 +58,7 @@ pub(crate) fn owner_authorize(
     owner_settings(core)
 }
 pub(crate) fn owner_revoke(core: &RouterCore, id: &str, generation: i64) -> Result<Value, String> {
+    crate::platform::require_pi_offered()?;
     core.store.pi_revoke_scope(id, generation)?;
     let pi = core
         .session
@@ -66,6 +70,8 @@ pub(crate) fn owner_revoke(core: &RouterCore, id: &str, generation: i64) -> Resu
     owner_settings(core)
 }
 pub(crate) fn overview(core: &RouterCore) -> Result<Vec<Value>, String> {
+    if !crate::platform::pi_offered(){return Ok(vec![]);}
+
     Ok(core.store.pi_tasks()?.iter().map(|t|json!({"taskId":t.id,"threadId":t.native_session_id.as_ref().map(|s|format!("pi:{s}")),"label":t.label,"directory":t.directory,"generation":t.generation,"parent":t.parent,"state":t.state,"settings":t.selected,"selectionSource":t.selection_source,"updatedAt":t.updated_at})).collect())
 }
 impl CreateInput {
@@ -94,6 +100,7 @@ pub(crate) fn validate_create(
     directory: &str,
     input: &CreateInput,
 ) -> Result<(), String> {
+    crate::platform::require_pi_offered()?;
     input.selection()?;
     let scope = core.store.pi_scope(&input.scope_id)?;
     if !scope.enabled || scope.generation != input.scope_generation {
@@ -124,6 +131,7 @@ pub(crate) fn create(
     label: &str,
     input: CreateInput,
 ) -> Result<Value, String> {
+    crate::platform::require_pi_offered()?;
     validate_create(core, directory, &input)?;
     let grant = core.store.pi_create_action_grant(action)?;
     let selected = input.selection()?;
@@ -186,6 +194,7 @@ fn creation_receipt(task: &Task) -> Value {
     json!({"provider":"PI","taskId":task.id,"threadId":id,"generation":task.generation,"directory":task.directory,"parent":task.parent,"nativeSessionId":task.native_session_id,"settings":task.selected,"selectionSource":task.selection_source,"durability":if task.file_verified{"VERIFIED_NATIVE_FILE"}else{"EMPTY_SESSION_NOT_YET_DURABLE"},"firstMessageSent":false,"automaticRetry":false,"relationshipSource":"REVIEWED_AGBRIO_ASSOCIATION","nativeCallerAttested":false,"nativeRetryPolicy":"INHERITED_PI_CONFIGURATION","nextAction":"SEND_CHAT","nextActionInput":{"threadId":id,"generation":task.generation,"mode":"AUTO","sourceSequence":null,"expectedTurnId":null}})
 }
 pub(crate) fn read_compact(core:&RouterCore,id:&str,cursor:Option<&str>)->Result<Value,String>{
+    crate::platform::require_pi_offered()?;
     // Refresh the native actor through the same read-only path; omit tool transcripts.
     let pi=core.session.lock().map_err(|_|"PI_SERVICE_UNAVAILABLE")?.pi.clone();
     let task=core.store.pi_task(id)?;let _=pi.history(&task.id);
@@ -199,6 +208,7 @@ pub(crate) fn read_compact(core:&RouterCore,id:&str,cursor:Option<&str>)->Result
     Ok(json!({"provider":"PI","failure":failure,"task":{"id":task.id,"nativeSessionId":task.native_session_id,"generation":task.generation,"result":result,"runtimeEpoch":task.runtime_epoch,"parent":task.parent,"directory":task.directory,"state":task.state,"selected":task.selected,"errorCode":task.error_code},"threadId":id,"generation":task.generation,"state":task.state,"errorCode":task.error_code,"selected":task.selected,"nativeBranch":core.store.pi_branch_info(&task.id)?,"resultMatchesActiveBranch":task.result.is_some()&&task.error_code.as_deref()!=Some("PI_NATIVE_BRANCH_CHANGED"),"runtimeLoaded":pi.loaded(&task.id),"execution":pi.audit(&task.id).map(|a|json!({"contextApplied":a["contextApplied"],"process":a["process"],"capabilities":a["capabilities"]})),"questions":core.store.pi_owner_questions(&task.id)?,"publicMessages":messages,"history":{"messages":messages,"nextCursor":next,"direction":"OLDER","view":"ASSISTANT_TEXT"},"sendContext":{"threadId":id,"generation":task.generation,"mode":"AUTO","sourceSequence":null,"expectedTurnId":null}}))
 }
 pub(crate) fn read(core: &RouterCore, id: &str, cursor: Option<&str>) -> Result<Value, String> {
+    crate::platform::require_pi_offered()?;
     let task = core.store.pi_task(id)?;
     let pi = core
         .session
@@ -231,6 +241,7 @@ pub(crate) fn send(
     text: String,
     options: &crate::watch_chat::ReplyOptions,
 ) -> Result<Value, String> {
+    crate::platform::require_pi_offered()?;
     let _cache = crate::attachment_cache::guard()?;
     if (text.trim().is_empty() && options.attachments.is_empty())
         || text.trim_start().starts_with('/')
@@ -587,6 +598,7 @@ pub(crate) fn stop(
     request: &str,
     epoch: &str,
 ) -> Result<Value, String> {
+    crate::platform::require_pi_offered()?;
     let task = core.store.pi_task(id)?;
     if task.runtime_epoch.as_deref() != Some(epoch) {
         return Err("PI_RUNTIME_CHANGED_REFRESH".into());
@@ -603,12 +615,14 @@ pub(crate) fn stop(
 #[serde(rename_all="camelCase",deny_unknown_fields)]
 pub(crate) struct AccessChange{pub generation:i64,pub scope_id:String,pub scope_generation:i64,#[serde(default)]pub access_roots:Option<Vec<String>>,#[serde(default)]pub writable:Option<bool>}
 pub(crate) fn validate_access_change(core:&RouterCore,id:&str,input:&AccessChange)->Result<(),String>{
+    crate::platform::require_pi_offered()?;
  let task=core.store.pi_task(id)?;if task.generation!=input.generation{return Err("PI_TASK_GENERATION_CHANGED".into());}
  let scope=core.store.pi_scope(&input.scope_id)?;if !scope.enabled||scope.generation!=input.scope_generation{return Err("PI_SCOPE_CHANGED".into());}
  super::workspaces::subset(core,&scope,&task.directory,input.access_roots.as_deref(),input.writable,None)?;
  if core.session.lock().map_err(|_|"PI_SERVICE_UNAVAILABLE")?.pi.loaded(&task.id){return Err("PI_CLOSE_BEFORE_ACCESS_CHANGE".into());}Ok(())
 }
 pub(crate) fn restore_managed(core:&RouterCore,action:&str,id:&str,change:Option<AccessChange>)->Result<Value,String>{
+    crate::platform::require_pi_offered()?;
  let grant=core.store.pi_reviewed_action_grant(action,"ENABLE_WATCH")?;let task=core.store.pi_task(id)?;
  if let Some(change)=change{
   validate_access_change(core,id,&change)?;let scope=core.store.pi_scope(&change.scope_id)?;
@@ -622,6 +636,7 @@ pub(crate) fn restore_managed(core:&RouterCore,action:&str,id:&str,change:Option
  restore(core,id,task.generation)
 }
 pub(crate) fn restore(core: &RouterCore, id: &str, generation: i64) -> Result<Value, String> {
+    crate::platform::require_pi_offered()?;
     let task = core.store.pi_task(id)?;
     if task.generation != generation {
         return Err("PI_TASK_GENERATION_CHANGED".into());
@@ -647,6 +662,7 @@ pub(crate) struct CatalogInput {
     pub model: Option<String>,
 }
 pub(crate) fn catalog(core: &RouterCore, input: CatalogInput) -> Result<Value, String> {
+    crate::platform::require_pi_offered()?;
     static DISCOVERY: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _discovery = DISCOVERY
         .try_lock()

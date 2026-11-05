@@ -1,5 +1,6 @@
 // Optional pinned Chromium package. No profiles, provider requests or browser launch.
 import path from 'node:path';
+import {macosBrowserPackage} from './browser-package-macos.mjs';
 import {createHash,randomUUID} from 'node:crypto';
 import {createReadStream,createWriteStream} from 'node:fs';
 import {readFile,lstat,mkdir,mkdtemp,rename,rm,open} from 'node:fs/promises';
@@ -13,6 +14,7 @@ async function exists(p){try{await lstat(p);return true;}catch(e){if(e.code==='E
 async function sha(p){const h=createHash('sha256');for await(const b of createReadStream(p))h.update(b);return h.digest('hex');}
 export async function verifyPackage(root,manifest){await unlinked(root);for(const [rel,hash] of Object.entries(manifest.files)){const p=path.resolve(root,rel);if(!p.startsWith(path.resolve(root)+path.sep)||rel.includes(':')||!/^([a-f0-9]{64})$/.test(hash))throw Error('CHROMIUM_MANIFEST_PATH_INVALID');await unlinked(p);if(await sha(p)!==hash)throw Error('CHROMIUM_PACKAGE_HASH_MISMATCH');}return path.join(root,'chrome.exe');}
 export async function browserPackage({resources,data,download=false},io={}){
+ if(process.platform==='darwin')return macosBrowserPackage({resources,data,download},io);
  const manifest=JSON.parse(await readFile(path.join(resources,'chromium-manifest.json'),'utf8'));
  const policy=JSON.parse(await readFile(path.join(resources,'runtime-policy.json'),'utf8'));
  const url=new URL(policy.source);if(url.origin!=='https://storage.googleapis.com'||url.pathname!==`/chromium-browser-snapshots/Win_x64/${policy.snapshot}/chrome-win.zip`||url.search||url.hash||!/^\d+$/.test(policy.snapshot)||manifest.archiveSha256!==policy.archiveSha256||manifest.executableSha256!==policy.executableSha256)throw Error('CHROMIUM_COMPONENT_POLICY_INVALID');

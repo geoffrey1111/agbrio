@@ -77,9 +77,10 @@ async fn check_manifest(app:&AppHandle,state:&UpdateState,client:&reqwest::Clien
  update.timeout=Some(Duration::from_secs(600));let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;c.view.state="AVAILABLE".into();c.view.total=Some(size);c.candidate=Some(update);Ok(())
 }
 #[tauri::command]
-pub(crate) fn desktop_update_status(app:AppHandle,state:State<'_,UpdateState>)->Result<UpdateView,String>{let mut view=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?.view.clone();view.current_version=app.package_info().version.to_string();Ok(view)}
+pub(crate) fn desktop_update_status(app:AppHandle,state:State<'_,UpdateState>)->Result<UpdateView,String>{let mut view=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?.view.clone();view.current_version=app.package_info().version.to_string();if !cfg!(windows){view.state="UNSUPPORTED".into();view.error=Some(crate::platform::UNSUPPORTED.into());}Ok(view)}
 #[tauri::command]
 pub(crate) async fn desktop_update_check(app:AppHandle,state:State<'_,UpdateState>)->Result<UpdateView,String>{
+ crate::platform::require_windows()?;
  let _busy=guard(&state)?;{let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;*c=Cache::default();c.view.state="CHECKING".into();c.view.current_version=app.package_info().version.to_string();}
  let result:Result<(),String>=async{
   let client=reqwest::Client::builder().timeout(Duration::from_secs(15)).user_agent("Agbrio-update-check").build().map_err(|_|"UPDATE_NETWORK")?;
@@ -107,12 +108,14 @@ pub(crate) async fn desktop_update_check(app:AppHandle,state:State<'_,UpdateStat
 }
 #[tauri::command]
 pub(crate) async fn desktop_update_download(app:AppHandle,version:String,state:State<'_,UpdateState>)->Result<UpdateView,String>{
+ crate::platform::require_windows()?;
  let _busy=guard(&state)?;let update={let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;if c.view.version.as_deref()!=Some(&version)||c.view.state!="AVAILABLE"{return Err("UPDATE_CHANGED".into());}c.view.state="DOWNLOADING".into();c.candidate.clone().ok_or("UPDATE_CHANGED")?};
  let cache=state.cache.clone();let mut emitted=Instant::now();let data=update.download(move|length,total|{if let Ok(mut c)=cache.lock(){c.view.downloaded+=length as u64;if total.is_some(){c.view.total=total;}if emitted.elapsed()>Duration::from_millis(150){let _=app.emit("agbrio-update-progress",c.view.clone());emitted=Instant::now();}}},||{}).await.map_err(|_|fault(&state,"UPDATE_DOWNLOAD_OR_SIGNATURE_FAILED"))?;
  if data.len() as u64>MAX_PACKAGE{return Err(fault(&state,"UPDATE_PACKAGE_INVALID"));}let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;c.view.state="READY".into();c.view.downloaded=data.len() as u64;c.bytes=Some(data);Ok(c.view.clone())
 }
 #[tauri::command]
 pub(crate) fn desktop_update_install(version:String,confirm_restart:Option<bool>,state:State<'_,UpdateState>,core:State<'_,RouterCore>)->Result<(),String>{
+ crate::platform::require_windows()?;
  let _busy=guard(&state)?;
  let confirmed=confirm_restart.unwrap_or(false);
  if confirmed{audit_install(&version,"OWNER_CONFIRMED_FORCE_REQUEST")?;}
@@ -170,8 +173,9 @@ fn codex_page_busy(threads:&[serde_json::Value])->Result<bool,String>{
 #[tauri::command]
 pub(crate) fn desktop_update_open_release(state:State<'_,UpdateState>)->Result<(),String>{
  let url=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?.view.release_url.clone().unwrap_or_else(||format!("https://github.com/{REPO}/releases"));
- #[cfg(windows)]{use std::os::windows::process::CommandExt;std::process::Command::new("rundll32.exe").arg("url.dll,FileProtocolHandler").arg(url).creation_flags(0x08000000).spawn().map_err(|_|"UPDATE_OPEN_FAILED")?;Ok(())}
- #[cfg(not(windows))]{let _=url;Err("UPDATE_PLATFORM_UNSUPPORTED".into())}
+ let parsed=url::Url::parse(&url).map_err(|_|"UPDATE_RELEASE_URL_INVALID")?;
+ if parsed.scheme()!="https"||parsed.host_str()!=Some("github.com")||!parsed.path().starts_with(&format!("/{REPO}/releases")){return Err("UPDATE_RELEASE_URL_INVALID".into());}
+ crate::platform::open_web_url(&url).map_err(|_|"UPDATE_OPEN_FAILED".into())
 }
 #[cfg(test)]mod tests{
  use super::*;
@@ -234,6 +238,22 @@ pub(crate) fn desktop_update_open_release(state:State<'_,UpdateState>)->Result<(
   assert!(key.verify(include_bytes!("../test-fixtures/updater-signature-sample.txt"),&signature,true).is_ok());assert!(key.verify(b"changed fixture bytes",&signature,true).is_err());
  }
  #[test]fn mutation_guard_cannot_reenter_and_is_released_on_failure(){let state=UpdateState::default();{let _guard=guard(&state).unwrap();assert!(guard(&state).is_err());}assert!(guard(&state).is_ok());}
+ #[test]#[ignore="Publisher-local Mac archive signature gate; never publishes, launches or installs"]
+ fn actual_macos_updater_signature(){
+  use base64ct::{Base64,Encoding};use sha2::{Digest,Sha256};
+  let path=std::path::PathBuf::from(std::env::var("AGBRIO_MAC_SIGNED_ARCHIVE").expect("explicit local Mac archive"));
+  assert!(!std::fs::symlink_metadata(&path).unwrap().file_type().is_symlink());
+  assert!(path.file_name().unwrap().to_str().unwrap().ends_with("_aarch64.app.tar.gz"));
+  let mut bytes=std::fs::read(&path).unwrap();assert!(!bytes.is_empty()&&bytes.len() as u64<=MAX_PACKAGE);
+  let expected=std::env::var("AGBRIO_MAC_EXPECTED_ARCHIVE_SHA256").expect("exact approved archive hash");
+  assert_eq!(format!("{:x}",Sha256::digest(&bytes)),expected);
+  let config:serde_json::Value=serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+  let public=String::from_utf8(Base64::decode_vec(config["plugins"]["updater"]["pubkey"].as_str().unwrap()).unwrap()).unwrap();
+  let raw=String::from_utf8(Base64::decode_vec(std::fs::read_to_string(format!("{}.sig",path.display())).unwrap().trim()).unwrap()).unwrap();
+  let key=minisign_verify::PublicKey::decode(&public).unwrap();let signature=minisign_verify::Signature::decode(&raw).unwrap();
+  assert!(key.verify(&bytes,&signature,true).is_ok());let last=bytes.len()-1;bytes[last]^=1;assert!(key.verify(&bytes,&signature,true).is_err());
+  println!("AGBRIO_MAC_SIGNATURE_GATE_PASS:{expected}");
+ }
  #[test]#[ignore="Explicit local installer signing gate; never publishes or installs"]
  fn actual_installer_signature_accepts_original_and_rejects_tampering(){
   use base64ct::{Base64,Encoding};
