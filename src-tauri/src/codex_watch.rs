@@ -156,19 +156,39 @@ fn select_message(
     }
     Ok(None)
 }
+fn claude_candidate_display(s:&router_core::claude_code::Session,desktop:&[crate::claude_code_desktop::DesktopSession],at:i64)->Option<(String,Option<i64>)>{
+ if desktop.iter().any(|d|d.session_id==s.session_id&&d.archived){return None}
+ if s.state!="DESKTOP"&&s.lease_until<=at{return None}
+ let native=desktop.iter().filter(|d|d.session_id==s.session_id&&router_core::claude_code::same_root(&d.cwd,&s.cwd)).max_by_key(|d|d.last_activity);
+ let label=native.and_then(|d|d.title.clone()).or_else(||s.title.clone()).unwrap_or_else(||"未命名对话".into());
+ // Heartbeat freshness is not native conversation activity.
+ let activity=native.filter(|d|d.last_activity>0).map(|d|d.last_activity/1000);
+ Some((label,activity))
+}
 pub(crate) fn candidates(core:&RouterCore)->Result<ExistingCodexThreadCatalog,String>{
  let claude=crate::claude_code::catalog(core)?;
+ let desktop=crate::claude_code_desktop::sessions();let at=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
  let bound:std::collections::HashSet<_>=core.store.bridge_codex_thread_ids()?.into_iter().collect();
  let mut catalog=match crate::role_bridge::catalog(core){Ok(c)=>c,Err(_) if !claude.sessions.is_empty()=>ExistingCodexThreadCatalog{threads:vec![],complete:false},Err(e)=>return Err(e)};
  catalog.threads.retain(|t|!bound.contains(&t.id));
  for s in claude.sessions {
-   if s.state!="DESKTOP"&&s.lease_until<=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64{continue;}
+   let Some((label,recency_at))=claude_candidate_display(&s,&desktop,at)else{continue};
    let key=format!("{}{}",router_core::store::claude_manual::PREFIX,s.session_id);
    if core.store.codex_chat_context(&key).is_ok_and(|w|w.generation<0){continue;}
-   catalog.threads.push(ExistingCodexThreadCandidate{id:key,label:s.title.unwrap_or_else(||"未命名对话".into()),preview:Some("Claude Code".into()),updated_at:None,project_provenance:Some(s.cwd),recency_at:(s.checked_at>0).then_some(s.checked_at/1000),project_id:None,project_label:None,project_status:"PROJECTLESS".into()});
+   catalog.threads.push(ExistingCodexThreadCandidate{id:key,label,preview:Some("Claude Code".into()),updated_at:None,project_provenance:Some(s.cwd),recency_at,project_id:None,project_label:None,project_status:"PROJECTLESS".into()});
  }
  catalog.complete &= claude.complete;
  Ok(catalog)
+}
+#[cfg(test)]mod alert_candidate_tests{
+ use super::*;
+ #[test]fn archived_sessions_are_not_selectable_even_with_a_recent_plugin_lease(){
+  let s=router_core::claude_code::Session{session_id:"exact".into(),instance_id:"instance".into(),cwd:std::env::temp_dir().to_string_lossy().into_owned(),version:"fixture".into(),state:"RUNNING".into(),turn_id:None,checked_at:900000,lease_until:1000000,title:Some("old".into()),latest_reply:None};
+  let mut d=crate::claude_code_desktop::DesktopSession{session_id:s.session_id.clone(),cwd:s.cwd.clone(),title:Some("current native title".into()),archived:true,last_activity:10000};
+  assert!(claude_candidate_display(&s,&[d.clone()],900000).is_none());d.archived=false;
+  assert_eq!(claude_candidate_display(&s,&[d],900000),Some(("current native title".into(),Some(10))));
+  assert_eq!(claude_candidate_display(&s,&[],900000),Some(("old".into(),None)));
+ }
 }
 pub(crate) fn enable(core: &RouterCore, thread_id: &str) -> Result<(), String> {
     if thread_id.starts_with(router_core::store::claude_manual::PREFIX){return crate::claude_chat::enable(core,thread_id);}

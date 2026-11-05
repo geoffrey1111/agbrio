@@ -8,6 +8,19 @@ afterEach(cleanup);
 const messageEpoch=Date.now()-60000;
 const watch=(id:string,at:number,state='RESULT_READY'):CodexWatch=>({threadId:id,label:id,cwd:'C:/fixture',lastMessageAt:at?messageEpoch+at:0,checkedAt:Date.now(),enabled:true,generation:1,errorCode:null,snapshot:{state,turnId:'turn',itemId:'message',text:'fixture'}});
 function fixture(initial:CodexWatch[]){let rows=initial;let notify=()=>{};const api={connect:vi.fn(),threads:vi.fn(),enable:vi.fn(),pause:vi.fn(),feed:vi.fn(),event:vi.fn(),webUrl:vi.fn(),cachedWatches:()=>rows,watches:vi.fn(async()=>rows),show:vi.fn(async(id:string)=>{const shownAt=Date.now();rows=rows.map(w=>w.threadId===id?{...w,shownAt}:w);notify();return{shownAt};}),subscribe:(listener:()=>void)=>{notify=listener;return()=>{};}} as NotificationApi;return{api,push:(next:CodexWatch[])=>{rows=next;notify();}};}
+it('never promotes a child to a top-level chat after stopping its parent',async()=>{
+ const parent=watch('claude_code:manager',2);const child={...watch('pi:child',3),piParent:{provider:'CLAUDE_CODE',externalId:'manager',cwd:'C:/fixture'}};
+ const a=fixture([parent,child]);a.api.remove=vi.fn(async()=>{});
+ render(<ConversationHome addRequest={0} bridges={[]} activity={{}} activityClock={Date.now()} watchApi={a.api} onOpenBridge={vi.fn()} onOpenWatch={vi.fn()}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'删除 claude_code:manager'}));
+ await waitFor(()=>expect(a.api.remove).toHaveBeenCalledWith('WATCH',parent.threadId,true));
+ act(()=>a.push([child]));expect(screen.queryByText('pi:child')).toBeNull();expect(screen.queryByRole('button',{name:'删除 pi:child'})).toBeNull();
+});
+it('allows an independent legacy Pi row to stop being watched',async()=>{
+ const row=watch('pi:independent',1);const a=fixture([row]);a.api.remove=vi.fn(async()=>{});
+ render(<ConversationHome addRequest={0} bridges={[]} activity={{}} activityClock={Date.now()} watchApi={a.api} onOpenBridge={vi.fn()} onOpenWatch={vi.fn()}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'删除 pi:independent'}));await waitFor(()=>expect(a.api.remove).toHaveBeenCalledWith('WATCH',row.threadId,true));expect(screen.queryByText(row.label)).toBeNull();
+});
 const order=()=>[...document.querySelectorAll('.v6-list .v6-row strong')].map(n=>n.textContent);
 it('folds Pi into its native manager tree, promotes child activity and finds a child by search',async()=>{
  const parent=watch('claude_code:manager',1);

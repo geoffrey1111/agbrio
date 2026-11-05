@@ -152,6 +152,7 @@ impl RouterStore {
         })
     }
     /// Reversible local list removal; never deletes/resumes/stops a provider thread.
+    pub fn is_codex_watch_removed(&self,id:&str)->Result<bool,String>{self.with_connection(|c|c.query_row("SELECT EXISTS(SELECT 1 FROM watch_removed_items WHERE kind='WATCH' AND id=?1)",[id],|r|r.get(0)).map_err(db_error))}
     pub fn set_watch_item_removed(&self,kind:&str,id:&str,removed:bool)->Result<(),String>{
         if !matches!(kind,"WATCH"|"EVENT")||id.is_empty()||id.len()>256{return Err("WATCH_REMOVAL_INVALID".into());}
         if kind=="EVENT"&&id.parse::<i64>().ok().filter(|v|*v>0).is_none(){return Err("WATCH_REMOVAL_INVALID".into());}
@@ -159,6 +160,7 @@ impl RouterStore {
             let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
             let exists:bool=if kind=="WATCH"{tx.query_row("SELECT EXISTS(SELECT 1 FROM codex_watches WHERE thread_id=?1)",[id],|r|r.get(0)).map_err(db_error)?}else{tx.query_row("SELECT EXISTS(SELECT 1 FROM codex_watch_events WHERE sequence=?1)",[id],|r|r.get(0)).map_err(db_error)?};
             if !exists{return Err("WATCH_ITEM_NOT_FOUND".into());}
+            if kind=="WATCH"{super::watch_groups::change(&tx,id,removed)?;}
             if removed{
                 let enabled:Option<bool>=if kind=="WATCH"{Some(tx.query_row("SELECT enabled FROM codex_watches WHERE thread_id=?1",[id],|r|r.get(0)).map_err(db_error)?)}else{None};
                 let changed=tx.execute("INSERT OR IGNORE INTO watch_removed_items(kind,id,was_enabled,removed_at) VALUES(?1,?2,?3,?4)",params![kind,id,enabled,now()]).map_err(db_error)?;

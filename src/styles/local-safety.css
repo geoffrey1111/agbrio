@@ -1,0 +1,33 @@
+.r2-router .r2-settings .local-safety-settings .local-safety-runtime {color:var(--v7-run,#2c7a57);font-size:.875rem}
+.r2-router .r2-settings .local-safety-settings .local-safety-runtime[data-running=false] {color:var(--v7-accent,#b3572c)}
+.r2-router .r2-settings .local-safety-settings .local-safety-picker {margin:16px 0;padding-top:16px;border-top:1px solid var(--v7-line,#e5e2de)}
+.r2-router .r2-settings .local-safety-settings .local-safety-picker-heading,.r2-router .r2-settings .local-safety-settings .local-safety-picker-tools,.r2-router .r2-settings .local-safety-settings .local-safety-picker-tools>div {display:flex;align-items:center;gap:8px}
+.r2-router .r2-settings .local-safety-settings .local-safety-picker-heading,.r2-router .r2-settings .local-safety-settings .local-safety-picker-tools {justify-content:space-between}
+.r2-router .r2-settings .local-safety-settings .local-safety-picker-heading>button {padding:8px;background:transparent;border:0}
+.r2-router .r2-settings .local-safety-settings .local-safety-search {display:flex;align-items:center;gap:8px;margin:12px 0;padding:10px 12px;background:var(--v7-hover,#f0eeeb);border-radius:12px}
+.r2-router .r2-settings .local-safety-settings .local-safety-search input {width:100%;min-width:0;border:0;background:transparent;color:inherit;font:inherit;outline-offset:4px}
+.r2-router .r2-settings .local-safety-settings .local-safety-picker-tools button {display:inline-flex;align-items:center;gap:5px;min-height:40px;padding:7px 11px;background:transparent;border:0;border-radius:9px;font:inherit;font-size:.875rem}
+.r2-router .r2-settings .local-safety-settings .local-safety-picker-tools button[aria-pressed=true] {background:var(--v7-hover,#eeece9);color:var(--v7-ink,#1e1b18)}
+.r2-router .r2-settings .local-safety-settings .local-safety-picker-note,.r2-router .r2-settings .local-safety-settings .local-safety-picker li small {color:var(--v7-muted,#817c75);font-size:.8125rem;line-height:1.5}
+.r2-router .r2-settings .local-safety-settings .local-safety-picker .local-safety-candidates {list-style:none;max-height:360px;overflow:auto;margin:8px 0;padding:0;overscroll-behavior:contain}
+.r2-router .r2-settings .local-safety-settings .local-safety-candidates li {margin:0;padding:0}
+.r2-router .r2-settings .local-safety-settings .local-safety-candidates li>button {display:flex;align-items:center;gap:12px;width:100%;min-height:76px;padding:10px 4px;text-align:start;color:inherit;background:transparent;border:0;border-radius:10px}
+.r2-router .r2-settings .local-safety-settings .local-safety-candidates .v6-avatar {width:44px;height:44px;flex:0 0 44px}
+.r2-router .r2-settings .local-safety-settings .local-safety-candidates li>button>span:last-child {display:flex;flex-direction:column;min-width:0;gap:2px}
+.r2-router .r2-settings .local-safety-settings .local-safety-candidates strong {font-size:.9375rem;line-height:1.45;overflow-wrap:anywhere}
+.r2-router .r2-settings .local-safety-settings .local-safety-candidates small {overflow-wrap:anywhere}
+.r2-router .r2-settings .local-safety-settings .local-safety-targets {padding:0;list-style:none}
+.r2-router .r2-settings .local-safety-settings .local-safety-target {display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0}
+.r2-router .r2-settings .local-safety-settings .local-safety-target>span {display:flex;flex-direction:column;min-width:0;gap:3px}
+.r2-router .r2-settings .local-safety-settings .local-safety-target strong {overflow-wrap:anywhere}
+.r2-router .r2-settings .local-safety-settings .local-safety-target>div {display:flex;flex-shrink:0;gap:2px}
+.r2-router .r2-settings .local-safety-settings .local-safety-target>div button {display:grid;place-items:center;min-width:38px;min-height:40px;background:transparent;border:0;border-radius:8px}
+
+.r2-router .r2-settings .local-safety-settings .local-safety-picker-heading>button {width:44px;min-width:44px;max-width:44px;min-height:44px;height:44px;box-shadow:none;margin:0;flex:0 0 auto}
+.r2-router .r2-settings .local-safety-settings label.local-safety-search {display:flex;flex-direction:row;align-items:center;gap:8px}
+.r2-router .r2-settings .local-safety-settings .local-safety-search input {height:auto;min-height:24px;padding:0;margin:0;border:0;box-shadow:none;background:transparent;flex:1}
+.r2-router .r2-settings .local-safety-settings .local-safety-picker-tools button {width:auto;min-width:0;height:auto;flex:0 0 auto;margin:0;white-space:nowrap;box-shadow:none}
+.r2-router .r2-settings .local-safety-settings .local-safety-candidates li>button {height:auto;max-width:none;box-shadow:none;white-space:normal}
+.r2-router .r2-settings .local-safety-settings .local-safety-target>div button {width:44px;min-width:44px;max-width:44px;min-height:44px;height:44px;margin:0;flex:0 0 auto;box-shadow:none}
+@media (hover:hover) and (pointer:fine) {.r2-router .r2-settings .local-safety-settings .local-safety-candidates li>button:hover,.r2-router .r2-settings .local-safety-settings .local-safety-target>div button:hover {background:var(--v7-hover,#f0eeeb)}}
+@media(max-width:480px) {.r2-router .r2-settings .local-safety-settings .local-safety-picker-tools {gap:4px;flex-wrap:wrap}.r2-router .r2-settings .local-safety-settings .local-safety-target {align-items:flex-start}.r2-router .r2-settings .local-safety-settings .local-safety-search input{font-size:16px}}
