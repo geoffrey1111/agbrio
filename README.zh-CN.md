@@ -8,9 +8,9 @@
 [![Build](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml/badge.svg?branch=main)](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml)
 [![MIT](https://img.shields.io/github/license/geoffrey1111/agbrio)](LICENSE)
 [![Windows](https://img.shields.io/badge/Windows-x64-0078D4)](https://github.com/geoffrey1111/agbrio/releases/latest)
-[![macOS Apple Silicon beta](https://img.shields.io/badge/macOS-Apple_Silicon_beta-orange)](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05)
+[![macOS Apple Silicon beta](https://img.shields.io/badge/macOS-Apple_Silicon_beta_rc.122-orange)](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05-rc122-sync)
 
-**[Windows 下载](https://github.com/geoffrey1111/agbrio/releases/latest) · [macOS 测试版下载（Apple Silicon）](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05)**
+**[Windows 下载](https://github.com/geoffrey1111/agbrio/releases/latest) · [macOS 测试版下载（Apple Silicon）](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05-rc122-sync)**
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
@@ -70,9 +70,11 @@ flowchart TD
 
 ## Mac Beta
 
+本测试版同步 Windows rc.122 的管理区、星图和首次引导；Mac 仍不提供 Pi、共享 Codex 和应用内更新。首次引导跳过 Mac 不可用的共享 Codex；Claude MCP 在原 Code 对话中手动接入。
+
 **Mac 公开测试版，仅 Apple Silicon（ARM64）；不是正式 macOS 支持。尚未经外部测试者自有 Mac 真机验证，可能有问题。** 不支持 Intel Mac。macOS 13.5 只是声明的最低版本，系统／机型验证尚未完成。GitHub Mac CI 是工程验证，不代表真机 UAT 或与 Windows 功能对齐。上方通用功能介绍主要描述 Windows；Mac 以本节限制为准。
 
-[Mac 测试版 Release](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05) · [DMG 下载](https://github.com/geoffrey1111/agbrio/releases/download/macos-beta-2026-11-05/Agbrio_0.1.0_aarch64.dmg) · [SHA-256 校验和](https://github.com/geoffrey1111/agbrio/releases/download/macos-beta-2026-11-05/SHA256SUMS.txt) · [问题反馈](https://github.com/geoffrey1111/agbrio/issues/new)
+[Mac 测试版 Release](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05-rc122-sync) · [DMG 下载](https://github.com/geoffrey1111/agbrio/releases/download/macos-beta-2026-11-05-rc122-sync/Agbrio_0.1.0_aarch64.dmg) · [SHA-256 校验和](https://github.com/geoffrey1111/agbrio/releases/download/macos-beta-2026-11-05-rc122-sync/SHA256SUMS.txt) · [问题反馈](https://github.com/geoffrey1111/agbrio/issues/new)
 
 ### 未签名测试 app 首次打开与本人授权
 
@@ -90,6 +92,6 @@ flowchart TD
 - **Pi：**没有 Mac Pi 入口、任务或 `pi-adapter` 打包资源。
 - **共享 Codex：**正式准备／激活／关闭仍不支持。内部 app-server 模拟测试不证明真实 Codex Desktop 兼容；其他 CLI／账号集成也需用自己的安装和账号验证。不打包或分发 OpenAI 安装包、SDK 或 profile。
 - **应用内更新：**不可用。每次新版本需手动下载、核对校验和，正常退出 Agbrio 后替换 app。保留应用数据、配对和历史，不复制 Windows 凭据／profile；本次不在更新清单加入 Mac。
-- **托管试用／兑换：**本次 Mac 包未配置托管服务入口，试用与兑换控件不可用；稳定试用设备身份也仍仅适配 Windows。兑换码不能为本测试版开通托管手机连接，请勿为此用途购买或兑换。兑换码不是 Codex／Claude 订阅。本地／自托管设置是独立候选能力，仍需真实 Mac 和手机验证。
+- **托管手机连接、试用与激活码：**本测试版已启用。Mac CI 使用未改动的测试服务 Worker、真实 TLS/WSS、随包 Node connector 和浏览器，验证兑换、试用开通、续期、配对及模拟提供方消息回环。试用资格仅使用 IOPlatformUUID 的用途限定哈希；不保存或发送原始 UUID，读取失败明确报错，不用随机值替代。线上真实账号／租约、真实 Mac 和手机仍未验证。激活码用于托管连接，不是 Codex／Claude 订阅。
 
 测试者只使用自己的 Mac 和账号。在 [Issues](https://github.com/geoffrey1111/agbrio/issues/new) 提供芯片／机型、macOS、Release 标签、复现步骤和相关截图／日志；提交前遮盖个人路径、账号、密钥／token、对话内容，不上传凭据、profile 或对话数据库。Windows 下载与更新仍使用原 [Windows Latest](https://github.com/geoffrey1111/agbrio/releases/latest)。

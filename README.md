@@ -8,9 +8,9 @@ Group work into management areas, change managers, and transfer executors in one
 [![Build](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml/badge.svg?branch=main)](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml)
 [![MIT](https://img.shields.io/github/license/geoffrey1111/agbrio)](LICENSE)
 [![Windows](https://img.shields.io/badge/Windows-x64-0078D4)](https://github.com/geoffrey1111/agbrio/releases/latest)
-[![macOS Apple Silicon beta](https://img.shields.io/badge/macOS-Apple_Silicon_beta-orange)](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05)
+[![macOS Apple Silicon beta](https://img.shields.io/badge/macOS-Apple_Silicon_beta_rc.122-orange)](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05-rc122-sync)
 
-**[Windows download](https://github.com/geoffrey1111/agbrio/releases/latest) · [macOS beta download (Apple Silicon)](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05)**
+**[Windows download](https://github.com/geoffrey1111/agbrio/releases/latest) · [macOS beta download (Apple Silicon)](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05-rc122-sync)**
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
@@ -70,9 +70,11 @@ Read linked documents, images and project boards in place. API / MCP is availabl
 
 ## Mac Beta
 
+This beta includes the management areas, constellation view and first-run flow from Windows rc.122. Mac still excludes Pi, shared Codex and in-app updates. First-run skips shared Codex on Mac; Claude MCP uses manual setup in the original Code conversation.
+
 **Mac public beta — Apple Silicon (ARM64) only. Not formal macOS support. External testers have not yet validated it on their own Macs; problems may exist.** Intel Macs are unsupported. macOS 13.5 is the declared minimum, not a verified OS/model matrix. GitHub Mac CI is engineering evidence, not user UAT or Windows feature parity. General feature descriptions above primarily describe Windows; these beta limits govern Mac.
 
-[Mac beta Release](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05) · [DMG](https://github.com/geoffrey1111/agbrio/releases/download/macos-beta-2026-11-05/Agbrio_0.1.0_aarch64.dmg) · [SHA-256](https://github.com/geoffrey1111/agbrio/releases/download/macos-beta-2026-11-05/SHA256SUMS.txt) · [Report a problem](https://github.com/geoffrey1111/agbrio/issues/new)
+[Mac beta Release](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05-rc122-sync) · [DMG](https://github.com/geoffrey1111/agbrio/releases/download/macos-beta-2026-11-05-rc122-sync/Agbrio_0.1.0_aarch64.dmg) · [SHA-256](https://github.com/geoffrey1111/agbrio/releases/download/macos-beta-2026-11-05-rc122-sync/SHA256SUMS.txt) · [Report a problem](https://github.com/geoffrey1111/agbrio/issues/new)
 
 ### First open and personal approvals
 
@@ -90,6 +92,6 @@ Email passwords and MCP Events keys use your current-user Keychain. Ad-hoc upgra
 - **Pi:** no Mac entry, tasks or bundled `pi-adapter` resources.
 - **Shared Codex:** production prepare/activate/close is unsupported. Internal app-server fixtures do not prove actual Codex Desktop compatibility. Other CLI/account integrations also need testing with your own installation/account. No OpenAI installer, SDK or profile is bundled or redistributed.
 - **In-app updates:** unavailable. Manually download each new Mac version, verify its checksum, quit Agbrio normally, then replace the app. Preserve application data, pairing and history; do not copy Windows credentials/profiles. Mac is not added to the updater manifest.
-- **Hosted trial/redemption:** this Mac distribution does not configure a hosted-service entrance, so these controls are unavailable; trial device identity is also Windows-only. A code cannot activate hosted phone connectivity in this beta. Do not purchase/redeem a code for that purpose. Codes are not Codex/Claude subscriptions. Local/self-hosted settings are separate candidates and still need real-Mac/phone validation.
+- **Hosted phone connection, trial and activation codes:** enabled in this beta. Isolated Mac CI uses an unchanged test-service Worker, real TLS/WSS, the bundled Node connector and a browser to verify redemption, trial activation, renewal, pairing and message round-trip with a synthetic provider. Trials use only a scoped hash of IOPlatformUUID for eligibility; the raw UUID is not saved or sent, and a failed read reports an error rather than using a random replacement. Real service accounts/entitlements, a physical Mac and a real phone remain unverified. Codes are for hosted connectivity, not Codex/Claude subscriptions.
 
 Use only your own Mac/accounts. At [Issues](https://github.com/geoffrey1111/agbrio/issues/new), include chip/model, macOS, Release tag, reproduction steps and relevant screenshots/logs. First redact personal paths, accounts, keys/tokens and conversations; never upload credentials, profiles or conversation databases. Windows downloads/updates still use the existing [Windows Latest](https://github.com/geoffrey1111/agbrio/releases/latest).

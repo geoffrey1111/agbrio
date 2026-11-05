@@ -6,9 +6,9 @@
 [![Build](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml/badge.svg?branch=main)](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml)
 [![MIT](https://img.shields.io/github/license/geoffrey1111/agbrio)](LICENSE)
 [![Windows](https://img.shields.io/badge/Windows-x64-0078D4)](https://github.com/geoffrey1111/agbrio/releases/latest)
-[![macOS Apple Silicon beta](https://img.shields.io/badge/macOS-Apple_Silicon_beta-orange)](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05)
+[![macOS Apple Silicon beta](https://img.shields.io/badge/macOS-Apple_Silicon_beta_rc.122-orange)](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05-rc122-sync)
 
-**[Windows をダウンロード](https://github.com/geoffrey1111/agbrio/releases/latest) · [macOS テスト版をダウンロード（Apple Silicon）](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05)**
+**[Windows をダウンロード](https://github.com/geoffrey1111/agbrio/releases/latest) · [macOS テスト版をダウンロード（Apple Silicon）](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05-rc122-sync)**
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
@@ -68,9 +68,11 @@ PC と Agbrio はオンラインにしておいてください。受信端末で
 
 ## Mac Beta
 
+Windows rc.122 の管理エリア、星図ビュー、初回ガイドを同期しました。Mac では Pi、共有 Codex、アプリ内更新は引き続き利用できません。初回ガイドでは未対応の共有 Codex をスキップします。Claude MCP は元の Code 会話で手動接続します。
+
 **Mac 公開テスト版：Apple Silicon（ARM64）のみ。正式な macOS 対応ではなく、協力者所有 Mac での実機検証は未実施です。不具合の可能性があります。** Intel Mac は対象外です。macOS 13.5 は宣言された最低版で、OS／機種の検証は未完了です。GitHub Mac CI は工程検証であり、実機 UAT や Windows 同等の証明ではありません。上記の一般紹介は主に Windows 向けで、Mac には本節の制限が適用されます。
 
-[Mac テスト Release](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05) · [DMG](https://github.com/geoffrey1111/agbrio/releases/download/macos-beta-2026-11-05/Agbrio_0.1.0_aarch64.dmg) · [SHA-256](https://github.com/geoffrey1111/agbrio/releases/download/macos-beta-2026-11-05/SHA256SUMS.txt) · [問題報告](https://github.com/geoffrey1111/agbrio/issues/new)
+[Mac テスト Release](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05-rc122-sync) · [DMG](https://github.com/geoffrey1111/agbrio/releases/download/macos-beta-2026-11-05-rc122-sync/Agbrio_0.1.0_aarch64.dmg) · [SHA-256](https://github.com/geoffrey1111/agbrio/releases/download/macos-beta-2026-11-05-rc122-sync/SHA256SUMS.txt) · [問題報告](https://github.com/geoffrey1111/agbrio/issues/new)
 
 ### 未署名テスト app の初回起動・本人の許可
 
@@ -88,6 +90,6 @@ PC と Agbrio はオンラインにしておいてください。受信端末で
 - **Pi：**Mac の入口、タスク、`pi-adapter` リソースはありません。
 - **共有 Codex：**正式な準備／有効化／終了は未対応です。内部 app-server 模擬は実際の Codex Desktop 互換性を証明しません。他の CLI／アカウント連携も自分のインストールで検証が必要です。OpenAI インストーラー、SDK、profile は同梱・再配布しません。
 - **アプリ内更新：**未対応です。新版を手動取得・チェックサム照合し、Agbrio を通常終了して app を交換してください。データ、ペアリング、履歴を削除せず、Windows 認証情報／profile をコピーしないでください。Mac は更新マニフェストに追加しません。
-- **ホスト接続の試用／引き換え：**本 Mac 配布物にはサービス入口の設定がなく、操作は利用できません。安定した試用デバイス識別も Windows のみです。本テスト版のホスト型スマートフォン接続のためにコードを購入・引き換えないでください。コードは Codex／Claude の契約ではありません。ローカル／セルフホスト設定は別候補で、実際の Mac とスマートフォンでの検証が必要です。
+- **ホスト型スマートフォン接続・試用・有効化コード：**このテスト版で有効です。Mac CI は変更のないテスト用 Worker、実際の TLS/WSS、同梱 Node connector とブラウザーで、コード引き換え、試用開始、更新、ペアリング、模擬プロバイダーとの送受信を確認します。試用資格には IOPlatformUUID の用途限定ハッシュだけを使用し、元の UUID は保存・送信しません。取得できない場合はエラーにし、ランダム値で代用しません。実サービスのアカウント／利用権、実機 Mac・スマートフォンは未検証です。コードは接続用で、Codex／Claude の契約ではありません。
 
 自分の Mac とアカウントのみを使用してください。[Issues](https://github.com/geoffrey1111/agbrio/issues/new) にチップ／機種、macOS、Release タグ、再現手順と画像／ログを記載します。送信前に個人パス、アカウント、キー／token、会話を隠し、認証情報、profile、会話 DB は送らないでください。Windows の取得／更新は既存の [Windows Latest](https://github.com/geoffrey1111/agbrio/releases/latest) のままです。
