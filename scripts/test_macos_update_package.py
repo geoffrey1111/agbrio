@@ -72,6 +72,21 @@ class MacUpdatePackageTests(unittest.TestCase):
                     ("Agbrio.app/Contents/Frameworks/F.framework/Versions/Current", "s", "A"), ("Agbrio.app/Contents/Frameworks/F.framework/Resources", "s", "Versions/Current/Resources")])
         self.assertTrue(package.inspect(self.archive, VERSION, SOURCE)["files"])
 
+    def test_release_path_policy_rejects_non_ascii_and_writable_members(self):
+        for rows in [[("Agbrio.app/中文", "f", b"bad")], [("Agbrio.app/link", "s", "目標")]]:
+            self.write(rows)
+            with self.assertRaises(ValueError):
+                package.inspect(self.archive, VERSION, SOURCE)
+        self.write()
+        with tarfile.open(self.archive, "r:gz") as reader:
+            rows = [(entry, reader.extractfile(entry).read() if entry.isfile() else None) for entry in reader]
+        rows[0][0].mode = 0o777
+        with tarfile.open(self.archive, "w:gz") as writer:
+            for entry, data in rows:
+                writer.addfile(entry, io.BytesIO(data) if data is not None else None)
+        with self.assertRaises(ValueError):
+            package.inspect(self.archive, VERSION, SOURCE)
+
     def test_escaping_dangling_and_parent_symlinks_or_hardlinks_are_rejected(self):
         for rows in [[("Agbrio.app/escape", "s", "../../other")], [("Agbrio.app/missing", "s", "absent")],
                      [("Agbrio.app/alias", "s", "Contents"), ("Agbrio.app/alias/extra", "f", b"bad")], [("Agbrio.app/link", "h", "Agbrio.app/Contents/Info.plist")]]:

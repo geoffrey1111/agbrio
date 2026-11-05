@@ -114,3 +114,9 @@ jobs:
           set -euo pipefail
           cargo test --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin platform::macos_update_transaction::native::tests::isolated_same_volume_exchange_and_rollback -- --ignored --exact --test-threads=1 --nocapture | tee "$RUNNER_TEMP/agbrio-update-transaction.log"
           grep -Fx 'MACOS_UPDATE_TRANSACTION_NATIVE_PASS' "$RUNNER_TEMP/agbrio-update-transaction.log"
+      - name: Isolated signed-format archive staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin platform::macos_update_archive::native::tests::isolated_native_archive_staging_and_tamper_rejection -- --ignored --exact --test-threads=1 --nocapture | tee "$RUNNER_TEMP/agbrio-archive-staging.log"
+          grep -Fx 'MACOS_ARCHIVE_STAGING_NATIVE_PASS' "$RUNNER_TEMP/agbrio-archive-staging.log"

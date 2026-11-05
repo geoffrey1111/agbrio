@@ -1,4 +1,6 @@
 //! Desktop platform admission. Unsupported features fail before side effects.
+#[cfg(any(test,target_os="macos"))]
+pub(crate) mod macos_update_archive;
 // D4 transaction leaf only: no desktop command or installer admission yet.
 #[cfg(any(test,target_os="macos"))]
 pub(crate) mod macos_update_transaction;

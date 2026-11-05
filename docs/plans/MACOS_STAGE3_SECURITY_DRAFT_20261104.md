@@ -12,7 +12,7 @@ Owner已审阅本稿：Mac不提供Pi；D1/D2不进入本阶段，D3不批准；
 | D1 Pi提权 | 不进入本阶段 | 不实现 |
 | D2 Pi全部磁盘工作区 | 不进入本阶段 | 不实现 |
 | D3 AX读取 | 不批准，双方现行均退役 | Mac不新增；M20双方均退役 |
-| D4 更新签名 | 批准，复用现有Windows发布签名密钥，不新建Mac key | D4a真实产包/本机签验/篡改通过；D4b事务5文件候选本地测试过、Mac原生CI待审批。安装入口仍Unsupported |
+| D4 更新签名 | 批准，复用现有Windows发布签名密钥，不新建Mac key | D4a真实产包/本机签验/篡改通过；D4b1目录事务与e90双平台CI完成；D4b2归档验签/私有暂存候选本地验证通过，Mac暂存CI待审批。安装入口仍Unsupported |
 | D5 Keychain | 批准，无ACL迁移，ad-hoc升级后本人点“始终允许”为已知差异 | 工程实现/双平台CI及专用Mac Keychain fixture通过；真实账号/ad-hoc升级阶段4待验 |
 | D6 证书/连接信任 | 批准 | 未开始，排在D4其余实现和工程验证后 |
 
@@ -135,3 +135,17 @@ Mac fragment生成器只产本地candidate。若合并Windows manifest，必须�
 新增跨平台故障注入覆盖10项，以及GitHub临时Mac专用原生fixture：只操作RUNNER_TEMP下自建目录，真实同卷交换/回滚、备份保留、全局intent跨UUID围栏、外来journal/lease/链接与改名工作区保护；不启动任何app、账号、模型或业务进程。专用CI必须同时cargo通过和出现精确native PASS marker，0测试不能代替成功。当前Mac编译和原生fixture尚待本批另获Git许可后运行；Windows模拟状态机不等同Mac原生证据。
 
 最终本地验证：私有事务10PASS，公开完整Host427PASS/70明确ignored；最后补强的rollback flush失败保持Unknown、driver自身紧邻操作再核精确身份与成功flush后才能记phase也已在该最终代码快照内。公开Cargos/Windows workflow/前端/更新器生产入口字节无变，Mac原生编译和隔离fixture待新批Git许可后CI。不把本机Windows状态机或YAML解析当Mac原生成功。
+
+## 2026-11-05 D4b2：运行时归档检验与私有暂存候选
+
+前序e90eeca两条Mac source与Windows build/独立clean install均整体SUCCESS，strict marker已实际修复。当前另批新增未接入生产入口的archive模块：固定既有updater公钥验签先于解析；600MiB压缩、2GiB文件总量/有界流及10万文件上限；raw tar迭代避免通用GNU/PAX预分配，限定16KiB本地PAX path/linkpath，拒绝hardlink/special/GNU sparse/global override/重复大小覆盖。检查闭合目录树、大小/逐文件hash、相对framework链接完整解析与循环/逃逸/悬空、Info.plist身份与版本、主程序/Node ARM64及最高13.5最低系统要求；校验gzip CRC、结束padding和禁止尾随gzip成员。
+
+当前真实CI包2558条内部文件路径全部ASCII、普通文件/目录均非组/其他可写，因此生产者Python与运行时共同收窄发布包内部路径/链接为ASCII，拒绝DEL及其他控制符、别名、额外权限位和组/其他写；用户中文安装目录、项目路径与内容不受此内部发布协议约束。复用原锁定flate2 1.1.9/tar 0.4.46/plist 1.10.0/minisign-verify 0.2.5，只新增对应直接依赖，不升级依赖版本。
+
+Mac新建当前用户0700、同卷UUID暂存目录，绑定被验签archive hash并逐项新建目录/文件，文件create_new+O_NOFOLLOW、链接最后生成；重新读回全文件集合/UID/mode/size/hash/链接与native codesign --verify --deep --strict。只对新建workspace的已核对FD清除继承的filesystem ACL并验证为空，父目录ACL/原文件和D5 Keychain ACL不改。这不是Keychain ACL迁移。失败保留该准确partial workspace，不删其他对象；不替换/启动/关闭app、不申请root/系统信任、不清算旧事务。
+
+本机先验：11归档测试通过，Python12项和旧313真实archive兼容通过；新的Rust固定公钥constructor读取现有77237132byte签名归档d09a36377048d888d681073535ee5f2bf285f3e1fb38b2c4fb32038c02e5522d，2558条记录与原closed manifest逐项完全相同、篡改拒绝，实际ignored gate1PASS。只读取公开signature，未再读私钥/重签。Mac原生暂存/继承ACL清除/新CodeSign验证尚待CI：专用fixture在RUNNER_TEMP构建benign no-op ARM64 bundle、ad-hoc签名/打包，用test-only下层检查格式与真实提取；CI无publisher私钥，也不声称unsigned fixture证明publisher签名。零测试严格marker门保持。
+
+本批仍是候选，未commit/push；正式Mac更新入口继续Unsupported，桌面精确确认、备份、原进程退出、权限不足本人授权、重开与最终围栏清算尚需后继D4接线。D6及之后中文部署/Codex指令/群友清单不越门。不合并、不发布。
+
+本批最终本地结果：公开完整Host438PASS/71ignored（按CI相同2线程），Python12PASS；private/public两份新Rust解析器分别读取旧313真实签名包，固定公钥验签、2558项逐条closed-manifest相等与篡改拒绝各1PASS。未重新签名/读私钥。首次默认高并发全量的既有手机cache HTTP测试曾Null/0失败，原错误体未捕获；独立1PASS、同并发复验438PASS、撤回临时诊断后最终2线程438PASS，根因未证实，不将缓存锁竞争推测当事实，不改缓存生产代码/断言标准。原失败记录保留。Mac native staging/ACL/code-sign fixture仍待获准Git后实际CI。

@@ -36,17 +36,19 @@ def version_ok(value):
 
 
 def member_path(name):
+    require(isinstance(name, str) and name.isascii(), "release member paths must be ASCII")
     require(isinstance(name, str) and "\\" not in name and ":" not in name and "\0" not in name, "invalid member path")
     value = name.rstrip("/")
     parts = value.split("/")
     require(parts and parts[0] == APP and all(p and p not in (".", "..") for p in parts), "member outside app")
-    require(not any(ord(c) < 32 for c in value), "control character in path")
+    require(not any(ord(c) < 32 or ord(c) == 127 for c in value), "control character in path")
     return value
 
 
 def link_target(name, target):
+    require(isinstance(target, str) and target.isascii(), "release link targets must be ASCII")
     require(target and not target.startswith("/") and "\\" not in target and ":" not in target and "\0" not in target, "invalid link")
-    require(not any(ord(c) < 32 for c in target), "control character in link")
+    require(not any(ord(c) < 32 or ord(c) == 127 for c in target), "control character in link")
     resolved = posixpath.normpath(posixpath.join(posixpath.dirname(name), target))
     require(resolved == APP or resolved.startswith(APP + "/"), "escaping link")
     return resolved
@@ -110,10 +112,12 @@ def inspect(archive, version, source):
             folded = unicodedata.normalize("NFC", name).casefold()
             require(folded not in aliases, "duplicate or case/Unicode alias")
             aliases[folded] = name
-            require(not entry.mode & 0o7000, "privileged mode bits")
+            require(not entry.mode & ~0o777, "invalid or privileged mode bits")
+            require(entry.issym() or not entry.mode & 0o022, "group/other writable release member")
             require(entry.uid == 0 and entry.gid == 0, "archive ownership must be normalized")
             row = {"path": name, "mode": entry.mode & 0o777}
             if entry.isdir():
+                require(entry.mode & 0o500 == 0o500, "directory must be owner-readable and searchable")
                 row["type"] = "directory"
             elif entry.issym():
                 row.update(type="symlink", target=entry.linkname)
@@ -156,7 +160,7 @@ def inspect(archive, version, source):
     require(info.get("LSMinimumSystemVersion") in ("13.5", "13.5.0"), "bundle minimum-system mismatch")
     for filename in ("ai-work-router", "browser-executor-node"):
         name = f"{APP}/Contents/MacOS/{filename}"
-        require(paths.get(name, {}).get("type") == "file" and paths[name]["mode"] & 0o111, "required executable missing")
+        require(paths.get(name, {}).get("type") == "file" and paths[name]["mode"] & 0o100, "required executable missing")
         arm64(content.get(name, b""))
     return {"schema": SCHEMA, "repository": REPO, "sourceCommit": source, "platform": "darwin-aarch64", "version": version,
             "archive": {"name": archive.name, "size": archive.stat().st_size, "sha256": sha(archive.read_bytes())},
