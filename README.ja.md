@@ -6,10 +6,13 @@
 [![Build](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml/badge.svg?branch=main)](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml)
 [![MIT](https://img.shields.io/github/license/geoffrey1111/agbrio)](LICENSE)
 [![Windows](https://img.shields.io/badge/Windows-x64-0078D4)](https://github.com/geoffrey1111/agbrio/releases/latest)
+[![macOS Apple Silicon beta](https://img.shields.io/badge/macOS-Apple_Silicon_beta-orange)](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05)
+
+**[Windows をダウンロード](https://github.com/geoffrey1111/agbrio/releases/latest) · [macOS テスト版をダウンロード（Apple Silicon）](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05)**
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
-> Mac 公開テスト版：Apple Silicon のみ。協力者所有 Mac での実機検証は未実施です。[取得と制限](#mac-beta)。
+> Mac 公開テスト版：Apple Silicon のみ。実機検証は未実施です。[制限は Mac Beta 節を参照](#mac-beta)。
 
 Codex と Claude Code の会話を確認し、返信して作業を進める。新しい結果や判断が必要なときは通知を受け取れます。計画と実行を分担したり、ひとつの管理会話に複数の実行会話を任せたりできます。
 

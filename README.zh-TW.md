@@ -6,10 +6,13 @@
 [![Build](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml/badge.svg?branch=main)](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml)
 [![MIT](https://img.shields.io/github/license/geoffrey1111/agbrio)](LICENSE)
 [![Windows](https://img.shields.io/badge/Windows-x64-0078D4)](https://github.com/geoffrey1111/agbrio/releases/latest)
+[![macOS Apple Silicon beta](https://img.shields.io/badge/macOS-Apple_Silicon_beta-orange)](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05)
+
+**[Windows 下載](https://github.com/geoffrey1111/agbrio/releases/latest) · [macOS 測試版下載（Apple Silicon）](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05)**
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
-> Mac 公開測試版：僅 Apple Silicon，尚未由群友以自有 Mac 實機驗證。[下載與限制](#mac-beta)。
+> Mac 公開測試版：僅 Apple Silicon，未經實機驗證。[限制請見 Mac Beta 一節](#mac-beta)。
 
 查看 Codex、Claude Code 對話，傳送訊息跟進，接收新回覆與待處理通知。讓管理與執行分工，也能由一個管理對話協調多個執行對話。
 

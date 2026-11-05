@@ -6,10 +6,13 @@
 [![Build](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml/badge.svg?branch=main)](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml)
 [![MIT](https://img.shields.io/github/license/geoffrey1111/agbrio)](LICENSE)
 [![Windows](https://img.shields.io/badge/Windows-x64-0078D4)](https://github.com/geoffrey1111/agbrio/releases/latest)
+[![macOS Apple Silicon beta](https://img.shields.io/badge/macOS-Apple_Silicon_beta-orange)](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05)
+
+**[Windows download](https://github.com/geoffrey1111/agbrio/releases/latest) · [macOS beta download (Apple Silicon)](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05)**
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
-> Mac public beta: Apple Silicon only; no external real-Mac validation yet. [Download and limitations](#mac-beta).
+> Mac public beta: Apple Silicon only; not yet validated on a real Mac. [Limitations: Mac Beta](#mac-beta).
 
 Follow Codex and Claude Code conversations, reply with the next instruction, and get notified when something needs you. Pair planning with execution, or let one managing conversation coordinate several executors.
 

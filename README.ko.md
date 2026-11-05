@@ -6,10 +6,13 @@
 [![Build](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml/badge.svg?branch=main)](https://github.com/geoffrey1111/agbrio/actions/workflows/windows-alpha.yml)
 [![MIT](https://img.shields.io/github/license/geoffrey1111/agbrio)](LICENSE)
 [![Windows](https://img.shields.io/badge/Windows-x64-0078D4)](https://github.com/geoffrey1111/agbrio/releases/latest)
+[![macOS Apple Silicon beta](https://img.shields.io/badge/macOS-Apple_Silicon_beta-orange)](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05)
+
+**[Windows 다운로드](https://github.com/geoffrey1111/agbrio/releases/latest) · [macOS 테스트 버전 다운로드 (Apple Silicon)](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05)**
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
-> Mac 공개 테스트: Apple Silicon 전용, 외부 테스터 소유 Mac의 실제 기기 검증은 아직 없습니다. [다운로드와 제한](#mac-beta).
+> Mac 공개 테스트 버전: Apple Silicon 전용이며 실제 기기 검증은 미완료입니다. [제한 사항은 Mac Beta 절을 참고하세요](#mac-beta).
 
 Codex와 Claude Code 대화를 확인하고, 메시지를 보내 후속 작업을 진행하세요. 새 결과나 결정이 필요할 때 알림을 받습니다. 계획과 실행을 나누거나 하나의 관리 대화에 여러 실행 대화를 맡길 수 있습니다.
 
