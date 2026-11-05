@@ -116,6 +116,7 @@ jobs:
       - name: Isolated hosted TLS WSS and PWA transport
         shell: bash
         env:
+          AGBRIO_FIXTURE_PRIVILEGED_SERVICE: '1'
           AGBRIO_FIXTURE_NODE: ${{ github.workspace }}/src-tauri/binaries/browser-executor-node-aarch64-apple-darwin
         run: |
           set -euo pipefail

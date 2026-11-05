@@ -16,6 +16,7 @@ pub(crate) fn client(builder:reqwest::blocking::ClientBuilder)->Result<reqwest::
 #[ignore="explicit one-time local hosted service; isolated HOME and synthetic native provider only"]
 fn native_hosted_transport(){
  use std::sync::{Arc,Mutex};
+ #[cfg(target_os="macos")] assert_ne!(unsafe{libc::geteuid()},0,"test application must remain unprivileged");
  let root=root().unwrap();let input:serde_json::Value=serde_json::from_slice(&fs::read(root.join("input.json")).unwrap()).unwrap();
  // Prove fixture TLS/DNS independently before any one-use request is sent.
  let health=client(reqwest::blocking::Client::builder().timeout(Duration::from_secs(10))).unwrap().build().unwrap().get("https://control.agbrio.localhost/health").send().expect("isolated fixture TLS/DNS preflight");

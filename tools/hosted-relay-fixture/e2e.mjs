@@ -1,5 +1,5 @@
 // Maintained project integration test, never an agent browser or real tenant.
-import {Miniflare} from 'miniflare';
+import {createService} from './service.mjs';
 import {chromium} from 'playwright';
 import fs from 'node:fs/promises';import path from 'node:path';import os from 'node:os';
 import {spawn,execFileSync} from 'node:child_process';import https from 'node:https';import {randomBytes,createHash,X509Certificate} from 'node:crypto';import {fileURLToPath,pathToFileURL} from 'node:url';import assert from 'node:assert/strict';
@@ -11,7 +11,7 @@ if(selected==='--cargo-messages'){
  assert.equal(binaries.length,1,'exact one Rust lib test executable');selected=binaries[0];
 }
 const binary=path.resolve(selected??'');assert((await fs.stat(binary)).isFile(),'exact Rust test binary required');
-const root=await fs.mkdtemp(path.join(process.env.RUNNER_TEMP??(process.platform==='win32'?'D:/desktop/临时处理':os.tmpdir()),'agbrio-hosted-e2e-'));let service,browser,child;let logs='';
+const root=await fs.mkdtemp(path.join(process.env.RUNNER_TEMP??(process.platform==='win32'?'D:/desktop/临时处理':os.tmpdir()),'agbrio-hosted-e2e-'));let service,serviceChild,browser,child;let logs='';
 const admin=randomBytes(32).toString('hex');const tenant='a'.repeat(32),trialTenant='b'.repeat(32);
 const control='https://control.agbrio.localhost';
 const openssl=process.env.AGBRIO_FIXTURE_OPENSSL??(process.platform==='win32'?'openssl.exe':'/usr/bin/openssl');
@@ -20,8 +20,17 @@ try{
  await fs.writeFile(path.join(root,'tls.cnf'),'[req]\ndistinguished_name=dn\nprompt=no\nx509_extensions=fixture\n[dn]\nCN=Agbrio isolated fixture\n[fixture]\nsubjectAltName=DNS:*.agbrio.localhost\nbasicConstraints=critical,CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n');
  execFileSync(openssl,['req','-x509','-newkey','rsa:2048','-nodes','-sha256','-days','1','-keyout',path.join(root,'key.pem'),'-out',path.join(root,'cert.pem'),'-config',path.join(root,'tls.cnf')],{stdio:'ignore'});
  const cert=await fs.readFile(path.join(root,'cert.pem'));const key=await fs.readFile(path.join(root,'key.pem'));
- service=new Miniflare({modules:true,scriptPath:path.join(repo,'services/hosted-relay/worker.mjs'),compatibilityDate:'2026-08-06',cf:false,host:'127.0.0.1',port:443,httpsCert:cert.toString(),httpsKey:key.toString(),bindings:{CONTROL_HOST:'control.agbrio.localhost',ZONE_ROOT:'agbrio.localhost',ADMIN_TOKEN:admin},durableObjects:{CONTROL:{className:'Control',useSQLite:true},TENANTS:{className:'Tenant',useSQLite:true}},durableObjectsPersist:false});
- await service.ready;
+ await fs.writeFile(path.join(root,'service-input.json'),JSON.stringify({admin}),{mode:0o600});
+ const privileged=process.platform==='darwin'&&process.env.GITHUB_ACTIONS==='true'&&process.env.AGBRIO_FIXTURE_PRIVILEGED_SERVICE==='1';
+ if(privileged){
+  assert.notEqual(process.getuid(),0,'application driver must remain unprivileged');
+  const tmp=path.join(root,'service-tmp');await fs.mkdir(tmp);
+  serviceChild=spawn('/usr/bin/sudo',['-n',process.execPath,path.join(repo,'tools/hosted-relay-fixture/service.mjs'),'--ci-listener',root],{env:{PATH:process.env.PATH,HOME:tmp,TMPDIR:tmp,GITHUB_ACTIONS:'true'},stdio:['pipe','ignore','pipe']});
+  serviceChild.stderr.on('data',b=>{logs=(logs+b).slice(-12000);});
+  const end=Date.now()+30000;let ready=false;
+  while(Date.now()<end){if(await fs.stat(path.join(root,'service-ready.json')).catch(()=>null)){ready=true;break;}if(serviceChild.exitCode!==null)throw Error('CI fixture listener startup failed '+logs);await new Promise(r=>setTimeout(r,100));}
+  assert(ready,'CI fixture listener deadline');
+ }else{service=await createService(root);await service.ready;}
  const request=(url,body,adminRequest=false)=>new Promise((resolve,reject)=>{const u=new URL(url);const req=https.request(u,{method:body?'POST':'GET',ca:cert,lookup:(_host,options,cb)=>options.all?cb(null,[{address:'127.0.0.1',family:4}]):cb(null,'127.0.0.1',4),headers:{...(body?{'content-type':'application/json'}:{}),...(adminRequest?{authorization:'Bearer '+admin}:{})},timeout:10000},res=>{const chunks=[];res.on('data',c=>chunks.push(c));res.on('end',()=>resolve({status:res.statusCode,text:Buffer.concat(chunks).toString()}));});req.on('error',reject);req.on('timeout',()=>req.destroy(Error('fixture request timeout')));req.end(body?JSON.stringify(body):undefined);});
  const codes=[7,30].map(days=>({days,code:'AGB'+days+'-'+randomBytes(32).toString('hex'),tenantId:tenant}));
  // Different code batches may renew one existing tenant without changing server policy.
@@ -57,7 +66,7 @@ try{
   await page.reload();await page.getByText('Hosted transport fixture',{exact:true}).first().click();await page.getByText('Fixture reply received',{exact:true}).first().waitFor({state:'visible'});
   if(!trial){await fs.writeFile(path.join(profile,'renew.json'),JSON.stringify({code:codes[1].code}));const renewed=await waitFile(path.join(profile,'renewed.json'));assert.equal(renewed.origin,ready.origin);assert(renewed.expiresAt>ready.expiresAt);}
   await context.close();await fs.writeFile(path.join(profile,'stop'),'done');const exit=await new Promise(resolve=>{if(child.exitCode!==null)resolve(child.exitCode);else child.once('exit',resolve);});assert.equal(exit,0,logs);assert(logs.includes('HOSTED_TRANSPORT_NATIVE_PASS'));child=null;
-  receipts.push({operation:trial?'TRIAL':'CODE_AND_RENEWAL',realTls:true,realWss:true,unchangedWorkerSource:true,fixtureCompatibilityDate:'2026-08-06',deployedCompatibilityDate:'2026-10-01',productionConnector:true,productionRustActivation:true,pairedBrowser:true,messageSendAndRead:true,replaySuppressed:true,syntheticNativeProvider:true,macRunner:process.platform==='darwin',physicalDevice:false});
+  receipts.push({operation:trial?'TRIAL':'CODE_AND_RENEWAL',realTls:true,realWss:true,unchangedWorkerSource:true,fixtureCompatibilityDate:'2026-08-06',deployedCompatibilityDate:'2026-10-01',productionConnector:true,productionRustActivation:true,applicationUnprivileged:process.platform!=='darwin'||process.getuid()>0,privilegedFixtureService:privileged,pairedBrowser:true,messageSendAndRead:true,replaySuppressed:true,syntheticNativeProvider:true,macRunner:process.platform==='darwin',physicalDevice:false});
  }
  console.log(JSON.stringify({status:'HOSTED_E2E_PASS',receipts}));if(process.platform==='darwin')console.log('MACOS_HOSTED_E2E_PASS');
-}catch(error){console.error('Native fixture failure log:',logs);for(const name of ['code-profile','trial-profile']){console.error('Protocol trace',await fs.readFile(path.join(root,name,'native-protocol-errors.jsonl'),'utf8').catch(()=>''));}throw error;}finally{if(child&&child.exitCode===null){child.kill();await new Promise(resolve=>child.once('exit',resolve));}await browser?.close();await service?.dispose();assert(path.basename(root).startsWith('agbrio-hosted-e2e-')&&!(await fs.lstat(root)).isSymbolicLink());await fs.rm(root,{recursive:true,force:true});}
+}catch(error){console.error('Native fixture failure log:',logs);for(const name of ['code-profile','trial-profile']){console.error('Protocol trace',await fs.readFile(path.join(root,name,'native-protocol-errors.jsonl'),'utf8').catch(()=>''));}throw error;}finally{if(child&&child.exitCode===null){child.kill();await new Promise(resolve=>child.once('exit',resolve));}await browser?.close();await service?.dispose();if(serviceChild&&serviceChild.exitCode===null){serviceChild.stdin.end();await new Promise(resolve=>serviceChild.once('exit',resolve));}assert(path.basename(root).startsWith('agbrio-hosted-e2e-')&&!(await fs.lstat(root)).isSymbolicLink());await fs.rm(root,{recursive:true,force:true});}

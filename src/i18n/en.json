@@ -1982,5 +1982,7 @@
   "操作结果暂未确认。请检查并完成这次操作，系统会沿用同一请求，不会重复创建。": "The outcome is unconfirmed. Check and finish this operation using the same request, without creating duplicates.",
   "已存在另一个 Agbrio 地址，已保留原配置。请核对后再连接。": "A different Agbrio address is configured and was preserved. Review it before connecting.",
   "Mac 测试版不提供共享 Codex，可监听已有 Codex 对话；系统授权由你本人处理。": "Mac beta does not offer shared Codex. You can watch existing Codex conversations; handle system permissions yourself.",
-  "监听已有 Codex 对话（不提供共享模式）": "Watch existing Codex conversations (shared mode unavailable)"
+  "监听已有 Codex 对话（不提供共享模式）": "Watch existing Codex conversations (shared mode unavailable)",
+  "接入指令已复制。在原 Claude Code 对话按 Command+V 发送，再由本人完成登录与授权。": "Setup instructions copied. Paste with Command+V in the original Claude Code conversation, then complete sign-in and consent yourself.",
+  "Mac 使用手动 MCP 接入；在原 Code 对话完成登录和只读验证，授权由本人点击。": "Mac uses manual MCP setup. Sign in and verify read-only access in the original Code conversation; give consent yourself."
 }

@@ -136,3 +136,13 @@ it('Mac skips shared Codex without preparing it and exposes trial and code phone
  expect(f.api.prepareCodex).not.toHaveBeenCalled();expect(f.api.openCodex).not.toHaveBeenCalled();
  fireEvent.click(screen.getByRole('radio',{name:'已有激活码'}));expect(screen.getByLabelText('激活码')).toBeVisible();
 });
+
+it('Mac uses manual MCP and Command+V while preserving Windows-only automatic setup',async()=>{
+ const f=setupFixture();f.state.platform='macos';f.state.claudeLoaded=true;f.state.hasGrant=true;
+ f.api.setupMcp=vi.fn();f.api.mcpStatus=vi.fn();f.api.copyText=vi.fn(async()=>{});
+ render(<FirstRunWizard api={f.api} initial={f.state} preference={{version:1,disposition:'PENDING',agents:['CLAUDE_CODE'],step:'CLAUDE'}} storage={storage()} onExit={vi.fn()}/>);
+ await clickPrimary();expect(await screen.findByText(/Command\+V/)).toBeVisible();
+ expect(f.api.setupMcp).not.toHaveBeenCalled();expect(f.api.mcpStatus).not.toHaveBeenCalled();
+ expect(f.api.copyText).toHaveBeenCalledWith(expect.stringContaining('Mac 终端'));
+ expect(screen.queryByText(/Ctrl\+V/)).toBeNull();
+});
