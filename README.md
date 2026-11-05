@@ -9,6 +9,8 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
+> Mac public beta: Apple Silicon only; no external real-Mac validation yet. [Download and limitations](#mac-beta).
+
 Follow Codex and Claude Code conversations, reply with the next instruction, and get notified when something needs you. Pair planning with execution, or let one managing conversation coordinate several executors.
 
 ![Desktop conversation overview](docs/assets/en/conversations-current.png)
@@ -61,16 +63,28 @@ Read linked documents, images and project boards in place. API / MCP is availabl
 <sub>Screenshots show the current interface with fictional example data.</sub>
 
 
-## macOS preview candidates (Apple Silicon)
+## Mac Beta
 
-macOS support is in progress and does not yet have Windows feature parity. The manual **macOS candidate DMG** Actions workflow produces an ad-hoc-signed `.dmg` artifact; it does not publish a Release or use updater signing secrets. ARM64 source tests and an earlier delivered DMG startup have passed on GitHub macOS 26.6.2. macOS 13.5 is the declared deployment target, not a verified OS version.
+**Mac public beta — Apple Silicon (ARM64) only. Not formal macOS support. External testers have not yet validated it on their own Macs; problems may exist.** Intel Macs are unsupported. macOS 13.5 is the declared minimum, not a verified OS/model matrix. GitHub Mac CI is engineering evidence, not user UAT or Windows feature parity. General feature descriptions above primarily describe Windows; these beta limits govern Mac.
 
-Native paths, local maintenance CLI, Claude engine discovery, notification integration, menu bar/Dock behavior, login configuration, resource sampling, bounded user-service recovery, and pinned on-demand Chromium now have Mac implementations and automated tests. Real accounts, system permission prompts, notification clicks, phone end-to-end operation, and long-term behavior still need validation. Shared Codex now has an internal app-server prepare/activate/close candidate with protocol fixtures; the shipped Mac entry stays unsupported until stage-4 real-package validation on a Mac owned by an external volunteer tester. OpenAI installers are never downloaded by this repository/CI or redistributed in its artifacts. Pi is intentionally not offered on Mac (no Pi entry or adapter resources). Keychain secrets, device trial identity, Accessibility, and signed in-app updates require the next security-design phase. The retired browser connector/Native Messaging path stays retired.
+[Mac beta Release](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05) · [DMG](https://github.com/geoffrey1111/agbrio/releases/download/macos-beta-2026-11-05/Agbrio_0.1.0_aarch64.dmg) · [SHA-256](https://github.com/geoffrey1111/agbrio/releases/download/macos-beta-2026-11-05/SHA256SUMS.txt) · [Report a problem](https://github.com/geoffrey1111/agbrio/issues/new)
 
-Verify the artifact checksum, then copy `Agbrio.app` to Applications. For a trusted ad-hoc candidate blocked by macOS, use **System Settings → Privacy & Security → Open Anyway**, or run the command below yourself. The app never removes quarantine automatically. No Apple Developer account is required; candidates have no Developer ID signature or notarization.
+### First open and personal approvals
 
-```text
-xattr -dr com.apple.quarantine /Applications/Agbrio.app
-```
+This is an unsigned test distribution in Apple's identified-developer sense: **ad-hoc signature only, no Developer ID signature or notarization**.
 
-Notification permission is requested only by an explicit desktop action. Access to selected files, removable volumes, or protected locations may need Files & Folders or Full Disk Access granted by the owner. Future read-only AX functionality would need Accessibility permission. Ad-hoc identity changes with each build; macOS may ask for permission again after an update. CI checks are automated engineering evidence, not user UAT or full feature parity.
+1. Download the DMG and `SHA256SUMS.txt` from this Release. Compare the full DMG SHA-256 using macOS `shasum -a 256` before opening.
+2. Copy `Agbrio.app` from the DMG to Applications or your own `~/Applications`, eject the DMG, and try opening the copied app in Finder.
+3. If blocked and you trust this download, use **System Settings → Privacy & Security → Open Anyway**, then confirm **Open** yourself. [Apple instructions](https://support.apple.com/en-us/102445). Stop on malware alerts or checksum mismatch.
+4. First launch, notification, selected-file and login-item permissions must be handled by you. Your Codex/agent must not approve security prompts. Agbrio does not automatically remove quarantine or change system trust.
+
+Email passwords and MCP Events keys use your current-user Keychain. Ad-hoc upgrades may prompt again: only if you trust this build, choose **Allow / Always Allow** yourself. Refusal/incomplete prompts can leave those features unavailable. No Keychain ACL migration. Real accounts, system prompts, phone end-to-end use and long-term operation remain unverified.
+
+### Unavailable in this beta
+
+- **Pi:** no Mac entry, tasks or bundled `pi-adapter` resources.
+- **Shared Codex:** production prepare/activate/close is unsupported. Internal app-server fixtures do not prove actual Codex Desktop compatibility. Other CLI/account integrations also need testing with your own installation/account. No OpenAI installer, SDK or profile is bundled or redistributed.
+- **In-app updates:** unavailable. Manually download each new Mac version, verify its checksum, quit Agbrio normally, then replace the app. Preserve application data, pairing and history; do not copy Windows credentials/profiles. Mac is not added to the updater manifest.
+- **Hosted trial/redemption:** this Mac distribution does not configure a hosted-service entrance, so these controls are unavailable; trial device identity is also Windows-only. A code cannot activate hosted phone connectivity in this beta. Do not purchase/redeem a code for that purpose. Codes are not Codex/Claude subscriptions. Local/self-hosted settings are separate candidates and still need real-Mac/phone validation.
+
+Use only your own Mac/accounts. At [Issues](https://github.com/geoffrey1111/agbrio/issues/new), include chip/model, macOS, Release tag, reproduction steps and relevant screenshots/logs. First redact personal paths, accounts, keys/tokens and conversations; never upload credentials, profiles or conversation databases. Windows downloads/updates still use the existing [Windows Latest](https://github.com/geoffrey1111/agbrio/releases/latest).

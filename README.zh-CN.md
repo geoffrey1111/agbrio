@@ -9,6 +9,8 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
+> Mac 公开测试版：仅 Apple Silicon，尚未经群友自有 Mac 真机验证。[下载与限制](#mac-beta)。
+
 查看 Codex、Claude Code 对话，发消息跟进，接收新回复和待处理通知。把管理与执行分工，也可以让一个管理对话协调多个执行对话。
 
 ![桌面对话总览与执行状态](docs/assets/zh-CN/conversations-current.png)
@@ -61,16 +63,28 @@ flowchart TD
 <sub>所有截图均为当前界面，使用虚构示例数据。</sub>
 
 
-## macOS 预览候选（Apple Silicon）
+## Mac Beta
 
-macOS 适配仍在进行，尚未与 Windows 功能对齐。手动 **macOS candidate DMG** Actions 生成 ad-hoc 签名 `.dmg` artifact，不建 Release、不使用更新签名 secret。ARM64 源码测试及较早候选 DMG 的交付副本启动已在 GitHub macOS 26.6.2 通过。macOS 13.5 是声明的部署目标，尚未在该系统版本验证。
+**Mac 公开测试版，仅 Apple Silicon（ARM64）；不是正式 macOS 支持。尚未经外部测试者自有 Mac 真机验证，可能有问题。** 不支持 Intel Mac。macOS 13.5 只是声明的最低版本，系统／机型验证尚未完成。GitHub Mac CI 是工程验证，不代表真机 UAT 或与 Windows 功能对齐。上方通用功能介绍主要描述 Windows；Mac 以本节限制为准。
 
-原生路径、本机维护 CLI、Claude 引擎发现、通知集成、菜单栏/Dock、登录启动配置、资源采样、限定用户服务恢复、固定版本按需 Chromium 已有 Mac 实现及自动化测试。真实账号、系统权限弹窗、通知点击、手机端到端与长期运行仍待验证。共享 Codex 已有按 app-server 协议编写的准备/激活/关闭内部候选及模拟测试；正式 Mac 入口在阶段4群友自有 Mac 实包验证前继续不支持。仓库/CI 不再下载或分发 OpenAI 安装包。Mac 按所有者决定不提供 Pi（无入口及适配器资源）。Keychain 秘密、设备试用身份、辅助功能和签名应用内更新需要后续安全设计批准。已退役的浏览器连接器/Native Messaging 保持退役。
+[Mac 测试版 Release](https://github.com/geoffrey1111/agbrio/releases/tag/macos-beta-2026-11-05) · [DMG 下载](https://github.com/geoffrey1111/agbrio/releases/download/macos-beta-2026-11-05/Agbrio_0.1.0_aarch64.dmg) · [SHA-256 校验和](https://github.com/geoffrey1111/agbrio/releases/download/macos-beta-2026-11-05/SHA256SUMS.txt) · [问题反馈](https://github.com/geoffrey1111/agbrio/issues/new)
 
-核对 artifact 校验和后，将 `Agbrio.app` 放入 Applications。本人信任的 ad-hoc 候选若被拦截，可到**系统设置 → 隐私与安全性 → 仍要打开**，或由本人执行下方命令。应用不会自动移除 quarantine。无需 Apple Developer 账号；候选没有 Developer ID 签名或公证。
+### 未签名测试 app 首次打开与本人授权
 
-```text
-xattr -dr com.apple.quarantine /Applications/Agbrio.app
-```
+本包只有 **ad-hoc 签名，没有 Apple Developer ID 签名或公证**。
 
-通知权限只由明确的桌面操作申请。所选文件、可移动卷或受保护位置可能需要本人授予文件与文件夹或完全磁盘访问权限。未来只读 AX 功能才需辅助功能权限。ad-hoc 身份随每次构建变化，更新后系统可能要求重新授权。CI 通过是自动化工程证据，不代表用户 UAT 或完整功能对齐。
+1. 下载该 Release 的 DMG 和 `SHA256SUMS.txt`，用 macOS `shasum -a 256` 比较完整 SHA-256，一致后再打开。
+2. 将 DMG 中的 `Agbrio.app` 复制到 Applications 或自己的 `~/Applications`，推出 DMG，再从 Finder 尝试打开复制后的 app。
+3. 若被拦截且你信任此下载，到**系统设置 → 隐私与安全性 → 仍要打开**，由本人确认「打开」。[Apple 官方步骤](https://support.apple.com/en-us/102445)。恶意软件警告或校验和不一致时应停止并反馈。
+4. 首次启动、通知、所选文件和登录项等系统权限由本人决定与操作，Codex／Agent 不应代点。应用不会自动移除 quarantine 或更改系统信任。
+
+邮箱密码与 MCP Events 密钥使用当前用户钥匙串。ad-hoc 升级后可能再次提示；只有信任此版本时才由本人选择「允许／始终允许」。拒绝或未完成提示时相关功能可能不可用。不做 Keychain ACL 迁移。真实账号、权限弹窗、手机端到端与长期运行仍未验证。
+
+### 本测试版不可用
+
+- **Pi：**没有 Mac Pi 入口、任务或 `pi-adapter` 打包资源。
+- **共享 Codex：**正式准备／激活／关闭仍不支持。内部 app-server 模拟测试不证明真实 Codex Desktop 兼容；其他 CLI／账号集成也需用自己的安装和账号验证。不打包或分发 OpenAI 安装包、SDK 或 profile。
+- **应用内更新：**不可用。每次新版本需手动下载、核对校验和，正常退出 Agbrio 后替换 app。保留应用数据、配对和历史，不复制 Windows 凭据／profile；本次不在更新清单加入 Mac。
+- **托管试用／兑换：**本次 Mac 包未配置托管服务入口，试用与兑换控件不可用；稳定试用设备身份也仍仅适配 Windows。兑换码不能为本测试版开通托管手机连接，请勿为此用途购买或兑换。兑换码不是 Codex／Claude 订阅。本地／自托管设置是独立候选能力，仍需真实 Mac 和手机验证。
+
+测试者只使用自己的 Mac 和账号。在 [Issues](https://github.com/geoffrey1111/agbrio/issues/new) 提供芯片／机型、macOS、Release 标签、复现步骤和相关截图／日志；提交前遮盖个人路径、账号、密钥／token、对话内容，不上传凭据、profile 或对话数据库。Windows 下载与更新仍使用原 [Windows Latest](https://github.com/geoffrey1111/agbrio/releases/latest)。
