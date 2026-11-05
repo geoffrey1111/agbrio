@@ -13,7 +13,7 @@ it.each(['zh-CN','zh-TW','en'] as const)('separates the desktop and terminal Cla
  const steps=screen.getByRole('region',{name:language==='en'?'Connect Claude Code':'Claude Code 完整接入'});
  expect(steps).not.toHaveTextContent('claude mcp get agbrio');
  const nav=within(steps).getByRole('navigation');fireEvent.click(nav.querySelectorAll('button')[1]);
- expect(steps).toHaveTextContent('Add custom connector');expect(steps).not.toHaveTextContent('claude mcp get agbrio');if(language==='en')expect(steps.textContent).not.toMatch(/[\u3400-\u9fff]/);
+ expect(steps).not.toHaveTextContent('Add custom connector');expect(steps.querySelector('a[href*="claude.ai"]')).toBeNull();expect(steps).not.toHaveTextContent('claude mcp get agbrio');if(language==='en')expect(steps.textContent).not.toMatch(/[\u3400-\u9fff]/);
  fireEvent.click(within(steps).getByRole('button',{name:language==='en'?'Terminal / VS Code':language==='zh-TW'?'終端 / VS Code':'终端 / VS Code'}));
  expect(steps).toHaveTextContent('claude mcp get agbrio');expect(steps).toHaveTextContent('/mcp');
  fireEvent.click(within(steps).getByText(language==='en'?'View add command':language==='zh-TW'?'查看新增命令':'查看添加命令'));

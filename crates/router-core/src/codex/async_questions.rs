@@ -61,6 +61,9 @@ pub(crate) fn response_hash(text:&str)->Option<String>{
 fn project(bytes:&[u8])->Vec<Value>{project_seeded(bytes,"")}
 fn project_seeded(bytes:&[u8],initial_turn:&str)->Vec<Value>{
  let mut turn=initial_turn.to_owned();let mut cards:Vec<Value>=vec![];let mut answered=std::collections::HashSet::new();let mut receipts=std::collections::HashMap::new();
+ // Latest display state must not erase evidence for an earlier exact send.
+ // All receipt sets remain bounded by the native read window, not persisted prompts.
+ let mut receipt_history:std::collections::HashMap<String,std::collections::BTreeSet<String>>=std::collections::HashMap::new();
  for line in bytes.split(|b|*b==b'\n').filter(|l|l.len()<=2*1024*1024){let Ok(text)=std::str::from_utf8(line)else{continue};if !text.contains("turn_context")&&!text.contains("request_user_input_async")&&!text.contains("send_user_message_question_reply"){continue;}let Ok(v)=serde_json::from_slice::<Value>(line)else{continue};let p=&v["payload"];
   if v["type"]=="turn_context"{turn=p["turn_id"].as_str().unwrap_or_default().into();continue}
   if v["type"]!="response_item"{continue}
@@ -68,14 +71,36 @@ fn project_seeded(bytes:&[u8],initial_turn:&str)->Vec<Value>{
    let Some(call)=p["call_id"].as_str().filter(|s|!s.is_empty()&&s.len()<=256)else{continue};let Some(args)=p["arguments"].as_str().filter(|s|s.len()<=131072).and_then(|s|serde_json::from_str::<Value>(s).ok())else{continue};let Some(questions)=args["questions"].as_array().filter(|qs|!qs.is_empty()&&qs.len()<=12)else{continue};
    let questions=questions.iter().enumerate().filter_map(|(i,q)|{let question=q["title"].as_str()?.chars().take(16000).collect::<String>();let options=q["options"].as_array().map(|options|options.iter().take(12).filter_map(|o|o.as_str().map(|s|json!({"label":s,"description":""}))).collect::<Vec<_>>()).unwrap_or_default();Some(json!({"id":json!(["request_user_input_async",call,i]).to_string(),"label":question,"placeholder":question,"required":true,"isOther":true,"options":options}))}).collect::<Vec<_>>();
    if questions.is_empty(){continue}cards.push(json!({"requestId":call,"revision":1,"method":"request_user_input_async","kind":"USER_INPUT","isBlocking":false,"responseSent":false,"turnId":turn,"questions":questions}));
-  }else if p["type"]=="message"&&p["role"]=="user"{if let Some(content)=p["content"].as_array(){for item in content{let Some(text)=item["text"].as_str()else{continue};let hash=response_hash(text);let Some(text)=text.trim().strip_prefix("<send_user_message_question_reply>").and_then(|t|t.strip_suffix("</send_user_message_question_reply>"))else{continue};let Ok(rows)=serde_json::from_str::<Vec<Value>>(text)else{continue};for r in rows{if r["answer"].as_str().is_some(){if let Some(id)=r["questionItemId"].as_str(){answered.insert(id.to_owned());if let Some(hash)=&hash{receipts.insert(id.to_owned(),hash.clone());}}}}}}
+  }else if p["type"]=="message"&&p["role"]=="user"{if let Some(content)=p["content"].as_array(){for item in content{let Some(text)=item["text"].as_str()else{continue};let hash=response_hash(text);let Some(text)=text.trim().strip_prefix("<send_user_message_question_reply>").and_then(|t|t.strip_suffix("</send_user_message_question_reply>"))else{continue};let Ok(rows)=serde_json::from_str::<Vec<Value>>(text)else{continue};for r in rows{if r["answer"].as_str().is_some(){if let Some(id)=r["questionItemId"].as_str(){answered.insert(id.to_owned());if let Some(hash)=&hash{receipts.insert(id.to_owned(),hash.clone());receipt_history.entry(id.to_owned()).or_default().insert(hash.clone());}}}}}}
   }
  }
  for card in &mut cards{card["responseSent"]=json!(card["questions"].as_array().is_some_and(|qs|qs.iter().all(|q|q["id"].as_str().is_some_and(|id|answered.contains(id)))));let hashes=card["questions"].as_array().map(|qs|qs.iter().filter_map(|q|q["id"].as_str().and_then(|id|receipts.get(id))).collect::<Vec<_>>()).unwrap_or_default();if card["responseSent"]==true&&!hashes.is_empty()&&hashes.iter().all(|h|*h==hashes[0]){card["responseHash"]=json!(hashes[0]);}}
+ for card in &mut cards{
+  if card["responseSent"]!=true{continue}
+  let ids=card["questions"].as_array().map(|qs|qs.iter().filter_map(|q|q["id"].as_str()).collect::<Vec<_>>()).unwrap_or_default();
+  let mut complete=ids.first().and_then(|id|receipt_history.get(*id)).cloned().unwrap_or_default();
+  for id in ids.iter().skip(1){complete.retain(|hash|receipt_history.get(*id).is_some_and(|set|set.contains(hash)));}
+  card["responseHashes"]=json!(complete);
+ }
  cards.into_iter().rev().take(8).collect::<Vec<_>>().into_iter().rev().collect()
 }
 #[cfg(test)]mod tests{
  use super::*;
+ #[test]fn earlier_complete_receipts_survive_later_and_partial_answers(){
+  let request="same-question";let ids=[json!(["request_user_input_async",request,0]).to_string(),json!(["request_user_input_async",request,1]).to_string()];
+  let q=json!({"type":"response_item","payload":{"type":"function_call","name":"request_user_input_async","call_id":request,"arguments":json!({"questions":[{"title":"One"},{"title":"Two"}]}).to_string()}}).to_string();
+  let envelope=|values:Value|format!("<send_user_message_question_reply>{values}</send_user_message_question_reply>");
+  let a=envelope(json!([{"questionItemId":ids[0],"answer":"wait"},{"questionItemId":ids[1],"answer":"keep"}]));
+  let partial=envelope(json!([{"questionItemId":ids[0],"answer":"changed"}]));
+  let b=envelope(json!([{"questionItemId":ids[0],"answer":"allow"},{"questionItemId":ids[1],"answer":"keep"}]));
+  let row=|text:&str|json!({"type":"response_item","payload":{"type":"message","role":"user","content":[{"text":text}]}}).to_string();
+  let earlier=project(format!("{q}\n{}\n{}",row(&a),row(&partial)).as_bytes());
+  assert_eq!(earlier[0]["responseSent"],true);assert_eq!(earlier[0]["responseHashes"],json!([response_hash(&a).unwrap()]));
+  assert!(earlier[0]["responseHash"].is_null(),"partial envelopes must not be combined into a fake complete receipt");
+  let latest=project(format!("{q}\n{}\n{}\n{}",row(&a),row(&partial),row(&b)).as_bytes());
+  let hashes=latest[0]["responseHashes"].as_array().unwrap();assert_eq!(hashes.len(),2);assert!(hashes.contains(&json!(response_hash(&a).unwrap())));assert!(hashes.contains(&json!(response_hash(&b).unwrap())));assert!(!hashes.contains(&json!(response_hash(&partial).unwrap())));
+  assert_eq!(latest[0]["responseHash"],response_hash(&b).unwrap());
+ }
  #[test]fn exact_question_ids_resolve_only_explicit_native_owner_answers(){
  let question=json!({"type":"response_item","payload":{"type":"function_call","name":"request_user_input_async","call_id":"exact","arguments":json!({"questions":[{"title":"Choose","options":["A","B"]}]}).to_string()}}).to_string();
  let mut rows=vec![question.clone()];let result=project(rows.join("\n").as_bytes());assert_eq!(result[0]["questions"][0]["options"][0]["label"],"A");assert_eq!(result[0]["responseSent"],false);

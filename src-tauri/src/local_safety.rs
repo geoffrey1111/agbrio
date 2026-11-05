@@ -207,7 +207,7 @@ fn send_codex_notice(core:&RouterCore,t:&Target,at:i64)->Result<(),String>{
  }
  Ok(())
 }
-pub(crate) fn maintain(core:&RouterCore){let _=core.store.observe_pi_manager_notices();let at=now();let Ok(mut pass)=PASS.get_or_init(Mutex::default).try_lock()else{return};if at-pass.0<30000{return;}pass.0=at;drop(pass);
+pub(crate) fn maintain(core:&RouterCore){crate::management_zones::maintain(core);let _=core.store.observe_pi_manager_notices();let at=now();let Ok(mut pass)=PASS.get_or_init(Mutex::default).try_lock()else{return};if at-pass.0<30000{return;}pass.0=at;drop(pass);
  // File ingestion/receipt reconciliation never waits behind a native Codex
  // RPC. A slow recovery must not starve new critical Claude notifications.
  let _=core.store.expire_resource_notices(at);let _=reconcile(core,at);crate::codex_notices::reconcile(core);let Ok(s)=core.store.local_safety_settings()else{return};

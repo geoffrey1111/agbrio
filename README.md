@@ -1,5 +1,7 @@
 # Agbrio
 
+Group work into management areas, change managers, and transfer executors in one place. Codex and Claude Code can both manage an area.
+
 **Your agents keep working. Stay in control from your phone.**
 
 [![Download](https://img.shields.io/github/v/release/geoffrey1111/agbrio?label=download)](https://github.com/geoffrey1111/agbrio/releases/latest)
@@ -48,9 +50,9 @@ Delegated sends target Codex. You can reply to Claude Code yourself from your ph
 
 ## Get started
 
-1. Download the Windows app and connect the agent you already use.
-2. Choose a conversation to watch, or connect a manager and executor.
-3. Pair your phone in Settings → Devices, then open your Agbrio address.
+1. Download and open the Windows app. Choose Codex, Claude Code, or both.
+2. Follow the first-run guide to connect your agents, authorize access and pair your phone.
+3. Choose a conversation and follow up from your phone. Skip setup whenever you want, or reopen it from Settings.
 
 Keep your computer and Agbrio online. Enable notifications on the receiving device.
 

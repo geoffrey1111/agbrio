@@ -1,0 +1,2 @@
+// Test subprocess only: fixed .localhost namespace, no hosts/global DNS edits.
+import dns from 'node:dns';const lookup=dns.lookup.bind(dns);dns.lookup=function(host,options,callback){if(typeof options==='function'){callback=options;options={};}if(host.endsWith('.agbrio.localhost'))return queueMicrotask(()=>options?.all?callback(null,[{address:'127.0.0.1',family:4}]):callback(null,'127.0.0.1',4));return lookup(host,options,callback);};

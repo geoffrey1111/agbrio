@@ -152,6 +152,7 @@ impl RouterStore {
         })
     }
     /// Reversible local list removal; never deletes/resumes/stops a provider thread.
+    pub fn is_codex_watch_removed(&self,id:&str)->Result<bool,String>{self.with_connection(|c|c.query_row("SELECT EXISTS(SELECT 1 FROM watch_removed_items WHERE kind='WATCH' AND id=?1)",[id],|r|r.get(0)).map_err(db_error))}
     pub fn set_watch_item_removed(&self,kind:&str,id:&str,removed:bool)->Result<(),String>{
         if !matches!(kind,"WATCH"|"EVENT")||id.is_empty()||id.len()>256{return Err("WATCH_REMOVAL_INVALID".into());}
         if kind=="EVENT"&&id.parse::<i64>().ok().filter(|v|*v>0).is_none(){return Err("WATCH_REMOVAL_INVALID".into());}
@@ -159,6 +160,7 @@ impl RouterStore {
             let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
             let exists:bool=if kind=="WATCH"{tx.query_row("SELECT EXISTS(SELECT 1 FROM codex_watches WHERE thread_id=?1)",[id],|r|r.get(0)).map_err(db_error)?}else{tx.query_row("SELECT EXISTS(SELECT 1 FROM codex_watch_events WHERE sequence=?1)",[id],|r|r.get(0)).map_err(db_error)?};
             if !exists{return Err("WATCH_ITEM_NOT_FOUND".into());}
+            if kind=="WATCH"{super::watch_groups::change(&tx,id,removed)?;}
             if removed{
                 let enabled:Option<bool>=if kind=="WATCH"{Some(tx.query_row("SELECT enabled FROM codex_watches WHERE thread_id=?1",[id],|r|r.get(0)).map_err(db_error)?)}else{None};
                 let changed=tx.execute("INSERT OR IGNORE INTO watch_removed_items(kind,id,was_enabled,removed_at) VALUES(?1,?2,?3,?4)",params![kind,id,enabled,now()]).map_err(db_error)?;
@@ -246,6 +248,12 @@ impl RouterStore {
     })}
     pub fn bridge_codex_thread_ids(&self)->Result<Vec<String>,String>{self.with_connection(|c|{let mut q=c.prepare("SELECT DISTINCT e.external_id FROM endpoints e JOIN workstreams w ON w.id=e.workstream_id WHERE e.provider='CODEX' AND e.status='ACTIVE' AND w.trashed_at IS NULL AND w.archived_at IS NULL").map_err(db_error)?;let rows=q.query_map([],|r|r.get(0)).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;Ok(rows)})}
     pub fn codex_chat_context(&self,id:&str)->Result<CodexWatch,String>{self.with_connection(|c|chat_context(c,id))}
+    /// A title refresh is display metadata, not a message or a new generation.
+    pub fn refresh_codex_watch_label(&self,id:&str,generation:i64,cwd:&str,label:&str)->Result<(),String>{
+        let label=label.trim().chars().take(120).collect::<String>();
+        if label.is_empty()||label.chars().any(char::is_control){return Ok(());}
+        self.with_connection(|c|{c.execute("UPDATE codex_watches SET label=?4 WHERE thread_id=?1 AND generation=?2 AND cwd=?3 AND enabled=1 AND label!=?4",params![id,generation,cwd,label]).map_err(db_error)?;Ok(())})
+    }
     pub fn codex_watches(&self) -> Result<Vec<CodexWatch>, String> {
         self.with_connection(|c| { let mut s=c.prepare("SELECT thread_id,label,cwd,enabled,generation,snapshot_json,checked_at,error_code,retry_after,(SELECT COUNT(*) FROM watch_replies r WHERE r.thread_id=codex_watches.thread_id AND r.source_sequence IS NULL AND r.generation>0 AND NOT EXISTS(SELECT 1 FROM assistant_actions a WHERE a.id=r.id)) AS send_count,(SELECT shown_at FROM watch_visibility v WHERE v.thread_id=codex_watches.thread_id) AS shown_at,(SELECT changed_at FROM watch_visibility v WHERE v.thread_id=codex_watches.thread_id) AS changed_at FROM codex_watches WHERE NOT EXISTS(SELECT 1 FROM watch_removed_items WHERE kind='WATCH' AND id=codex_watches.thread_id) AND NOT EXISTS(SELECT 1 FROM endpoints e JOIN workstreams w ON w.id=e.workstream_id WHERE ((e.provider='CODEX' AND e.external_id=codex_watches.thread_id) OR (e.provider='CLAUDE_CODE' AND 'claude_code:'||e.external_id=codex_watches.thread_id)) AND e.status='ACTIVE' AND w.trashed_at IS NULL AND w.archived_at IS NULL) ORDER BY send_count DESC,thread_id").map_err(db_error)?; let rows=s.query_map([],watch_row).map_err(db_error)?; rows.collect::<Result<Vec<_>,_>>().map_err(db_error) })
     }
@@ -317,6 +325,12 @@ pub(super) fn event_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WatchEvent>
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]fn title_refresh_preserves_identity_cursor_recency_and_original_messages(){
+        let d=tempfile::tempdir().unwrap();let s=RouterStore::open_at(d.path().join("titles.db")).unwrap();let root=d.path().to_string_lossy().to_string();let snapshot=WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some("native-turn".into()),item_id:Some("native-message".into()),text:"original".into()};
+        s.enable_codex_watch("source","Old title",&root,&snapshot).unwrap();let old=s.registered_codex_watch("source").unwrap();let feed=s.codex_watch_feed(0).unwrap().events.len();
+        s.refresh_codex_watch_label("source",old.generation,&root,"New native title").unwrap();let new=s.registered_codex_watch("source").unwrap();assert_eq!(new.label,"New native title");assert_eq!(new.generation,old.generation);assert_eq!(new.snapshot,old.snapshot);assert_eq!(new.changed_at,old.changed_at);assert_eq!(s.codex_watch_feed(0).unwrap().events.len(),feed);
+        s.refresh_codex_watch_label("source",old.generation+1,&root,"Wrong generation").unwrap();s.refresh_codex_watch_label("source",old.generation,"other-root","Wrong project").unwrap();assert_eq!(s.registered_codex_watch("source").unwrap().label,"New native title");
+    }
     #[test]
     fn unavailable_source_marks_unknown_preserves_history_and_recovery_does_not_repeat_completion(){
         let d=tempfile::tempdir().unwrap();let s=RouterStore::open_at(d.path().join("router.db")).unwrap();let snap=WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some("t".into()),item_id:Some("final".into()),text:"previous result".into()};s.enable_codex_watch("one","one",&crate::store::test_cwd(),&snap).unwrap();let generation=s.registered_codex_watch("one").unwrap().generation;let count=s.codex_watch_feed(0).unwrap().events.len();s.codex_watch_unavailable_reason("one",generation,"WATCH_THREAD_ARCHIVED").unwrap();let w=s.registered_codex_watch("one").unwrap();assert_eq!(w.snapshot.state,"UNKNOWN");assert_eq!(w.snapshot.text,snap.text);assert_eq!(w.error_code.as_deref(),Some("WATCH_THREAD_ARCHIVED"));assert!(!s.record_codex_watch("one",generation,&snap).unwrap());assert_eq!(s.codex_watch_feed(0).unwrap().events.len(),count);assert!(s.registered_codex_watch("one").unwrap().error_code.is_none());

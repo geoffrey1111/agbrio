@@ -54,6 +54,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 45
     env:
+      AGBRIO_HOSTED_CONTROL_ORIGIN: https://agbrio-connect.geoffreygroup.cc
       MACOSX_DEPLOYMENT_TARGET: '13.5'
       CARGO_PROFILE_DEV_DEBUG: '0'
     steps:
@@ -106,6 +107,23 @@ jobs:
         run: |
           cargo check --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin
           cargo test --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin -- --test-threads=2
+      - name: Mac trial identity from IOKit (no identifier output)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin hosted_relay::trial_identity_tests::mac_identity_is_stable_without_exposing_raw_value -- --ignored --exact --test-threads=1 --nocapture | tee "$RUNNER_TEMP/agbrio-trial-identity.log"
+          grep -Fx 'MACOS_TRIAL_IDENTITY_NATIVE_PASS' "$RUNNER_TEMP/agbrio-trial-identity.log"
+      - name: Isolated hosted TLS WSS and PWA transport
+        shell: bash
+        env:
+          AGBRIO_FIXTURE_NODE: ${{ github.workspace }}/src-tauri/binaries/browser-executor-node-aarch64-apple-darwin
+        run: |
+          set -euo pipefail
+          npm ci --prefix tools/hosted-relay-fixture
+          npx playwright install chromium
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin --lib --no-run --message-format=json > "$RUNNER_TEMP/agbrio-hosted-test-build.jsonl"
+          node tools/hosted-relay-fixture/e2e.mjs --cargo-messages "$RUNNER_TEMP/agbrio-hosted-test-build.jsonl" | tee "$RUNNER_TEMP/agbrio-hosted-e2e.log"
+          grep -Fx 'MACOS_HOSTED_E2E_PASS' "$RUNNER_TEMP/agbrio-hosted-e2e.log"
       - name: Isolated Keychain credential lifecycle
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked --target aarch64-apple-darwin platform::macos_keychain::tests::isolated_native_roundtrip_and_unrelated_item_survives -- --ignored --exact --test-threads=1
       - name: Isolated same-volume update transaction

@@ -72,3 +72,15 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  let result=call(&core,&g.id,"agbrio_read_app",json!({"view":"WATCHES"})).unwrap();assert_eq!(result["view"],"WATCHES");assert_eq!(result["watches"][0]["turnId"],"turn");assert_eq!(result["watches"][0]["summary"].as_str().unwrap().chars().count(),600);assert_eq!(result["watches"][0]["summaryTruncated"],true);assert!(result.get("actions").is_none());assert!(result.get("inbox").is_none());assert!(core.session.lock().unwrap().adapter.is_none());
  assert!(call(&core,&g.id,"agbrio_read_app",json!({"view":"BOGUS"})).is_err());assert!(call(&core,&g.id,"agbrio_read_app",json!({"view":"WATCHES","extra":true})).is_err());
 }
+
+#[test]fn management_view_is_read_only_and_never_creates_ownership_or_grants(){
+ let dir=tempfile::tempdir().unwrap();let store=Arc::new(RouterStore::open_at(dir.path().join("zones.db")).unwrap());
+ let expires=SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as i64+600000;
+ let grant=store.connect_assistant_instance(AssistantConnectionInput{label:"Zone observer".into(),expires_at:expires}).unwrap();
+ let core=RouterCore{store:store.clone(),chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default()};
+ let result=call(&core,&grant.id,"agbrio_read_app",json!({"view":"MANAGEMENT"})).unwrap();
+ assert_eq!(result["view"],"MANAGEMENT");assert_eq!(result["management"]["zones"],json!([]));
+ assert_eq!(result["permission"],"READ_ONLY_ASSOCIATIONS_NOT_CALLER_ATTESTATION");
+ assert!(call(&core,&grant.id,"management_zones_change",json!({"action":"CREATE","name":"must not create"})).is_err());
+ assert_eq!(store.management_zones().unwrap()["zones"],json!([]));assert!(core.session.lock().unwrap().adapter.is_none());
+}

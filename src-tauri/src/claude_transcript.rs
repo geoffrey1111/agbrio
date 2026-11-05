@@ -293,6 +293,39 @@ pub(crate) fn find_plugin_prompt(path: &Path, session: &str, text: &str, since_m
     None
 }
 
+/// A fixed notice appended to an original main-session text tool result.
+/// The unpredictable nonce is pinned in the authenticated claim before append;
+/// neither an arbitrary tool string nor a copied user prompt establishes proof.
+pub(crate) fn find_plugin_inline_notice(path:&Path,session:&str,id:&str,text:&str,nonce:&str,since_ms:i64)->Option<String>{
+    let mut file=File::open(path).ok()?;let len=file.metadata().ok()?.len();file.seek(SeekFrom::Start(len.saturating_sub(RECEIPT_SCAN))).ok()?;
+    let mut bytes=Vec::new();file.take(RECEIPT_SCAN).read_to_end(&mut bytes).ok()?;
+    let marker="[Agbrio task notice: ";let ending=format!("]\n{text}\n[/Agbrio task notice]");
+    for line in bytes.split(|b|*b==b'\n').rev().filter(|line|line.len()<=MAX_LINE){
+        let Ok(row)=serde_json::from_slice::<Value>(line)else{continue};
+        if row["sessionId"]!=session||row["type"]!="user"||row["isSidechain"]==true{continue;}
+        let at=row["timestamp"].as_str().and_then(crate::claude_quota::parse_utc_ms).unwrap_or(0);if at+60000<since_ms{continue;}
+        for block in row["message"]["content"].as_array().into_iter().flatten().filter(|b|b["type"]=="tool_result"){
+            let Some(tool)=block["tool_use_id"].as_str()else{continue};
+            let content=match &block["content"]{Value::String(v)=>v.clone(),Value::Array(v)if v.iter().all(|b|b["type"]=="text"&&b["text"].is_string())=>v.iter().filter_map(|b|b["text"].as_str()).collect::<String>(),_=>continue};
+            for(start,_)in content.match_indices(marker){let rest=&content[start+marker.len()..];let Some(end)=rest.find("]\n")else{continue};
+                let Ok(proof)=serde_json::from_str::<Value>(&rest[..end])else{continue};
+                if proof["noticeId"]==id&&proof["proofNonce"]==nonce&&proof["toolUseId"]==tool&&rest[end..].starts_with(&ending){return row["uuid"].as_str().filter(|v|native(v)).map(str::to_owned);}
+            }
+        }
+    }None
+}
+
+#[cfg(test)]#[test]fn inline_task_receipt_requires_exact_native_row_nonce_and_tool_identity(){
+    let d=tempfile::tempdir().unwrap();let path=d.path().join("inline.jsonl");let sid="10000000-0000-4000-8000-000000000001";let row="40000000-0000-4000-8000-000000000001";let nonce="50000000-0000-4000-8000-000000000001";let id="a".repeat(64);let text="fixed metadata only";
+    let frame=format!("\n\n[Agbrio task notice: {{\"noticeId\":\"{id}\",\"proofNonce\":\"{nonce}\",\"toolUseId\":\"native-tool\"}}]\n{text}\n[/Agbrio task notice]");
+    let value=serde_json::json!({"sessionId":sid,"type":"user","uuid":row,"timestamp":"2026-11-04T00:00:00Z","message":{"content":[{"type":"tool_result","tool_use_id":"native-tool","content":format!("original{frame}")}]}});
+    std::fs::write(&path,value.to_string()).unwrap();
+    assert_eq!(find_plugin_inline_notice(&path,sid,&id,text,nonce,0).as_deref(),Some(row));
+    assert!(find_plugin_inline_notice(&path,sid,&id,text,"wrong-nonce",0).is_none());assert!(find_plugin_inline_notice(&path,row,&id,text,nonce,0).is_none());
+    let mut wrong=value.clone();wrong["message"]["content"][0]["tool_use_id"]=serde_json::json!("other-tool");std::fs::write(&path,wrong.to_string()).unwrap();assert!(find_plugin_inline_notice(&path,sid,&id,text,nonce,0).is_none());
+    let mut side=value;side["isSidechain"]=serde_json::json!(true);std::fs::write(&path,side.to_string()).unwrap();assert!(find_plugin_inline_notice(&path,sid,&id,text,nonce,0).is_none());
+}
+
 /// Native stored result receipt; no synthetic hook ACK can establish this row.
 pub(crate) fn find_tool_result(path:&Path,session:&str,tool:&str)->Option<String>{
  type Stamp=(u64,std::time::SystemTime);

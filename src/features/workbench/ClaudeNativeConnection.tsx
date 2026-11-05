@@ -24,7 +24,7 @@ export function ClaudeNativeConnection({connect,mcpUrl=null}:{connect?:()=>Promi
  return <div className="assistant-native-connection">
   <p><strong>{t("Claude 的通知与手机回复")}</strong></p>
   <p>{t("首次使用不用预装插件。点击下方按钮会安装、启用并配置内置 Claude 组件，用于完成通知和手机回复；MCP 读取与派发可以先使用。")}</p>
-  {connect?<button className="r2-action" type="button" disabled={busy} onClick={()=>void prepare()}>{busy?<LoaderCircle size={16} className="v4-progress-spinner"/>:<Link2 size={16}/>} {t(busy?"正在配置…":phase?"检查本机连接":"启用 Claude 通知与手机回复")}</button>:<p>{t("网页和手机不能安装本机组件。请打开已安装的 Agbrio 桌面客户端，在本页完成安装；不要先执行 /reload-plugins。")}</p>}
+  {connect?<button className="r2-action" type="button" disabled={busy} onClick={()=>void prepare()}>{busy?<LoaderCircle size={16} className="v4-progress-spinner"/>:<Link2 size={16}/>} {t(busy?"正在配置…":phase?"检查本机连接":"安装 Claude Code 插件")}</button>:<p>{t("网页和手机不能安装本机组件。请打开已安装的 Agbrio 桌面客户端，在本页完成安装；不要先执行 /reload-plugins。")}</p>}
   {phase&&<p role="status" aria-live="polite">{t(phase==="CONNECTED"?"已收到 Claude 连接心跳。还需在管理会话登记具体任务的完成通知。":"安装与配置已完成，尚待当前会话加载。请等 Claude 管理会话空闲后执行 /reload-plugins，再检查连接。")}</p>}
   {phase==="WAITING_SESSION"&&<ol className="assistant-native-next"><li>{t("等管理会话空闲，在 Claude 中执行以下命令，再点击上方“检查本机连接”。")} <CopyAction showLabel text="/reload-plugins" label={t("复制重载命令")}/></li><li>{t("仍未连接？先保存工作，自己完整退出并重新打开 Claude 桌面应用，再回到原管理对话检查。不要在任务执行时强制重启。")}</li></ol>}
   {phase&&<div className="assistant-guide-prompt"><CopyAction showLabel text={completion} label={t("复制给管理助手的后续指令")}/><p>{t("把指令发给实际使用的 Claude 管理对话，检查 MCP 与通知登记。连接心跳不代表所有任务都会自动通知。")}</p></div>}

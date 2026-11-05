@@ -86,7 +86,7 @@ pub(super) async fn authorize(State(state):State<MobileHttpState>,headers:Header
  boundary(&headers,&state)?;let mut auth=oauth(&state)?;auth.prune();let client=auth.clients.get(&input.client_id).cloned().ok_or_else(bad)?;
  if input.response_type!="code"||input.code_challenge_method!="S256"||input.code_challenge.len()!=43||!input.code_challenge.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'_')||!client.redirects.contains(&input.redirect_uri)||input.resource!=resource(&state)||input.scope.as_deref().is_some_and(|s|!valid_scope_request(s))||input.state.is_empty()||input.state.len()>2048{return Err(bad());}
  if auth.intents.len()>=128{return Err(ApiError(StatusCode::TOO_MANY_REQUESTS,"ASSISTANT_AUTHORIZATION_LIMIT".into()));}
- let id=secret();auth.intents.insert(id.clone(),Intent{client,client_id:input.client_id,redirect:input.redirect_uri,challenge:input.code_challenge,state:input.state,resource:input.resource,scope:input.scope.unwrap_or_default(),expires:clock()+300});
+ let id=secret();crate::owner_authorization::observed(&id,&client.name,&input.redirect_uri,&input.resource,clock()+300);auth.intents.insert(id.clone(),Intent{client,client_id:input.client_id,redirect:input.redirect_uri,challenge:input.code_challenge,state:input.state,resource:input.resource,scope:input.scope.unwrap_or_default(),expires:clock()+300});
  Ok(Redirect::to(&format!("/assistant/connect?request={id}")))
 }
 pub(super) async fn page(State(state):State<MobileHttpState>,headers:HeaderMap)->Result<Response,ApiError>{
@@ -119,7 +119,7 @@ pub(super) async fn consent(State(state):State<MobileHttpState>,headers:HeaderMa
     let mut code_intent=intent;code_intent.expires=clock()+60;
     auth.codes.insert(digest(&code),Code{intent:code_intent,grant_id:gid});
  }else{redirect.query_pairs_mut().append_pair("error","access_denied").append_pair("state",&intent.state);}
- auth.intents.remove(&input.request);
+ auth.intents.remove(&input.request);crate::owner_authorization::consumed(&input.request);
  Ok(Json(serde_json::json!({"redirect":redirect.as_str()})))
 }
 #[derive(Deserialize)]pub(super) struct Exchange{grant_type:String,#[serde(default)]code:String,client_id:String,#[serde(default)]redirect_uri:String,#[serde(default)]code_verifier:String,#[serde(default)]resource:String,#[serde(default)]refresh_token:String,scope:Option<String>}

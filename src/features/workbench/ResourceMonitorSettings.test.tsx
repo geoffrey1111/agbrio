@@ -11,3 +11,8 @@ it('shows Mac mount names while preserving UUID rules and avoiding Windows commi
  await screen.findByRole('checkbox',{name:'监测磁盘 /Volumes/工作'});expect(screen.queryByText(/Windows 管理员/)).not.toBeInTheDocument();expect(screen.queryByText(/提交内存超过/)).not.toBeInTheDocument();
  const sliders=screen.getAllByRole('slider');expect(new Set(sliders.map(v=>v.id)).size).toBe(sliders.length);fireEvent.click(screen.getByRole('button',{name:'保存并应用监测'}));await waitFor(()=>expect(api.apply).toHaveBeenCalledWith(expect.objectContaining({SchemaVersion:3,Disks:expect.arrayContaining([expect.objectContaining({Drive:first}),expect.objectContaining({Drive:second})])})));
 });
+it('reports configured-but-stopped sampling from one explicit screen read without applying or starting it',async()=>{
+ const api={read:vi.fn().mockResolvedValue({...sample,running:false}),apply:vi.fn()} as typeof monitorApi;const onObservation=vi.fn();
+ render(<ResourceMonitorSettings api={api} autoRead onObservation={onObservation}/>);await waitFor(()=>expect(onObservation).toHaveBeenCalledWith(expect.objectContaining({running:false})));
+ expect(api.read).toHaveBeenCalledOnce();expect(api.apply).not.toHaveBeenCalled();
+});

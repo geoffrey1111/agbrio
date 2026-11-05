@@ -10,6 +10,7 @@ pub mod assistant_report;
 pub mod goal_control;
 pub mod local_safety;
 pub mod codex_notices;
+pub mod management_zones;
 pub mod mcp_events;
 pub mod dispatch;
 pub mod migration;
@@ -19,6 +20,7 @@ pub mod claude_code;
 pub mod claude_manual;
 pub mod claude_codex_wait;
 pub mod codex_watch;
+mod watch_groups;
 pub mod conversation_message_time;
 pub mod watch_delivery;
 pub mod native_secrets;
@@ -98,6 +100,9 @@ const NORMAL_FEATURE_MIGRATIONS: &[(&str, &str)] = &[
     ("codex-reply-fifo-v1", include_str!("../../migrations/normal/026_codex_reply_fifo.sql")),
     ("watch-visibility-v1", include_str!("../../migrations/normal/027_watch_visibility.sql")),
     ("removed-reply-presentations-v1", include_str!("../../migrations/normal/035_removed_reply_presentations.sql")),
+    ("management-zones-v1", include_str!("../../migrations/normal/036_management_zones.sql")),
+    ("inline-task-notices-v1", include_str!("../../migrations/normal/037_inline_task_notices.sql")),
+    ("watch-group-removals-v1", include_str!("../../migrations/normal/039_watch_group_removals.sql")),
     ("native-secret-references-v1", include_str!("../../migrations/normal/038_native_secret_references.sql")),
     ("mcp-native-secret-references-v1", include_str!("../../migrations/normal/039_mcp_native_secret_refs.sql")),
 ];
@@ -3942,6 +3947,10 @@ mod tests {
                         "local_safety_receiver_leases",
                         "local_safety_resource_events",
                         "local_safety_settings",
+                        "management_changes",
+                        "management_codex_attempts",
+                        "management_members",
+                        "management_zones",
                         "mcp_event_actions",
                         "mcp_event_deliveries",
                         "mcp_event_initial_observations",
@@ -3970,6 +3979,7 @@ mod tests {
                         "watch_deliveries",
                         "watch_delivery_channels",
                         "watch_delivery_settings",
+                        "watch_group_removals",
                         "watch_removed_items",
                         "watch_replies",
                         "watch_reply_cancellations",

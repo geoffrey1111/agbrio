@@ -2,6 +2,8 @@
 use crate::{HostRuntime,RouterCore,mobile_connection::{self,ConnectionInput}};
 use serde::{Deserialize,Serialize};
 use std::{fs,path::PathBuf,process::{Command,Stdio},sync::{Mutex,OnceLock},time::Duration};
+#[cfg(target_os="macos")] mod macos_device;
+#[cfg(test)] pub(crate) mod fixture;
 static ASSETS:OnceLock<(PathBuf,PathBuf)>=OnceLock::new();
 static CHANGE:Mutex<()>=Mutex::new(());
 #[derive(Clone,Serialize,Deserialize)]#[serde(rename_all="camelCase")]
@@ -15,14 +17,16 @@ pub(crate) fn configure_assets(source:PathBuf,node:PathBuf){fn normal(p:PathBuf)
 fn path()->Result<PathBuf,String>{Ok(crate::mobile_http::mobile_runtime_config_path()?.with_file_name("hosted-connection.json"))}
 fn read()->Result<Option<Saved>,String>{let p=path()?;if !p.exists(){return Ok(None);}serde_json::from_slice(&fs::read(p).map_err(|_|"HOSTED_STORAGE_UNAVAILABLE")?).map(Some).map_err(|_|"HOSTED_STORAGE_INVALID".into())}
 fn save(s:&Saved)->Result<(),String>{let p=path()?;fs::create_dir_all(p.parent().unwrap()).map_err(|_|"HOSTED_STORAGE_UNAVAILABLE")?;let tmp=p.with_extension("pending");fs::write(&tmp,serde_json::to_vec(s).map_err(|_|"HOSTED_STORAGE_INVALID")?).map_err(|_|"HOSTED_STORAGE_UNAVAILABLE")?;fs::rename(tmp,p).map_err(|_|"HOSTED_STORAGE_UNAVAILABLE".into())}
-fn control()->Result<String,String>{let v=option_env!("AGBRIO_HOSTED_CONTROL_ORIGIN").ok_or("HOSTED_SERVICE_UNCONFIGURED")?;mobile_connection::validate(&ConnectionInput{method:"CUSTOM_HTTPS".into(),origin:v.into()}).map(|v|v.0)}
+fn control()->Result<String,String>{
+ #[cfg(test)] if fixture::active(){fixture::root()?;return Ok("https://control.agbrio.localhost".into());}
+ let v=option_env!("AGBRIO_HOSTED_CONTROL_ORIGIN").ok_or("HOSTED_SERVICE_UNCONFIGURED")?;mobile_connection::validate(&ConnectionInput{method:"CUSTOM_HTTPS".into(),origin:v.into()}).map(|v|v.0)}
 fn validate_lease(l:&Lease)->Result<(),String>{let u=url::Url::parse(&l.origin).map_err(|_|"HOSTED_LEASE_INVALID")?;if u.scheme()!="https"||u.username()!=""||u.password().is_some()||u.path()!="/"||u.query().is_some()||u.fragment().is_some()||l.tenant_id.len()!=32||!l.tenant_id.bytes().all(|b|b.is_ascii_hexdigit()&& !b.is_ascii_uppercase())||!u.host_str().is_some_and(|h|h.starts_with(&format!("ag-{}.",l.tenant_id)))||l.host_token.len()!=64||!l.host_token.bytes().all(|b|b.is_ascii_hexdigit()&& !b.is_ascii_uppercase()) {return Err("HOSTED_LEASE_INVALID".into());}Ok(())}
 pub(crate) fn status(host:&HostRuntime)->Status{
  let saved=read().ok().flatten();let l=saved.as_ref().and_then(|s|s.lease.as_ref());let enabled=saved.as_ref().is_some_and(|s|s.enabled)&&host.mobile_configuration().is_some_and(|c|l.is_some_and(|l|l.origin==c.allowed_origin));
  let expired=l.is_some_and(|l|l.expires_at<=lease_now(l));let state=if !enabled{"SELF_HOSTED"}else if expired{"EXPIRED"}else{
   let v=path().ok().and_then(|p|fs::read(p.with_file_name("hosted-status.json")).ok()).and_then(|b|serde_json::from_slice::<serde_json::Value>(&b).ok());
   if v.as_ref().is_some_and(|v|l.is_some_and(|l|v["tenantId"]==l.tenant_id)&&v["state"]=="REVOKED"){"REVOKED"}else if v.as_ref().is_some_and(|v|l.is_some_and(|l|v["tenantId"]==l.tenant_id)&&v["state"]=="EXPIRED"){"EXPIRED"}else if v.is_some_and(|v|v["state"]=="READY"&&l.is_some_and(|l|v["tenantId"]==l.tenant_id)&&host.hosted_child.lock().is_ok_and(|mut p|p.as_mut().is_some_and(|p|p.try_wait().is_ok_and(|v|v.is_none())))){"READY"}else{"CONNECTING"}
- };Status{available:control().is_ok(),enabled,state:state.into(),origin:l.map(|l|l.origin.clone()),expires_at:l.map(|l|l.expires_at),kind:l.map(|l|l.kind.clone().unwrap_or_else(||"CODE".into())),server_now:l.map_or_else(now_ms,lease_now),trial_available:cfg!(windows)&&control().is_ok()}
+ };Status{available:control().is_ok(),enabled,state:state.into(),origin:l.map(|l|l.origin.clone()),expires_at:l.map(|l|l.expires_at),kind:l.map(|l|l.kind.clone().unwrap_or_else(||"CODE".into())),server_now:l.map_or_else(now_ms,lease_now),trial_available:cfg!(any(windows,target_os="macos"))&&control().is_ok()}
 }
 fn now_ms()->u64{std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64}
 fn lease_now(l:&Lease)->u64{match(l.server_now,l.received_at){(Some(server),Some(received))=>server.saturating_add(now_ms().saturating_sub(received)),_=>now_ms()}}
@@ -49,7 +53,9 @@ fn spawn(host:&HostRuntime,s:&Saved)->Result<(),String>{
 }
 pub(crate) fn ensure(host:&HostRuntime){let Ok(_lock)=CHANGE.try_lock()else{return;};let Ok(Some(s))=read()else{return;};if !s.enabled||s.lease.as_ref().is_none_or(|l|l.expires_at<=lease_now(l)) {stop(host);return;}if host.mobile_configuration().is_some_and(|c|s.lease.as_ref().is_some_and(|l|l.origin==c.allowed_origin)){let _=spawn(host,&s);}else{stop(host);}}
 fn identity()->Result<Saved,String>{let saved=read()?.unwrap_or(Saved{device_key:format!("{}{}",uuid::Uuid::new_v4().simple(),uuid::Uuid::new_v4().simple()),lease:None,enabled:false,prior:None});save(&saved)?;Ok(saved)}
-fn client()->Result<reqwest::blocking::Client,String>{reqwest::blocking::Client::builder().timeout(Duration::from_secs(20)).redirect(reqwest::redirect::Policy::none()).build().map_err(|_|"HOSTED_SERVICE_UNAVAILABLE".into())}
+fn client()->Result<reqwest::blocking::Client,String>{let builder=reqwest::blocking::Client::builder().timeout(Duration::from_secs(20)).redirect(reqwest::redirect::Policy::none());
+ #[cfg(test)] let builder=fixture::client(builder)?;
+ builder.build().map_err(|_|"HOSTED_SERVICE_UNAVAILABLE".into())}
 fn request_lease(client:&reqwest::blocking::Client,control:&str,path:&str,input:serde_json::Value)->Result<Lease,String>{
  let response=client.post(format!("{control}{path}")).json(&input).send().map_err(|_|"HOSTED_REDEEM_UNCERTAIN")?;
  if !response.status().is_success(){let status=response.status().as_u16();let body:serde_json::Value=response.json().unwrap_or_default();let code=body["error"].as_str().unwrap_or("");return Err(match code{
@@ -79,11 +85,18 @@ fn hash_trial_device(raw:&str)->Result<String,String>{
  if normalized.len()<16||normalized.len()>128{return Err("HOSTED_DEVICE_UNAVAILABLE".into());}
  Ok(format!("{:x}",Sha256::digest(format!("agbrio-hosted-trial-v1\0{normalized}").as_bytes())))
 }
+#[cfg(any(test,target_os="macos"))]
+fn hash_platform_uuid(raw:&str)->Result<String,String>{
+ let value=uuid::Uuid::parse_str(raw.trim()).map_err(|_|"HOSTED_DEVICE_UNAVAILABLE")?;
+ if value.is_nil()||value==uuid::Uuid::from_bytes([255;16]){return Err("HOSTED_DEVICE_UNAVAILABLE".into());}
+ hash_trial_device(&value.to_string())
+}
 fn trial_device_id()->Result<String,String>{
  #[cfg(windows)]{use winreg::{RegKey,enums::{HKEY_LOCAL_MACHINE,KEY_READ,KEY_WOW64_64KEY}};
  let key=RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey_with_flags("SOFTWARE\\Microsoft\\Cryptography",KEY_READ|KEY_WOW64_64KEY).map_err(|_|"HOSTED_DEVICE_UNAVAILABLE")?;
  let raw:String=key.get_value("MachineGuid").map_err(|_|"HOSTED_DEVICE_UNAVAILABLE")?;hash_trial_device(&raw)}
- #[cfg(not(windows))]{Err("HOSTED_DEVICE_UNAVAILABLE".into())}
+ #[cfg(target_os="macos")]{macos_device::trial_hash()}
+ #[cfg(not(any(windows,target_os="macos")))]{Err("HOSTED_DEVICE_UNAVAILABLE".into())}
 }
 pub(crate) fn start_trial(core:&RouterCore,host:&HostRuntime)->Result<Status,String>{start_trial_for_device(core,host,trial_device_id()?)}
 fn start_trial_for_device(core:&RouterCore,host:&HostRuntime,trial_id:String)->Result<Status,String>{
@@ -131,6 +144,18 @@ fn public_disposable_host_fixture(){
 
 #[cfg(test)] mod trial_identity_tests{
  use super::*;
+ #[test] fn platform_uuid_is_stable_and_rejects_missing_or_placeholder_identity(){
+  let raw="12345678-1234-5678-9ABC-123456789ABC";
+  assert_eq!(hash_platform_uuid(raw).unwrap(),hash_trial_device(&raw.to_ascii_lowercase()).unwrap());
+  for bad in ["", "not-a-platform-uuid", "00000000-0000-0000-0000-000000000000", "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF"] {assert_eq!(hash_platform_uuid(bad).unwrap_err(),"HOSTED_DEVICE_UNAVAILABLE");}
+ }
+ #[cfg(target_os="macos")] #[test]
+ #[ignore="explicit Mac CI hardware identity read; reports no identifier or hash"]
+ fn mac_identity_is_stable_without_exposing_raw_value(){
+  let first=trial_device_id().expect("Mac trial identity unavailable");
+  assert_eq!(first.len(),64); assert_eq!(first,trial_device_id().unwrap());
+  println!("\nMACOS_TRIAL_IDENTITY_NATIVE_PASS");
+ }
  #[test] fn device_hash_is_scoped_normalized_and_contains_no_raw_identifier(){let raw="SYNTHETIC-MACHINE-GUID-20261024";let a=hash_trial_device(raw).unwrap();assert_eq!(a.len(),64);assert_eq!(a,hash_trial_device(&raw.to_ascii_lowercase()).unwrap());assert_ne!(a,hash_trial_device("different-machine-guid").unwrap());assert!(hash_trial_device("").is_err());}
  #[test] fn legacy_leases_remain_code_and_server_clock_offsets_are_projected(){let raw=serde_json::json!({"tenantId":"a".repeat(32),"origin":format!("https://ag-{}.example.invalid","a".repeat(32)),"expiresAt":99,"hostToken":"b".repeat(64)});let mut l:Lease=serde_json::from_value(raw).unwrap();assert!(l.kind.is_none());l.server_now=Some(1000);l.received_at=Some(now_ms());assert!((1000..2000).contains(&lease_now(&l)));}
  #[cfg(windows)] #[test] fn windows_identity_is_stable_across_reads_without_exposing_it(){let a=trial_device_id().unwrap();assert_eq!(a.len(),64);assert_eq!(a,trial_device_id().unwrap());}

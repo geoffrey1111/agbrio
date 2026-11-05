@@ -7,7 +7,7 @@ import {claudeTaskSummary} from "./ClaudeTaskStatus";
 import {t as uiText,tc,useLanguage,getLanguage} from "../../i18n";
 import {useEffect,useMemo,useRef,useState,type ReactNode} from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import {ChevronDown,ChevronLeft,ChevronRight,Link2,MessageSquare,Search,X} from "lucide-react";
+import {GitBranch,ChevronDown,ChevronLeft,ChevronRight,Link2,MessageSquare,Search,X} from "lucide-react";
 import {SwipeDeleteRow} from "./SwipeDeleteRow";
 import {AnimatePresence,LayoutGroup,motion,useReducedMotion} from "motion/react";
 import {avatarFor} from "./avatarPool";
@@ -92,8 +92,8 @@ export function bridgeTone(row:BridgeActivity|undefined,age:number,item:Workbenc
 const expandedKey="agbrio.child-tree-expanded.v1";
 function readExpanded(){try{const v=JSON.parse(localStorage.getItem(expandedKey)??"[]");return new Set<string>(Array.isArray(v)?v.filter((x):x is string=>typeof x==="string").slice(-200):[]);}catch{return new Set<string>();}}
 
-export function ConversationHome({selectedKey,bridges,activity,activityClock,watchApi,quotaPanel,addRequest,onOpenBridge,onOpenWatch,onCreateBridge,onDeleteBridge,onRefreshList,scrollContainer}:{
- onRefreshList?:()=>Promise<unknown>;scrollContainer?:import("react").RefObject<HTMLElement|null>;
+export function ConversationHome({onOpenManagement,selectedKey,bridges,activity,activityClock,watchApi,quotaPanel,addRequest,onOpenBridge,onOpenWatch,onCreateBridge,onDeleteBridge,onRefreshList,scrollContainer}:{
+ onOpenManagement?:()=>void;onRefreshList?:()=>Promise<unknown>;scrollContainer?:import("react").RefObject<HTMLElement|null>;
  /** Row key (`w:<threadId>` / `b:<bridgeId>`) open beside the list on wide desktops. */
  selectedKey?:string;
  bridges:WorkbenchItem[];activity:ActivityRows;activityClock:number;watchApi?:NotificationApi;quotaPanel?:ReactNode;addRequest:number;
@@ -106,7 +106,9 @@ export function ConversationHome({selectedKey,bridges,activity,activityClock,wat
  const [hiddenWatches,setHiddenWatches]=useState<string[]>([]);
  const [watched,refreshWatches]=useWatches(watchApi);
  const piAvailable=usePiAvailable();
- const watches=watched.filter(w=>!hiddenWatches.includes(w.threadId)&&(piAvailable||!w.threadId.startsWith('pi:')));
+ const locallyHiddenChildren=piDelegations(watched).children;
+ const hiddenIds=new Set(hiddenWatches.flatMap(id=>[id,...(locallyHiddenChildren.get(id)??[]).map(w=>w.threadId)]));
+ const watches=watched.filter(w=>!hiddenIds.has(w.threadId)&&(piAvailable||!w.threadId.startsWith('pi:')));
  const [undo,setUndo]=useState<CodexWatch|null>(null);
  useEffect(()=>{if(!undo)return;const timer=setTimeout(()=>setUndo(null),6000);return()=>clearTimeout(timer);},[undo]);
  // Swiping a watched conversation only stops Agbrio's tracking; the chat itself is untouched and can be restored.
@@ -155,7 +157,7 @@ export function ConversationHome({selectedKey,bridges,activity,activityClock,wat
    <span className="v6-row-body"><span className="v6-row-top"><strong>{r.title}</strong>{r.newResult&&<i className="v7-result-dot" role="img" aria-label={uiText("有新结果")}/>}{r.at?<time>{when(r.at)}</time>:null}</span><span className="v6-row-meta"><span className="v7-meta-text" title={r.meta}>{r.source}</span>{r.watch&&<ModelBadge runtime={watchRuntime(r.watch)}/>}</span>{r.preview&&<span className="v6-row-preview">{r.preview}</span>}{r.state&&<motion.span key={r.state} className="v6-state" data-tone={r.tone} initial={reduced?false:{opacity:.5}} animate={{opacity:1}} transition={{duration:reduced?0:.12}}>{r.tone==="run"&&<i aria-hidden/>}{r.state}</motion.span>}</span>
    <AnimatePresence>{r.unread&&<motion.i className="v6-unread" aria-label={uiText("需要你处理")} initial={{scale:0}} animate={{scale:1}} exit={{scale:0}} transition={{type:"spring",stiffness:600,damping:14}}/>}</AnimatePresence>
   </motion.button>;
-  const inner=r.bridge&&onDeleteBridge?<SwipeDeleteRow label={r.title} onDelete={()=>onDeleteBridge(r.bridge!)}>{body}</SwipeDeleteRow>:r.watch&&!r.watch.threadId.startsWith("pi:")&&watchApi?.remove?<SwipeDeleteRow label={r.title} onDelete={()=>void stopWatching(r.watch!)}>{body}</SwipeDeleteRow>:body;
+  const inner=r.bridge&&onDeleteBridge?<SwipeDeleteRow label={r.title} onDelete={()=>onDeleteBridge(r.bridge!)}>{body}</SwipeDeleteRow>:r.watch&&watchApi?.remove?<SwipeDeleteRow label={r.title} onDelete={()=>void stopWatching(r.watch!)}>{body}</SwipeDeleteRow>:body;
   const showTree=Boolean(r.tree&&(expanded.has(r.key)||childHit(r)));
   const selectedChild=selectedKey?.startsWith("w:")?selectedKey.slice(2):undefined;
   const grouped=r.tree?.total?<div className="v7-tree-parent">{inner}<button type="button" className="v7-tree-toggle" aria-expanded={showTree} onClick={()=>toggleTree(r.key)}>{showTree?<ChevronDown size={14} aria-hidden/>:<ChevronRight size={14} aria-hidden/>}<span>{childTreeSummary(r.tree)}</span></button>{showTree&&<div className="v7-tree-list"><ChildTreeList model={r.tree} selectedKey={selectedChild} label={uiText("{0} 的子对话",r.title)} onOpen={e=>openChild(r,e)}/></div>}</div>:inner;
@@ -164,6 +166,7 @@ export function ConversationHome({selectedKey,bridges,activity,activityClock,wat
  const chips:[Filter,string,number?][]=[["ALL",uiText("全部")],["RUN",uiText("执行中"),counts.run],["BRIDGE","Bridge"]];
  async function refreshList(){const results=await Promise.allSettled([refreshWatches(),onRefreshList?.()]);if(results.some(r=>r.status==="rejected"))throw Error("LIST_REFRESH_INCOMPLETE");}
  return <PullToRefresh enabled={Boolean(onRefreshList)} onRefresh={refreshList} scrollContainer={scrollContainer}><section className="v6-home" data-mode="ALL" aria-label={uiText("对话")}>
+  {onOpenManagement&&<button type="button" className="v6-management-entry" onClick={onOpenManagement}><GitBranch size={17} aria-hidden/>{uiText("管理区")}<ChevronRight size={16} aria-hidden/></button>}
   <label className="v6-search"><Search size={16} aria-hidden/><input type="search" aria-label={uiText("搜索对话、子对话或项目")} placeholder={uiText("搜索对话、子对话或项目")} value={query} onChange={e=>setQuery(e.target.value)}/>{query&&<button type="button" aria-label={uiText("清除搜索")} onClick={()=>setQuery("")}><X size={16}/></button>}</label>
   <LayoutGroup id="v6-chips"><div className="v6-chips" role="group" aria-label={uiText("筛选")}>{chips.map(([id,label,n])=><motion.button key={id} type="button" whileTap={{scale:.92}} aria-pressed={filter===id} onClick={()=>setFilter(id)}>{filter===id&&<motion.span className="v6-chip-fill" layoutId="v6-chip-fill" transition={spring}/>}<span>{label}{n?<b>{n}</b>:null}</span></motion.button>)}</div></LayoutGroup>
   {visible.length>0&&<div className="v6-list"><AnimatePresence>{[...active.map(item),...(rest.length?[<motion.small layout="position" key="section" className="v6-section">{active.length?uiText("其他"):uiText("最近")}</motion.small>]:[]),...rest.map(item)]}</AnimatePresence></div>}

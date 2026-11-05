@@ -59,7 +59,7 @@ export function useWorkbenchHistory(surface:WorkbenchSurface,selected:string|nul
  useEffect(()=>{
   const pop=()=>{
    const route=history.state?.aiwrRoute;
-   if(!route||! ["BRIDGES","WORKSPACE","NOTIFICATIONS","SETTINGS","NEW_BRIDGE","RUNTIME","RECYCLE","NOTIFICATION_LOG"].includes(route.surface))return;
+   if(!route||! ["MANAGEMENT","BRIDGES","WORKSPACE","NOTIFICATIONS","SETTINGS","NEW_BRIDGE","RUNTIME","RECYCLE","NOTIFICATION_LOG"].includes(route.surface))return;
    if(route.surface===surface&&(route.surface!=="WORKSPACE"||route.selected===selected)){pendingPop.current=false;return;}
    pendingPop.current=true;
    if(route.surface==="WORKSPACE"&&typeof route.selected==="string")latest.current.select(route.selected);

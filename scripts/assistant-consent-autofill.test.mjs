@@ -1,0 +1,14 @@
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+import assert from 'node:assert/strict';
+import test from 'node:test';
+const source=readFileSync(new URL('../src-tauri/src/assistant_consent.html',import.meta.url),'utf8').match(/<script[^>]*>([\s\S]*)<\/script>/)[1];
+async function run({code='654321',authenticated=false,validRequest=true,failPair=false}={}){
+ const events=[],calls=[],tasks=[],elements=new Map();let paired=authenticated;
+ const get=id=>{if(!elements.has(id))elements.set(id,{hidden:true,value:'',textContent:'',replaceChildren(){},append(node){if(id==='grant'&&!this.value)this.value=node.value;},requestSubmit(){tasks.push(this.onsubmit({preventDefault(){}}));}});return elements.get(id);};
+ const context={URL,URLSearchParams,navigator:{language:'en'},location:{href:`https://owner.invalid/assistant/connect?request=${validRequest?'a'.repeat(64):'invalid'}#agbrio-pair-code=${code}`,replace(){throw Error('Consent must not be automatic');}},history:{state:null,replaceState(_s,_t,url){events.push({kind:'history',url});}},document:{documentElement:{},getElementById:get,createElement:()=>({})},fetch:async(path,options={})=>{events.push({kind:'fetch',path});calls.push({path,body:options.body?JSON.parse(options.body):null});if(path.endsWith('/auth/pair')){if(!failPair)paired=true;return {ok:!failPair,json:async()=>({})};}return {ok:true,json:async()=>path.endsWith('/auth/session')?{authenticated:paired}:{clientName:'Claude Code',redirectUri:'http://127.0.0.1/callback',grants:[{grant:{id:'g',label:'fixture',scope:'INSTANCE',approvalMode:'CONVERSATION_REVIEW',rules:[]},bindings:null}]}};}};
+ vm.runInNewContext(source,context);for(let i=0;i<12;i++)await new Promise(resolve=>setImmediate(resolve));await Promise.all(tasks);return {events,calls,elements};
+}
+test('prefills and submits first-party login once, strips fragment before requests, never approves OAuth',async()=>{const r=await run();assert.equal(r.events[0].kind,'history');assert.ok(!r.events[0].url.includes('654321'));assert.equal(r.calls.filter(c=>c.path.endsWith('/auth/pair')).length,1);assert.equal(r.calls.find(c=>c.path.endsWith('/auth/pair')).body.code,'654321');assert.ok(!r.calls.some(c=>c.path==='/v1/mobile/assistant/consent'));assert.equal(r.elements.get('review').hidden,false);});
+test('invalid or missing request does not use a supplied code',async()=>{for(const options of [{code:'secret'},{validRequest:false}]){const r=await run(options);assert.ok(!r.calls.some(c=>c.path.endsWith('/auth/pair')));}});
+test('existing sign-in is retained and failed pairing is not retried',async()=>{const existing=await run({authenticated:true});assert.ok(!existing.calls.some(c=>c.path.endsWith('/auth/pair')));const failed=await run({failPair:true});assert.equal(failed.calls.filter(c=>c.path.endsWith('/auth/pair')).length,1);assert.ok(!failed.calls.some(c=>c.path==='/v1/mobile/assistant/consent'));});

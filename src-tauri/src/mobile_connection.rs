@@ -27,6 +27,7 @@ fn write_atomic(path:&Path,bytes:&[u8])->Result<(),String>{
 }
 fn probe_https(url:&str,nonce:&str,instance:&str,private:bool)->Result<(),String>{
   let builder=reqwest::blocking::Client::builder().timeout(Duration::from_secs(10)).redirect(reqwest::redirect::Policy::none()).user_agent("Agbrio/0.1 Agent-Bridge");let builder=if private{builder.no_proxy()}else{builder};
+  #[cfg(test)] let builder=crate::hosted_relay::fixture::client(builder)?;
   let client=builder.build().map_err(|_|"MOBILE_PROBE_FAILED")?;
   let response=client.get(format!("{url}/v1/mobile/connection/probe")).query(&[("nonce",nonce)]).send().map_err(|_|"MOBILE_PROBE_FAILED")?;
   if !response.status().is_success(){return Err("MOBILE_PROBE_FAILED".into());}

@@ -2,6 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {invoke} from '@tauri-apps/api/core';
 import {Bot,ChevronRight,Monitor,Smartphone,Download} from 'lucide-react';
 import {t,tc,useLanguage} from '../../i18n';
+import {FirstRunLauncher} from '../onboarding/DesktopFirstRun';
 import type {SharedCodexStatus} from './SharedCodexConnection';
 import type {UpdateView} from './DesktopUpdateSettings';
 import type {RuntimePresentation} from './models';
@@ -39,6 +40,7 @@ export function DesktopOverview({api,onNavigate,onPair,piAvailable=true}:{api:Ov
  const deviceText=!snap?t('正在读取…'):snap.devices.failed?t('暂时无法读取'):devices?.length?tc('{0} 台已登录',devices.length):t('还没有配对的手机');
  const updateText=!snap?t('正在读取…'):snap.update.failed?t('暂时无法读取'):update?.state==='UNSUPPORTED'?t('该平台尚未支持'):update?.state==='UP_TO_DATE'?t('已是最新'):update?.state==='AVAILABLE'||update?.state==='MANUAL_AVAILABLE'?t('有新版本 {0}',update.version??''):update?.state==='READY'?t('更新已下载并验证签名'):t('可以检查新版本');
  return <section className="v7-overview" aria-label={t('概览')}>
+  <FirstRunLauncher/>
   <h3 className="v7-set-cap">{t('这台电脑')}</h3>
   <div className="v7-set-group">
    <div className="v7-set-item"><span className="v7-set-icon"><Monitor size={18} aria-hidden/></span><button type="button" className="v7-set-main" onClick={()=>onNavigate('CODEX')}><strong>{t('Codex 共享连接')}</strong><small><Status tone={sharedTone}>{sharedText}</Status>{adminText&&` · ${adminText}`}</small></button><button type="button" className="v7-set-btn" onClick={()=>onNavigate('CODEX')}>{t('管理')}</button></div>

@@ -1,5 +1,7 @@
 # Agbrio 完整使用流程（Windows + Codex + 手机）
 
+首次打开电脑端，选择 Codex、Claude Code 或两者都选，跟随引导完成连接、授权和手机配对。支持跳过，也能从设置重新打开；下文保留手动配置与日常使用说明。
+
 适用范围：2026-10-22 公开版本。请先看版本，再按步骤操作；手机、Claude Code、AI 助手都是可选项，不必一次全部配置。
 
 [常见问题与排错](FAQ.zh-CN.md) · [English](SETUP.md) · [返回首页](../README.zh-CN.md)

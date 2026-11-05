@@ -1,5 +1,7 @@
 # Agbrio
 
+按业务建立管理区，一键更换管理对话或转移执行对话；Codex 和 Claude Code 都能担任管理。
+
 **电脑上的 Agent 继续工作，你在手机上掌握进展。**
 
 [![Download](https://img.shields.io/github/v/release/geoffrey1111/agbrio?label=download)](https://github.com/geoffrey1111/agbrio/releases/latest)
@@ -48,9 +50,9 @@ flowchart TD
 
 ## 开始使用
 
-1. 下载 Windows 版，连接你正在使用的 Agent。
-2. 选择对话开始监听，或绑定管理端与执行端。
-3. 在「设置 → 设备」配对手机，打开你的 Agbrio 地址。
+1. 下载并打开电脑端，选择你使用的 Codex、Claude Code，或两者都选。
+2. 跟着首次引导连接 Agent、完成授权并配对手机。
+3. 选择对话，就能在手机查看和跟进。可以跳过引导，也能从设置重新打开。
 
 手机访问时，电脑与 Agbrio 需要保持在线；通知需在设备上启用。
 

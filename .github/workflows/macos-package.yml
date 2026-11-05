@@ -11,6 +11,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 45
     env:
+      AGBRIO_HOSTED_CONTROL_ORIGIN: https://agbrio-connect.geoffreygroup.cc
       MACOSX_DEPLOYMENT_TARGET: '13.5'
       APPLE_SIGNING_IDENTITY: '-'
     steps:

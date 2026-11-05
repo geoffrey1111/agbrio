@@ -26,27 +26,28 @@ fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<WatchReply> {
     Ok(WatchReply { id:r.get(0)?,thread_id:r.get(1)?,cwd:r.get(2)?,generation:r.get(3)?,source_sequence:r.get(4)?,expected_turn_id:r.get(5)?,mode:r.get(6)?,text:r.get(7)?,options:serde_json::from_str(&raw).map_err(|e|rusqlite::Error::FromSqlConversionFailure(8,rusqlite::types::Type::Text,Box::new(e)))?,payload_hash:r.get(9)?,status:r.get(10)?,turn_id:r.get(11)?,error_code:r.get(12)?,created_at:r.get(13)?,updated_at:r.get(14)? })
 }
 const COLS:&str="id,thread_id,cwd,generation,source_sequence,expected_turn_id,mode,text,options_json,payload_hash,status,turn_id,error_code,created_at,updated_at";
+pub(super) fn prepare_watch_reply_at(c:&Connection,input:&WatchReply)->Result<WatchReply,String>{
+        if Uuid::parse_str(&input.id).is_err()||input.text.trim().is_empty()||input.text.len()>100_000||!matches!(input.mode.as_str(),"SEND"|"QUEUE"|"STEER"){return Err("REPLY_INPUT_INVALID".into());}
+        let raw=serde_json::to_string(&input.options).map_err(|_|"REPLY_OPTIONS_INVALID")?;
+        if raw.len()>4096{return Err("REPLY_OPTIONS_INVALID".into());}
+        let hash=length_prefixed_hash(&[&input.thread_id,&input.cwd,&input.generation.to_string(),&input.source_sequence.map(|n|n.to_string()).unwrap_or_default(),input.expected_turn_id.as_deref().unwrap_or_default(),&input.mode,&input.text,&raw].map(str::as_bytes));
+            if let Some(prior)=c.query_row(&format!("SELECT {COLS} FROM watch_replies WHERE id=?1"),[&input.id],row).optional().map_err(db_error)?{if prior.payload_hash!=hash{return Err("REPLY_ID_REUSED_WITH_DIFFERENT_CONTENT".into());}return Ok(prior);}
+            if c.query_row("SELECT 1 FROM watch_reply_cancellations WHERE id=?1",[&input.id],|r|r.get::<_,i64>(0)).optional().map_err(db_error)?.is_some(){return Err("REPLY_CANCELLED".into());}
+            let current=codex_watch::chat_context(c,&input.thread_id)?;
+            if current.cwd!=input.cwd||current.generation!=input.generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}
+            if let Some(seq)=input.source_sequence{let target:Option<String>=c.query_row("SELECT thread_id FROM codex_watch_events WHERE sequence=?1",[seq],|r|r.get(0)).optional().map_err(db_error)?;if target.as_deref()!=Some(&input.thread_id){return Err("WATCH_EVENT_NOT_FOUND".into());}}
+            let conflict:i64=c.query_row("SELECT COUNT(*) FROM watch_replies WHERE thread_id=?1 AND (status IN ('SENDING','UNKNOWN') OR (status='QUEUED' AND NOT (?2 AND mode='QUEUE')))",params![input.thread_id,matches!(input.mode.as_str(),"QUEUE"|"STEER")&&!input.thread_id.starts_with(super::claude_manual::PREFIX)],|r|r.get(0)).map_err(db_error)?;if conflict>0{return Err("REPLY_PREVIOUS_PENDING_CHECK_FIRST".into());}
+            let depth:i64=c.query_row("SELECT COUNT(*) FROM watch_replies WHERE thread_id=?1 AND status='QUEUED'",[&input.thread_id],|r|r.get(0)).map_err(db_error)?;if input.mode=="QUEUE"&&depth>=32{return Err("REPLY_QUEUE_LIMIT".into());}
+            let at=now();c.execute("INSERT INTO watch_replies(id,thread_id,cwd,generation,source_sequence,expected_turn_id,mode,text,options_json,payload_hash,status,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,'QUEUED',?11,?11)",params![input.id,input.thread_id,input.cwd,input.generation,input.source_sequence,input.expected_turn_id,input.mode,input.text,raw,hash,at]).map_err(db_error)?;
+            let reply=c.query_row(&format!("SELECT {COLS} FROM watch_replies WHERE id=?1"),[&input.id],row).map_err(db_error)?;Ok(reply)
+}
+
 impl RouterStore {
     pub fn watch_reply(&self,id:&str)->Result<Option<WatchReply>,String>{ self.with_connection(|c| c.query_row(&format!("SELECT {COLS} FROM watch_replies WHERE id=?1"),[id],row).optional().map_err(db_error)) }
     pub fn watch_replies(&self,thread:&str)->Result<Vec<WatchReply>,String>{self.with_connection(|c|{let mut s=c.prepare(&format!("SELECT {COLS} FROM watch_replies WHERE thread_id=?1 AND removed_at IS NULL AND status!='CANCELLED' AND (status IN ('QUEUED','SENDING','UNKNOWN') OR id IN (SELECT id FROM watch_replies WHERE thread_id=?1 AND removed_at IS NULL AND status NOT IN ('QUEUED','SENDING','UNKNOWN','CANCELLED') ORDER BY created_at DESC,rowid DESC LIMIT 20)) ORDER BY created_at DESC,rowid DESC")).map_err(db_error)?;let out=s.query_map([thread],row).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;Ok(out)})}
     /// Record intent before any external mutation. Duplicate IDs must match bytes.
     pub fn prepare_watch_reply(&self,input:&WatchReply)->Result<WatchReply,String>{
-        if Uuid::parse_str(&input.id).is_err()||input.text.trim().is_empty()||input.text.len()>100_000||!matches!(input.mode.as_str(),"SEND"|"QUEUE"|"STEER"){return Err("REPLY_INPUT_INVALID".into());}
-        let raw=serde_json::to_string(&input.options).map_err(|_|"REPLY_OPTIONS_INVALID")?;
-        if raw.len()>4096{return Err("REPLY_OPTIONS_INVALID".into());}
-        let hash=length_prefixed_hash(&[&input.thread_id,&input.cwd,&input.generation.to_string(),&input.source_sequence.map(|n|n.to_string()).unwrap_or_default(),input.expected_turn_id.as_deref().unwrap_or_default(),&input.mode,&input.text,&raw].map(str::as_bytes));
-        self.with_connection(|c|{
-            let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
-            if let Some(prior)=tx.query_row(&format!("SELECT {COLS} FROM watch_replies WHERE id=?1"),[&input.id],row).optional().map_err(db_error)?{if prior.payload_hash!=hash{return Err("REPLY_ID_REUSED_WITH_DIFFERENT_CONTENT".into());}return Ok(prior);}
-            if tx.query_row("SELECT 1 FROM watch_reply_cancellations WHERE id=?1",[&input.id],|r|r.get::<_,i64>(0)).optional().map_err(db_error)?.is_some(){return Err("REPLY_CANCELLED".into());}
-            let current=codex_watch::chat_context(&tx,&input.thread_id)?;
-            if current.cwd!=input.cwd||current.generation!=input.generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}
-            if let Some(seq)=input.source_sequence{let target:Option<String>=tx.query_row("SELECT thread_id FROM codex_watch_events WHERE sequence=?1",[seq],|r|r.get(0)).optional().map_err(db_error)?;if target.as_deref()!=Some(&input.thread_id){return Err("WATCH_EVENT_NOT_FOUND".into());}}
-            let conflict:i64=tx.query_row("SELECT COUNT(*) FROM watch_replies WHERE thread_id=?1 AND (status IN ('SENDING','UNKNOWN') OR (status='QUEUED' AND NOT (?2 AND mode='QUEUE')))",params![input.thread_id,matches!(input.mode.as_str(),"QUEUE"|"STEER")&&!input.thread_id.starts_with(super::claude_manual::PREFIX)],|r|r.get(0)).map_err(db_error)?;if conflict>0{return Err("REPLY_PREVIOUS_PENDING_CHECK_FIRST".into());}
-            let depth:i64=tx.query_row("SELECT COUNT(*) FROM watch_replies WHERE thread_id=?1 AND status='QUEUED'",[&input.thread_id],|r|r.get(0)).map_err(db_error)?;if input.mode=="QUEUE"&&depth>=32{return Err("REPLY_QUEUE_LIMIT".into());}
-            let at=now();tx.execute("INSERT INTO watch_replies(id,thread_id,cwd,generation,source_sequence,expected_turn_id,mode,text,options_json,payload_hash,status,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,'QUEUED',?11,?11)",params![input.id,input.thread_id,input.cwd,input.generation,input.source_sequence,input.expected_turn_id,input.mode,input.text,raw,hash,at]).map_err(db_error)?;
-            let reply=tx.query_row(&format!("SELECT {COLS} FROM watch_replies WHERE id=?1"),[&input.id],row).map_err(db_error)?;tx.commit().map_err(db_error)?;Ok(reply)
-        })
+        self.with_connection(|c|{let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;let reply=prepare_watch_reply_at(&tx,input)?;tx.commit().map_err(db_error)?;Ok(reply)})
     }
     pub fn queued_watch_replies(&self)->Result<Vec<WatchReply>,String>{self.with_connection(|c|{let mut q=c.prepare(&format!("SELECT {COLS} FROM watch_replies WHERE status='QUEUED' AND mode='QUEUE' AND NOT EXISTS (SELECT 1 FROM watch_replies p WHERE p.thread_id=watch_replies.thread_id AND (p.status IN ('SENDING','UNKNOWN') OR (p.status='QUEUED' AND p.rowid<watch_replies.rowid))) ORDER BY rowid LIMIT 100")).map_err(db_error)?;let rows=q.query_map([],row).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;Ok(rows)})}
     pub fn queued_watch_reply_target(&self,id:&str)->Result<Option<String>,String>{self.with_connection(|c|{
@@ -54,7 +55,7 @@ impl RouterStore {
         let previous:Option<String>=c.query_row("SELECT turn_id FROM watch_replies WHERE thread_id=?1 AND generation=?2 AND mode='QUEUE' AND status='SENT' AND turn_id IS NOT NULL AND expected_turn_id IS ?3 AND rowid<(SELECT rowid FROM watch_replies WHERE id=?4) ORDER BY rowid DESC LIMIT 1",params![reply.thread_id,reply.generation,reply.expected_turn_id,id],|r|r.get(0)).optional().map_err(db_error)?;
         Ok(previous.or(reply.expected_turn_id))
     })}
-    pub fn claim_watch_reply(&self,id:&str)->Result<WatchReply,String>{self.with_connection(|c|{let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;let reply=tx.query_row(&format!("SELECT {COLS} FROM watch_replies WHERE id=?1"),[id],row).map_err(db_error)?;if reply.status!="QUEUED"{return Err("REPLY_ALREADY_ATTEMPTED".into());}let pending:i64=tx.query_row("SELECT COUNT(*) FROM watch_replies WHERE thread_id=?1 AND id!=?2 AND (status IN ('SENDING','UNKNOWN') OR (status='QUEUED' AND NOT ?3 AND rowid<(SELECT rowid FROM watch_replies WHERE id=?2)))",params![reply.thread_id,id,reply.mode=="STEER"&&!reply.thread_id.starts_with(super::claude_manual::PREFIX)],|r|r.get(0)).map_err(db_error)?;if pending>0{return Err("REPLY_PREVIOUS_PENDING_CHECK_FIRST".into());}
+    pub fn claim_watch_reply(&self,id:&str)->Result<WatchReply,String>{self.with_connection(|c|{let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;super::management_zones::validate_reply_route(&tx,id)?;let reply=tx.query_row(&format!("SELECT {COLS} FROM watch_replies WHERE id=?1"),[id],row).map_err(db_error)?;if reply.status!="QUEUED"{return Err("REPLY_ALREADY_ATTEMPTED".into());}let pending:i64=tx.query_row("SELECT COUNT(*) FROM watch_replies WHERE thread_id=?1 AND id!=?2 AND (status IN ('SENDING','UNKNOWN') OR (status='QUEUED' AND NOT ?3 AND rowid<(SELECT rowid FROM watch_replies WHERE id=?2)))",params![reply.thread_id,id,reply.mode=="STEER"&&!reply.thread_id.starts_with(super::claude_manual::PREFIX)],|r|r.get(0)).map_err(db_error)?;if pending>0{return Err("REPLY_PREVIOUS_PENDING_CHECK_FIRST".into());}
         let current=codex_watch::chat_context(&tx,&reply.thread_id)?;
         if current.cwd!=reply.cwd||current.generation!=reply.generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}
         let busy:i64=tx.query_row("SELECT (SELECT COUNT(*) FROM provider_runs r JOIN endpoints e ON e.id=r.endpoint_id WHERE e.provider='CODEX' AND e.external_id=?1 AND r.status IN ('STARTING','RUNNING','UNKNOWN') AND NOT COALESCE(?2 AND r.status='RUNNING' AND r.external_run_id=?3,0)) + (SELECT COUNT(*) FROM handoffs h JOIN endpoints e ON e.id=h.destination_endpoint_id WHERE e.provider='CODEX' AND e.external_id=?1 AND h.status='SENDING')",params![reply.thread_id,reply.mode=="STEER",reply.expected_turn_id],|r|r.get(0)).map_err(db_error)?;if busy>0{return Err("REPLY_OTHER_WRITER_PENDING".into());}
@@ -83,10 +84,12 @@ impl RouterStore {
         let context=codex_watch::chat_context(c,thread)?;if context.generation!=generation||!context.enabled{return Err("REPLY_TARGET_CHANGED_REFRESH".into())}
         let mut changed=0;
         for card in cards.iter().filter(|q|q["responseSent"]==true){
-            let(Some(request),Some(hash))=(card["requestId"].as_str(),card["responseHash"].as_str())else{continue};
+            let Some(request)=card["requestId"].as_str()else{continue};
             let id=crate::codex::async_questions::answer_id(thread,request);
             let prior=c.query_row(&format!("SELECT {COLS} FROM watch_replies WHERE id=?1 AND thread_id=?2 AND generation=?3 AND status='UNKNOWN'"),params![id,thread,generation],row).optional().map_err(db_error)?;
-            let Some(prior)=prior else{continue};if crate::codex::async_questions::response_hash(&prior.text).as_deref()!=Some(hash){continue}
+            let Some(prior)=prior else{continue};let Some(expected)=crate::codex::async_questions::response_hash(&prior.text)else{continue};
+            let matched=card["responseHash"].as_str()==Some(expected.as_str())||card["responseHashes"].as_array().is_some_and(|hashes|hashes.iter().any(|hash|hash.as_str()==Some(expected.as_str())));
+            if !matched{continue}
             changed+=c.execute("UPDATE watch_replies SET status='SENT',error_code=NULL,updated_at=?2 WHERE id=?1 AND status='UNKNOWN'",params![id,now()]).map_err(db_error)?;
         }Ok(changed)
     })}
@@ -149,6 +152,20 @@ fn setup()->(tempfile::TempDir,RouterStore,WatchReply){let d=tempfile::tempdir()
  let(d,s,mut r)=setup();let request="exact-question";r.id=crate::codex::async_questions::answer_id(&r.thread_id,request);r.text=format!("<send_user_message_question_reply>{}</send_user_message_question_reply>",serde_json::json!([{"questionItemId":"question-key","answer":"A"}]));s.prepare_watch_reply(&r).unwrap();s.claim_watch_reply(&r.id).unwrap();s.finish_watch_reply(&r.id,"UNKNOWN",Some("turn"),Some("REPLY_ASYNC_ACCEPTED_UNCONFIRMED")).unwrap();
  let hash=crate::codex::async_questions::response_hash(&r.text).unwrap();let wrong=serde_json::json!({"requestId":request,"responseSent":true,"responseHash":"different"});assert_eq!(s.reconcile_async_answer_replies(&r.thread_id,r.generation,&[wrong]).unwrap(),0);assert_eq!(s.watch_reply(&r.id).unwrap().unwrap().status,"UNKNOWN");assert!(s.claim_watch_reply(&r.id).is_err());
  drop(s);let s=RouterStore::open_at(d.path().join("router.db")).unwrap();let card=serde_json::json!({"requestId":request,"responseSent":true,"responseHash":hash});assert!(s.reconcile_async_answer_replies(&r.thread_id,r.generation+1,&[card.clone()]).is_err());assert_eq!(s.reconcile_async_answer_replies(&r.thread_id,r.generation,&[card.clone()]).unwrap(),1);assert_eq!(s.watch_reply(&r.id).unwrap().unwrap().status,"SENT");assert_eq!(s.reconcile_async_answer_replies(&r.thread_id,r.generation,&[card]).unwrap(),0);drop(s);drop(d);
+}
+
+#[test]fn an_earlier_native_answer_unblocks_followup_after_a_later_answer_and_reopen(){
+ use serde_json::json;
+ let(d,s,mut reply)=setup();let request="same-question";let question_id=json!(["request_user_input_async",request,0]).to_string();
+ let text=|answer:&str|format!("<send_user_message_question_reply>{}</send_user_message_question_reply>",json!([{"questionItemId":question_id,"answer":answer}]));
+ reply.id=crate::codex::async_questions::answer_id(&reply.thread_id,request);reply.text=text("wait");s.prepare_watch_reply(&reply).unwrap();s.claim_watch_reply(&reply.id).unwrap();s.finish_watch_reply(&reply.id,"UNKNOWN",Some("original-turn"),Some("REPLY_ASYNC_ACCEPTED_UNCONFIRMED")).unwrap();
+ let path=d.path().join("native.jsonl");let header=json!({"type":"session_meta","payload":{"id":"exact"}});let question=json!({"type":"response_item","payload":{"type":"function_call","name":"request_user_input_async","call_id":request,"arguments":json!({"questions":[{"title":"Choose"}]}).to_string()}});
+ let native_row=|answer:&str|json!({"type":"response_item","payload":{"type":"message","role":"user","content":[{"text":text(answer)}]}});
+ std::fs::write(&path,format!("{header}\n{question}\n{}\n{}\n",native_row("wait"),native_row("allow"))).unwrap();drop(s);
+ let store=RouterStore::open_at(d.path().join("router.db")).unwrap();let cards=crate::codex::async_questions::read(&path,d.path(),"exact");assert_eq!(cards[0]["responseHash"],crate::codex::async_questions::response_hash(&text("allow")).unwrap());assert_eq!(cards[0]["responseHashes"].as_array().unwrap().len(),2);
+ assert!(store.reconcile_async_answer_replies("exact",reply.generation+1,&cards).is_err());let mut wrong=cards.clone();wrong[0]["responseHash"]=json!("wrong");wrong[0]["responseHashes"]=json!(["wrong"]);assert_eq!(store.reconcile_async_answer_replies("exact",reply.generation,&wrong).unwrap(),0);assert_eq!(store.watch_reply(&reply.id).unwrap().unwrap().status,"UNKNOWN");
+ assert_eq!(store.reconcile_async_answer_replies("exact",reply.generation,&cards).unwrap(),1);assert_eq!(store.watch_reply(&reply.id).unwrap().unwrap().status,"SENT");assert_eq!(store.reconcile_async_answer_replies("exact",reply.generation,&cards).unwrap(),0);assert!(store.claim_watch_reply(&reply.id).is_err(),"the settled original must never be replayed");
+ let mut next=reply.clone();next.id=Uuid::new_v4().to_string();next.text="a new independent followup".into();assert!(store.prepare_watch_reply(&next).is_ok());
 }
 
 }
