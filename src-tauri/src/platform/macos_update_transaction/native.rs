@@ -622,6 +622,6 @@ mod tests {
             fs::read(workspace.join("Agbrio.app/fixture-identity")).unwrap(),
             b"new"
         );
-        println!("MACOS_UPDATE_TRANSACTION_NATIVE_PASS");
+        println!("\nMACOS_UPDATE_TRANSACTION_NATIVE_PASS");
     }
 }
