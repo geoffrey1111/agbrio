@@ -31,7 +31,8 @@ const SETTLE_ATTEMPTS: u8 = 5;
 const ROLLOUT_EMPTY_RETRIES: u8 = 10;
 const ROLLOUT_EMPTY_DELAY: Duration = Duration::from_millis(200);
 const UNSUBSCRIBED_FOLLOW_LIMIT: Duration = Duration::from_secs(120);
-const LOAD_RETRIES: u8 = 40;
+/// Stays inside the Host's own limit for a resume before a write.
+const LOAD_RETRIES: u8 = 28;
 const LOAD_RETRY_DELAY: Duration = Duration::from_millis(250);
 
 pub(super) struct Config {
@@ -826,7 +827,9 @@ impl Hub {
 
     async fn resume(self: &Arc<Self>, id: &Value, thread: &str, params: &Value) -> Option<Value> {
         match self.route(thread, true).await {
-            Route::Backend | Route::Free => self.load_on_backend(id, thread, params).await,
+            // Loaded here already. A brand-new thread answers this at once with its own error.
+            Route::Backend => self.backend_write(id, "thread/resume", params).await,
+            Route::Free => self.load_on_backend(id, thread, params).await,
             Route::HeldElsewhere => Some(Self::held_error(id, thread)),
             // Already loaded by Desktop. Attach as a follower and report its identity.
             Route::Desktop(..) => {
