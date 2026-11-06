@@ -38,10 +38,11 @@ pub(crate) fn transition(status:&str,operation:&str)->Result<&'static str,String
 pub(crate) fn controls(core:&RouterCore,g:&MobileCodexGoal,busy:bool,pending:bool)->Result<GoalControls,String>{controls_for_store(&core.store,g,busy,pending)}
 pub(crate) fn controls_for_store(store:&crate::RouterStore,g:&MobileCodexGoal,busy:bool,pending:bool)->Result<GoalControls,String>{
  let identity_complete=g.created_at.as_ref().and_then(Value::as_i64).is_some()&&g.updated_at.as_ref().and_then(Value::as_i64).is_some()&&!g.objective.trim().is_empty();
- let blocked=if !identity_complete{Some("GOAL_IDENTITY_INCOMPLETE".into())}else if pending{Some("GOAL_PENDING_DECISION".into())}else{store.require_goal_control_clear(&g.thread_id).err()};
+ let blocked=if crate::codex_light::enabled(){Some("GOAL_LIGHT_CONNECTION_UNSUPPORTED".into())}else if !identity_complete{Some("GOAL_IDENTITY_INCOMPLETE".into())}else if pending{Some("GOAL_PENDING_DECISION".into())}else{store.require_goal_control_clear(&g.thread_id).err()};
  Ok(GoalControls{target:target_for_store(store,&g.thread_id)?,can_pause:blocked.is_none()&&g.status=="active",can_resume:blocked.is_none()&&!busy&&matches!(g.status.as_str(),"paused"|"blocked"|"usageLimited"),resume_requires_owner_answer:g.status=="usageLimited",blocked_reason:blocked})
 }
 fn checked(core:&RouterCore,s:&mut Session,input:&GoalInput,operation:&str)->Result<MobileCodexGoal,String>{
+ if crate::codex_light::enabled(){return Err("GOAL_LIGHT_CONNECTION_UNSUPPORTED".into());}
  require_target(core,&input.target)?;core.store.require_goal_control_clear(&input.target.thread_id)?;
  if s.pending_codex_requests.values().any(|r|r.thread_id==input.target.thread_id&&!r.responded){return Err("GOAL_PENDING_DECISION".into());}
  let g=read_codex_goal_from_session(s,&input.target.thread_id)?.ok_or("GOAL_NO_LONGER_EXISTS")?;

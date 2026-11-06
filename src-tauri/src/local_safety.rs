@@ -157,6 +157,8 @@ fn route_resources(core:&RouterCore,settings:&Settings,at:i64)->Result<(),String
  Ok(())
 }
 pub(super) fn recover(core:&RouterCore,at:i64)->Result<(),String>{
+ // Recovery is a Goal write, which the light connection does not offer.
+ if crate::codex_light::enabled(){return Ok(());}
  for w in core.store.codex_watches()?.into_iter().filter(|w|w.enabled&&!w.thread_id.starts_with("claude_code:")&&!w.thread_id.starts_with("pi:")){
   if w.error_code.is_some()||at-w.checked_at>30000||at-w.changed_at>600000{continue;}
   let candidate={let Ok(mut s)=core.session.try_lock()else{continue};let Some(a)=s.adapter.as_mut()else{continue};

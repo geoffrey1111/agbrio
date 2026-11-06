@@ -82,3 +82,26 @@ it("prepared mode needs explicit launch and offers disable without reinstalling 
  fireEvent.click(screen.getByRole("button",{name:"打开共享 Codex"}));await screen.findByText("Desktop 已接入共享连接");
  fireEvent.click(screen.getByRole("button",{name:"停用共享连接"}));await screen.findByRole("button",{name:"准备共享连接"});expect(api.disable).toHaveBeenCalledTimes(1);
 });
+it('offers the light connection with its limits and switches through the owner action',async()=>{
+ const setLight=vi.fn().mockResolvedValue({enabled:true,ready:true,desktopConnected:true,state:"LIGHT_CONNECTED"});
+ render(<SharedCodexConnection api={{status:async()=>independent,setup:vi.fn(),setLight}}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'改用轻量连接（测试版）'}));
+ await waitFor(()=>expect(setLight).toHaveBeenCalledWith(true));
+ expect(await screen.findByText('轻量连接已接入 Codex')).toBeVisible();
+ expect(screen.getByText('轻量连接不支持：管理 Goal、以管理员身份启动、退出 Codex 后继续执行任务。')).toBeVisible();
+ expect(screen.queryByRole('checkbox',{name:'以管理员身份启动共享 Codex'})).toBeNull();
+});
+it('tells the owner to open Codex while the light connection waits, and switches back',async()=>{
+ const setLight=vi.fn().mockResolvedValue(independent);
+ render(<SharedCodexConnection api={{status:async()=>({enabled:true,ready:true,desktopConnected:false,state:"LIGHT_WAITING"}),setup:vi.fn(),setLight}}/>);
+ expect(await screen.findByText('请正常打开 Codex，Agbrio 会自动连接。')).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'改回共享连接'}));
+ await waitFor(()=>expect(setLight).toHaveBeenCalledWith(false));
+});
+it('reports a failed switch without claiming it happened',async()=>{
+ const setLight=vi.fn().mockRejectedValue("SHARED_ROUTER_BUSY");
+ render(<SharedCodexConnection api={{status:async()=>independent,setup:vi.fn(),setLight}}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'改用轻量连接（测试版）'}));
+ expect(await screen.findByRole('alert')).toHaveTextContent('对话正在执行，完成后再切换连接。');
+ expect(screen.queryByText('轻量连接已接入 Codex')).toBeNull();
+});

@@ -33,6 +33,7 @@ impl CodexAdapter {
     ) -> Result<Self, String> {
         match crate::shared_codex::transport_command()? {
             Some(command)=>CoreAdapter::start_shared_transport(sink,listener,command).map(Self),
+            None if crate::codex_light::enabled()=>CoreAdapter::start_shared_transport(sink,listener,crate::codex_light::transport_command()?).map(Self),
             None=>CoreAdapter::start(sink,listener,codex_app_server_command()).map(Self)
         }
     }

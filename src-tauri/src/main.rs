@@ -26,6 +26,7 @@ fn main() {
         eprintln!("LEGACY_CHATGPT_TRANSPORT_RETIRED");
         return;
     }
+    if ai_work_router_lib::codex_light::run_if_requested() { return; }
     if independent_startup::relay_if_needed() { return; }
     ai_work_router_lib::run();
 }

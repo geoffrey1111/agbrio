@@ -1935,5 +1935,17 @@
   "需要处理": "Needs attention",
   "重新检查整机配置": "Check user-wide configuration",
   "操作结果暂未确认。请检查并完成这次操作，系统会沿用同一请求，不会重复创建。": "The outcome is unconfirmed. Check and finish this operation using the same request, without creating duplicates.",
-  "已存在另一个 Agbrio 地址，已保留原配置。请核对后再连接。": "A different Agbrio address is configured and was preserved. Review it before connecting."
+  "已存在另一个 Agbrio 地址，已保留原配置。请核对后再连接。": "A different Agbrio address is configured and was preserved. Review it before connecting.",
+  "轻量连接不支持管理 Goal，请在 Codex 里操作。": "The light connection cannot manage Goals. Use Codex for that.",
+  "连接方式未能切换，请检查连接状态后重试。": "The connection could not be switched. Check its status and try again.",
+  "切换连接方式": "Switching connection",
+  "Codex 轻量连接": "Codex light connection",
+  "轻量连接已接入 Codex": "Light connection is using Codex",
+  "轻量连接已开启": "Light connection is on",
+  "直接使用正常打开的 Codex，不需要退出或专用入口。": "Works with Codex as you normally open it, with no need to quit or use a special entry.",
+  "请正常打开 Codex，Agbrio 会自动连接。": "Open Codex as usual and Agbrio connects automatically.",
+  "轻量连接不支持：管理 Goal、以管理员身份启动、退出 Codex 后继续执行任务。": "Not available with the light connection: managing Goals, starting as administrator, and tasks continuing after Codex quits.",
+  "改回共享连接": "Switch back to shared connection",
+  "改用轻量连接（测试版）": "Use light connection (beta)",
+  "不再常驻共享后台，也不用退出重开 Codex。不支持管理 Goal、管理员启动和退出 Codex 后继续执行任务。切换前请先结束任务并退出共享 Codex。": "No resident shared backend, and no need to quit and reopen Codex. Managing Goals, starting as administrator, and tasks continuing after Codex quits are not available. Finish your tasks and quit shared Codex before switching."
 }

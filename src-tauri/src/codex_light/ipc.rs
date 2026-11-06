@@ -1,0 +1,314 @@
+//! Client for Desktop's private owner/follower pipe. It never claims a thread.
+use serde_json::{json, Value};
+use std::{
+    collections::HashMap,
+    os::windows::io::AsRawHandle,
+    path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
+    time::Duration,
+};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::windows::named_pipe::ClientOptions,
+    sync::{mpsc, oneshot},
+};
+
+pub(super) const OFFICIAL_PIPE: &str = r"\\.\pipe\codex-ipc";
+const SNAPSHOT_FRAME_LIMIT: usize = 64 * 1024 * 1024;
+const PROTOCOL_FRAME_LIMIT: usize = 256 * 1024 * 1024;
+const LOCAL_HOST: &str = "local";
+const INITIALIZING_CLIENT: &str = "initializing-client";
+
+/// Every version this client was validated against, on Desktop 26.1103.3517.0. A wrong
+/// version is answered as `no-client-found`, which looks exactly like "no owner", so the
+/// table has to be compared up front. Any difference closes IPC writes.
+pub(super) const VALIDATED_VERSIONS: [(&str, u64); 9] = [
+    ("thread-owner-discovery", 1),
+    ("thread-stream-following-changed", 1),
+    ("thread-stream-state-changed", 11),
+    ("thread-follower-start-turn", 2),
+    ("thread-follower-steer-turn", 1),
+    ("thread-follower-interrupt-turn", 4),
+    ("thread-follower-command-approval-decision", 1),
+    ("thread-follower-file-approval-decision", 1),
+    ("thread-follower-submit-user-input", 1),
+];
+
+pub(super) enum StateEvent {
+    Snapshot(Value),
+    Changed,
+    TooLarge,
+    Disconnected,
+}
+
+/// Outcome of one owner-directed request. `Uncertain` means it may have taken effect.
+pub(super) enum Reply {
+    Success(Value),
+    Rejected(String),
+    Uncertain,
+}
+
+type Subscribers = Arc<Mutex<HashMap<String, mpsc::UnboundedSender<StateEvent>>>>;
+
+pub(super) struct Connection {
+    writer: mpsc::UnboundedSender<Vec<u8>>,
+    pending: Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>>,
+    subscribers: Subscribers,
+    client_id: String,
+    closed: Arc<AtomicBool>,
+    pub writes_allowed: bool,
+}
+
+#[derive(Clone)]
+pub(super) struct PeerPolicy {
+    pub verify: bool,
+    pub versions: Option<HashMap<String, u64>>,
+}
+
+fn is_official_image(image: &Path) -> bool {
+    let text = image.to_string_lossy().to_ascii_lowercase();
+    // WindowsApps content is only writable through package deployment.
+    image.file_name().is_some_and(|name| name.eq_ignore_ascii_case("chatgpt.exe"))
+        && text.contains(r"\windowsapps\openai.codex_")
+}
+
+fn peer_image(handle: *mut std::ffi::c_void) -> Option<PathBuf> {
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetNamedPipeServerProcessId(pipe: *mut std::ffi::c_void, pid: *mut u32) -> i32;
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
+        fn QueryFullProcessImageNameW(process: *mut std::ffi::c_void, flags: u32, name: *mut u16, size: *mut u32) -> i32;
+        fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
+    }
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    let mut pid = 0_u32;
+    if unsafe { GetNamedPipeServerProcessId(handle, &mut pid) } == 0 {
+        return None;
+    }
+    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if process.is_null() {
+        return None;
+    }
+    let mut buffer = vec![0_u16; 4096];
+    let mut size = buffer.len() as u32;
+    let ok = unsafe { QueryFullProcessImageNameW(process, 0, buffer.as_mut_ptr(), &mut size) };
+    unsafe { CloseHandle(process) };
+    (ok != 0).then(|| PathBuf::from(String::from_utf16_lossy(&buffer[..size as usize])))
+}
+
+/// The method table inside the package serving the pipe.
+fn installed_versions(image: &Path) -> Option<HashMap<String, u64>> {
+    use std::io::{Read, Seek, SeekFrom};
+    let asar = image.parent()?.join("resources/app.asar");
+    let mut file = std::fs::File::open(asar).ok()?;
+    let mut head = [0_u8; 16];
+    file.read_exact(&mut head).ok()?;
+    let header_size = u32::from_le_bytes(head[4..8].try_into().ok()?) as u64;
+    let json_length = u32::from_le_bytes(head[12..16].try_into().ok()?) as usize;
+    let mut header = vec![0_u8; json_length];
+    file.read_exact(&mut header).ok()?;
+    let header: Value = serde_json::from_slice(&header).ok()?;
+    let entry = header.pointer("/files/.vite/files/build/files/early-bootstrap.js")?;
+    let size = entry["size"].as_u64()?;
+    let offset: u64 = entry["offset"].as_str()?.parse().ok()?;
+    file.seek(SeekFrom::Start(8 + header_size + offset)).ok()?;
+    let mut body = vec![0_u8; usize::try_from(size).ok()?];
+    file.read_exact(&mut body).ok()?;
+    parse_version_table(&String::from_utf8_lossy(&body))
+}
+
+pub(super) fn parse_version_table(text: &str) -> Option<HashMap<String, u64>> {
+    let anchor = text.find("\"thread-owner-discovery\":")?;
+    let start = text[..anchor].rfind('{')?;
+    let end = anchor + text[anchor..].find('}')? + 1;
+    serde_json::from_str(&text[start..end]).ok()
+}
+
+pub(super) fn versions_match(installed: &HashMap<String, u64>) -> bool {
+    VALIDATED_VERSIONS.iter().all(|(method, version)| installed.get(*method) == Some(version))
+}
+
+fn version_of(method: &str) -> u64 {
+    VALIDATED_VERSIONS.iter().find(|(name, _)| *name == method).map_or(0, |(_, version)| *version)
+}
+
+fn encode(message: &Value) -> Vec<u8> {
+    let body = message.to_string().into_bytes();
+    let mut frame = Vec::with_capacity(body.len() + 4);
+    frame.extend_from_slice(&(body.len() as u32).to_le_bytes());
+    frame.extend_from_slice(&body);
+    frame
+}
+
+impl Connection {
+    /// Fails closed: an unverifiable server gets no frame at all.
+    pub async fn open(pipe: &str, policy: &PeerPolicy, client_type: &str) -> Result<Arc<Self>, String> {
+        let client = ClientOptions::new().open(pipe).map_err(|error| format!("IPC_CONNECT_FAILED:{}", error.raw_os_error().unwrap_or(0)))?;
+        let mut versions = policy.versions.clone();
+        if policy.verify {
+            let image = peer_image(client.as_raw_handle()).ok_or("IPC_PEER_UNVERIFIED")?;
+            if !is_official_image(&image) {
+                return Err("IPC_PEER_UNTRUSTED".into());
+            }
+            versions = installed_versions(&image);
+        }
+        let writes_allowed = versions.as_ref().is_some_and(versions_match);
+
+        let (mut read, mut write) = tokio::io::split(client);
+        let (writer, mut outgoing) = mpsc::unbounded_channel::<Vec<u8>>();
+        let pending: Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>> = Arc::default();
+        let subscribers: Subscribers = Arc::default();
+        let closed = Arc::new(AtomicBool::new(false));
+
+        tokio::spawn(async move {
+            while let Some(frame) = outgoing.recv().await {
+                if write.write_all(&frame).await.is_err() {
+                    break;
+                }
+            }
+        });
+        {
+            let pending = pending.clone();
+            let subscribers = subscribers.clone();
+            let closed = closed.clone();
+            let writer = writer.clone();
+            tokio::spawn(async move {
+                let _ = read_loop(&mut read, &writer, &pending, &subscribers).await;
+                closed.store(true, Ordering::SeqCst);
+                pending.lock().unwrap().clear();
+                for subscriber in subscribers.lock().unwrap().values() {
+                    let _ = subscriber.send(StateEvent::Disconnected);
+                }
+            });
+        }
+
+        let mut connection = Self { writer, pending, subscribers, client_id: INITIALIZING_CLIENT.into(), closed, writes_allowed };
+        let reply = connection.exchange(json!({"type":"request","method":"initialize","version":0,"params":{"clientType":client_type}}), Duration::from_secs(5)).await;
+        let client_id = reply.and_then(|m| m.pointer("/result/clientId").and_then(Value::as_str).map(str::to_owned)).ok_or("IPC_INITIALIZE_FAILED")?;
+        connection.client_id = client_id;
+        Ok(Arc::new(connection))
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::SeqCst)
+    }
+
+    async fn exchange(&self, mut message: Value, timeout: Duration) -> Option<Value> {
+        let request_id = uuid::Uuid::new_v4().to_string();
+        message["requestId"] = json!(request_id);
+        message["sourceClientId"] = json!(self.client_id);
+        let (sender, receiver) = oneshot::channel();
+        self.pending.lock().unwrap().insert(request_id.clone(), sender);
+        if self.writer.send(encode(&message)).is_err() {
+            self.pending.lock().unwrap().remove(&request_id);
+            return None;
+        }
+        let answer = tokio::time::timeout(timeout, receiver).await;
+        self.pending.lock().unwrap().remove(&request_id);
+        answer.ok()?.ok()
+    }
+
+    /// The owner's client ID, or None when nobody answers. `None` alone never proves a
+    /// thread is free: an unanswered or hung owner looks the same, so callers check the lock.
+    pub async fn discover_owner(&self, thread: &str) -> Option<String> {
+        let reply = self
+            .exchange(
+                json!({"type":"request","method":"thread-owner-discovery","version":version_of("thread-owner-discovery"),"params":{"hostId":LOCAL_HOST,"conversationId":thread}}),
+                Duration::from_secs(12),
+            )
+            .await?;
+        (reply["resultType"] == "success").then(|| reply["handledByClientId"].as_str().map(str::to_owned)).flatten()
+    }
+
+    pub async fn owner_request(&self, owner: &str, method: &str, params: Value, timeout: Duration) -> Reply {
+        let reply = self.exchange(json!({"type":"request","method":method,"version":version_of(method),"targetClientId":owner,"params":params}), timeout).await;
+        let Some(reply) = reply else { return Reply::Uncertain };
+        if reply["resultType"] == "success" {
+            return Reply::Success(reply["result"].clone());
+        }
+        let error = reply["error"].as_str().unwrap_or("IPC_ERROR").to_owned();
+        // These can fire after the owner already acted.
+        if matches!(error.as_str(), "request-timeout" | "client-disconnected" | "server-closed") {
+            return Reply::Uncertain;
+        }
+        Reply::Rejected(error)
+    }
+
+    pub fn set_following(&self, owner: &str, thread: &str, following: bool) -> bool {
+        self.writer
+            .send(encode(&json!({
+                "type":"broadcast","method":"thread-stream-following-changed","sourceClientId":self.client_id,
+                "targetClientIds":[owner],"version":version_of("thread-stream-following-changed"),
+                "params":{"conversationId":thread,"hostId":LOCAL_HOST,"following":following}
+            })))
+            .is_ok()
+    }
+
+    pub fn subscribe(&self, thread: &str, events: mpsc::UnboundedSender<StateEvent>) {
+        self.subscribers.lock().unwrap().insert(thread.to_owned(), events);
+    }
+
+    pub fn unsubscribe(&self, thread: &str) {
+        self.subscribers.lock().unwrap().remove(thread);
+    }
+}
+
+async fn read_loop(
+    read: &mut (impl AsyncReadExt + Unpin),
+    writer: &mpsc::UnboundedSender<Vec<u8>>,
+    pending: &Mutex<HashMap<String, oneshot::Sender<Value>>>,
+    subscribers: &Subscribers,
+) -> std::io::Result<()> {
+    loop {
+        let length = read.read_u32_le().await? as usize;
+        if length == 0 || length > PROTOCOL_FRAME_LIMIT {
+            return Err(std::io::ErrorKind::InvalidData.into());
+        }
+        if length > SNAPSHOT_FRAME_LIMIT {
+            // Skip without buffering; a huge state must not take this process with it.
+            tokio::io::copy(&mut read.take(length as u64), &mut tokio::io::sink()).await?;
+            for subscriber in subscribers.lock().unwrap().values() {
+                let _ = subscriber.send(StateEvent::TooLarge);
+            }
+            continue;
+        }
+        let mut body = vec![0_u8; length];
+        read.read_exact(&mut body).await?;
+        let Ok(message) = serde_json::from_slice::<Value>(&body) else { continue };
+        drop(body);
+        match message["type"].as_str() {
+            Some("response") => {
+                let sender = message["requestId"].as_str().and_then(|id| pending.lock().unwrap().remove(id));
+                if let Some(sender) = sender {
+                    let _ = sender.send(message);
+                }
+            }
+            Some("client-discovery-request") => {
+                // Silence would stall the router for ten seconds, and this client owns nothing.
+                let _ = writer.send(encode(&json!({"type":"client-discovery-response","requestId":message["requestId"],"response":{"canHandle":false}})));
+            }
+            Some("broadcast") => dispatch_broadcast(message, subscribers),
+            _ => {}
+        }
+    }
+}
+
+fn dispatch_broadcast(mut message: Value, subscribers: &Subscribers) {
+    let method = message["method"].as_str().unwrap_or_default().to_owned();
+    if !matches!(method.as_str(), "thread-stream-state-changed" | "thread-stream-following-status-requested") {
+        return;
+    }
+    let Some(thread) = message.pointer("/params/conversationId").and_then(Value::as_str).map(str::to_owned) else { return };
+    let subscribers = subscribers.lock().unwrap();
+    let Some(subscriber) = subscribers.get(&thread) else { return };
+    let is_snapshot = method == "thread-stream-state-changed" && message.pointer("/params/change/type").and_then(Value::as_str) == Some("snapshot");
+    let event = if is_snapshot {
+        StateEvent::Snapshot(message.pointer_mut("/params/change/conversationState").map(Value::take).unwrap_or(Value::Null))
+    } else {
+        StateEvent::Changed
+    };
+    let _ = subscriber.send(event);
+}

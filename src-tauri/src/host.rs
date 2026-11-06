@@ -133,7 +133,7 @@ impl HostRuntime {
             let mut delay=5;while !stop.load(std::sync::atomic::Ordering::Acquire){
                 for _ in 0..delay*10{if stop.load(std::sync::atomic::Ordering::Acquire){return;}std::thread::sleep(std::time::Duration::from_millis(100));}
                 crate::local_safety::maintain(&core);
-                if !crate::shared_codex::enabled(){delay=5;continue;}
+                if !crate::shared_codex::enabled()&&!crate::codex_light::enabled(){delay=5;continue;}
                 let disconnected=core.session.lock().is_ok_and(|s|!s.connecting&&!s.codex_adapter_borrowed&&s.adapter.as_ref().is_none_or(|a|a.is_closed()));
                 if disconnected{crate::host_application::connect_codex_for_resident_host(sink.clone(),&core);delay=(delay*2).min(60);}else{delay=5;}
             }
