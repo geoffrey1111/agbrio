@@ -26,7 +26,7 @@ No. Open it your usual way. Agbrio connects by itself; there is no shared entry,
 
 Change a Goal from Agbrio, launch Codex as administrator, keep tasks running after Codex Desktop quits, or stream token by token. It does not reduce the memory Codex itself uses.
 
-A task sent to a conversation that is not open in Codex runs on a temporary backend owned by Agbrio. The conversation still appears in Codex, and you can open it, watch it and send messages from there. Quitting Agbrio interrupts it. A few seconds after it finishes, Codex takes the conversation over by itself.
+A task sent to a conversation that is not open in Codex runs on a temporary backend owned by Agbrio. The conversation still appears in Codex, and you can open it, watch it and send messages from there. Quitting Agbrio interrupts it. After it finishes, Codex takes the conversation over by itself, within about a minute.
 
 ### Settings says the old shared backend is still there. What should I do?
 
