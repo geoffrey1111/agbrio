@@ -31,6 +31,8 @@ const SETTLE_ATTEMPTS: u8 = 5;
 const ROLLOUT_EMPTY_RETRIES: u8 = 10;
 const ROLLOUT_EMPTY_DELAY: Duration = Duration::from_millis(200);
 const UNSUBSCRIBED_FOLLOW_LIMIT: Duration = Duration::from_secs(120);
+const LOAD_RETRIES: u8 = 40;
+const LOAD_RETRY_DELAY: Duration = Duration::from_millis(250);
 
 pub(super) struct Config {
     pub pipe: String,
@@ -357,6 +359,11 @@ impl Hub {
         if self.pinned_backend(thread).await.is_some() {
             return Route::Backend;
         }
+        // Released but not yet unloaded: this process's own owner connection still answers
+        // discovery, which must not be mistaken for Desktop. Loading it again cancels the release.
+        if self.sessions.contains(thread) {
+            return Route::Free;
+        }
         if let Some((connection, owner)) = self.owner_of(thread, fresh).await {
             return Route::Desktop(connection, owner);
         }
@@ -564,6 +571,21 @@ impl Hub {
         let mut reply = reply;
         reply["id"] = id.clone();
         Some(reply)
+    }
+
+    /// A thread a backend is still unloading refuses a resume for a moment, and one a backend
+    /// that is exiting holds its lock for a moment. A resume starts nothing, so waiting those
+    /// out repeats nothing the owner asked for. Anything else is returned at once.
+    async fn load_on_backend(&self, id: &Value, thread: &str, params: &Value) -> Option<Value> {
+        for _ in 0..LOAD_RETRIES {
+            let reply = self.backend_write(id, "thread/resume", params).await?;
+            let closing = reply.pointer("/error/message").and_then(Value::as_str).is_some_and(|message| message.contains("is closing"));
+            if reply.get("error").is_none() || !(closing || self.sessions.contains(thread) && self.lock_held(thread)) {
+                return Some(reply);
+            }
+            tokio::time::sleep(LOAD_RETRY_DELAY).await;
+        }
+        self.backend_write(id, "thread/resume", params).await
     }
 
     /// A write Desktop asked for while following a thread. An uncertain one is reported as
@@ -804,7 +826,7 @@ impl Hub {
 
     async fn resume(self: &Arc<Self>, id: &Value, thread: &str, params: &Value) -> Option<Value> {
         match self.route(thread, true).await {
-            Route::Backend | Route::Free => self.backend_write(id, "thread/resume", params).await,
+            Route::Backend | Route::Free => self.load_on_backend(id, thread, params).await,
             Route::HeldElsewhere => Some(Self::held_error(id, thread)),
             // Already loaded by Desktop. Attach as a follower and report its identity.
             Route::Desktop(..) => {
@@ -837,7 +859,7 @@ impl Hub {
             // refuses a turn on a thread it has not loaded. A resume starts nothing, so a failed
             // one is a plain refusal: the turn was never sent.
             Route::Free => {
-                let resumed = self.backend_write(id, "thread/resume", &json!({"threadId":thread,"excludeTurns":true})).await?;
+                let resumed = self.load_on_backend(id, thread, &json!({"threadId":thread,"excludeTurns":true})).await?;
                 if resumed.get("error").is_some() {
                     return Some(resumed);
                 }

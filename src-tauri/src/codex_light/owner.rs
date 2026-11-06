@@ -71,6 +71,10 @@ impl Session {
 }
 
 impl Sessions {
+    pub fn contains(&self, thread: &str) -> bool {
+        self.0.lock().unwrap().contains_key(thread)
+    }
+
     fn get(&self, thread: &str) -> Option<Arc<Session>> {
         self.0.lock().unwrap().get(thread).cloned()
     }
@@ -305,9 +309,15 @@ impl Hub {
             let started = Instant::now();
             // Closing tells Desktop to load the thread, which fails while the lock is held.
             while hub.lock_held(&thread) && started.elapsed() < RELEASE_LOCK_WAIT {
+                // A new message loaded it again, so this thread stays with the backend.
+                if hub.pinned_backend(&thread).await.is_some() {
+                    return;
+                }
                 tokio::time::sleep(Duration::from_millis(250)).await;
             }
-            hub.owners().close(&thread);
+            if hub.pinned_backend(&thread).await.is_none() {
+                hub.owners().close(&thread);
+            }
         });
     }
 }
