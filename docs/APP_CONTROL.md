@@ -9,3 +9,14 @@ Windows maintenance is available through packaged `app-control/control.ps1`: Sta
 Project boards: capability discovery includes `boards.cliPath`, publication instructions and the manifest schema. A desktop agent can use the installed CLI `-Command PublishBoard -Folder <absolute-folder>`. The current-user pipe pins publication to the current Host epoch; registration is idempotent by canonical folder. Only the manifest-listed presentation files become readable through paired phone APIs. Publication is not a remote MCP operation, shell, provider action or cloud upload. See [Boards](BOARDS.md).
 
 Codex conversations do not require a Bridge. An INSTANCE assistant can read the exact native thread with `agbrio_read_chat` and use the existing reviewed `SEND_CHAT` action plus its durable receipt. Register only the selected conversation with `ENABLE_WATCH` if it has no context yet. The Claude plugin offers `/agbrio-bridge:codex` for this workflow; it needs the separately owner-consented MCP connection, not the observation token. See the [plugin guide](../tools/claude-code-plugin/README.md).
+
+
+## 2026-11-06 — Host-epoch replay receipts
+
+Repeated local board publication and Codex notice registration no longer exhaust a lifetime 128-request set. The owner-local dispatcher now uses a connection-private SQLite temporary disk database with a 256 KiB page-cache target, mmap disabled, and bounded single-request input. Receipts remain valid for the entire Host epoch; the database is automatically removed on close. There is no count-based rejection or eviction of valid receipts. Disk exhaustion/IO failures fail closed.
+
+Reserve the exact normalized request before effects. Completed retries return the original response, changed payloads conflict, and incomplete reservations return APP_CONTROL_REQUEST_UNCONFIRMED without re-execution. Error responses after reservation are also retained. Existing expected-instance, current-user pipe/ACK and shutdown fences remain. No provider messages or network/proxy configuration are changed.
+
+Regression: 512 real fixture PUBLISH_BOARD calls followed by all 512 replays after deleting the source file; changed-command conflicts; reserved-unknown fencing and configured cache bound. Existing real Windows pipe/lost-ACK test remains required. This is engineering validation, not a 33-hour soak or owner UAT.
+
+SQLite reference: https://www.sqlite.org/inmemorydb.html#temporary_databases and https://www.sqlite.org/pragma.html#pragma_cache_size .

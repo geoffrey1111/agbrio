@@ -1,33 +1,37 @@
 //! Windows-local maintenance. No TCP listener, browser or provider control.
 use crate::{app_control,host_application::RouterCore,HostRuntime};
-use serde::Deserialize;
+use serde::{Deserialize,Serialize};
 use serde_json::{json,Value};
-use std::collections::HashMap;
+mod replay;
+use replay::ReplayStore;
 
-#[derive(Clone,PartialEq,Eq,Deserialize)]
+
+#[derive(Clone,PartialEq,Eq,Deserialize,Serialize)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]
 struct Request { #[serde(default)]review_port:Option<u16>,#[serde(default)]title:Option<String>,api_version:u32,request_id:String,command:String,expected_instance:Option<String>,#[serde(default)]folder:Option<String>,#[serde(default)]notice_binding:Option<router_core::store::codex_notices::Binding> }
 
-fn dispatch(core:&RouterCore,host:&HostRuntime,bytes:&[u8],seen:&mut HashMap<String,(Request,Value)>)->(Value,bool) {
+fn dispatch(core:&RouterCore,host:&HostRuntime,bytes:&[u8],seen:&mut ReplayStore)->(Value,bool) {
     let failure=|code:&str|(json!({"apiVersion":1,"errorCode":code}),false);
     if bytes.len()>8192 {return failure("APP_CONTROL_REQUEST_TOO_LARGE");}
     let Ok(r)=serde_json::from_slice::<Request>(bytes)else{return failure("APP_CONTROL_REQUEST_INVALID")};
     if r.api_version!=1||!uuid::Uuid::parse_str(&r.request_id).is_ok_and(|id|id.to_string()==r.request_id){return failure("APP_CONTROL_REQUEST_INVALID");}
-    if let Some((prior,reply))=seen.get(&r.request_id){return if prior==&r{(reply.clone(),false)}else{failure("APP_CONTROL_REPLAY_CONFLICT")};}
+    match seen.lookup(&r){Ok(Some(reply))=>return (reply,false),Ok(None)=>{},Err(code)=>return failure(&code)}
     if r.expected_instance.as_deref().is_some_and(|s|s!=host.instance_id()){return failure("APP_CONTROL_INSTANCE_CHANGED");}
+    let write=matches!(r.command.as_str(),"SHUTDOWN"|"PUBLISH_BOARD"|"PUBLISH_REVIEW_BOARD"|"REGISTER_CODEX_NOTICES")
+        && r.expected_instance.as_deref()==Some(host.instance_id());
+    if write {if let Err(code)=seen.reserve(&r){return failure(&code)}}
+    let outcome=(||{
     let (data,shutdown)=match r.command.as_str(){
         "STATUS"=>(json!({"state":"RUNNING","instanceId":host.instance_id(),"pid":std::process::id(),"appVersion":app_control::version()}),false),
         "CAPABILITIES"=>(app_control::capabilities("OWNER"),false),
         "DIAGNOSTICS"=>match app_control::diagnostics(core,Some(host)){Ok(v)=>(v,false),Err(_)=>return failure("APP_DIAGNOSTICS_STORE_UNAVAILABLE")},
-        "PUBLISH_REVIEW_BOARD" if r.expected_instance.as_deref()==Some(host.instance_id())=>{if seen.len()>=128{return failure("APP_CONTROL_REQUEST_LIMIT");}match r.folder.as_deref().ok_or("REVIEW_BOARD_ROOT_REQUIRED".to_string()).and_then(|folder|crate::review_boards::publish(folder,r.review_port.unwrap_or(47816),r.title.as_deref().unwrap_or("互动审批看板"))){Ok(v)=>(json!(v),false),Err(code)=>return failure(&code)}},
+        "PUBLISH_REVIEW_BOARD" if r.expected_instance.as_deref()==Some(host.instance_id())=>{match r.folder.as_deref().ok_or("REVIEW_BOARD_ROOT_REQUIRED".to_string()).and_then(|folder|crate::review_boards::publish(folder,r.review_port.unwrap_or(47816),r.title.as_deref().unwrap_or("互动审批看板"))){Ok(v)=>(json!(v),false),Err(code)=>return failure(&code)}},
         "PUBLISH_REVIEW_BOARD"=>return failure("APP_CONTROL_EXPECTED_INSTANCE_REQUIRED"),
         "PUBLISH_BOARD" if r.expected_instance.as_deref()==Some(host.instance_id())=>{
-            if seen.len()>=128{return failure("APP_CONTROL_REQUEST_LIMIT");}
             match r.folder.as_deref().ok_or_else(||"PUBLISHED_BOARD_FOLDER_REQUIRED".to_string()).and_then(crate::published_boards::publish){Ok(v)=>(json!(v),false),Err(code)=>return failure(&code)}
         },
         "PUBLISH_BOARD"=>return failure("APP_CONTROL_EXPECTED_INSTANCE_REQUIRED"),
         "REGISTER_CODEX_NOTICES" if r.expected_instance.as_deref()==Some(host.instance_id())=>{
-            if seen.len()>=128{return failure("APP_CONTROL_REQUEST_LIMIT");}
             let Some(binding)=r.notice_binding.as_ref()else{return failure("CLAUDE_NOTICE_BINDING_INVALID")};
             match core.store.register_codex_notice(binding){Ok(v)=>{if binding.mode=="PI"{if let Err(code)=core.store.observe_pi_manager_notice_target(Some(&binding.thread_id)){return failure(&code);}}(json!(v),false)},Err(code)=>return failure(&code)}
         },
@@ -37,12 +41,10 @@ fn dispatch(core:&RouterCore,host:&HostRuntime,bytes:&[u8],seen:&mut HashMap<Str
         _=>return failure("APP_CONTROL_COMMAND_UNSUPPORTED")
     };
     let reply=json!({"apiVersion":1,"requestId":r.request_id,"data":data});
-    // Never evict an id and permit a reused id to change meaning in one Host epoch.
-    if shutdown||matches!(r.command.as_str(),"PUBLISH_BOARD"|"PUBLISH_REVIEW_BOARD"|"REGISTER_CODEX_NOTICES") {
-        if seen.len()>=128{return failure("APP_CONTROL_REQUEST_LIMIT");}
-        seen.insert(r.request_id.clone(),(r,reply.clone()));
-    }
     (reply,shutdown)
+    })();
+    if write {if seen.complete(&r.request_id,&outcome.0).is_err(){return failure("APP_CONTROL_REQUEST_UNCONFIRMED")}}
+    outcome
 }
 
 #[cfg(windows)]
@@ -78,7 +80,7 @@ mod pipe {
         let _=LocalFree(Some(HLOCAL(descriptor.0)));result.map_err(|error|if error.raw_os_error()==Some(231){"APP_CONTROL_PIPE_BUSY".into()}else{"APP_CONTROL_LISTENER_UNAVAILABLE".into()})
     }}
     pub(super) async fn serve(core:RouterCore,host:HostRuntime,name:String,sid:String,on_shutdown:impl FnOnce()+Send+'static)->Result<(),String>{
-        let mut listener=create(&name,&sid,true)?;let mut seen=HashMap::new();
+        let mut listener=create(&name,&sid,true)?;let mut seen=ReplayStore::new()?;
         loop {
             listener.connect().await.map_err(|_|"APP_CONTROL_CONNECT_FAILED")?;
             // Keep a distinct listening instance available before serving this

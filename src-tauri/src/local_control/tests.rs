@@ -6,9 +6,43 @@ fn fixture()->(tempfile::TempDir,RouterCore,HostRuntime){
     (temp,core,HostRuntime::default())
 }
 fn request(command:&str,expected:Option<&str>)->Vec<u8>{serde_json::to_vec(&json!({"apiVersion":1,"requestId":uuid::Uuid::new_v4().to_string(),"command":command,"expectedInstance":expected})).unwrap()}
-#[test]fn publication_requires_current_host_and_never_becomes_a_remote_path_reader(){let(_temp,core,host)=fixture();let mut seen=HashMap::new();assert_eq!(dispatch(&core,&host,&request("PUBLISH_BOARD",None),&mut seen).0["errorCode"],"APP_CONTROL_EXPECTED_INSTANCE_REQUIRED");assert_eq!(dispatch(&core,&host,&request("PUBLISH_BOARD",Some("old")),&mut seen).0["errorCode"],"APP_CONTROL_INSTANCE_CHANGED");assert_eq!(dispatch(&core,&host,&request("PUBLISH_BOARD",Some(host.instance_id())),&mut seen).0["errorCode"],"PUBLISHED_BOARD_FOLDER_REQUIRED");assert!(core.session.lock().unwrap().adapter.is_none());}
+#[test]
+fn more_than_128_publications_succeed_and_old_replays_keep_the_original_result(){
+    let(temp,core,host)=fixture();let mut seen=ReplayStore::new().unwrap();
+    let folder=temp.path().join("board");std::fs::create_dir(&folder).unwrap();
+    std::fs::write(folder.join("agbrio-board.json"),r#"{"schemaVersion":1,"title":"Fixture","entry":"index.html","files":["index.html"]}"#).unwrap();
+    *crate::published_boards::TEST_STORE.lock().unwrap()=Some(temp.path().join("registry.json"));
+    struct Reset;impl Drop for Reset{fn drop(&mut self){*crate::published_boards::TEST_STORE.lock().unwrap()=None;}}
+    let _reset=Reset;
+    let mut originals=Vec::new();
+    for n in 0..512{
+        std::fs::write(folder.join("index.html"),format!("<h1>Revision {n}</h1>")).unwrap();
+        let mut input:Value=serde_json::from_slice(&request("PUBLISH_BOARD",Some(host.instance_id()))).unwrap();input["folder"]=json!(folder);
+        let bytes=serde_json::to_vec(&input).unwrap();let(reply,shutdown)=dispatch(&core,&host,&bytes,&mut seen);
+        assert!(!shutdown);assert!(reply.get("errorCode").is_none(),"publication {n}: {reply}");
+        originals.push((bytes,reply));
+    }
+    // The sources have changed 511 times: replay must not invoke publish again.
+    std::fs::remove_file(folder.join("index.html")).unwrap();
+    for(bytes,reply)in &originals{assert_eq!(dispatch(&core,&host,bytes,&mut seen),(reply.clone(),false));}
+    let mut changed:Value=serde_json::from_slice(&originals[0].0).unwrap();changed["command"]=json!("REGISTER_CODEX_NOTICES");
+    assert_eq!(dispatch(&core,&host,&serde_json::to_vec(&changed).unwrap(),&mut seen).0["errorCode"],"APP_CONTROL_REPLAY_CONFLICT");
+    assert!(core.session.lock().unwrap().adapter.is_none());
+}
+
+#[test]
+fn reserved_unknown_requests_are_fenced_and_disk_receipts_have_a_fixed_page_cache(){
+    let(_temp,core,host)=fixture();let mut seen=ReplayStore::new().unwrap();
+    let bytes=request("SHUTDOWN",Some(host.instance_id()));let input:Request=serde_json::from_slice(&bytes).unwrap();
+    seen.reserve(&input).unwrap();
+    assert_eq!(dispatch(&core,&host,&bytes,&mut seen).0["errorCode"],"APP_CONTROL_REQUEST_UNCONFIRMED");
+    let mut changed:Value=serde_json::from_slice(&bytes).unwrap();changed["command"]=json!("STATUS");
+    assert_eq!(dispatch(&core,&host,&serde_json::to_vec(&changed).unwrap(),&mut seen).0["errorCode"],"APP_CONTROL_REPLAY_CONFLICT");
+    assert_eq!(seen.cache_kib(),256);
+}
+#[test]fn publication_requires_current_host_and_never_becomes_a_remote_path_reader(){let(_temp,core,host)=fixture();let mut seen=ReplayStore::new().unwrap();assert_eq!(dispatch(&core,&host,&request("PUBLISH_BOARD",None),&mut seen).0["errorCode"],"APP_CONTROL_EXPECTED_INSTANCE_REQUIRED");assert_eq!(dispatch(&core,&host,&request("PUBLISH_BOARD",Some("old")),&mut seen).0["errorCode"],"APP_CONTROL_INSTANCE_CHANGED");assert_eq!(dispatch(&core,&host,&request("PUBLISH_BOARD",Some(host.instance_id())),&mut seen).0["errorCode"],"PUBLISHED_BOARD_FOLDER_REQUIRED");assert!(core.session.lock().unwrap().adapter.is_none());}
 #[test]fn shutdown_pins_exact_host_and_cannot_replay_or_become_a_shell(){
-    let(_temp,core,host)=fixture();let mut seen=HashMap::new();
+    let(_temp,core,host)=fixture();let mut seen=ReplayStore::new().unwrap();
     assert_eq!(dispatch(&core,&host,&request("SHUTDOWN",None),&mut seen).0["errorCode"],"APP_CONTROL_EXPECTED_INSTANCE_REQUIRED");
     assert_eq!(dispatch(&core,&host,&request("SHUTDOWN",Some("old-host")),&mut seen).0["errorCode"],"APP_CONTROL_INSTANCE_CHANGED");
     for op in ["RESTART_PROVIDER","SHELL","SEND_CHAT"]{assert_eq!(dispatch(&core,&host,&request(op,None),&mut seen).0["errorCode"],"APP_CONTROL_COMMAND_UNSUPPORTED");}
