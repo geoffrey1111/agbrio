@@ -28,6 +28,9 @@ require('readline').createInterface({input:process.stdin}).on('line',line=>{
  const reply=result=>process.stdout.write(JSON.stringify({id:m.id,result})+'\n');
  if(m.method==='initialize')return reply({});
  if(m.method==='turn/start'&&m.params.threadId==='lost')return process.exit(1);
+ if(m.method==='thread/read'&&m.params.threadId==='materializing'&&reads++<2)return process.stdout.write(JSON.stringify({id:m.id,error:{code:-32603,message:'failed to read thread: thread-store internal error: failed to read session metadata x: rollout at x is empty'}})+'\n');
+ if(m.method==='thread/read'&&m.params.threadId==='never-written')return process.stdout.write(JSON.stringify({id:m.id,error:{code:-32603,message:'failed to read thread: rollout at x is empty'}})+'\n');
+ if(m.method==='thread/read'&&m.params.threadId==='other-error')return process.stdout.write(JSON.stringify({id:m.id,error:{code:-32600,message:'no rollout found'}})+'\n');
  if(m.method==='thread/read')return reply({thread:{id:m.params.threadId,cwd:'C:/project',path:rollout,status:{type:'notLoaded'},read:++reads}});
  if(m.method==='thread/turns/list')return reply({data:[{id:'running-turn',status:'interrupted'}],nextCursor:null});
  if(m.method==='thread/start')return reply({thread:{id:'new-thread',cwd:'C:/project',path:rollout}});
@@ -469,4 +472,20 @@ async fn a_recorded_interruption_is_reported_once_and_only_with_its_own_abort_re
     assert_eq!(event["params"]["turn"], json!({"id":"running-turn","status":"interrupted"}));
     t.call("thread/turns/list", list()).await.unwrap();
     assert!(t.outgoing.try_recv().is_err(), "reported once");
+}
+
+#[tokio::test]
+async fn a_rollout_that_is_still_empty_is_read_again_and_other_errors_are_not() {
+    let t = harness(DesktopScript::default(), validated_versions()).await;
+    let ready = t.call("thread/read", json!({"threadId":"materializing","includeTurns":false})).await.unwrap();
+    assert_eq!(ready["result"]["thread"]["id"], "materializing");
+    assert_eq!(t.backend_calls("thread/read"), 3);
+
+    let other = t.call("thread/read", json!({"threadId":"other-error","includeTurns":false})).await.unwrap();
+    assert_eq!(other["error"]["message"], "no rollout found");
+    assert_eq!(t.backend_calls("thread/read"), 4, "a real error is returned at once");
+
+    let never = t.call("thread/read", json!({"threadId":"never-written","includeTurns":false})).await.unwrap();
+    assert!(never["error"]["message"].as_str().unwrap().ends_with("is empty"), "the wait is bounded and the native error is kept");
+    assert_eq!(t.backend_calls("thread/read"), 15);
 }

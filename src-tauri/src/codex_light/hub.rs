@@ -27,6 +27,8 @@ const REFRESH_IDLE: Duration = Duration::from_secs(15);
 const REFRESH_TOO_LARGE: Duration = Duration::from_secs(30);
 const REFRESH_SETTLING: Duration = Duration::from_secs(1);
 const SETTLE_ATTEMPTS: u8 = 5;
+const ROLLOUT_EMPTY_RETRIES: u8 = 10;
+const ROLLOUT_EMPTY_DELAY: Duration = Duration::from_millis(200);
 const UNSUBSCRIBED_FOLLOW_LIMIT: Duration = Duration::from_secs(120);
 
 pub(super) struct Config {
@@ -183,6 +185,10 @@ pub(super) struct Hub {
 
 fn rpc_error(id: &Value, code: i64, message: &str) -> Value {
     json!({"id":id,"error":{"code":code,"message":message}})
+}
+
+fn is_rollout_still_empty(reply: &Value) -> bool {
+    reply.pointer("/error/message").and_then(Value::as_str).is_some_and(|message| message.starts_with("failed to read thread:") && message.trim_end().ends_with("is empty"))
 }
 
 /// A read with no live identity, so a TTL is its only freshness.
@@ -370,7 +376,17 @@ impl Hub {
 
     async fn backend_read(&self, method: &str, params: &Value) -> Result<Value, String> {
         let backend = self.running_backend().await?;
-        backend.call(method, params.clone(), READ_TIMEOUT).await.map_err(|BackendLost| "CODEX_LIGHT_BACKEND_LOST".to_owned())
+        let mut attempts = 0;
+        loop {
+            let reply = backend.call(method, params.clone(), READ_TIMEOUT).await.map_err(|BackendLost| "CODEX_LIGHT_BACKEND_LOST".to_owned())?;
+            // A first turn creates its rollout an instant before writing to it. Reads only,
+            // so repeating one here cannot repeat anything the owner asked for.
+            if attempts >= ROLLOUT_EMPTY_RETRIES || !is_rollout_still_empty(&reply) {
+                return Ok(reply);
+            }
+            attempts += 1;
+            tokio::time::sleep(ROLLOUT_EMPTY_DELAY).await;
+        }
     }
 
     /// The live status of a thread this process did not load. The rollout tail says
