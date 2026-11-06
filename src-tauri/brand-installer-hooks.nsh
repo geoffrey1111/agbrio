@@ -143,6 +143,7 @@ Var AgbrioPreviousDirectory
     !insertmacro AGBRIO_REMOVE_SHARED_ENTRY "$SMPROGRAMS\Agbrio" "$AgbrioPreviousDirectory"
   ${EndIf}
   RMDir /r "$INSTDIR\codex-shared"
+  RMDir /r "$INSTDIR\browser-executor"
   ${If} $AgbrioLegacyMigration == 1
     ReadRegStr $R0 SHCTX "${MANUPRODUCTKEY}" ""
     ${If} $R0 == $AgbrioLegacyDirectory

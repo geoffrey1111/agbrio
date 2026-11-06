@@ -33,6 +33,10 @@ Earlier versions used a resident shared backend and Start Menu entries for it. T
 
 Its files under `%LOCALAPPDATA%\AIWorkRouter\codex-shared` stay on disk. Never kill all Node processes to speed this up.
 
+### Bridges bound to ChatGPT
+
+The ChatGPT browser feature was removed, along with the Router browser and its Chromium download. A Bridge with a ChatGPT end keeps its saved replies but reads and sends nothing there; rebind that end to Codex or Claude Code. Nothing is deleted, so its old data and any downloaded browser files stay under `%LOCALAPPDATA%\AIWorkRouter`. Connecting ChatGPT as an assistant through MCP is a different feature and still works.
+
 ## 4. Daily startup, reboot and official updates
 
 | Situation | Action |
@@ -52,7 +56,7 @@ Its files under `%LOCALAPPDATA%\AIWorkRouter\codex-shared` stay on disk. Never k
 6. `SENT` confirms that handoff's delivery, not completion of the target task. Follow execution and the next complete reply.
 7. Timeout or `UNKNOWN` is not proof of non-delivery. Read the same request receipt and exact target history before another action. Do not create another request to hide uncertainty or resend on duplicate notifications.
 
-Selected Codex files are copied to the target project's `.aiwr/incoming/<handoff-id>/`, with paths/SHA-256 in the message. This is not a ChatGPT upload or proof that every model received a visual image input. Check supported content in the preview.
+Selected Codex files are copied to the target project's `.aiwr/incoming/<handoff-id>/`, with paths/SHA-256 in the message. This is not proof that every model received a visual image input. Check supported content in the preview.
 
 Deleting a Bridge removes local association, not native chats. A deleted Bridge still claiming a chat is a bug to report, not a reason to edit the database.
 
@@ -98,7 +102,6 @@ Authenticated owner text replies require plugin 0.1.3 actually advertising manua
 
 - **Windows:** check app updates or use the latest release page. Keep data; 0.1.34 is historical.
 - **Phone interface:** use About's interface-update control. Web-shell updates do not update Windows Host. Do not clear pairing/drafts to update.
-- **Provider security challenge:** stop automated navigation/refresh/submit. The owner clears it; no cookie copying, identity rotation or retry loop.
 - **Feedback:** include Agbrio/Codex/Windows versions, entry, connection type, failing step, exact error/time and active-work status. Redact private text, username paths, full callback URLs, tokens, codes and keys. [Report a bug](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml).
 
 Bounded Windows/package/native/live-connection checks do not certify every history, Desktop Code Mode, future update, crash case or physical-phone experience. macOS is not an accepted release target. [FAQ](FAQ.md) · [Release evidence](RELEASE_0.1.35-rc.57.md) · [Build](BUILD.md).

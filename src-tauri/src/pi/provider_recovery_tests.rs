@@ -56,8 +56,7 @@ fn real_openai_readonly_same_session_cold_failure_resume() {
         let core = RouterCore {
             store: Arc::new(RouterStore::open_at(root.join("router.db")).unwrap()),
             session: Arc::new(Mutex::default()),
-            chatgpt: Arc::default(),
-            completed_chatgpt_responses: Arc::default(),
+            
         };
         let owned = Owned { core };
         let core = &owned.core;
@@ -106,8 +105,7 @@ fn real_openai_readonly_same_session_cold_failure_resume() {
     let core = RouterCore {
         store: Arc::new(RouterStore::open_at(root.join("router.db")).unwrap()),
         session: Arc::new(Mutex::default()),
-        chatgpt: Arc::default(),
-        completed_chatgpt_responses: Arc::default(),
+        
     };
     let owned = Owned { core };
     let core = &owned.core;

@@ -60,9 +60,8 @@ fn real_host_send_paths_over_the_light_transport() {
     let root = tempfile::tempdir().unwrap();
     let core = RouterCore {
         store: Arc::new(crate::RouterStore::open_at(root.path().join("router.db")).unwrap()),
-        chatgpt: Arc::default(),
+        
         session: Arc::new(Mutex::new(Session::default())),
-        completed_chatgpt_responses: Arc::default(),
     };
     let session = core.session.clone();
     // On its own thread, as in the Host: this runs on the adapter's only reader, which must

@@ -45,6 +45,10 @@
 
 `%LOCALAPPDATA%\AIWorkRouter\codex-shared` 下的文件保留在磁盘上。不要为此结束所有 Node 进程。
 
+### 绑定到 ChatGPT 的 Bridge
+
+ChatGPT 浏览器功能已移除，Router 浏览器和 Chromium 下载也一并移除。带 ChatGPT 端的 Bridge 会保留已保存的回复，但不再读取或发送；请把那一端重新绑定到 Codex 或 Claude Code。不会删除任何数据，旧数据和已下载的浏览器文件都留在 `%LOCALAPPDATA%\AIWorkRouter` 下。通过 MCP 把 ChatGPT 接成 AI 助手是另一项功能，仍然可用。
+
 ## 5. 以后每天怎么打开？重启、更新怎么办？
 
 | 场景 | 操作 |
@@ -73,7 +77,7 @@
 5. `SENT` 表示该次交接已确认送达，**不表示目标任务已完成**。继续查看目标执行状态及下一次完整回复。
 6. 若出现 `UNKNOWN`、超时或不确定，先检查同一请求的回执和精确目标历史。不要因没看到回复就点多次发送、换请求 ID 重试。
 
-Codex 本地文件交接会在目标项目 `.aiwr/incoming/<handoff-id>/` 放置文件，正文含相对路径和 SHA-256；这不是 ChatGPT 附件上传，也不意味着图片已自动成为所有模型的图像输入。发送前检查预览中的实际支持范围。
+Codex 本地文件交接会在目标项目 `.aiwr/incoming/<handoff-id>/` 放置文件，正文含相对路径和 SHA-256；这不意味着图片已自动成为所有模型的图像输入。发送前检查预览中的实际支持范围。
 
 ## 8. 监听、通知、提问与目标
 

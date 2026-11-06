@@ -52,6 +52,5 @@ jobs:
           path: |
             runtime/clean-windows/proof.json
             runtime/clean-windows/entrypoints-proof.json
-            runtime/clean-windows/optional-browser-proof.json
             runtime/clean-windows/*.png
 

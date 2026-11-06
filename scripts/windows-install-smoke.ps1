@@ -43,11 +43,9 @@ if($Installer){
 }else{throw 'Installer or diagnostic InstalledImage required.'}
 $agbrioExecutable=Join-Path $agbrioInstall 'ai-work-router.exe'
 if(!(Test-Path -LiteralPath $agbrioExecutable)){throw 'Installed application missing.'}
-# The default installer must retain shared helpers while omitting Chromium.
-if(Test-Path -LiteralPath (Join-Path $agbrioInstall 'browser-executor/chromium/chrome.exe')){throw 'CHROMIUM_STILL_BUNDLED'}
-if(!(Test-Path -LiteralPath (Join-Path $agbrioInstall 'browser-executor/node_modules/ws/index.js'))){throw 'SHARED_WS_MISSING_FROM_LITE_PACKAGE'}
-if(!(Test-Path -LiteralPath (Join-Path $agbrioInstall 'browser-executor/browser-package.mjs'))){throw 'OPTIONAL_BROWSER_PREPARATION_MISSING'}
-@{chromiumBundled=$false;sharedWsPresent=$true;preparationPresent=$true}|ConvertTo-Json|Set-Content (Join-Path $agbrioRoot 'optional-browser-proof.json') -Encoding utf8
+# The installer ships the Node runtime for the hosted connector and no browser component.
+if(!(Test-Path -LiteralPath (Join-Path $agbrioInstall 'browser-executor-node.exe'))){throw 'NODE_RUNTIME_MISSING'}
+if(Test-Path -LiteralPath (Join-Path $agbrioInstall 'browser-executor')){throw 'BROWSER_COMPONENT_STILL_BUNDLED'}
 
 $agbrioStart=[Diagnostics.ProcessStartInfo]::new($agbrioExecutable)
 $agbrioStart.UseShellExecute=$false
@@ -110,8 +108,6 @@ public static class AgbrioSmokeWindow{[DllImport("user32.dll")]public static ext
  if($LASTEXITCODE -ne 0){throw 'Native accessibility harness compile failed.'}
  & $agbrioHarness ($agbrioProcess.MainWindowHandle.ToInt64()) $agbrioRoot
  if($LASTEXITCODE -ne 0){throw 'Fresh installed desktop UI gate failed.'}
- if(Test-Path -LiteralPath (Join-Path $agbrioData 'AIWorkRouter/browser-executor/browser-runtime')){throw 'BROWSER_COMPONENT_DOWNLOADED_DURING_STARTUP'}
- @{chromiumBundled=$false;sharedWsPresent=$true;preparationPresent=$true;startupDownload=$false}|ConvertTo-Json|Set-Content (Join-Path $agbrioRoot 'optional-browser-proof.json') -Encoding utf8
 
 }finally{
  # Only this isolated runner-owned process, never an existing user installation.

@@ -34,6 +34,10 @@ Finish your tasks and quit Codex. Agbrio then stops it once with that backend's 
 
 A task started from your phone or an assistant is running on that chat in a temporary backend. Desktop can open it a few seconds after the task ends. To watch a task live, open the chat in Desktop first.
 
+### What happened to ChatGPT Bridges and the Router browser?
+
+They were removed. A Bridge with a ChatGPT end keeps its saved replies and must be rebound to Codex or Claude Code to continue. ChatGPT connected as an assistant through MCP still works.
+
 ### Why are there several Node processes?
 
 Apps, plugins and tools can have separate children: count alone proves neither leakage nor ownership. Never kill all Node as routine recovery.
@@ -50,7 +54,7 @@ No. Delivery, execution and completion differ. UNKNOWN is not proof of non-deliv
 
 ### Can I select part of a reply? Are files automatically uploaded?
 
-Select/edit/preview actual content, destination and files. Codex files go into `.aiwr/incoming/<handoff-id>/` with paths/hashes. That is not a ChatGPT upload or proof of image-model input.
+Select/edit/preview actual content, destination and files. Codex files go into `.aiwr/incoming/<handoff-id>/` with paths/hashes. That is not proof of image-model input.
 
 ### Is an attention dot or AI-assistant-handled label a receipt?
 
@@ -81,10 +85,6 @@ No. Delivery, real wake, source read, dedupe and prepare/review/send/receipt nee
 ### Claude plugin is installed, but no session or reply control appears. Why?
 
 Saved configuration, reload, real session registration and manual-input readiness differ. Wait for the original task to finish before safe reload, without --force or test prompts. Replies need plugin 0.1.3 actually advertising protocol 1. Observation alone is not sending; autonomous/MCP Claude writes and Claude Goal controls remain unavailable. [Claude](CLAUDE_CODE.md).
-
-### Can automation refresh through a ChatGPT security challenge?
-
-No. Stop automated navigation/refresh/submit; the owner completes verification. No cookie copying, identity rotation or retry loop. Browser integration is experimental.
 
 ### What belongs in a useful bug report?
 

@@ -43,8 +43,6 @@ jobs:
         run: |
           npm ci
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
-          npm ci --prefix tools/isolated-browser-executor
-          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           npm test -- --maxWorkers=2
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           node --test tools/claude-code-adapter/adapter.test.mjs tools/claude-code-adapter/manual.test.mjs tools/claude-code-adapter/queue.test.mjs tools/claude-code-adapter/codex-wait.test.mjs tools/claude-code-adapter/codex-notices.test.mjs tools/claude-code-adapter/resource-notice.test.mjs
@@ -61,7 +59,7 @@ jobs:
       - name: Core tests
         run: cargo test --manifest-path crates/Cargo.toml --locked
       - name: Stage verified runtime
-        run: npm run build:browser-executor
+        run: npm run build:node-runtime
       - name: Native tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked -- --test-threads=2
       - name: Native published board isolation

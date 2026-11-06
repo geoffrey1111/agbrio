@@ -52,4 +52,4 @@ redemption-codes/
 demo/
 src/demo/
 
-src-tauri/resources/browser-executor-lite/
+src-tauri/resources/node-runtime/

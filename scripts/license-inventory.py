@@ -43,7 +43,7 @@ def notices(kind, name, version, license_id, directory, source):
             shutil.copytree(directory,src,dirs_exist_ok=True,ignore=shutil.ignore_patterns('.cargo-checksum.json','.cargo-ok'))
     rows.append(dict(ecosystem=kind,name=name,version=version,license=license_id,source=source,notices=found))
 
-for folder in [ROOT, ROOT/'tools/isolated-browser-executor']:
+for folder in [ROOT]:
     lock = json.loads((folder/'package-lock.json').read_text(encoding='utf-8'))
     for relative, row in lock['packages'].items():
         if not relative or 'node_modules/' not in relative:

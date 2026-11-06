@@ -1,6 +1,6 @@
 # Codex light connection (Windows)
 
-The only Codex connection on Windows, always on. Codex is used as normally opened: no quit-and-reopen, no special entry and no resident backend. Phone and MCP keep reading, sending, steering, stopping, approving and answering. Other platforms keep their independent app-server and have no light connection.
+The only Codex connection on Windows, always on. Codex is used as normally opened: no quit-and-reopen, no special entry and no resident backend. Phone and MCP keep reading, sending, steering, stopping, approving and answering. Other platforms keep their independent app-server and have no light connection, which is unverified since this removal: they cannot be compiled on the Windows machine this was built on.
 
 Not available: Goal writes and automatic model-failure Goal recovery, administrator launch, tasks continuing after Codex Desktop quits, and token-by-token streaming. It does not reduce the memory Codex itself uses for open conversations.
 

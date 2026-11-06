@@ -7,7 +7,7 @@ use std::{sync::{Arc,Mutex},time::{SystemTime,UNIX_EPOCH},collections::BTreeSet}
 #[test]
 fn instance_read_app_enumerates_all_projects_and_separates_lifecycles_without_selection_writes(){
  let dir=tempfile::tempdir().unwrap();let store=Arc::new(RouterStore::open_at(dir.path().join("fixture.db")).unwrap());
- let core=RouterCore{store:store.clone(),chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};
+ let core=RouterCore{store:store.clone(),session:Arc::new(Mutex::new(Session::default())),};
  let expires=SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as i64+600_000;
  let g=store.connect_assistant_instance(AssistantConnectionInput{label:"Example review assistant".into(),expires_at:expires}).unwrap();
  let pa=store.create_project("Demo A".into(),None).unwrap();let pb=store.create_project("Demo B".into(),None).unwrap();
@@ -68,7 +68,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  let dir=tempfile::tempdir().unwrap();let store=Arc::new(RouterStore::open_at(dir.path().join("fixture.db")).unwrap());let expires=SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as i64+600_000;
  let g=store.connect_assistant_instance(AssistantConnectionInput{label:"compact fixture".into(),expires_at:expires}).unwrap();
  store.enable_codex_watch("exact","fixture",&dir.path().to_string_lossy(),&router_core::store::codex_watch::WatchSnapshot{state:"RUNNING".into(),turn_id:Some("turn".into()),item_id:None,text:"字".repeat(10000)}).unwrap();
- let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};
+ let core=RouterCore{store,session:Arc::new(Mutex::new(Session::default())),};
  let result=call(&core,&g.id,"agbrio_read_app",json!({"view":"WATCHES"})).unwrap();assert_eq!(result["view"],"WATCHES");assert_eq!(result["watches"][0]["turnId"],"turn");assert_eq!(result["watches"][0]["summary"].as_str().unwrap().chars().count(),600);assert_eq!(result["watches"][0]["summaryTruncated"],true);assert!(result.get("actions").is_none());assert!(result.get("inbox").is_none());assert!(core.session.lock().unwrap().adapter.is_none());
  assert!(call(&core,&g.id,"agbrio_read_app",json!({"view":"BOGUS"})).is_err());assert!(call(&core,&g.id,"agbrio_read_app",json!({"view":"WATCHES","extra":true})).is_err());
 }
@@ -77,7 +77,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  let dir=tempfile::tempdir().unwrap();let store=Arc::new(RouterStore::open_at(dir.path().join("zones.db")).unwrap());
  let expires=SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as i64+600000;
  let grant=store.connect_assistant_instance(AssistantConnectionInput{label:"Zone observer".into(),expires_at:expires}).unwrap();
- let core=RouterCore{store:store.clone(),chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default()};
+ let core=RouterCore{store:store.clone(),session:Arc::default(),};
  let result=call(&core,&grant.id,"agbrio_read_app",json!({"view":"MANAGEMENT"})).unwrap();
  assert_eq!(result["view"],"MANAGEMENT");assert_eq!(result["management"]["zones"],json!([]));
  assert_eq!(result["permission"],"READ_ONLY_ASSOCIATIONS_NOT_CALLER_ATTESTATION");

@@ -2,7 +2,7 @@ use super::*;
 use std::sync::{Arc,Mutex,atomic::{AtomicUsize,Ordering}};
 fn fixture()->(tempfile::TempDir,RouterCore,HostRuntime){
     let temp=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
-    let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Default::default())),completed_chatgpt_responses:Arc::new(Mutex::new(Default::default()))};
+    let core=RouterCore{store,session:Arc::new(Mutex::new(Default::default()))};
     (temp,core,HostRuntime::default())
 }
 fn request(command:&str,expected:Option<&str>)->Vec<u8>{serde_json::to_vec(&json!({"apiVersion":1,"requestId":uuid::Uuid::new_v4().to_string(),"command":command,"expectedInstance":expected})).unwrap()}

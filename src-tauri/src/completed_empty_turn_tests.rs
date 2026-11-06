@@ -33,12 +33,11 @@ fn fixture(mode: &str, shared: bool) -> (tempfile::TempDir, RouterCore) {
     adapter.initialize().unwrap();
     let core = RouterCore {
         store,
-        chatgpt: Arc::default(),
+        
         session: Arc::new(Mutex::new(Session {
             adapter: Some(adapter),
             ..Default::default()
         })),
-        completed_chatgpt_responses: Arc::default(),
     };
     (d, core)
 }

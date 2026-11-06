@@ -29,8 +29,8 @@ import { Columns2, History, RefreshCw, Settings2, SquarePen, SlidersHorizontal, 
 
 export type BridgeRole = "DECISION" | "EXECUTION";
 export type RelayTextBlock = { id: string; kind: "INSTRUCTION" | "CODE" | "PROSE"; recommended: boolean; text: string };
-export type RoleInput = { provider: "CODEX" | "CHATGPT" | "CLAUDE_CODE"; externalId: string; label: string; cwd?: string | null };
-type Endpoint = { id: string; provider: RoleInput["provider"]; externalId: string; label: string };
+export type RoleInput = { provider: "CODEX" | "CLAUDE_CODE"; externalId: string; label: string; cwd?: string | null };
+type Endpoint = { id: string; provider: RoleInput["provider"] | "CHATGPT"; externalId: string; label: string };
 type Side = { role: BridgeRole; endpoint: Endpoint; cwd?: string | null };
 export type RoleBindings = { workstreamId: string; bindingRevision: number; decision?: Side | null; execution?: Side | null; explicitRoles: boolean };
 type Reply = { id: string; endpointId: string; text: string; assistantIdentity?: string | null; observedAt?: number;completedAt?:number|null;readAt?:number|null;handledAt?:number|null };
@@ -59,7 +59,8 @@ export type RoleBridgeApi = ClaudePickerApi & {
   chat?:WatchChatApi;
 };
 const label = (role: BridgeRole) => role === "DECISION" ? uiText("控制端") : uiText("执行端");
-const initial = (side?: Side | null): RoleInput => ({ provider: side?.endpoint.provider ?? "CODEX", externalId: side?.endpoint.provider === "CHATGPT" ? `https://chatgpt.com/c/${side.endpoint.externalId}` : side?.endpoint.externalId ?? "", label: side?.endpoint.label ?? "" });
+// ChatGPT was removed, so an end still bound to it starts empty and must be rebound.
+const initial = (side?: Side | null): RoleInput => !side || side.endpoint.provider === "CHATGPT" ? { provider: "CODEX", externalId: "", label: "" } : { provider: side.endpoint.provider, externalId: side.endpoint.externalId, label: side.endpoint.label };
 function errorText(error: unknown) {
   const text = String(error);
   if(text.includes("CLAUDE_BUSY_NO_IMPLICIT_QUEUE"))return uiText("Claude Code 正在执行，暂不支持引导；空闲后可发送。");
@@ -75,6 +76,7 @@ function errorText(error: unknown) {
   if (text.includes("BRIDGE_ATTACHMENT_CHANGED_AFTER_REVIEW")) return uiText("文件在确认后发生了变化，请重新读取源回复并确认附件。");
   if (text.includes("BRIDGE_REVIEW_CHANGED_OR_NOT_READY") || text.includes("BRIDGE_DRAFT_CHANGED")) return uiText("审阅内容已被另一端更新，请刷新后重新批准。");
   if (text.includes("BRIDGE_WRITER_UNRESOLVED")) return uiText("已有发送或执行尚未确认结束，请核对原记录；不能重复发送。");
+  if (text.includes("BRIDGE_PROVIDER_RETIRED")) return uiText("ChatGPT 已不再支持，本次未发送。内容已保留。请把这一端重新绑定到 Codex 或 Claude Code。");
   if (text.includes("NO_NEW_TERMINAL_REPLY") || text.includes("LATEST_TURN_ACTIVE")) return uiText("当前没有可读取的新完整回复，或对话仍在执行。");
   if (text.includes("LATEST_TURN_INTERRUPTED")) return uiText("最新执行状态需核对，目前没有新的完整回复。");
   if (text.includes("OBSERVATION_MATERIALIZATION_PENDING")) return uiText("完整回复正在整理，请稍后检查。");
@@ -308,7 +310,7 @@ export function RoleBridgePanel({ workstreamId, workstreamName, api, onModeChang
         const phase=api.sync?(fresh?activity?.state:"UNCONFIRMED"):undefined;
         const currentResult=Boolean(reply&&phase==="COMPLETE"&&activity?.resultObservationId===reply.id);
         const historical=Boolean(api.sync&&!currentResult)||Boolean(outcome&&outcome.state!=="NO_NEW_TERMINAL_REPLY");
-        const notice=fresh&&activity?.taskTree&&claudeTaskSummary(activity.taskTree)?claudeTaskSummary(activity.taskTree):fresh&&activity?.goalStatus?goalStatusText(activity.goalStatus):phase==="RUNNING"?uiText("执行中"):phase==="COMPLETE"?(currentResult?uiText(side?.endpoint.provider==="CLAUDE_CODE"?"本轮已结束":"已完成"):uiText("新结果正在同步")):phase==="RESULT_PENDING"?uiText("新结果正在同步"):phase==="INTERRUPTED"?uiText("最新一轮已中断"):phase==="ACTION_REQUIRED"?uiText("需要你处理"):phase==="PAUSED"?uiText("已暂停"):phase==="FAILED"?uiText("最新执行未完成，请核对原对话"):phase==="EMPTY"?uiText("当前没有执行结果"):phase==="UNCONFIRMED"?uiText("状态待确认"):outcome?.state==="LATEST_TURN_INTERRUPTED"?uiText("{0}最新一轮已中断。{1}", label(role), outcome.retainedReply?uiText("当前保留的是先前的完整回复。"):uiText("目前没有新的完整回复。")):outcome?.state==="LATEST_TURN_ACTIVE"?uiText("{0}仍在执行。{1}", label(role), outcome.retainedReply?uiText("当前显示的是先前的完整回复。"):uiText("完成后可检查回复。")):outcome?.state==="OBSERVATION_MATERIALIZATION_PENDING"?uiText("完整回复正在整理，请稍后检查。"):outcome?.state==="EXTERNAL_STATUS_UNCONFIRMED"?uiText("状态待确认"):outcome?uiText("当前没有新的完整回复。"):null;
+        const notice=outcome?.state==="PROVIDER_RETIRED"?uiText("ChatGPT 已不再支持。这里只显示已保存的回复，请把这一端重新绑定到 Codex 或 Claude Code。"):fresh&&activity?.taskTree&&claudeTaskSummary(activity.taskTree)?claudeTaskSummary(activity.taskTree):fresh&&activity?.goalStatus?goalStatusText(activity.goalStatus):phase==="RUNNING"?uiText("执行中"):phase==="COMPLETE"?(currentResult?uiText(side?.endpoint.provider==="CLAUDE_CODE"?"本轮已结束":"已完成"):uiText("新结果正在同步")):phase==="RESULT_PENDING"?uiText("新结果正在同步"):phase==="INTERRUPTED"?uiText("最新一轮已中断"):phase==="ACTION_REQUIRED"?uiText("需要你处理"):phase==="PAUSED"?uiText("已暂停"):phase==="FAILED"?uiText("最新执行未完成，请核对原对话"):phase==="EMPTY"?uiText("当前没有执行结果"):phase==="UNCONFIRMED"?uiText("状态待确认"):outcome?.state==="LATEST_TURN_INTERRUPTED"?uiText("{0}最新一轮已中断。{1}", label(role), outcome.retainedReply?uiText("当前保留的是先前的完整回复。"):uiText("目前没有新的完整回复。")):outcome?.state==="LATEST_TURN_ACTIVE"?uiText("{0}仍在执行。{1}", label(role), outcome.retainedReply?uiText("当前显示的是先前的完整回复。"):uiText("完成后可检查回复。")):outcome?.state==="OBSERVATION_MATERIALIZATION_PENDING"?uiText("完整回复正在整理，请稍后检查。"):outcome?.state==="EXTERNAL_STATUS_UNCONFIRMED"?uiText("状态待确认"):outcome?uiText("当前没有新的完整回复。"):null;
         const draftSource=state?.replies.find(r=>r.endpointId===side?.endpoint.id&&r.id===savedReviewSources[role])??reply;
         const retainedDraft=drafts.values[reviewKey({role,reply:draftSource??{id:"",endpointId:"",text:""},text:draftSource?.text??"",options:[],selected:[],bindingRevision:bindings.bindingRevision})];
         const forwarded=reply?.assistantIdentity?state?.handoffs.find(h=>h.status==="SENT"&&h.sourceEndpoint?.id===reply.endpointId&&h.sourceResponseIdentity===reply.assistantIdentity&&(!state.handoffSources||state.handoffSources.some(source=>source.id===h.id&&source.bindingRevision===bindings.bindingRevision))):undefined;

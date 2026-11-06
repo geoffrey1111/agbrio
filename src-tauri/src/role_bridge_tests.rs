@@ -17,10 +17,31 @@ fn active_guidance_fixture(mode:&str,run:Option<(&str,Option<&str>)>)->(tempfile
     let script=r#"const fs=require('node:fs'),rl=require('node:readline').createInterface({input:process.stdin});const root=process.argv[1],initialMode=process.argv[2];rl.on('line',line=>{const mode=fs.existsSync(root+'/metadata-fail.flag')?'METADATA_ERROR':initialMode;const r=JSON.parse(line);if(r.id===undefined)return;fs.appendFileSync(root+'/rpc.jsonl',JSON.stringify(r)+'\n');let v={};if(r.method==='thread/read'&&mode==='METADATA_ERROR'){process.stdout.write(JSON.stringify({id:r.id,error:{code:-32602,message:'INVALID_ARGUMENT'}})+'\n');return;}if(r.method==='thread/read')v={thread:{id:mode==='WRONG_THREAD'?'other':r.params.threadId,cwd:root,status:{type:mode==='IDLE'||mode==='COMPLETE'?'idle':'active'}}};else if(r.method==='thread/goal/get')v={goal:{threadId:r.params.threadId,status:'active',objective:'fictional',tokenBudget:null}};else if(r.method==='thread/turns/list')v={data:mode==='NO_TURN'?[]:[{id:'active-turn',status:mode==='TERMINAL'||mode==='COMPLETE'?'completed':'inProgress',itemsView:'notLoaded',completedAt:1700000000}],nextCursor:null};else if(r.method==='thread/items/list'&&mode==='COMPLETE')v={data:[{turnId:'active-turn',item:{id:'fixture-final',type:'agentMessage',phase:'final_answer',text:'fictional complete reply'}}],nextCursor:null};else if(r.method==='turn/steer'){if(r.params.threadId!=='target-fixture'||r.params.expectedTurnId!=='active-turn'||r.params.input[0].text!=='exact supplemental instruction')throw Error('Wrong physical input');v={turnId:mode==='WRONG_ACK'?'other-turn':'active-turn'};}else if(r.method==='turn/start')v={turn:{id:'new-turn'}};else if(r.method!=='initialize'){process.stdout.write(JSON.stringify({id:r.id,error:{code:-32600,message:'Unexpected operation '+r.method}})+'\n');return;}process.stdout.write(JSON.stringify({id:r.id,result:v})+'\n');});"#;
     let mut cmd=std::process::Command::new("node");cmd.args(["-e",script]).arg(dir.path()).arg(mode);
     let mut adapter=CodexAdapter::start_shared_validation(cmd,Arc::new(|_|{})).unwrap();adapter.initialize().unwrap();
-    let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session{adapter:Some(adapter),..Default::default()})),completed_chatgpt_responses:Arc::default()};
+    let core=RouterCore{store,session:Arc::new(Mutex::new(Session{adapter:Some(adapter),..Default::default()})),};
     (dir,core,w.id,h.id)
 }
 fn guidance_methods(dir:&tempfile::TempDir)->Vec<Value>{fs::read_to_string(dir.path().join("rpc.jsonl")).unwrap().lines().map(|line|serde_json::from_str(line).unwrap()).collect()}
+#[test]
+fn a_bridge_bound_to_removed_chatgpt_stays_readable_and_refuses_new_use(){
+    let dir=tempfile::tempdir().unwrap();
+    let store=Arc::new(crate::RouterStore::open_at(dir.path().join("router.db")).unwrap());
+    let p=store.create_project("old project".into(),None).unwrap();let w=store.create_workstream(&p.id,"old bridge".into()).unwrap();
+    let side=|provider:&str,id:&str|RoleBindingInput{provider:provider.into(),external_id:id.into(),label:"old".into(),cwd:(provider=="CODEX").then(||dir.path().to_string_lossy().into())};
+    // A row written before the removal, reached through the store rather than the Host.
+    let binding=store.bind_role_bridge(&w.id,0,side("CHATGPT","old-conversation"),side("CODEX","codex-target")).unwrap();
+    let decision=binding.decision.clone().unwrap();let execution=binding.execution.clone().unwrap();
+    store.record_reply_observation(&w.id,&decision.endpoint.id,Some("old-message"),"saved reply",None).unwrap().unwrap();
+    let source=store.record_reply_observation(&w.id,&execution.endpoint.id,Some("codex:turn:message"),"result to forward",None).unwrap().unwrap();
+    let core=RouterCore{store:store.clone(),session:Default::default()};
+
+    let read_back=read(&core,&w.id,"DECISION").unwrap();
+    assert_eq!(read_back.read_outcome.unwrap().state,"PROVIDER_RETIRED");
+    assert!(read_back.replies.iter().any(|reply|reply.text=="saved reply"),"its stored replies stay visible");
+    assert_eq!(bind(&core,&w.id,binding.binding_revision,side("CHATGPT","new-conversation"),side("CODEX","codex-target")).err().unwrap(),"BRIDGE_PROVIDER_UNSUPPORTED");
+
+    let h=store.prepare_role_handoff(&w.id,"EXECUTION",&source.id,"result to forward").unwrap();store.approve_role_handoff_checked(&h.id,&h.payload_hash).unwrap();
+    assert!(send_owner(&core,&h.id).err().unwrap().contains("BRIDGE_PROVIDER_RETIRED"));
+}
 #[test]
 fn assistant_confirm_failure_has_a_persisted_stage_and_receipt_without_send(){
     for mode in ["METADATA_ERROR","DISCONNECTED"] {
@@ -120,7 +141,7 @@ fn actual_native_active_goal_bridge_guidance(){
     let mut cmd=std::process::Command::new(std::env::var("AIWR_GUIDANCE_NODE").unwrap());cmd.arg(root.join("transport.mjs")).arg(std::env::var("AIWR_GUIDANCE_URL").unwrap());let mut adapter=CodexAdapter::start_shared_validation(cmd,Arc::new(|_|{})).unwrap();adapter.initialize().unwrap();
     let before=adapter.get_goal(&thread).unwrap();assert_eq!(before["goal"]["status"],"active");
     let native=metadata(&mut adapter,&thread).unwrap();assert_eq!(native["thread"]["status"]["type"],"active");let expected=exact_active_turn(&mut adapter,&thread).unwrap();
-    let core=RouterCore{store:store.clone(),chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session{adapter:Some(adapter),..Default::default()})),completed_chatgpt_responses:Arc::default()};
+    let core=RouterCore{store:store.clone(),session:Arc::new(Mutex::new(Session{adapter:Some(adapter),..Default::default()})),};
     let grant=store.connect_assistant_instance(router_core::store::assistant::AssistantConnectionInput{label:"isolated native MCP QA".into(),expires_at:std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64+600000}).unwrap();store.register_assistant_prepare(&grant.id,&h.id,&obs.id,"native-mcp-request","native-only-test").unwrap();let result=crate::assistant_mcp::call(&core,&grant.id,"agbrio_confirm_and_send",json!({"handoffId":h.id,"expectedHash":h.payload_hash,"ruleId":null,"decisionId":null,"assessment":"Exact fictional instruction under isolated owner-authorized validation."})).unwrap();assert_eq!(result["status"],"SENT");assert!(send(&core,&h.id).is_err());assert!(store.provider_runs_for_workstream(&w.id).unwrap().is_empty());
     let mut session=core.session.lock().unwrap();let adapter=session.adapter.as_mut().unwrap();assert!(adapter.active_turn_id(&thread).is_none());let after=adapter.get_goal(&thread).unwrap();assert_eq!(after["goal"]["status"],"active");assert_eq!(before["goal"]["objective"],after["goal"]["objective"]);
     fs::write(root.join("host-native-proof.json"),serde_json::to_vec_pretty(&json!({"result":"AUTOMATED_VALIDATION_PASS","nativeActiveGoal":true,"sameActiveTurn":expected,"handoffId":h.id,"receipt":"SENT","duplicateRejected":true,"throughAssistantMcp":true,"goalStatusRetained":true,"goalObjectiveRetained":true,"externalExecutionStillExternal":true,"newProviderRuns":0,"ownerThreadsTouched":false})).unwrap()).unwrap();
@@ -235,9 +256,8 @@ fn real_cross_project_codex_bridge() {
     }
     let core = RouterCore {
         store: store.clone(),
-        chatgpt: Arc::default(),
+        
         session: Arc::new(Mutex::new(Session::default())),
-        completed_chatgpt_responses: Arc::default(),
     };
     {
         let mut session = core.session.lock().unwrap();
@@ -480,9 +500,8 @@ fn read_retained_role_transfer() {
     adapter.initialize().unwrap();
     let core = RouterCore {
         store: store.clone(),
-        chatgpt: Arc::default(),
+        
         session: Arc::new(Mutex::new(Session::default())),
-        completed_chatgpt_responses: Arc::default(),
     };
     core.session.lock().unwrap().adapter = Some(adapter);
     let run = store
@@ -567,9 +586,8 @@ fn finalize_retained_cross_project_bridge() {
     }
     let core = RouterCore {
         store: store.clone(),
-        chatgpt: Arc::default(),
+        
         session: Arc::new(Mutex::new(Session::default())),
-        completed_chatgpt_responses: Arc::default(),
     };
     {
         let mut s = core.session.lock().unwrap();
@@ -779,9 +797,8 @@ fn complete_retained_bridge_with_exact_command() {
     }
     let core = RouterCore {
         store: store.clone(),
-        chatgpt: Arc::default(),
+        
         session: Arc::new(Mutex::new(Session::default())),
-        completed_chatgpt_responses: Arc::default(),
     };
     {
         let mut s = core.session.lock().unwrap();
@@ -927,7 +944,7 @@ fn complete_retained_bridge_with_exact_command() {
 
 #[test]
 fn interrupted_read_returns_retained_state_without_new_observation_or_handoff(){
- let d=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap());let p=store.create_project("isolated status".into(),None).unwrap();let w=store.create_workstream(&p.id,"interrupted reader".into()).unwrap();let input=|id:&str|RoleBindingInput{provider:"CODEX".into(),external_id:id.into(),label:id.into(),cwd:Some(d.path().to_string_lossy().into())};let b=store.bind_role_bridge(&w.id,store.role_bridge(&w.id).unwrap().binding_revision,input("source-fixture"),input("target-fixture")).unwrap();let endpoint=&b.decision.unwrap().endpoint.id;store.record_reply_observation(&w.id,endpoint,Some("codex:old-complete:old-item"),"prior complete reply",None).unwrap();let core=RouterCore{store:store.clone(),chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};
+ let d=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap());let p=store.create_project("isolated status".into(),None).unwrap();let w=store.create_workstream(&p.id,"interrupted reader".into()).unwrap();let input=|id:&str|RoleBindingInput{provider:"CODEX".into(),external_id:id.into(),label:id.into(),cwd:Some(d.path().to_string_lossy().into())};let b=store.bind_role_bridge(&w.id,store.role_bridge(&w.id).unwrap().binding_revision,input("source-fixture"),input("target-fixture")).unwrap();let endpoint=&b.decision.unwrap().endpoint.id;store.record_reply_observation(&w.id,endpoint,Some("codex:old-complete:old-item"),"prior complete reply",None).unwrap();let core=RouterCore{store:store.clone(),session:Arc::new(Mutex::new(Session::default())),};
  let result=read_without_new_reply(&core,&w.id,"DECISION",endpoint,"LATEST_TURN_INTERRUPTED").unwrap();assert_eq!(result.replies.len(),1);assert_eq!(result.replies[0].text,"prior complete reply");assert!(result.handoffs.is_empty());let outcome=result.read_outcome.unwrap();assert_eq!(outcome.state,"LATEST_TURN_INTERRUPTED");assert!(outcome.retained_reply);assert_eq!(outcome.endpoint_id,*endpoint);assert!(read_without_new_reply(&core,&w.id,"DECISION",endpoint,"CODEX_OBSERVATION_PROTOCOL_INVALID").is_err());assert_eq!(store.reply_observations_for_workstream(&w.id).unwrap().len(),1);
 }
 
@@ -935,17 +952,17 @@ fn interrupted_read_returns_retained_state_without_new_observation_or_handoff(){
 fn blocks_are_readonly_and_bound_to_exact_observation_and_role_without_provider_calls() {
  let d=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap());let p=store.create_project("isolated blocks".into(),None).unwrap();let w=store.create_workstream(&p.id,"source segmentation".into()).unwrap();let input=|id:&str|RoleBindingInput{provider:"CODEX".into(),external_id:id.into(),label:id.into(),cwd:Some(d.path().to_string_lossy().into())};let b=store.bind_role_bridge(&w.id,store.role_bridge(&w.id).unwrap().binding_revision,input("source-fixture"),input("target-fixture")).unwrap();let endpoint=&b.decision.unwrap().endpoint.id;
  store.record_reply_observation(&w.id,endpoint,Some("codex:old-complete:old-item"),"结论。\n\n可直接发给原对话：\n\n```text\n请继续。\n```",None).unwrap();
- let core=RouterCore{store:store.clone(),chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};let obs=store.reply_observations_for_workstream(&w.id).unwrap().remove(0);let selected=blocks(&core,&w.id,"DECISION",&obs.id).unwrap();assert_eq!(selected.len(),2);assert_eq!(selected[1].text,"请继续。");assert!(selected[1].recommended);assert!(blocks(&core,&w.id,"EXECUTION",&obs.id).is_err());assert!(blocks(&core,&w.id,"DECISION","unrelated-observation").is_err());assert!(state(&core,&w.id).unwrap().handoffs.is_empty());assert_eq!(store.reply_observations_for_workstream(&w.id).unwrap().len(),1);
+ let core=RouterCore{store:store.clone(),session:Arc::new(Mutex::new(Session::default())),};let obs=store.reply_observations_for_workstream(&w.id).unwrap().remove(0);let selected=blocks(&core,&w.id,"DECISION",&obs.id).unwrap();assert_eq!(selected.len(),2);assert_eq!(selected[1].text,"请继续。");assert!(selected[1].recommended);assert!(blocks(&core,&w.id,"EXECUTION",&obs.id).is_err());assert!(blocks(&core,&w.id,"DECISION","unrelated-observation").is_err());assert!(state(&core,&w.id).unwrap().handoffs.is_empty());assert_eq!(store.reply_observations_for_workstream(&w.id).unwrap().len(),1);
 }
 
 #[test]
 fn create_bridge_reuses_existing_group_and_never_binds_or_sends(){
- let d=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap());let core=RouterCore{store:store.clone(),chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};assert!(create(&core,"").is_err());let first=create(&core,"First").unwrap();let second=create(&core,"Second").unwrap();let snapshot=store.snapshot().unwrap();assert_eq!(snapshot.projects.len(),1);assert_eq!(snapshot.workstreams.len(),2);assert!(!state(&core,&first).unwrap().bindings.explicit_roles);assert!(!state(&core,&second).unwrap().bindings.explicit_roles);assert!(store.provider_runs_for_workstream(&first).unwrap().is_empty());assert!(state(&core,&first).unwrap().handoffs.is_empty());
+ let d=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap());let core=RouterCore{store:store.clone(),session:Arc::new(Mutex::new(Session::default())),};assert!(create(&core,"").is_err());let first=create(&core,"First").unwrap();let second=create(&core,"Second").unwrap();let snapshot=store.snapshot().unwrap();assert_eq!(snapshot.projects.len(),1);assert_eq!(snapshot.workstreams.len(),2);assert!(!state(&core,&first).unwrap().bindings.explicit_roles);assert!(!state(&core,&second).unwrap().bindings.explicit_roles);assert!(store.provider_runs_for_workstream(&first).unwrap().is_empty());assert!(state(&core,&first).unwrap().handoffs.is_empty());
 }
 
 #[test]
 fn historical_role_handoff_remains_visible_after_rebinding_without_becoming_sendable(){
- let d=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap());let p=store.create_project("history".into(),None).unwrap();let w=store.create_workstream(&p.id,"bridge".into()).unwrap();let input=|id:&str|RoleBindingInput{provider:"CODEX".into(),external_id:id.into(),label:id.into(),cwd:Some(d.path().to_string_lossy().into())};let b=store.bind_role_bridge(&w.id,store.role_bridge(&w.id).unwrap().binding_revision,input("old-source"),input("old-target")).unwrap();let obs=store.record_reply_observation(&w.id,&b.decision.unwrap().endpoint.id,Some("old-native"),"original",None).unwrap().unwrap();let h=store.prepare_role_handoff(&w.id,"DECISION",&obs.id,"selected original").unwrap();store.bind_role_bridge(&w.id,b.binding_revision,input("new-source"),input("new-target")).unwrap();assert!(store.approve_role_handoff_checked(&h.id,&h.payload_hash).is_err());let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};let view=state(&core,&w.id).unwrap();assert_eq!(view.handoffs.len(),1);assert_eq!(view.handoff_sources[0].role,"DECISION");assert_eq!(view.handoff_sources[0].binding_revision,b.binding_revision);
+ let d=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap());let p=store.create_project("history".into(),None).unwrap();let w=store.create_workstream(&p.id,"bridge".into()).unwrap();let input=|id:&str|RoleBindingInput{provider:"CODEX".into(),external_id:id.into(),label:id.into(),cwd:Some(d.path().to_string_lossy().into())};let b=store.bind_role_bridge(&w.id,store.role_bridge(&w.id).unwrap().binding_revision,input("old-source"),input("old-target")).unwrap();let obs=store.record_reply_observation(&w.id,&b.decision.unwrap().endpoint.id,Some("old-native"),"original",None).unwrap().unwrap();let h=store.prepare_role_handoff(&w.id,"DECISION",&obs.id,"selected original").unwrap();store.bind_role_bridge(&w.id,b.binding_revision,input("new-source"),input("new-target")).unwrap();assert!(store.approve_role_handoff_checked(&h.id,&h.payload_hash).is_err());let core=RouterCore{store,session:Arc::new(Mutex::new(Session::default())),};let view=state(&core,&w.id).unwrap();assert_eq!(view.handoffs.len(),1);assert_eq!(view.handoff_sources[0].role,"DECISION");assert_eq!(view.handoff_sources[0].binding_revision,b.binding_revision);
 }
 
 #[test]fn resident_metadata_covers_all_projects_without_changing_selection(){

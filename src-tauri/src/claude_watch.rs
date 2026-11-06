@@ -71,7 +71,7 @@ fn refresh_titles(core:&RouterCore,desktop:&[crate::claude_code_desktop::Desktop
  #[test]fn desktop_rename_updates_even_when_no_new_transcript_or_plugin_event_arrives(){
   let d=tempfile::tempdir().unwrap();let store=std::sync::Arc::new(router_core::store::RouterStore::open_at(d.path().join("router.db")).unwrap());let root=d.path().to_string_lossy().into_owned();let key="claude_code:display-only";
   store.enable_codex_watch(key,"old title",&root,&router_core::store::codex_watch::WatchSnapshot{state:"RUNNING".into(),turn_id:Some("same-turn".into()),item_id:None,text:"same text".into()}).unwrap();let original=store.registered_codex_watch(key).unwrap();
-  let core=RouterCore{store:store.clone(),session:std::sync::Arc::new(std::sync::Mutex::default()),chatgpt:std::sync::Arc::default(),completed_chatgpt_responses:std::sync::Arc::default()};
+  let core=RouterCore{store:store.clone(),session:std::sync::Arc::new(std::sync::Mutex::default()),};
   let mut source=crate::claude_code_desktop::DesktopSession{session_id:"display-only".into(),cwd:root,title:Some("renamed native title".into()),archived:false,last_activity:1};
   refresh_titles(&core,&[source.clone()]).unwrap();let renamed=store.registered_codex_watch(key).unwrap();assert_eq!(renamed.label,"renamed native title");assert_eq!(renamed.generation,original.generation);assert_eq!(renamed.snapshot,original.snapshot);assert_eq!(renamed.changed_at,original.changed_at);
   source.cwd="unrelated-project".into();source.title=Some("wrong root title".into());refresh_titles(&core,&[source]).unwrap();assert_eq!(store.registered_codex_watch(key).unwrap().label,"renamed native title");

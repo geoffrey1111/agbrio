@@ -115,7 +115,7 @@ fn public_disposable_host_fixture(){
  let profile=PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap());assert!(profile.starts_with(&root));
  let input:serde_json::Value=serde_json::from_slice(&fs::read(root.join("input.json")).unwrap()).unwrap();
  let code=input["code"].as_str().unwrap_or("").to_owned();let label=input["label"].as_str().unwrap();
- let core=RouterCore{chatgpt:Arc::default(),store:Arc::new(crate::RouterStore::open_at(root.join("router.db")).unwrap()),session:Arc::new(Mutex::new(crate::Session::default())),completed_chatgpt_responses:Arc::default()};
+ let core=RouterCore{store:Arc::new(crate::RouterStore::open_at(root.join("router.db")).unwrap()),session:Arc::new(Mutex::new(crate::Session::default())),};
  if core.store.snapshot().unwrap().projects.is_empty(){crate::role_bridge::create(&core,&format!("Demo {label}")).unwrap();}
  let host=HostRuntime::default();let auth=Arc::new(crate::web_auth::WebAuth::open(Some(root.join("web-auth.json"))).unwrap());*host.test_web_auth.lock().unwrap()=Some(auth.clone());
  let source=PathBuf::from(env!("CARGO_MANIFEST_DIR"));let dist=source.parent().unwrap().join("dist");

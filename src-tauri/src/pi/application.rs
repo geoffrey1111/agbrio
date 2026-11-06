@@ -299,8 +299,7 @@ mod tests {
         let core = RouterCore {
             store: store.clone(),
             session: Arc::default(),
-            chatgpt: Arc::default(),
-            completed_chatgpt_responses: Arc::default(),
+            
         };
         let parent = uuid::Uuid::new_v4().to_string();
         store
@@ -370,8 +369,7 @@ mod tests {
         let core = RouterCore {
             store: store.clone(),
             session: Arc::default(),
-            chatgpt: Arc::default(),
-            completed_chatgpt_responses: Arc::default(),
+            
         };
         let manager = d.path().join("manager");
         std::fs::create_dir(&manager).unwrap();

@@ -10,7 +10,7 @@ async fn raw(name:&str,command:&str,expected:Option<&str>)->Value{
 #[ignore="explicit PowerShell client against isolated current-user pipe; refuses an existing control owner"]
 fn powershell_client_reads_the_real_pipe_without_ui_or_credentials(){
     let temp=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
-    let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Default::default())),completed_chatgpt_responses:Arc::new(Mutex::new(Default::default()))};
+    let core=RouterCore{store,session:Arc::new(Mutex::new(Default::default()))};
     let host=HostRuntime::default();let runtime=tokio::runtime::Runtime::new().unwrap();let(name,sid)=pipe::endpoint().unwrap();
     runtime.block_on(async{
         let owned=host.clone();let address=name.clone();let server=tokio::spawn(pipe::serve(core,owned,address,sid,||{}));

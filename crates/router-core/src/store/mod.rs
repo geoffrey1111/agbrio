@@ -2852,6 +2852,8 @@ impl RouterStore {
                         .map_err(db_error)?;
                     drop(unread_replies_statement);
                     for (observation_id, observed_at, provider) in unread_replies {
+                        // ChatGPT was removed. Its rows stay readable, but nothing can act on them.
+                        if provider == "CHATGPT" { continue; }
                         items.push(attention_item(
                             if provider == "CODEX" { "CODEX_REPLY_OBSERVED" } else { "CHATGPT_REPLY_OBSERVED" },
                             3, &workstream, &observation_id,
@@ -2859,6 +2861,7 @@ impl RouterStore {
                         ));
                     }
                     for run in unresolved_provider_runs(connection, &workstream.id)? {
+                        if run.provider == "CHATGPT" { continue; }
                         if run.status == "COMPLETED"
                             && run.result_text.is_some()
                             && run.reviewed_at.is_none()
@@ -2909,16 +2912,6 @@ impl RouterStore {
                         }
                     }
                     let role_complete = role_bridge::complete_roles(connection, &workstream.id)?;
-                    if chatgpt_endpoint.is_none() && !role_complete {
-                        items.push(attention_item(
-                            "MISSING_CHATGPT_BINDING",
-                            5,
-                            &workstream,
-                            &workstream.id,
-                            "Missing active ChatGPT binding",
-                            workstream.updated_at,
-                        ));
-                    }
                     if codex_endpoint.is_none() && !role_complete {
                         items.push(attention_item(
                             "MISSING_CODEX_BINDING",
@@ -4942,16 +4935,13 @@ mod tests {
                 )
             })
             .collect::<Vec<_>>();
-        assert_eq!(attention.len(), 3);
-        assert_eq!(
-            attention
-                .iter()
-                .map(|item| item.source_id.as_str())
-                .collect::<Vec<_>>(),
-            vec![third.id.as_str(), second.id.as_str(), first.id.as_str()]
-        );
-        assert_eq!(attention[0].kind, "CHATGPT_REPLY_OBSERVED");
-        assert_eq!(attention[1].kind, "CODEX_REPLY_OBSERVED");
+        // ChatGPT was removed: its rows stay stored and readable, with nothing to act on.
+        assert_eq!(attention.len(), 1);
+        assert_eq!(attention[0].source_id, second.id);
+        assert_eq!(attention[0].kind, "CODEX_REPLY_OBSERVED");
+        let stored = store.reply_observations_for_workstream(&workstream.id).unwrap();
+        assert!(stored.iter().any(|row| row.id == first.id));
+        assert!(stored.iter().any(|row| row.id == third.id));
 
         store
             .acknowledge_reply_observation(&workstream.id, &second.id, true)
@@ -4969,7 +4959,7 @@ mod tests {
             })
             .map(|item| item.source_id)
             .collect::<Vec<_>>();
-        assert_eq!(remaining_ids, vec![third.id, first.id]);
+        assert!(remaining_ids.is_empty());
     }
 
     #[test]
@@ -6184,7 +6174,7 @@ mod tests {
         assert!(projection
             .attention_items
             .iter()
-            .any(|item| item.kind == "MISSING_CHATGPT_BINDING"));
+            .all(|item| item.kind != "MISSING_CHATGPT_BINDING"));
         assert!(projection
             .attention_items
             .iter()
@@ -6288,7 +6278,7 @@ mod tests {
         let endpoint = store
             .bind_endpoint(
                 &workstream.id,
-                Provider::Chatgpt,
+                Provider::Codex,
                 "conversation-terminal".into(),
                 "ChatGPT".into(),
                 false,
@@ -6298,7 +6288,7 @@ mod tests {
             .create_provider_run(
                 &workstream.id,
                 &endpoint.id,
-                "CHATGPT",
+                "CODEX",
                 None,
                 Some("completed-a"),
                 "RUNNING",
@@ -6316,7 +6306,7 @@ mod tests {
             .create_provider_run(
                 &workstream.id,
                 &endpoint.id,
-                "CHATGPT",
+                "CODEX",
                 None,
                 Some("completed-b"),
                 "RUNNING",
@@ -6334,27 +6324,27 @@ mod tests {
             .create_provider_run(
                 &workstream.id,
                 &endpoint.id,
-                "CHATGPT",
+                "CODEX",
                 None,
                 Some("failed"),
                 "RUNNING",
             )
             .unwrap();
         store
-            .complete_provider_run("CHATGPT", "failed", "FAILED", Some("adapter_error"))
+            .complete_provider_run("CODEX", "failed", "FAILED", Some("adapter_error"))
             .unwrap();
         let cancelled = store
             .create_provider_run(
                 &workstream.id,
                 &endpoint.id,
-                "CHATGPT",
+                "CODEX",
                 None,
                 Some("cancelled"),
                 "RUNNING",
             )
             .unwrap();
         store
-            .complete_provider_run("CHATGPT", "cancelled", "CANCELLED", Some("cancelled"))
+            .complete_provider_run("CODEX", "cancelled", "CANCELLED", Some("cancelled"))
             .unwrap();
 
         let before = store.dashboard_projection().unwrap();
@@ -6362,7 +6352,7 @@ mod tests {
             before
                 .attention_items
                 .iter()
-                .filter(|item| item.kind == "CHATGPT_RESULT_READY")
+                .filter(|item| item.kind == "CODEX_RESULT_READY")
                 .count(),
             1
         );
@@ -6391,7 +6381,7 @@ mod tests {
         assert!(!after.attention_items.iter().any(|item| {
             matches!(
                 item.kind.as_str(),
-                "CHATGPT_RESULT_READY" | "PROVIDER_RUN_FAILED" | "PROVIDER_RUN_CANCELLED"
+                "CODEX_RESULT_READY" | "PROVIDER_RUN_FAILED" | "PROVIDER_RUN_CANCELLED"
             )
         }));
     }
