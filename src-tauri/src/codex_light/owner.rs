@@ -31,7 +31,6 @@ const BYTES_PER_EXTRA_SECOND: usize = 2 * 1024 * 1024;
 const RECONNECT_DELAY: Duration = Duration::from_secs(3);
 /// A new thread's rollout exists an instant after its first turn begins.
 const ANNOUNCE_DELAYS: [Duration; 3] = [Duration::from_millis(1500), Duration::from_secs(4), Duration::from_secs(15)];
-const RELEASE_LOCK_WAIT: Duration = Duration::from_secs(30);
 const HOST: &str = "local";
 
 pub(super) struct Session {
@@ -262,7 +261,10 @@ impl Hub {
         match method {
             "thread-owner-discovery" => Ok(json!({"supportsUntrustedAppInput":true})),
             "thread-follower-start-turn" => {
-                backend().await?;
+                // Released but not unloaded: loading it again cancels the release.
+                if self.pinned_backend(thread).await.is_none() {
+                    self.follower_load(thread).await?;
+                }
                 let mut request = params.pointer("/turnStart/request").cloned().unwrap_or_else(|| params["turnStart"].clone());
                 request["threadId"] = json!(thread);
                 Ok(json!({"result":self.follower_write("turn/start", &request).await?}))
@@ -306,9 +308,10 @@ impl Hub {
     pub(super) fn wait_then_close_owner(self: &Arc<Self>, thread: String) {
         let hub = self.clone();
         tokio::spawn(async move {
-            let started = Instant::now();
-            // Closing tells Desktop to load the thread, which fails while the lock is held.
-            while hub.lock_held(&thread) && started.elapsed() < RELEASE_LOCK_WAIT {
+            // Closing tells Desktop to load the thread, which fails while the lock is held. How
+            // long the backend takes to unload it is its own affair, so nothing here times out:
+            // until the lock is free this thread is still this process's to answer for.
+            while hub.lock_held(&thread) {
                 // A new message loaded it again, so this thread stays with the backend.
                 if hub.pinned_backend(&thread).await.is_some() {
                     return;

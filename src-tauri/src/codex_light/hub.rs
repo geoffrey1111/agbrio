@@ -589,6 +589,11 @@ impl Hub {
         self.backend_write(id, "thread/resume", params).await
     }
 
+    pub(super) async fn follower_load(&self, thread: &str) -> Result<(), String> {
+        let reply = self.load_on_backend(&json!("follower"), thread, &json!({"threadId":thread,"excludeTurns":true})).await.ok_or("request-timeout")?;
+        reply.get("error").map_or(Ok(()), |error| Err(error["message"].as_str().unwrap_or("request-failed").to_owned()))
+    }
+
     /// A write Desktop asked for while following a thread. An uncertain one is reported as
     /// failed to Desktop and never repeated.
     pub(super) async fn follower_write(&self, method: &str, params: &Value) -> Result<Value, String> {
