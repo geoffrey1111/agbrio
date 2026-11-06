@@ -479,8 +479,10 @@ impl Hub {
         }
     }
 
-    /// The Host refuses to send after an interruption it did not witness. A turn's own
-    /// abort record with nothing running is proof, so report it once. Only interruptions:
+    /// The Host refuses to send after an interruption it did not witness, so report one
+    /// once when it is proven. The proof is the turn's own abort record, or a free writer
+    /// lock under a turn that never recorded an end: a process killed outright, or a power
+    /// cut, writes nothing, and without a writer no turn can be running. Only interruptions:
     /// the Host already reconciles completed turns, and those carry side effects.
     async fn confirm_recorded_interruption(&self, thread: &str, reply: &Value) {
         let Some(row) = reply.pointer("/result/data/0") else { return };
@@ -489,8 +491,10 @@ impl Hub {
             return;
         }
         let boundary = self.rollouts.lock().unwrap().get(thread).and_then(|path| native_files::latest_boundary(path));
-        let recorded = boundary.is_some_and(|b| b.kind == BoundaryKind::Aborted && b.turn_id.as_deref() == Some(turn));
-        if !recorded || !self.confirmed_interruptions.lock().unwrap().insert((thread.to_owned(), turn.to_owned())) {
+        let proven = boundary.is_some_and(|b| {
+            b.turn_id.as_deref() == Some(turn) && (b.kind == BoundaryKind::Aborted || b.kind == BoundaryKind::Started && !self.lock_held(thread))
+        });
+        if !proven || !self.confirmed_interruptions.lock().unwrap().insert((thread.to_owned(), turn.to_owned())) {
             return;
         }
         self.send(json!({"method":"turn/completed","params":{"threadId":thread,"turn":{"id":turn,"status":"interrupted"}}}));

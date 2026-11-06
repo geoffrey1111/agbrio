@@ -498,6 +498,24 @@ async fn a_recorded_interruption_is_reported_once_and_only_with_its_own_abort_re
     assert!(t.outgoing.try_recv().is_err(), "reported once");
 }
 
+/// What a process killed outright leaves behind: a started turn and no end record.
+#[tokio::test]
+async fn a_turn_with_no_end_record_counts_as_interrupted_only_once_no_writer_holds_the_thread() {
+    let mut t = harness(DesktopScript::default(), validated_versions()).await;
+    let list = || json!({"threadId":THREAD,"limit":1,"sortDirection":"desc","cursor":null,"itemsView":"notLoaded"});
+    write_rollout(&t.rollout, &[json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"running-turn"}})]);
+    t.call("thread/read", READ()).await.unwrap();
+    let held = t.hold_lock(THREAD);
+    t.call("thread/turns/list", list()).await.unwrap();
+    assert!(t.outgoing.try_recv().is_err(), "a writer may still be running it");
+    drop(held);
+    t.call("thread/turns/list", list()).await.unwrap();
+    let event = t.next_where(|m| m["method"] == "turn/completed").await;
+    assert_eq!(event["params"]["turn"], json!({"id":"running-turn","status":"interrupted"}));
+    t.call("thread/turns/list", list()).await.unwrap();
+    assert!(t.outgoing.try_recv().is_err(), "reported once");
+}
+
 #[tokio::test]
 async fn a_rollout_that_is_still_empty_is_read_again_and_other_errors_are_not() {
     let t = harness(DesktopScript::default(), validated_versions()).await;
