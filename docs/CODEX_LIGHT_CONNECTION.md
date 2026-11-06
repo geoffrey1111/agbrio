@@ -26,6 +26,8 @@ Observed behaviour, not a contract:
 - A held writer lock fails a one-byte read with Windows error 33, so holding can be observed without acquiring it.
 - An empty thread does not outlive the app-server that created it, so that backend stays until the first turn or a 15-minute idle limit.
 
+A thread the on-demand backend holds cannot be opened in Desktop, which shows "open in another app". The backend lets go a few seconds after the turn ends, and Retry then works. Until the turn ends Desktop cannot open it, so open a conversation in Desktop first to watch a task live: threads Desktop holds are sent through Desktop.
+
 ## Validation
 
 `cargo test --lib codex_light` covers routing against a fake pipe and a scripted backend. `scripts/codex-ipc-probe.mjs` is a read-only probe. `real_host_send_paths_over_the_light_transport` is an explicit ignored live test that needs real Desktop and a disposable thread; never point it at a real conversation. File and permission approvals, async questions, large-conversation snapshots and reconnecting after Desktop restarts were not exercised at this revision.

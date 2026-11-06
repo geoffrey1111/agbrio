@@ -65,9 +65,14 @@ fn real_host_send_paths_over_the_light_transport() {
         completed_chatgpt_responses: Arc::default(),
     };
     let session = core.session.clone();
+    // On its own thread, as in the Host: this runs on the adapter's only reader, which must
+    // stay free to deliver the response a request holding the session lock is waiting for.
     let listener: Arc<dyn Fn(&Value) + Send + Sync> = Arc::new(move |message: &Value| {
-        capture_pending_codex_request(&session, message);
-        clear_resolved_codex_request(&session, message);
+        let (session, message) = (session.clone(), message.clone());
+        std::thread::spawn(move || {
+            capture_pending_codex_request(&session, &message);
+            clear_resolved_codex_request(&session, &message);
+        });
     });
     let mut command = std::process::Command::new(exe);
     command.arg(super::TRANSPORT_FLAG);
@@ -113,7 +118,7 @@ fn real_host_send_paths_over_the_light_transport() {
     assert_eq!(stopped["latestTurn"]["status"], "interrupted");
 
     // A native approval reaches the owner-facing card and its answer reaches Desktop.
-    let turn = core.session.lock().unwrap().adapter.as_mut().unwrap().request("turn/start", json!({"threadId":thread,"approvalPolicy":"untrusted","input":[{"type":"text","text":"Use the shell tool to run exactly: cmd /c echo light-host. Then reply with only the word LIGHTAPPROVED."}]})).unwrap();
+    let turn = core.session.lock().unwrap().adapter.as_mut().unwrap().request("turn/start", json!({"threadId":thread,"approvalPolicy":"untrusted","input":[{"type":"text","text":"Use the shell tool to run exactly: cmd /c ver. Then reply with only the word LIGHTAPPROVED."}]})).unwrap();
     println!("APPROVAL turn_started={}", turn["turn"]["id"].is_string());
     let asked = wait(&core, &thread, 90, |state| state["requests"].as_array().is_some_and(|rows| !rows.is_empty()));
     let card = asked["requests"][0].clone();
@@ -138,6 +143,19 @@ fn real_host_send_paths_over_the_light_transport() {
     let done = wait(&core, &new_thread, 120, settled);
     println!("CREATE first_send={} final={} text_has_reply={}", ack["status"], done["watch"]["snapshot"]["state"], done["watch"]["snapshot"]["text"].as_str().unwrap_or_default().contains("LIGHTNEW"));
     assert!(done["watch"]["snapshot"]["text"].as_str().unwrap_or_default().contains("LIGHTNEW"));
+
+    // Its writer lock is gone soon after the turn, so Desktop can open it. A later send still works.
+    let home = super::native_files::codex_home().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while super::native_files::writer_lock_held(&home, &new_thread) {
+        assert!(Instant::now() < deadline, "the temporary backend kept holding the thread");
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    println!("RELEASED lock_free=true");
+    let again = send(&core, &new_thread, &Uuid::new_v4().to_string(), "SEND", done["watch"]["snapshot"]["turnId"].as_str().map(str::to_owned), "Reply with only the word LIGHTAGAIN.");
+    assert_eq!(again["status"], "SENT", "{again}");
+    let done = wait(&core, &new_thread, 120, |state| settled(state) && state["watch"]["snapshot"]["text"].as_str().is_some_and(|text| text.contains("LIGHTAGAIN")));
+    println!("SEND_AFTER_RELEASE ack={} final={}", again["status"], done["watch"]["snapshot"]["state"]);
 
     // A created thread goes straight back out of the owner's sidebar.
     let archived = core.session.lock().unwrap().adapter.as_mut().unwrap().request("thread/archive", json!({"threadId":new_thread}));

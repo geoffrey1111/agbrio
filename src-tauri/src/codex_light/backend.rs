@@ -12,13 +12,23 @@ use std::{
 };
 use tokio::sync::{mpsc, oneshot};
 
-/// Where a thread stands inside this backend. An unsent new thread only exists here,
-/// so it keeps the process alive until its first turn or this limit.
-pub(super) const PIN_IDLE_LIMIT: Duration = Duration::from_secs(15 * 60);
+/// A held thread cannot be opened in Desktop, so a pin lasts only as long as it must.
+/// An unsent new thread only exists in this backend, so it waits for its first turn.
+pub(super) const NEW_THREAD_LIMIT: Duration = Duration::from_secs(15 * 60);
+/// A resume is normally followed at once by the send it was made for.
+pub(super) const RESUMED_LIMIT: Duration = Duration::from_secs(60);
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum PinKind {
+    Created,
+    Resumed,
+}
 
 #[derive(Clone)]
 struct Pin {
+    kind: PinKind,
     active: bool,
+    had_turn: bool,
     since: Instant,
 }
 
@@ -90,6 +100,13 @@ impl Backend {
             }
             (None, Some(method)) => {
                 self.track(&method, &message);
+                let mut message = message;
+                // The Host knows this request by the tagged id it was shown.
+                if method == "serverRequest/resolved" {
+                    if let Some(raw) = message.pointer("/params/requestId").cloned() {
+                        message["params"]["requestId"] = json!(format!("backend:{raw}"));
+                    }
+                }
                 let _ = out.send(message);
             }
             _ => {}
@@ -104,6 +121,7 @@ impl Backend {
             "turn/started" => {
                 if let Some(pin) = pins.get_mut(thread) {
                     pin.active = true;
+                    pin.had_turn = true;
                     pin.since = Instant::now();
                 }
             }
@@ -164,13 +182,23 @@ impl Backend {
         self.dead.load(Ordering::SeqCst)
     }
 
-    pub fn pin(&self, thread: &str) {
-        self.pins.lock().unwrap().insert(thread.to_owned(), Pin { active: false, since: Instant::now() });
+    pub fn pin(&self, thread: &str, kind: PinKind) {
+        // The Host resumes a thread it sees running, so an existing pin keeps what it knows:
+        // overwriting it would forget the running turn and could release the thread mid-task.
+        self.pins.lock().unwrap().entry(thread.to_owned()).or_insert(Pin { kind, active: false, had_turn: false, since: Instant::now() });
     }
 
     pub fn mark_active(&self, thread: &str) {
         if let Some(pin) = self.pins.lock().unwrap().get_mut(thread) {
             pin.active = true;
+            pin.had_turn = true;
+            pin.since = Instant::now();
+        }
+    }
+
+    pub fn mark_idle(&self, thread: &str) {
+        if let Some(pin) = self.pins.lock().unwrap().get_mut(thread) {
+            pin.active = false;
             pin.since = Instant::now();
         }
     }
@@ -183,13 +211,34 @@ impl Backend {
         self.pins.lock().unwrap().contains_key(thread)
     }
 
+    /// Drops every pin nothing needs any more and returns those threads.
+    pub fn release_finished(&self, after_turn: Duration) -> Vec<String> {
+        let mut pins = self.pins.lock().unwrap();
+        let finished: Vec<String> = pins
+            .iter()
+            .filter(|(_, pin)| {
+                let limit = match (pin.had_turn, pin.kind) {
+                    (true, _) => after_turn,
+                    (false, PinKind::Resumed) => RESUMED_LIMIT,
+                    (false, PinKind::Created) => NEW_THREAD_LIMIT,
+                };
+                !pin.active && pin.since.elapsed() >= limit
+            })
+            .map(|(thread, _)| thread.clone())
+            .collect();
+        for thread in &finished {
+            pins.remove(thread);
+        }
+        finished
+    }
+
+    pub fn has_pins(&self) -> bool {
+        !self.pins.lock().unwrap().is_empty()
+    }
+
     /// True once nothing needs this process.
     pub fn reapable(&self, idle_grace: Duration) -> bool {
-        if self.in_flight.load(Ordering::SeqCst) > 0 || self.last_used.lock().unwrap().elapsed() < idle_grace {
-            return false;
-        }
-        let pins = self.pins.lock().unwrap();
-        pins.values().all(|pin| !pin.active && pin.since.elapsed() >= PIN_IDLE_LIMIT)
+        self.in_flight.load(Ordering::SeqCst) == 0 && !self.has_pins() && self.last_used.lock().unwrap().elapsed() >= idle_grace
     }
 
     /// Closing stdin is how app-server exits cleanly; killing is the fallback.

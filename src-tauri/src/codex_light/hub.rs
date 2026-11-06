@@ -1,6 +1,6 @@
 //! Routes the Host's app-server JSON-RPC to the on-demand backend or Desktop's pipe.
 use super::{
-    backend::{Backend, BackendLost},
+    backend::{Backend, BackendLost, PinKind},
     ipc::{Connection, PeerPolicy, Reply, StateEvent, OFFICIAL_PIPE},
     native_files::{self, Boundary, BoundaryKind, Signature},
 };
@@ -37,6 +37,8 @@ pub(super) struct Config {
     pub codex_home: PathBuf,
     pub backend_command: Box<dyn Fn() -> Command + Send + Sync>,
     pub idle_grace: Duration,
+    /// How long a thread stays held after its turn, in case the next message follows at once.
+    pub release_after_turn: Duration,
 }
 
 impl Config {
@@ -55,6 +57,7 @@ impl Config {
                 None => router_core::codex::platform::codex_app_server_command(),
             }),
             idle_grace: Duration::from_secs(30),
+            release_after_turn: Duration::from_secs(5),
         })
     }
 }
@@ -497,16 +500,24 @@ impl Hub {
             Ok(backend) => backend,
             Err(error) => return Some(rpc_error(id, -32000, &error)),
         };
+        // Marked before sending: a quick turn's completion can arrive ahead of this reply,
+        // and marking afterwards would leave its thread held forever.
+        let starting = (method == "turn/start").then(|| params["threadId"].as_str()).flatten();
+        if let Some(thread) = starting {
+            backend.mark_active(thread);
+        }
         let reply = backend.call(method, params.clone(), WRITE_TIMEOUT).await.ok()?;
+        if let (Some(thread), true) = (starting, reply.get("error").is_some()) {
+            backend.mark_idle(thread);
+        }
         let thread = reply.pointer("/result/thread/id").and_then(Value::as_str).or_else(|| params["threadId"].as_str()).map(str::to_owned);
         if reply.get("result").is_some() {
             if let Some(thread) = &thread {
                 match method {
                     "thread/start" | "thread/resume" => {
-                        backend.pin(thread);
+                        backend.pin(thread, if method == "thread/start" { PinKind::Created } else { PinKind::Resumed });
                         self.note_rollout(thread, &reply);
                     }
-                    "turn/start" | "turn/steer" => backend.mark_active(thread),
                     "thread/unsubscribe" | "thread/archive" => backend.unpin(thread),
                     _ => {}
                 }
@@ -880,10 +891,19 @@ impl Hub {
     /// Lets the backend exit once nothing needs it.
     pub async fn reap(&self) {
         let mut slot = self.backend.lock().await;
-        if slot.as_ref().is_some_and(|backend| backend.is_dead() || backend.reapable(self.config.idle_grace)) {
-            if let Some(backend) = slot.take() {
-                backend.shut_down();
-            }
+        let Some(backend) = slot.clone() else { return };
+        let released = backend.release_finished(self.config.release_after_turn);
+        // Exiting frees a held thread at once, while an unsubscribed one waits out
+        // app-server's own unload delay. Desktop cannot open the thread until then.
+        let free_now = !released.is_empty() && !backend.has_pins();
+        if backend.is_dead() || free_now || backend.reapable(self.config.idle_grace) {
+            slot.take();
+            backend.shut_down();
+            return;
+        }
+        drop(slot);
+        for thread in released {
+            let _ = backend.call("thread/unsubscribe", json!({"threadId":thread}), Duration::from_secs(10)).await;
         }
     }
 
@@ -901,7 +921,7 @@ pub(super) async fn serve(config: Config, mut input: mpsc::UnboundedReceiver<Str
         let hub = hub.clone();
         tokio::spawn(async move {
             loop {
-                tokio::time::sleep(Duration::from_secs(5)).await;
+                tokio::time::sleep(Duration::from_secs(2)).await;
                 hub.reap().await;
             }
         })

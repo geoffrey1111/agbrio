@@ -24,7 +24,7 @@ const THREAD: &str = "11111111-1111-4111-8111-111111111111";
 const BACKEND_SCRIPT: &str = r#"
 const fs=require('fs');const log=process.argv[2];const rollout=process.argv[3];let reads=0;
 require('readline').createInterface({input:process.stdin}).on('line',line=>{
- const m=JSON.parse(line);if(m.id===undefined)return;fs.appendFileSync(log,m.method+'\n');
+ const m=JSON.parse(line);if(m.id===9&&m.result){fs.appendFileSync(log,'answer:'+m.result.decision+'\n');return process.stdout.write(JSON.stringify({method:'serverRequest/resolved',params:{threadId:'asks',requestId:9}})+'\n');}if(m.id===undefined)return;fs.appendFileSync(log,m.method+'\n');
  const reply=result=>process.stdout.write(JSON.stringify({id:m.id,result})+'\n');
  if(m.method==='initialize')return reply({});
  if(m.method==='turn/start'&&m.params.threadId==='lost')return process.exit(1);
@@ -35,6 +35,8 @@ require('readline').createInterface({input:process.stdin}).on('line',line=>{
  if(m.method==='thread/turns/list')return reply({data:[{id:'running-turn',status:'interrupted'}],nextCursor:null});
  if(m.method==='thread/start')return reply({thread:{id:'new-thread',cwd:'C:/project',path:rollout}});
  if(m.method==='thread/resume')return reply({thread:{id:m.params.threadId,cwd:'C:/project',path:rollout}});
+ if(m.method==='turn/start'&&m.params.threadId==='asks'){reply({turn:{id:'backend-turn',status:'inProgress'}});return process.stdout.write(JSON.stringify({id:9,method:'item/commandExecution/requestApproval',params:{threadId:'asks',turnId:'backend-turn',itemId:'item'}})+'\n');}
+ if(m.method==='turn/start'&&m.params.threadId==='finishes'){reply({turn:{id:'backend-turn',status:'inProgress'}});return process.stdout.write(JSON.stringify({method:'turn/completed',params:{threadId:'finishes',turn:{id:'backend-turn',status:'completed'}}})+'\n');}
  if(m.method==='turn/start')return reply({turn:{id:'backend-turn',status:'inProgress'}});
  return reply({ok:true});
 });
@@ -150,6 +152,7 @@ async fn harness(script: DesktopScript, versions: HashMap<String, u64>) -> Harne
             command
         }),
         idle_grace: Duration::ZERO,
+        release_after_turn: Duration::ZERO,
     };
     Harness { hub: Hub::new(config, out), outgoing, pipe_log, backend_log, rollout, home }
 }
@@ -488,4 +491,53 @@ async fn a_rollout_that_is_still_empty_is_read_again_and_other_errors_are_not() 
     let never = t.call("thread/read", json!({"threadId":"never-written","includeTurns":false})).await.unwrap();
     assert!(never["error"]["message"].as_str().unwrap().ends_with("is empty"), "the wait is bounded and the native error is kept");
     assert_eq!(t.backend_calls("thread/read"), 15);
+}
+
+#[tokio::test]
+async fn a_finished_turn_frees_its_thread_for_desktop_at_once() {
+    let mut t = harness(DesktopScript::default(), validated_versions()).await;
+    t.call("thread/resume", json!({"threadId":"finishes"})).await.unwrap();
+    t.hub.reap().await;
+    t.call("config/read", json!({})).await.unwrap();
+    assert_eq!(t.backend_calls("initialize"), 1, "a resume waits for the send it was made for");
+
+    t.call("turn/start", json!({"threadId":"finishes","input":[]})).await.unwrap();
+    t.next_where(|m| m["method"] == "turn/completed").await;
+    t.hub.reap().await;
+    t.call("account/read", json!({})).await.unwrap();
+    assert_eq!(t.backend_calls("initialize"), 2, "the backend exited, which is what frees the writer lock");
+}
+
+#[tokio::test]
+async fn a_running_turn_keeps_its_thread() {
+    let t = harness(DesktopScript::default(), validated_versions()).await;
+    t.call("thread/resume", json!({"threadId":THREAD})).await.unwrap();
+    t.call("turn/start", json!({"threadId":THREAD,"input":[]})).await.unwrap();
+    t.hub.reap().await;
+    t.call("account/read", json!({})).await.unwrap();
+    assert_eq!(t.backend_calls("initialize"), 1);
+}
+
+#[tokio::test]
+async fn a_backend_request_is_answered_and_resolved_under_the_id_the_host_was_shown() {
+    let mut t = harness(DesktopScript::default(), validated_versions()).await;
+    t.call("thread/resume", json!({"threadId":"asks"})).await.unwrap();
+    t.call("turn/start", json!({"threadId":"asks","input":[]})).await.unwrap();
+    let request = t.next_where(|m| m["method"] == "item/commandExecution/requestApproval").await;
+    assert_eq!(request["id"], "backend:9");
+    t.hub.handle_response(&request["id"], &json!({"decision":"accept"})).await;
+    let resolved = t.next_where(|m| m["method"] == "serverRequest/resolved").await;
+    assert_eq!(resolved["params"]["requestId"], "backend:9", "otherwise the Host's card never clears");
+    assert_eq!(t.backend_calls("answer:accept"), 1);
+}
+
+#[tokio::test]
+async fn resuming_a_running_thread_does_not_forget_its_turn() {
+    let t = harness(DesktopScript::default(), validated_versions()).await;
+    t.call("thread/resume", json!({"threadId":THREAD})).await.unwrap();
+    t.call("turn/start", json!({"threadId":THREAD,"input":[]})).await.unwrap();
+    t.call("thread/resume", json!({"threadId":THREAD})).await.unwrap();
+    t.hub.reap().await;
+    t.call("account/read", json!({})).await.unwrap();
+    assert_eq!(t.backend_calls("initialize"), 1, "the turn is still running, so the backend must stay");
 }
