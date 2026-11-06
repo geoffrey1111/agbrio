@@ -21,6 +21,8 @@ mod ipc;
 #[cfg(windows)]
 mod native_files;
 #[cfg(windows)]
+mod legacy_cleanup;
+#[cfg(windows)]
 pub(crate) mod retirement;
 #[cfg(all(windows, test))]
 mod host_live;
@@ -57,18 +59,25 @@ pub(crate) struct Status {
     pub desktop_connected: bool,
     pub state: String,
     pub detail: Option<String>,
+    /// Set only while an old shared backend waits for the owner's confirmation.
+    pub shared_active_turns: Option<u64>,
+    pub shared_desktop_connected: Option<bool>,
 }
 
 pub(crate) fn status() -> Status {
-    let waiting = |state: &str, detail: Option<String>| Status { enabled: enabled(), ready: false, desktop_connected: false, state: state.into(), detail };
+    let waiting = |state: &str, detail: Option<String>| Status { enabled: enabled(), ready: false, desktop_connected: false, state: state.into(), detail, shared_active_turns: None, shared_desktop_connected: None };
     #[cfg(windows)]
     {
         match retirement::phase() {
-            Some(retirement::Phase::Waiting) => waiting("SHARED_RETIRING", None),
+            Some(retirement::Phase::Waiting) => {
+                let usage = retirement::usage();
+                Status { shared_active_turns: usage.map(|usage| usage.0), shared_desktop_connected: usage.map(|usage| usage.1), ..waiting("SHARED_RETIRING", None) }
+            }
+            Some(retirement::Phase::Stopping) => waiting("SHARED_STOPPING", None),
             Some(retirement::Phase::Blocked(code)) => waiting("SHARED_RETIREMENT_BLOCKED", Some(code)),
             None => {
                 let reachable = desktop_reachable();
-                Status { enabled: true, ready: true, desktop_connected: reachable, state: if reachable { "LIGHT_CONNECTED" } else { "LIGHT_WAITING" }.into(), detail: None }
+                Status { enabled: true, ready: true, desktop_connected: reachable, state: if reachable { "LIGHT_CONNECTED" } else { "LIGHT_WAITING" }.into(), detail: None, shared_active_turns: None, shared_desktop_connected: None }
             }
         }
     }

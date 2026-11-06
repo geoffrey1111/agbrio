@@ -6,12 +6,15 @@ Not available: Goal writes and automatic model-failure Goal recovery, administra
 
 ## Upgrading from the shared connection
 
-The resident shared connection was removed, but an upgraded machine can still have its backend running from the pinned copy in `%LOCALAPPDATA%\AIWorkRouter\codex-shared\runtime`, which carries its own `node.exe`. `src-tauri/src/codex_light/retirement.rs` retires it once, using only that copy's guarded disable, while the Host stays off Codex:
+The resident shared connection was removed, but an upgraded machine can still have its backend running from the pinned copy in `%LOCALAPPDATA%\AIWorkRouter\codex-shared\runtime`, which carries its own `node.exe`. `src-tauri/src/codex_light/retirement.rs` retires it once, using only that copy's own scripts, while the Host stays off Codex:
 
-- It waits while the backend reports an active task or a connected Desktop, and retries from the reconnection loop.
+- A backend with no active task and no connected Desktop retires by itself through the copy's guarded disable.
+- One in use waits for the owner's confirmation in a desktop dialog, which says what will be interrupted. The dialog stops the processes the copy verifies as its own, then runs the same disable. The phone and MCP have no such path. Interrupted turns are not replayed. Desktop itself is never stopped, and a window that was using the backend must be reopened.
 - An administrator backend asks for Windows consent. A declined consent or any other refusal stops the attempts until the next launch, and Settings shows the code.
 - Unreadable settings or a pinned copy without the files the disable needs are reported the same way, and nothing is run.
-- Nothing is killed by name. Nothing under `%LOCALAPPDATA%` is deleted, so the pinned copy and its native files stay on disk.
+- Nothing is killed by name.
+
+Once nothing is pending, `legacy_cleanup.rs` clears reproducible leftovers on a fixed list: the `codex-shared` folder of a backend recorded as `DISABLED`, downloaded browser files and extension copies, and the cache folders inside old browser profiles. The rest of each profile stays, including cookies, saved passwords and local storage, and links are not followed. Folders it does not list are left alone.
 
 ## How it works
 

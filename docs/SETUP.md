@@ -8,9 +8,9 @@ Open the Windows app and follow the first-run guide. Choose Codex, Claude Code, 
 
 Use the [latest Windows release](https://github.com/geoffrey1111/agbrio/releases/latest). The installer provides the app and generic board viewer without your private project content or accounts.
 
-1. Use Windows x64 with your own official Windows Store Codex Desktop. Complete official installation/login first if needed. Agbrio does not bundle Desktop or provide an account/quota.
+1. Use Windows x64 with your own official Microsoft Store Codex Desktop. Complete official installation/login first if needed. Agbrio does not bundle Desktop or provide an account/quota. The light connection only trusts the Store build and fails closed on any other.
 2. Download the installer from the selected release. Compare `Get-FileHash -Algorithm SHA256 -LiteralPath 'full installer path'` with its `SHA256SUMS.txt`; stop on mismatch.
-3. Save work. Quit Agbrio through its tray menu before updating; do not run two instances. Never force-stop a working task.
+3. Save work. Quit Agbrio through its tray menu before updating; do not run two instances.
 4. Install while retaining data, login, Bridges, drafts and pairing. Personally review Windows confirmations. The updater `.sig` is not a Windows Authenticode signature and does not promise no SmartScreen warning.
 5. Open Agbrio and check Settings/About.
 
@@ -26,12 +26,15 @@ Connected Codex, paired phone and authorized assistant are three different check
 
 ## 3. Upgrading from a version with the shared connection
 
-Earlier versions used a resident shared backend and Start Menu entries for it. The upgrade removes those entries. If that backend is still running, Agbrio stops it once using the backend's own guarded disable:
+Earlier versions used a resident shared backend and Start Menu entries for it. The upgrade removes those entries. If that backend is still running, Agbrio stops it once:
 
-- While it has an active task or a connected Codex window it is left alone, and Settings → Codex says so. Finish your tasks and quit Codex; Agbrio then finishes on its own. Agbrio cannot reach Codex until then.
-- An administrator backend asks for Windows consent first. If you decline, or the disable refuses for another reason, nothing is ended, the code is shown in Settings → Codex, and Agbrio tries again the next time it opens.
+- If nothing is using it, Agbrio stops it by itself.
+- If a task or a Codex window is using it, Agbrio asks first, and says how many tasks would be interrupted. Interrupted tasks are not resent. Quit and reopen any Codex window that was using it. If you choose later, Agbrio cannot reach Codex until the backend stops, and the same action stays in Settings → Codex.
+- An administrator backend also asks for Windows consent. If you decline, or the stop fails, the code is shown in Settings → Codex and Agbrio tries again the next time it opens.
 
-Its files under `%LOCALAPPDATA%\AIWorkRouter\codex-shared` stay on disk. Never kill all Node processes to speed this up.
+Only processes the backend verifies as its own are stopped, never by name, and Codex Desktop itself is not one of them. Never kill all Node processes to speed this up.
+
+Once it has stopped, Agbrio removes `%LOCALAPPDATA%\AIWorkRouter\codex-shared`, the downloaded browser and the caches inside old browser profiles. Those profiles stay, so sign-ins are kept: cookies, saved passwords and local storage are not touched.
 
 ### Bridges bound to ChatGPT
 

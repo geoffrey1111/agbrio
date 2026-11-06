@@ -56,7 +56,7 @@ export function FirstRunWizard({api,initial={},preference,storage=setupStorage,o
   else if(step==='CODEX'){
    const snap=await refresh();if(!snap.shared)throw Error('SETUP_READ_UNAVAILABLE');if(snap.shared.state==='UNSUPPORTED')throw Error('SETUP_PLATFORM_UNSUPPORTED');
    if(codexReady(snap)){next(snap);return;}
-   setError(t(snap.shared.ready?'还没有检测到 Codex。请正常打开 Codex，再点一次。':'旧的共享后台还没有停用，完成后再继续。'));
+   setError(t(snap.shared.ready?'还没有检测到 Codex。请正常打开 Codex，再点一次。':'旧的共享后台还没有关闭，完成后再继续。'));
   }else if(step==='PHONE'){
    let snap=await refresh();if(phoneReady(snap)){next(snap);return;}
    if(!phoneUrl(snap.origin)||!remoteReady(snap)){
@@ -114,7 +114,7 @@ export function FirstRunWizard({api,initial={},preference,storage=setupStorage,o
   {label:'本机 MCP 配置与登录',state:mcpAuthorized?'DONE':mcpStarted?'ACTIVE':'TODO',note:mcpAuthorized?(manualAuthorized?'你已确认登录完成':'官方登录已完成'):mcpStarted?(manualMcp||mcpPhase==='MANUAL_AUTH_REQUIRED'?'需要在 Code 中手动登录':openedAuthId?'等你在浏览器点击“允许”':'正在准备授权页'):undefined},
   {label:'Code 对话读取验证',state:ownerVerified?'DONE':mcpAuthorized?'ACTIVE':'TODO',note:mcpAuthorized&&!ownerVerified?'在 Code 中发送验证指令':undefined},
  ];
- const retiring=data.shared?.state==='SHARED_RETIRING'||data.shared?.state==='SHARED_RETIREMENT_BLOCKED';
+ const retiring=data.shared?.state==='SHARED_RETIRING'||data.shared?.state==='SHARED_STOPPING'||data.shared?.state==='SHARED_RETIREMENT_BLOCKED';
  const codexRows:Row[]=[{label:'Agbrio 轻量连接',state:data.shared?.ready?'DONE':'TODO'},{label:'正常打开的 Codex',state:codexReady(data)?'DONE':'TODO'}];
  const group=(agent:SetupAgent)=>(candidates??[]).filter(row=>groupOf(row.id)===agent);
  const description=preview?.description?.(step)??(step==='PHONE'&&remote?'用手机相机扫描二维码打开 Agbrio，在登录页输入配对码。收到后这里会自动更新。':step==='DONE'&&!agents.includes('CLAUDE_CODE')?'你可以在手机查看进度、回复对话。需要调整时，从设置重新打开引导。':detail[step]);
@@ -125,7 +125,8 @@ export function FirstRunWizard({api,initial={},preference,storage=setupStorage,o
    {step==='CHOOSE'&&<div className="first-run-agent-options">{(['CODEX','CLAUDE_CODE'] as SetupAgent[]).map(agent=><label key={agent}><input type="checkbox" checked={agents.includes(agent)} onChange={()=>setAgents(old=>old.includes(agent)?old.filter(a=>a!==agent):[...old,agent])}/>{agent==='CODEX'?<Terminal size={24}/>:<MessagesSquare size={24}/>}<span><strong>{agent==='CODEX'?'Codex':'Claude Code'}</strong><small>{t(agent==='CODEX'?'连接电脑上的 Codex 对话':'安装插件并连接当前 Code 对话')}</small></span><Check size={19} className="first-run-selected"/></label>)}</div>}
 
    {step==='CODEX'&&<><Checklist rows={codexRows}/>
-    {retiring&&<div className="first-run-callout" role="status"><strong>{t('旧的共享后台还在')}</strong><p>{t(data.shared?.state==='SHARED_RETIRING'?'结束任务并退出 Codex 后，Agbrio 会自动停用它并改用轻量连接，不会中断任务。':'它未能自动停用，也没有结束任何进程。详情在“设置 → 连接”，可以先跳过引导。')}</p></div>}</>}
+    {retiring&&<div className="first-run-callout" role="status"><strong>{t('旧的共享后台还在')}</strong><p>{t(data.shared?.state==='SHARED_RETIREMENT_BLOCKED'?'它未能关闭。详情在“设置 → 连接”，可以先跳过引导。':data.shared?.state==='SHARED_STOPPING'?'正在关闭，完成后这里会自动更新。':'在弹窗中确认后就会关闭它。选了稍后的话，可以到“设置 → 连接”关闭。')}</p></div>}
+    {!retiring&&data.shared&&data.shared.state!=='UNSUPPORTED'&&!codexReady(data)&&<p className="first-run-hint">{t('还没有 Codex？先从微软商店安装官方 Codex 并登录，再正常打开它。')}</p>}</>}
 
    {needsRemote&&!reviewRequired&&!!data.hosted&&(!mobile||hostedRenewalRequired(data))&&<div className="first-run-remote"><fieldset><legend>{t('选择连接方式')}</legend>{canTrial&&<label><input type="radio" name="remote-mode" checked={mode==='TRIAL'} onChange={()=>setMode('TRIAL')}/>{t('免费试用 7 天')}</label>}<label><input type="radio" name="remote-mode" checked={mode==='CODE'} onChange={()=>setMode('CODE')}/>{t('已有激活码')}</label>{!mobile&&<label><input type="radio" name="remote-mode" checked={mode==='EXISTING'} onChange={()=>setMode('EXISTING')}/>{t('已有自己的连接地址')}</label>}</fieldset>{mode==='CODE'&&<label>{t('激活码')}<input type="password" autoComplete="off" value={activation} onChange={e=>setActivation(e.target.value)}/></label>}{mode==='EXISTING'&&<label>{t('已部署的 HTTPS 地址')}<input type="url" inputMode="url" value={origin} onChange={e=>setOrigin(e.target.value)} placeholder="https://"/></label>}{!canTrial&&mode==='TRIAL'&&<p>{t('试用当前不可用，请选择上面的其他连接方式。')}</p>}<p className="first-run-hint">{t('地址准备好后会直接显示手机二维码。')}</p></div>}
    {step==='PHONE'&&remote&&!readyPhone&&<div className="first-run-phone">{mobile&&<PhoneQr url={mobile}/>}{preview&&<small>{t('演示二维码，请勿用真实手机扫描')}</small>}<output aria-label={t('一次性配对码')}>{pairExpired?t('已过期'):pair?.code??'——'}</output>{pair&&!pairExpired&&<small>{t('{0} 秒内有效 · 使用一次',Math.max(0,Math.ceil(pair.expiresAt-now/1000)))}</small>}{mobile&&<span className="first-run-phone-url">{mobile}</span>}<p className="first-run-waiting" role="status"><LoaderCircle size={15} className="v4-progress-spinner" aria-hidden/>{t('等待手机登录…')}</p></div>}

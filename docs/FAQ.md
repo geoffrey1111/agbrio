@@ -26,9 +26,11 @@ No. Open it your usual way. Agbrio connects by itself; there is no shared entry,
 
 Change a Goal from Agbrio, launch Codex as administrator, keep tasks running after Codex Desktop quits, or stream token by token. It does not reduce the memory Codex itself uses.
 
+A task sent to a conversation that is not open in Codex runs on a temporary backend owned by Agbrio. Until it finishes, Codex shows that conversation as open in another app, and quitting Agbrio interrupts it. A few seconds after it finishes, choose Retry in Codex. A conversation newly created through Agbrio may not appear in Codex until Codex is reopened.
+
 ### Settings says the old shared backend is still there. What should I do?
 
-Finish your tasks and quit Codex. Agbrio then stops it once with that backend's own guarded disable and connects. If an error code is shown instead, nothing was ended; reopen Agbrio to try again, and report the code if it persists. Do not kill all Node. [Upgrading](SETUP.md#3-upgrading-from-a-version-with-the-shared-connection).
+Confirm the dialog, or use the same action in Settings → Codex. Running tasks are interrupted and not resent, and a Codex window using it needs to be reopened. If you would rather not interrupt anything, finish your tasks and quit Codex, and Agbrio stops it by itself. If an error code is shown instead, nothing was ended; reopen Agbrio to try again, and report the code if it persists. Do not kill all Node. [Upgrading](SETUP.md#3-upgrading-from-a-version-with-the-shared-connection).
 
 ### Codex says a chat is open in another app. What now?
 

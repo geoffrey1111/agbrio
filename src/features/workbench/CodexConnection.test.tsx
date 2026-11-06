@@ -1,5 +1,5 @@
-import {afterEach,expect,it} from "vitest";
-import {cleanup,render,screen} from "@testing-library/react";
+import {afterEach,expect,it,vi} from "vitest";
+import {cleanup,fireEvent,render,screen,waitFor} from "@testing-library/react";
 import {CodexConnection,type CodexConnectionStatus} from "./CodexConnection";
 afterEach(cleanup);
 const show=(status:CodexConnectionStatus)=>render(<CodexConnection status={async()=>status}/>);
@@ -15,10 +15,20 @@ it("waits for a normally opened Codex",async()=>{
  expect(await screen.findByRole("heading",{name:"轻量连接已开启"})).toBeVisible();
  expect(screen.getByText("请正常打开 Codex，Agbrio 会自动连接。")).toBeVisible();
 });
-it("says an old shared backend still in use is left alone and costs the connection for now",async()=>{
- show({enabled:true,ready:false,desktopConnected:false,state:"SHARED_RETIRING"});
- expect(await screen.findByRole("status")).toHaveTextContent("不会中断任务");
- expect(screen.getByRole("status")).toHaveTextContent("暂时连不上 Codex");
+it("offers to stop an old shared backend, only after a second confirmation",async()=>{
+ const retire=vi.fn(async()=>{});
+ render(<CodexConnection status={async()=>({enabled:true,ready:false,desktopConnected:false,state:"SHARED_RETIRING",sharedActiveTurns:1,sharedDesktopConnected:true})} retire={retire}/>);
+ expect(await screen.findByRole("status")).toHaveTextContent("暂时连不上 Codex");
+ fireEvent.click(screen.getByRole("button",{name:"关闭共享后台"}));
+ expect(retire).not.toHaveBeenCalled();
+ expect(await screen.findByText("正在运行的 1 个任务会中断，不会自动重发。")).toBeVisible();
+ fireEvent.click(screen.getByRole("dialog").querySelector(".r2-action")!);
+ await waitFor(()=>expect(retire).toHaveBeenCalledOnce());
+});
+it("reports the stop while it runs",async()=>{
+ show({enabled:true,ready:false,desktopConnected:false,state:"SHARED_STOPPING"});
+ expect(await screen.findByRole("heading",{name:"正在关闭旧的共享后台"})).toBeVisible();
+ expect(screen.queryByRole("button")).toBeNull();
 });
 it("distinguishes a declined Windows consent and shows the code of any other refusal",async()=>{
  const view=show({enabled:true,ready:false,desktopConnected:false,state:"SHARED_RETIREMENT_BLOCKED",detail:"SHARED_UAC_CANCELLED"});

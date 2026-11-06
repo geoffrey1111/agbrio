@@ -2,15 +2,17 @@ import {ConnectionGuide} from "./ConnectionGuides";
 import {t as uiText,useLanguage} from "../../i18n";
 import {useEffect,useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
-export type CodexConnectionStatus={enabled:boolean;ready:boolean;desktopConnected:boolean;state:string;detail?:string|null};
+import {SharedRetirementDialog,retireShared} from "./SharedRetirement";
+export type CodexConnectionStatus={enabled:boolean;ready:boolean;desktopConnected:boolean;state:string;detail?:string|null;sharedActiveTurns?:number|null;sharedDesktopConnected?:boolean|null};
 const nativeStatus=()=>invoke<CodexConnectionStatus>("codex_connection_status");
 /** Nothing to set up: Windows always uses the light connection. This only reports it. */
-export function CodexConnection({status=nativeStatus}:{status?:()=>Promise<CodexConnectionStatus>}){
+export function CodexConnection({status=nativeStatus,retire=retireShared}:{status?:()=>Promise<CodexConnectionStatus>;retire?:()=>Promise<void>}){
  useLanguage();
- const[state,setState]=useState<CodexConnectionStatus|null>(null),[failed,setFailed]=useState(false);
+ const[state,setState]=useState<CodexConnectionStatus|null>(null),[failed,setFailed]=useState(false),[asking,setAsking]=useState(false);
  useEffect(()=>{let alive=true;const check=()=>void status().then(value=>{if(alive){setState(value);setFailed(false);}}).catch(()=>{if(alive)setFailed(true);});check();const timer=setInterval(check,10000);return()=>{alive=false;clearInterval(timer);};},[status]);
  const label=uiText("Codex 连接");
- if(state?.state==="SHARED_RETIRING")return <section className="v4-shared-codex" aria-label={label}><h2>{uiText("正在等待停用旧的共享后台")}</h2><p role="status">{uiText("结束任务并退出 Codex 后，Agbrio 会自动停用它并改用轻量连接，不会中断任务。在此之前 Agbrio 暂时连不上 Codex。")}</p></section>;
+ if(state?.state==="SHARED_RETIRING")return <section className="v4-shared-codex" aria-label={label}><h2>{uiText("旧的共享后台还在运行")}</h2><p role="status">{uiText("关闭后 Agbrio 会改用轻量连接。在此之前 Agbrio 暂时连不上 Codex。任务结束并退出 Codex 后，它也会自动关闭。")}</p><button type="button" onClick={()=>setAsking(true)}>{uiText("关闭共享后台")}</button><SharedRetirementDialog status={state} open={asking} onClose={()=>setAsking(false)} retire={retire}/></section>;
+ if(state?.state==="SHARED_STOPPING")return <section className="v4-shared-codex" aria-label={label}><h2>{uiText("正在关闭旧的共享后台")}</h2><p role="status">{uiText("完成后 Agbrio 会自动连接 Codex。")}</p></section>;
  if(state?.state==="SHARED_RETIREMENT_BLOCKED")return <section className="v4-shared-codex" aria-label={label}><h2>{uiText("旧的共享后台未能停用")}</h2><p role="alert">{uiText(state.detail==="SHARED_UAC_CANCELLED"?"已取消 Windows 授权，旧的共享后台保持原样。":"没有结束任何进程，旧的共享后台保持原样。")} {uiText("在此之前 Agbrio 暂时连不上 Codex。重新打开 Agbrio 后会再试一次。")}</p>{state.detail&&<small>{state.detail}</small>}</section>;
  if(state?.state==="UNSUPPORTED")return <section className="v4-shared-codex" aria-label={label}><h2>{label}</h2><p>{uiText("这个平台使用独立的 Codex 后台，不需要在这里设置。")}</p></section>;
  const connected=state?.state==="LIGHT_CONNECTED";

@@ -7,12 +7,14 @@ import "./styles/web-login.css";
 import "./styles/watch-chat.css";
 import { UnifiedWorkbenchHost } from "./app/UnifiedWorkbenchHost";
 import {DesktopFirstRun} from "./features/onboarding/DesktopFirstRun";
+import {SharedRetirementPrompt} from "./features/workbench/SharedRetirement";
 
 // Desktop entry only. The phone loads `mainMobile` so it never downloads the
 // desktop Host, Tauri bindings or the split-pane layout.
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <DesktopFirstRun><UnifiedWorkbenchHost /></DesktopFirstRun>
+    <SharedRetirementPrompt />
   </StrictMode>,
 );
 

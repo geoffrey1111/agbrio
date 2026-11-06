@@ -53,3 +53,5 @@
 .first-run-remote .first-run-hint{font-size:13px;margin:12px 0 0}
 .first-run-top strong,.first-run-skip,.first-run-progress{white-space:nowrap}
 @media(max-width:560px){.first-run-dots,.first-run-preview-badge{display:none}.first-run-checklist{padding:2px 14px}.first-run-callout{padding:14px}}
+
+.shared-retirement-overlay{z-index:1400}.shared-retirement ul{margin:0;padding-left:20px;display:grid;gap:6px;font-size:14px;line-height:1.5}

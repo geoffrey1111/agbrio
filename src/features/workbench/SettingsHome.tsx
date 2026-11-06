@@ -31,7 +31,7 @@ export function DesktopOverview({api,onNavigate,onPair}:{api:OverviewApi;onNavig
  useEffect(()=>{alive.current=true;void load();const timer=setInterval(()=>{if(document.visibilityState!=='hidden')void load();},15000);return()=>{alive.current=false;clearInterval(timer);};},[api]);
  async function prepare(){if(!api.prepareAdministrator||pending.current)return;pending.current=true;setBusy(true);setNotice('');setError('');try{await api.prepareAdministrator();if(alive.current)setNotice(t('管理员后台已就绪。'));}catch(reason){if(alive.current)setError(t(String(reason).includes('UAC_CANCELLED')?'已取消 Windows 授权，未启动管理员后台。':'管理员后台没有准备好。请到 Pi 子任务页查看后重试。'));}finally{pending.current=false;if(alive.current){setBusy(false);void load();}}}
  const shared=snap?.shared.value,pi=snap?.pi.value,devices=snap?.devices.value,update=snap?.update.value;
- const sharedText=!snap?t('正在读取…'):snap.shared.failed?t('暂时无法读取'):shared?.state==='UNSUPPORTED'?t('这个平台不需要设置'):shared?.state==='SHARED_RETIRING'||shared?.state==='SHARED_RETIREMENT_BLOCKED'?t('旧的共享后台未停用'):shared?.ready&&shared.desktopConnected?t('已接入'):shared?.ready?t('等待打开 Codex'):t('未就绪');
+ const sharedText=!snap?t('正在读取…'):snap.shared.failed?t('暂时无法读取'):shared?.state==='UNSUPPORTED'?t('这个平台不需要设置'):shared?.state==='SHARED_RETIRING'||shared?.state==='SHARED_STOPPING'||shared?.state==='SHARED_RETIREMENT_BLOCKED'?t('旧的共享后台未关闭'):shared?.ready&&shared.desktopConnected?t('已接入'):shared?.ready?t('等待打开 Codex'):t('未就绪');
  const sharedTone=shared?.ready&&shared.desktopConnected?'ok':'muted';
  const piReady=Boolean(pi?.administratorBackend?.ready);
  const piText=!snap?t('正在读取…'):snap.pi.failed?t('暂时无法读取'):!pi?.installed?t('本机尚未安装 Pi'):piReady?t('已就绪'):pi.administratorBackend?.preparing?t('正在准备'):t('未准备');

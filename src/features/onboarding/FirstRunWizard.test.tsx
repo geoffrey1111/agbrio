@@ -78,7 +78,7 @@ it('asks for a normally opened Codex with nothing to quit, reopen or launch',asy
 });
 it('holds the Codex step while an old shared backend is still in use and says why',async()=>{
  const f=setupFixture();f.state.shared={enabled:true,ready:false,desktopConnected:false,state:'SHARED_RETIRING'};render(<FirstRunWizard api={f.api} initial={f.state} preference={CODEX_STEP} storage={storage()} onExit={vi.fn()}/>);
- expect(screen.getByRole('status')).toHaveTextContent('不会中断任务');await clickPrimary();expect(screen.getByRole('alert')).toHaveTextContent('旧的共享后台还没有停用');expect(screen.getByRole('heading',{name:'连接 Codex'})).toBeVisible();
+ expect(screen.getByRole('status')).toHaveTextContent('在弹窗中确认后就会关闭它');await clickPrimary();expect(screen.getByRole('alert')).toHaveTextContent('旧的共享后台还没有关闭');expect(screen.getByRole('heading',{name:'连接 Codex'})).toBeVisible();
 });
 it('reports a platform without the light connection instead of a generic failure',async()=>{
  const f=setupFixture();f.state.shared={enabled:false,ready:false,desktopConnected:false,state:'UNSUPPORTED'};render(<FirstRunWizard api={f.api} initial={f.state} preference={CODEX_STEP} storage={storage()} onExit={vi.fn()}/>);
