@@ -1,9 +1,9 @@
-import type {SharedCodexStatus} from '../workbench/SharedCodexConnection';
+import type {CodexConnectionStatus} from '../workbench/CodexConnection';
 import type {HostedStatus} from '../workbench/HostedConnection';
 export type SetupAgent='CODEX'|'CLAUDE_CODE';
 /** One screen per user goal; background actions inside a goal run in place. */
 export type SetupStep='CHOOSE'|'CODEX'|'PHONE'|'CLAUDE'|'WATCH'|'VERIFY'|'DONE';
-export type SetupSnapshot={shared?:SharedCodexStatus;claudeLoaded?:boolean;mcpUrl?:string|null;hasGrant?:boolean;hosted?:HostedStatus;origin?:string|null;publicReady?:boolean;devices?:{id:string;label:string}[];existingUse?:boolean};
+export type SetupSnapshot={shared?:CodexConnectionStatus;claudeLoaded?:boolean;mcpUrl?:string|null;hasGrant?:boolean;hosted?:HostedStatus;origin?:string|null;publicReady?:boolean;devices?:{id:string;label:string}[];existingUse?:boolean};
 export type SetupPreference={version:1;disposition:'PENDING'|'SKIPPED'|'COMPLETED'|'EXISTING';agents:SetupAgent[];step:SetupStep;needsCheck?:SetupStep};
 export const SETUP_STORAGE_KEY='agbrio.desktop-first-run.v1';
 export const OPEN_SETUP_EVENT='agbrio:open-first-run';

@@ -24,11 +24,9 @@ fn isolated_browser_and_native_manager_host() {
     );
     let manager = std::env::var("CODEX_THREAD_ID").expect("actual current Codex thread identity");
     assert!(uuid::Uuid::parse_str(&manager).is_ok());
-    // This path connects only the existing owner-selected shared backend. It
+    // This path connects only through the named transport. It
     // cannot launch a fallback provider or submit a prompt to the parent.
-    let command = crate::shared_codex::transport_command()
-        .unwrap()
-        .expect("existing shared Codex required");
+    let command = crate::codex_light::live_gate_transport_command();
     let mut adapter =
         crate::codex::adapter::CodexAdapter::start_shared_validation(command, Arc::new(|_| {}))
             .unwrap();

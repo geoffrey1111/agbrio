@@ -22,6 +22,12 @@ try {
  $foreign=Join-Path $links 'Unrelated.lnk'
  $link=$shell.CreateShortcut($foreign);$link.TargetPath=Join-Path $env:WINDIR 'System32/notepad.exe';$link.Save()
  $foreignHash=(Get-FileHash -LiteralPath $foreign).Hash
+ foreach($pair in @(@('Codex (Agbrio shared)','launch.ps1'),@('Codex (return to normal)','return-normal.ps1'))){
+  $link=$shell.CreateShortcut((Join-Path $links ($pair[0]+'.lnk')))
+  $link.TargetPath=Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/powershell.exe'
+  $link.Arguments='-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+(Join-Path $current ('codex-shared\'+$pair[1]))+'"'
+  $link.Save()
+ }
  $binary=Join-Path $root 'fixture.exe'
  $fixture=Join-Path $root 'fixture.nsi'
  $source=@'
@@ -40,6 +46,7 @@ OutFile "__BINARY__"
 !include "__HOOK__"
 Section
  !insertmacro AGBRIO_REPAIR_LINKS "__LINKS__" "__OLD__" "__NEW__"
+ !insertmacro AGBRIO_REMOVE_SHARED_ENTRY "__LINKS__" "__NEW__"
  !insertmacro AGBRIO_CREATE_CANONICAL_ENTRIES "__LINKS__\Desktop" "__LINKS__\Programs" "__NEW__"
 SectionEnd
 '@
@@ -58,10 +65,12 @@ SectionEnd
    $link=$shell.CreateShortcut($file.FullName)
    if($link.TargetPath -ine $newExe -or $link.Arguments -cne '--fixture-preserve'){throw 'REPAIRED_LINK_TARGET_OR_ARGUMENTS_WRONG'}
   }
+  if(Test-Path -LiteralPath (Join-Path $links 'Codex (Agbrio shared).lnk')){throw 'SHARED_ENTRY_NOT_REMOVED'}
+  if(Test-Path -LiteralPath (Join-Path $links 'Codex (return to normal).lnk')){throw 'SHARED_ENTRY_NOT_REMOVED'}
   foreach($canonical in @((Join-Path $links 'Desktop/Agbrio.lnk'),(Join-Path $links 'Programs/Agbrio/Agbrio.lnk'))){if(!(Test-Path -LiteralPath $canonical)){throw 'CANONICAL_LINK_MISSING'};$canonicalLink=$shell.CreateShortcut($canonical);if($canonicalLink.TargetPath -ine $newExe){throw 'CANONICAL_LINK_TARGET_INVALID'};[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($canonicalLink)}
   if((Get-FileHash -LiteralPath $foreign).Hash -cne $foreignHash){throw 'FOREIGN_SHORTCUT_CHANGED'}
  }
- @{productionNSISRepair='PASS';repairedLinks=5;canonicalLinks=2;pathWithSpaces=$true;repeatSafe=$true;argumentsPreserved=$true;unrelatedPreserved=$true;realShellChanges=0}|ConvertTo-Json -Compress
+ @{productionNSISRepair='PASS';sharedEntriesRemoved=2;repairedLinks=5;canonicalLinks=2;pathWithSpaces=$true;repeatSafe=$true;argumentsPreserved=$true;unrelatedPreserved=$true;realShellChanges=0}|ConvertTo-Json -Compress
 } finally {
  if($link){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($link)}
  [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)

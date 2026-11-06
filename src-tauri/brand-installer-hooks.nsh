@@ -49,14 +49,8 @@ Var AgbrioPreviousDirectory
   !insertmacro AGBRIO_REPAIR_LINKS "$APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar" "${previousDirectory}" "$INSTDIR"
 !macroend
 
-; Parameterized directory keeps shortcut operations shared by the real hooks
-; and isolated installation validation; it introduces no installer test switch.
-!macro AGBRIO_INSTALL_SHARED_ENTRY programsDirectory installDirectory
-  CreateDirectory "${programsDirectory}"
-  CreateShortCut "${programsDirectory}\Codex (Agbrio shared).lnk" "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${installDirectory}\codex-shared\launch.ps1"' "${installDirectory}\${MAINBINARYNAME}.exe"
-  CreateShortCut "${programsDirectory}\Codex (return to normal).lnk" "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${installDirectory}\codex-shared\return-normal.ps1"' "${installDirectory}\${MAINBINARYNAME}.exe"
-!macroend
-
+; Earlier versions added these entries. Parameterized directory keeps the removal
+; shared by the real hooks and isolated validation; it adds no installer test switch.
 !macro AGBRIO_REMOVE_EXACT_ENTRY programsDirectory installDirectory entryName scriptName
   ; The PowerShell target is shared by many shortcuts. Verify the exact launcher
   ; arguments too, so removing an old installation preserves a replaced entry.
@@ -142,8 +136,13 @@ Var AgbrioPreviousDirectory
     ; migrating an old link. Always leave these two canonical entrypoints.
     !insertmacro AGBRIO_CREATE_CANONICAL_ENTRIES "$DESKTOP" "$SMPROGRAMS" "$INSTDIR"
   ${EndIf}
-  ; Separate opt-in entry. Never replace the official Codex shortcut/defaults.
-  !insertmacro AGBRIO_INSTALL_SHARED_ENTRY "$SMPROGRAMS\Agbrio" "$INSTDIR"
+  ; Shared Codex is gone. An upgrade leaves no entry pointing at its removed scripts.
+  ; Its data under LOCALAPPDATA stays; the application retires a live backend itself.
+  !insertmacro AGBRIO_REMOVE_SHARED_ENTRY "$SMPROGRAMS\Agbrio" "$INSTDIR"
+  ${If} $AgbrioPreviousDirectory != ""
+    !insertmacro AGBRIO_REMOVE_SHARED_ENTRY "$SMPROGRAMS\Agbrio" "$AgbrioPreviousDirectory"
+  ${EndIf}
+  RMDir /r "$INSTDIR\codex-shared"
   ${If} $AgbrioLegacyMigration == 1
     ReadRegStr $R0 SHCTX "${MANUPRODUCTKEY}" ""
     ${If} $R0 == $AgbrioLegacyDirectory

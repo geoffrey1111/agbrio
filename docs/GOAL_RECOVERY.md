@@ -1,5 +1,7 @@
 # Native Goal status and controls
 
+On Windows the [light connection](CODEX_LIGHT_CONNECTION.md) does not write Goals, so Agbrio shows Goal status there and changes are made in Codex itself. This covers the controls on platforms that keep the independent app-server.
+
 Agbrio0.1.27 synchronizes the existing Codex Goal. It displays native objective,
 status, elapsed accounting, usage and current turn diagnostics, and controls the
 same Goal through the native protocol. It does not implement another Goal engine.

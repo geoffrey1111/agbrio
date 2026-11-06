@@ -36,7 +36,7 @@ export interface UnifiedWorkbenchProps {
   piSettingsPanel?:ReactNode;
   quotaPanel?:ReactNode;
   updatePanel?:ReactNode;
-  /** Settings › 连接 › Codex 共享连接 (desktop). Falls back to runtimeAddon. */
+  /** Settings › 连接 › Codex 连接 (desktop). Falls back to runtimeAddon. */
   codexConnectionPanel?:ReactNode;
   /** Settings › 运行保护 (desktop). */
   runtimeProtectionPanel?:ReactNode;

@@ -67,7 +67,7 @@ fn sets(d:&tempfile::TempDir)->Vec<Value>{fs::read_to_string(d.path().join("rpc.
 fn real_shared_native_goal_control_once(){
  assert_eq!(std::env::var("AGBRIO_REAL_GOAL_CONTROL_GATE").as_deref(),Ok("1"));
  let root=std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("runtime/mcp-events-20261010/goal-native-reference").join(format!("native-goal-{}",uuid::Uuid::new_v4()));fs::create_dir_all(&root).unwrap();
- let command=crate::shared_codex::transport_command().unwrap().expect("Existing shared transport required; never launch/restart a backend");
+ let command=crate::codex_light::live_gate_transport_command();
  let mut a=crate::codex::adapter::CodexAdapter::start_shared_validation(command,Arc::new(|_|{})).unwrap();a.initialize().unwrap();
  let response=a.request("thread/start",json!({"cwd":root.to_string_lossy(),"model":"gpt-6-luna","config":{"model_reasoning_effort":"low"},"approvalPolicy":"never","sandbox":"read-only"})).unwrap();let id=response["thread"]["id"].as_str().unwrap().to_string();let cwd=response["thread"]["cwd"].as_str().unwrap().to_string();
  let objective="Isolated Agbrio native Goal control validation. Do not use tools, files, network or other chats. Reply only AGBRIO_GOAL_CONTROL_NATIVE_ACK. The validation controller will pause this Goal; do not expand the task.";

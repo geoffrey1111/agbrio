@@ -8,9 +8,9 @@ import type {FirstRunApi} from './firstRunApi';
 afterEach(cleanup);
 function storage(){const values=new Map<string,string>();return {getItem:(key:string)=>values.get(key)??null,setItem:(key:string,value:string)=>{values.set(key,value);}};}
 export function setupFixture(missingAddress=false){
- const state:SetupSnapshot={shared:{enabled:false,ready:false,desktopConnected:false,state:'DISABLED'},claudeLoaded:false,hasGrant:false,mcpUrl:missingAddress?null:'https://phone.fixture.invalid/mcp',origin:missingAddress?null:'https://phone.fixture.invalid',publicReady:!missingAddress,devices:[],existingUse:false,hosted:{available:true,enabled:false,state:'DISABLED',origin:null,expiresAt:null,trialAvailable:true}};
+ const state:SetupSnapshot={shared:{enabled:true,ready:true,desktopConnected:true,state:'LIGHT_CONNECTED'},claudeLoaded:false,hasGrant:false,mcpUrl:missingAddress?null:'https://phone.fixture.invalid/mcp',origin:missingAddress?null:'https://phone.fixture.invalid',publicReady:!missingAddress,devices:[],existingUse:false,hosted:{available:true,enabled:false,state:'DISABLED',origin:null,expiresAt:null,trialAvailable:true}};
  const watched:{threadId:string;enabled:boolean}[]=[];
- const api:FirstRunApi={candidates:vi.fn(async()=>[{id:'demo-codex',label:'Codex 测试对话'},{id:'claude_code:demo',label:'Claude 测试对话'}]),watches:vi.fn(async()=>watched.slice()),watch:vi.fn(async threadId=>{watched.push({threadId,enabled:true});}),snapshot:vi.fn(async()=>({...state,devices:state.devices?.slice()})),devices:vi.fn(async()=>state.devices?.slice()),prepareCodex:vi.fn(async()=>state.shared={enabled:true,ready:true,desktopConnected:false,state:'PREPARED'}),openCodex:vi.fn(async()=>state.shared={enabled:true,ready:true,desktopConnected:true,state:'CONNECTED'}),installClaude:vi.fn(async()=>({phase:'WAITING_SESSION' as const,writesEnabled:false})),trial:vi.fn(async()=>{state.origin='https://phone.fixture.invalid';state.mcpUrl=state.origin+'/mcp';state.publicReady=true;return state.hosted={available:true,enabled:true,state:'READY',origin:state.origin,expiresAt:Date.now()+7*86400000,kind:'TRIAL',trialAvailable:false};}),redeem:vi.fn(),configure:vi.fn(),retryConnection:vi.fn(),pairCode:vi.fn(async()=>({code:'123456',expiresAt:Date.now()/1000+180})),grant:vi.fn(async()=>{state.hasGrant=true;})};return {state,api};
+ const api:FirstRunApi={candidates:vi.fn(async()=>[{id:'demo-codex',label:'Codex 测试对话'},{id:'claude_code:demo',label:'Claude 测试对话'}]),watches:vi.fn(async()=>watched.slice()),watch:vi.fn(async threadId=>{watched.push({threadId,enabled:true});}),snapshot:vi.fn(async()=>({...state,devices:state.devices?.slice()})),devices:vi.fn(async()=>state.devices?.slice()),installClaude:vi.fn(async()=>({phase:'WAITING_SESSION' as const,writesEnabled:false})),trial:vi.fn(async()=>{state.origin='https://phone.fixture.invalid';state.mcpUrl=state.origin+'/mcp';state.publicReady=true;return state.hosted={available:true,enabled:true,state:'READY',origin:state.origin,expiresAt:Date.now()+7*86400000,kind:'TRIAL',trialAvailable:false};}),redeem:vi.fn(),configure:vi.fn(),retryConnection:vi.fn(),pairCode:vi.fn(async()=>({code:'123456',expiresAt:Date.now()/1000+180})),grant:vi.fn(async()=>{state.hasGrant=true;})};return {state,api};
 }
 const primary=()=>document.querySelector('.first-run-primary') as HTMLButtonElement;
 async function clickPrimary(){await act(async()=>{fireEvent.click(primary());});}
@@ -18,7 +18,7 @@ function oneAction(){expect(document.querySelectorAll('.first-run-primary')).toH
 it('shows automatically for a new desktop profile, skips once and can reopen without remounting the workbench',async()=>{
  const s=storage(),f=setupFixture(),child=vi.fn();function Workbench(){child();return <p>Workbench ready</p>;}
  const view=render(<StrictMode><DesktopFirstRun native api={f.api} storage={s}><Workbench/></DesktopFirstRun></StrictMode>);
- expect(await screen.findByRole('dialog')).toBeVisible();expect(child).not.toHaveBeenCalled();oneAction();expect(f.api.prepareCodex).not.toHaveBeenCalled();expect(f.api.installClaude).not.toHaveBeenCalled();expect(f.api.trial).not.toHaveBeenCalled();expect(f.api.pairCode).not.toHaveBeenCalled();
+ expect(await screen.findByRole('dialog')).toBeVisible();expect(child).not.toHaveBeenCalled();oneAction();expect(f.api.installClaude).not.toHaveBeenCalled();expect(f.api.trial).not.toHaveBeenCalled();expect(f.api.pairCode).not.toHaveBeenCalled();
  fireEvent.click(screen.getByRole('button',{name:'跳过引导'}));expect(await screen.findByText('Workbench ready')).toBeVisible();expect(readSetupPreference(s)?.disposition).toBe('SKIPPED');view.unmount();
  render(<DesktopFirstRun native api={f.api} storage={s}><p>Existing workbench</p></DesktopFirstRun>);expect(screen.queryByRole('dialog')).toBeNull();act(()=>{window.dispatchEvent(new Event(OPEN_SETUP_EVENT));});expect(await screen.findByRole('dialog')).toBeVisible();expect(screen.getByText('Existing workbench')).toBeInTheDocument();
 });
@@ -70,19 +70,23 @@ it('gives a usable fallback when copying the read check fails',async()=>{
  await waitFor(()=>expect(primary()).toHaveTextContent('复制验证指令'));await clickPrimary();
  expect((screen.getByRole('textbox',{name:'手动复制读取验证指令'}) as HTMLTextAreaElement).value).toBe(READ_CHECK);
 });
-it('prepares and opens shared Codex in one action, and never relaunches an unconfirmed window',async()=>{
- const f=setupFixture();vi.mocked(f.api.openCodex).mockResolvedValue({enabled:true,ready:true,desktopConnected:false,state:'UNKNOWN'});render(<FirstRunWizard api={f.api} initial={f.state} preference={{version:1,disposition:'PENDING',agents:['CODEX'],step:'CODEX'}} storage={storage()} onExit={vi.fn()}/>);
- await clickPrimary();expect(f.api.prepareCodex).toHaveBeenCalledOnce();expect(f.api.openCodex).toHaveBeenCalledOnce();expect(primary()).toHaveTextContent('检查当前状态');
- await clickPrimary();expect(f.api.openCodex).toHaveBeenCalledOnce();expect(screen.getByRole('alert')).toHaveTextContent('不会重复打开');
+const CODEX_STEP={version:1 as const,disposition:'PENDING' as const,agents:['CODEX' as const],step:'CODEX' as const};
+it('asks for a normally opened Codex with nothing to quit, reopen or launch',async()=>{
+ const f=setupFixture();f.state.shared={enabled:true,ready:true,desktopConnected:false,state:'LIGHT_WAITING'};render(<FirstRunWizard api={f.api} initial={f.state} preference={CODEX_STEP} storage={storage()} onExit={vi.fn()}/>);
+ expect(primary()).toHaveTextContent('检查 Codex 连接');await clickPrimary();expect(screen.getByRole('alert')).toHaveTextContent('还没有检测到 Codex');
+ f.state.shared={enabled:true,ready:true,desktopConnected:true,state:'LIGHT_CONNECTED'};await clickPrimary();expect(screen.getByRole('heading',{name:'连接你的手机'})).toBeVisible();
 });
-it('explains how to quit ordinary Codex in place and retries only after the owner acts',async()=>{
- const f=setupFixture();vi.mocked(f.api.openCodex).mockRejectedValueOnce(Error('SHARED_DESKTOP_CLOSE_REQUIRED'));render(<FirstRunWizard api={f.api} initial={f.state} preference={{version:1,disposition:'PENDING',agents:['CODEX'],step:'CODEX'}} storage={storage()} onExit={vi.fn()}/>);
- await clickPrimary();expect(screen.getByText('请先退出普通 Codex')).toBeVisible();expect(primary()).toHaveTextContent('已退出，打开共享 Codex');
- await clickPrimary();expect(f.api.openCodex).toHaveBeenCalledTimes(2);expect(screen.getByRole('heading',{name:'连接你的手机'})).toBeVisible();
+it('holds the Codex step while an old shared backend is still in use and says why',async()=>{
+ const f=setupFixture();f.state.shared={enabled:true,ready:false,desktopConnected:false,state:'SHARED_RETIRING'};render(<FirstRunWizard api={f.api} initial={f.state} preference={CODEX_STEP} storage={storage()} onExit={vi.fn()}/>);
+ expect(screen.getByRole('status')).toHaveTextContent('不会中断任务');await clickPrimary();expect(screen.getByRole('alert')).toHaveTextContent('旧的共享后台还没有停用');expect(screen.getByRole('heading',{name:'连接 Codex'})).toBeVisible();
+});
+it('reports a platform without the light connection instead of a generic failure',async()=>{
+ const f=setupFixture();f.state.shared={enabled:false,ready:false,desktopConnected:false,state:'UNSUPPORTED'};render(<FirstRunWizard api={f.api} initial={f.state} preference={CODEX_STEP} storage={storage()} onExit={vi.fn()}/>);
+ await clickPrimary();expect(screen.getByRole('alert')).toHaveTextContent('当前平台尚不支持此项');
 });
 it('Codex-only setup pairs the phone automatically and never installs Claude or grants MCP access',async()=>{
- const f=setupFixture(),exit=vi.fn();render(<FirstRunWizard api={f.api} storage={storage()} onExit={exit}/>);fireEvent.click(screen.getByLabelText(/Codex共享/));await clickPrimary();
- expect(screen.getByRole('heading',{name:'连接 Codex'})).toBeVisible();await clickPrimary();
+ const f=setupFixture(),exit=vi.fn();f.state.shared={enabled:true,ready:true,desktopConnected:false,state:'LIGHT_WAITING'};render(<FirstRunWizard api={f.api} storage={storage()} onExit={exit}/>);fireEvent.click(screen.getByLabelText(/Codex连接/));await clickPrimary();
+ expect(screen.getByRole('heading',{name:'连接 Codex'})).toBeVisible();f.state.shared={enabled:true,ready:true,desktopConnected:true,state:'LIGHT_CONNECTED'};await clickPrimary();
  expect(screen.getByRole('heading',{name:'连接你的手机'})).toBeVisible();await waitFor(()=>expect(f.api.pairCode).toHaveBeenCalledOnce());expect(await screen.findByText('123456')).toBeVisible();
  f.state.devices=[{id:'phone',label:'iPhone'}];await waitFor(()=>expect(primary()).toHaveTextContent('继续'),{timeout:5000});await clickPrimary();
  expect(screen.getByRole('heading',{name:'选择要在手机上跟进的对话'})).toBeVisible();expect(await screen.findByLabelText('Codex 测试对话')).toBeChecked();expect(screen.queryByLabelText('Claude 测试对话')).toBeNull();
@@ -94,16 +98,13 @@ it('needs an explicit trial choice, then shows the QR code on the same screen',a
  expect(f.api.trial).not.toHaveBeenCalled();expect(primary()).toHaveTextContent('开启 7 天免费试用');await clickPrimary();
  expect(f.api.trial).toHaveBeenCalledOnce();expect(f.api.pairCode).toHaveBeenCalledOnce();expect(screen.getByRole('img',{name:'手机扫码打开 Agbrio'})).toBeVisible();expect(screen.getByText('123456')).toBeVisible();
 });
-it('preserves goal order and performs a read-only inspection before any uncertain retry',async()=>{
+it('preserves goal order',()=>{
  expect(setupPlan(['CLAUDE_CODE','CODEX'])).toEqual(['CHOOSE','CODEX','PHONE','CLAUDE','WATCH','VERIFY','DONE']);
- const f=setupFixture();vi.mocked(f.api.prepareCodex).mockRejectedValue(Error('SHARED_CONNECTION_UNCERTAIN'));render(<FirstRunWizard api={f.api} storage={storage()} onExit={vi.fn()}/>);fireEvent.click(screen.getByLabelText(/Codex共享/));await clickPrimary();await clickPrimary();expect(f.api.prepareCodex).toHaveBeenCalledOnce();
- f.state.shared={enabled:false,ready:false,desktopConnected:false,state:'UNKNOWN'};await clickPrimary();expect(f.api.prepareCodex).toHaveBeenCalledOnce();expect(screen.getByRole('alert')).toHaveTextContent('不会重复启动');
- f.state.shared={enabled:false,ready:false,desktopConnected:false,state:'DISABLED'};await clickPrimary();expect(screen.getByRole('alert')).toHaveTextContent('下一次点击将重新准备');expect(f.api.prepareCodex).toHaveBeenCalledOnce();
 });
 it('resumes an older saved step on its goal screen and never stores the one-use pairing code',async()=>{
  const f=setupFixture(),s=storage();s.setItem(SETUP_STORAGE_KEY,JSON.stringify({version:1,disposition:'PENDING',agents:['CODEX'],step:'PHONE_PAIR'}));expect(readSetupPreference(s)?.step).toBe('PHONE');
  render(<DesktopFirstRun native api={f.api} storage={s}><p>Main</p></DesktopFirstRun>);expect(await screen.findByRole('heading',{name:'连接你的手机'})).toBeVisible();await waitFor(()=>expect(f.api.pairCode).toHaveBeenCalled());
- expect(s.getItem(SETUP_STORAGE_KEY)).not.toContain('123456');expect(f.api.openCodex).not.toHaveBeenCalled();
+ expect(s.getItem(SETUP_STORAGE_KEY)).not.toContain('123456');
 });
 it('offers optional home-screen guidance after pairing and a fresh sign-in code without retaining it',async()=>{
  const f=setupFixture(),s=storage();f.state.devices=[{id:'phone',label:'iPhone'}];render(<FirstRunWizard api={f.api} initial={f.state} preference={{version:1,disposition:'PENDING',agents:['CODEX'],step:'PHONE'}} storage={s} onExit={vi.fn()}/>);
@@ -121,7 +122,7 @@ it('does not claim another trial after an uncertain activation, including after 
  render(<FirstRunWizard api={f.api} initial={f.state} preference={readSetupPreference(s)} storage={s} onExit={vi.fn()}/>);await clickPrimary();expect(f.api.trial).toHaveBeenCalledOnce();
 });
 it('serializes rapid clicks on a mutating action',async()=>{
- const f=setupFixture();let finish!:(s:NonNullable<SetupSnapshot['shared']>)=>void;vi.mocked(f.api.prepareCodex).mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));render(<FirstRunWizard api={f.api} storage={storage()} onExit={vi.fn()}/>);fireEvent.click(screen.getByLabelText(/Codex共享/));await clickPrimary();
- const button=primary();act(()=>{fireEvent.click(button);fireEvent.click(button);});await waitFor(()=>expect(f.api.prepareCodex).toHaveBeenCalledOnce());expect(screen.getByRole('button',{name:'跳过引导'})).toBeDisabled();
- await act(async()=>{finish({enabled:true,ready:true,desktopConnected:false,state:'PREPARED'});});expect(f.api.prepareCodex).toHaveBeenCalledOnce();
+ const f=setupFixture(true);let finish!:()=>void;vi.mocked(f.api.trial).mockImplementation(()=>new Promise(resolve=>{finish=()=>resolve({available:true,enabled:true,state:'READY',origin:'https://phone.fixture.invalid',expiresAt:Date.now()+1000,kind:'TRIAL',trialAvailable:false});}));render(<FirstRunWizard api={f.api} initial={f.state} preference={{version:1,disposition:'PENDING',agents:['CODEX'],step:'PHONE'}} storage={storage()} onExit={vi.fn()}/>);
+ const button=primary();act(()=>{fireEvent.click(button);fireEvent.click(button);});await waitFor(()=>expect(f.api.trial).toHaveBeenCalledOnce());expect(screen.getByRole('button',{name:'跳过引导'})).toBeDisabled();
+ await act(async()=>{finish();});expect(f.api.trial).toHaveBeenCalledOnce();
 });

@@ -44,4 +44,4 @@ outside these signed installer bytes. No live task, shared process, tunnel or
 account security configuration is changed by publication.
 
 See [setup](SETUP.md), [build instructions](BUILD.md), and the chronological
-[shared-connection evidence](SHARED_CODEX_RECOVERY.md).
+shared-connection evidence (the shared connection has since been removed).

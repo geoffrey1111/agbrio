@@ -38,7 +38,6 @@
     "resources": {
       "../dist": "dist",
       "resources/web-availability": "web-availability",
-      "resources/codex-shared": "codex-shared",
       "resources/hosted-relay": "hosted-relay",
       "resources/mcp-dns": "mcp-dns",
       "../tools/claude-code-plugin": "claude-code-plugin",

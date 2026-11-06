@@ -36,6 +36,7 @@ export function LocalSafetySettings({api=localSafetyApi,monitor}:{api?:typeof lo
  const changed=!!draft&&JSON.stringify(draft)!==JSON.stringify(status?.settings);
  return <section className="v4-shared-codex local-safety-settings" aria-label={t('运行保护')}><h2>{t('运行保护')}</h2>{draft&&<>
   <label><input type="checkbox" checked={draft.recoveryEnabled} disabled={busy} onChange={e=>{setDraft({...draft,recoveryEnabled:e.target.checked});setSaved(false);}}/> {t('自动恢复 Codex 模型故障')}</label>
+  <p>{t('轻量连接不支持 Goal，这一项在 Windows 上不生效。')}</p>
   <p>{t('仅自动恢复已有原生目标（Goal）的监听对话。目标因明确的临时模型故障阻塞后等待 60 秒，30 分钟内最多恢复 2 次。没有 Goal 的普通对话仍需在 Codex 中重试；手动暂停、额度不足和待决策不会自动恢复。')}</p>
   <ResourceMonitorSettings api={monitor} autoRead onObservation={s=>setCollectorRunning(s.running)}/>
   {collectorRunning!==null&&<p className="local-safety-runtime" data-running={collectorRunning} role="status">{t(collectorRunning?'资源采集正在运行':'资源采集已停止：即使已绑定对话，也不会产生新的告警。请展开上方监测设置恢复。')}</p>}

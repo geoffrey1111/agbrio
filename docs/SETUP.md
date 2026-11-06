@@ -10,50 +10,37 @@ Use the [latest Windows release](https://github.com/geoffrey1111/agbrio/releases
 
 1. Use Windows x64 with your own official Windows Store Codex Desktop. Complete official installation/login first if needed. Agbrio does not bundle Desktop or provide an account/quota.
 2. Download the installer from the selected release. Compare `Get-FileHash -Algorithm SHA256 -LiteralPath 'full installer path'` with its `SHA256SUMS.txt`; stop on mismatch.
-3. Save work. Quit Agbrio through its tray menu before updating; do not run two instances. If switching Codex modes, finish tasks and exit Desktop normally at that point. Never force-stop a working task.
+3. Save work. Quit Agbrio through its tray menu before updating; do not run two instances. Never force-stop a working task.
 4. Install while retaining data, login, Bridges, drafts and pairing. Personally review Windows confirmations. The updater `.sig` is not a Windows Authenticode signature and does not promise no SmartScreen warning.
-5. Open Agbrio and check Settings/About. The app installs **Codex (Agbrio shared)** and **Codex (return to normal)** in the Start Menu.
+5. Open Agbrio and check Settings/About.
 
 Closing the Agbrio window normally leaves the Host in the tray; quitting there stops it. Remote access needs the computer awake and online. Settings → Language offers English, 简体中文, 繁體中文 or system default. Desktop and phone retain their own choice; messages are not translated. Japanese/Korean currently have README introductions only.
 
-## 2. Why ordinary Codex used to open first
+## 2. How Agbrio connects to Codex
 
-Official Codex Desktop is your existing application. Agbrio Host provides local Bridge/API/mobile service. Shared Codex starts the official Desktop against the checked shared backend so Desktop and Router can continue the same work.
+Official Codex Desktop is your existing application. Agbrio Host provides local Bridge/API/mobile service. On Windows the Host connects by itself: open Codex as you normally do, from any entry. There is nothing to prepare, no quit-and-reopen, no special shortcut and no resident background process. Settings → Codex shows the actual state.
 
-Older discovery used a running native backend. Preparation and switching were separate: an ordinary Desktop already owns its backend, which cannot safely be replaced underneath active work. It had to exit before shared startup.
+This is an alpha compatibility integration, not an official OpenAI remote-control feature or an ordinary MCP connection. Interface changes may make it fail closed. [How the connection works and what it cannot do](CODEX_LIGHT_CONNECTION.md): changing a Goal from Agbrio, administrator launch and tasks continuing after Desktop quits are not available.
 
-**rc.57 discovers and verifies the registered official installation while Desktop is closed. After official installation/login, an ordinary-open → prepare → close loop is no longer required on each use.** This is an alpha compatibility integration, not an official OpenAI remote-control feature or an ordinary MCP connection. Interface changes may make it fail closed.
+Connected Codex, paired phone and authorized assistant are three different checks.
 
-Prepared backend, connected Desktop, paired phone and authorized assistant are four different checks.
+## 3. Upgrading from a version with the shared connection
 
-## 3. First shared startup (rc.57)
+Earlier versions used a resident shared backend and Start Menu entries for it. The upgrade removes those entries. If that backend is still running, Agbrio stops it once using the backend's own guarded disable:
 
-### Independent Start Menu route
+- While it has an active task or a connected Codex window it is left alone, and Settings → Codex says so. Finish your tasks and quit Codex; Agbrio then finishes on its own. Agbrio cannot reach Codex until then.
+- An administrator backend asks for Windows consent first. If you decline, or the disable refuses for another reason, nothing is ended, the code is shown in Settings → Codex, and Agbrio tries again the next time it opens.
 
-1. Ensure official installation/login is ready.
-2. If ordinary Desktop is running, save work, let tasks finish and exit the whole app normally. Closing one window may leave a background instance. Do not kill all Node processes.
-3. Open **Codex (Agbrio shared)**. It checks the install, native tools and existing owner before starting the official app. The Agbrio window need not be open first.
-4. Run Agbrio Host for Bridge/mobile/assistant access. In Settings → Codex, verify **Desktop connected to shared connection** (`Desktop 已接入共享连接`).
+Its files under `%LOCALAPPDATA%\AIWorkRouter\codex-shared` stay on disk. Never kill all Node processes to speed this up.
 
-### Agbrio settings route
-
-With ordinary Desktop exited, choose Settings → Codex → **Prepare shared connection** (`准备共享连接`), then **Open shared Codex** (`打开共享 Codex`). **Shared connection prepared** (`共享连接已准备好`) only means backend-ready; wait for actual Desktop-connected status.
-
-Active-task, still-running Desktop, unknown identity or native-tool errors are stop/diagnose conditions. Keep the exact code and stage; do not click repeatedly or terminate unrelated work. See [FAQ](FAQ.md).
-
-## 4. Daily startup, reboot, official updates and fallback
+## 4. Daily startup, reboot and official updates
 
 | Situation | Action |
 | --- | --- |
-| Use shared mode again | Open **Codex (Agbrio shared)** directly. No ordinary-first loop or Agbrio-window prerequisite. Host must still run for Bridge/mobile. |
-| Reboot | Sign into the same Windows user and use the shared entry. Do not recreate all Bridges or pairing. Automatic startup is not guaranteed. |
-| Open official/taskbar icon | Official startup remains unchanged; it is not rebound to shared mode. Pin/use the shared entry separately. |
-| Ordinary Desktop already open | Finish work and exit normally before switching. No competing writer around active work. |
-| Official Codex update | Update through official channels. Idle shared startup rediscovers/checks components. No active-backend hot-swap or guarantee for every future version. |
-| Shared runtime update pending | Finish work, exit shared Desktop, disable, then prepare/open again. Retain failures rather than looping. |
-| Return to ordinary Codex | Save work, exit shared Desktop, use **Codex (return to normal)** or **Disable shared connection**. After confirmed disable, use your original official entry. |
-
-The independent return entry does not need the Agbrio window. Unreachable-owner recovery requires explicit local confirmation, default No, and may interrupt unfinished shared work. Only proven instance/process creation/ancestry identities are eligible; uncertainty is retained and reported. Never kill all Node, erase the profile, replay uncertain sends or fill a missing helper with an arbitrary downloaded executable.
+| Daily use | Open Codex your usual way. The Host must run for Bridge/mobile. |
+| Reboot | Sign into the same Windows user. Do not recreate Bridges or pairing. Automatic startup is not guaranteed. |
+| Official Codex update | Update through official channels. If the new version's private interface differs, sends to threads Codex holds stop rather than guess; reads continue. No guarantee for every future version. |
+| A chat "opens in another app" | A task started from your phone is running on it. It opens once that task ends. |
 
 ## 5. Create a Bridge and send one handoff
 
@@ -73,13 +60,13 @@ Deleting a Bridge removes local association, not native chats. A deleted Bridge 
 
 Monitoring follows a single native chat without a two-ended Bridge. Pause does not delete it; paused entries sort below active entries, with order stable during a visit. Notifications link to exact chats; historic notifications and dots are not delivery receipts.
 
-For supported Codex question cards, choose or supplement an answer after checking the role/request. Unsupported approvals/actions stay in the native app. Goal status synchronizes the native objective and accounting; Goal, turn, pending decision and send states differ. Pause/resume only supported states of the same Goal, never recreate or enlarge its budget. [Goal controls](GOAL_RECOVERY.md).
+For supported Codex question cards, choose or supplement an answer after checking the role/request. Unsupported approvals/actions stay in the native app. Goal status synchronizes the native objective and accounting; Goal, turn, pending decision and send states differ. On Windows, change a Goal in Codex itself; the light connection does not write Goals. [Goal controls](GOAL_RECOVERY.md).
 
 An **AI assistant handled** transition label does not replace the independent receipt. An executing target can still show its previous complete reply; do not treat it as new work.
 
 ## 7. Add a phone (optional)
 
-1. Keep Windows, Agbrio Host and required shared/provider connections awake and online. PWA installation does not move the backend to the phone.
+1. Keep Windows, Agbrio Host and required provider connections awake and online. PWA installation does not move the backend to the phone.
 2. Settings → Devices: select your own HTTPS/Cloudflare/Tailscale entrance or an optional separately supplied hosted code. Self-deployment requires no code.
 3. Use **Copy deployment instruction** for the provider/actual port. Verify HTTPS reaches this exact Host before saving; never expose unauthenticated chat access or share credentials.
 4. Open the displayed mobile URL, generate a desktop pairing code and enter it there. Do not use someone else's installation/code.
@@ -111,7 +98,6 @@ Authenticated owner text replies require plugin 0.1.3 actually advertising manua
 
 - **Windows:** check app updates or use the latest release page. Keep data; 0.1.34 is historical.
 - **Phone interface:** use About's interface-update control. Web-shell updates do not update Windows Host. Do not clear pairing/drafts to update.
-- **Shared recovery:** use section 4's guarded return/disable flow; no all-Node kills, profile copy, certificate change or uncertain-send replay.
 - **Provider security challenge:** stop automated navigation/refresh/submit. The owner clears it; no cookie copying, identity rotation or retry loop.
 - **Feedback:** include Agbrio/Codex/Windows versions, entry, connection type, failing step, exact error/time and active-work status. Redact private text, username paths, full callback URLs, tokens, codes and keys. [Report a bug](https://github.com/geoffrey1111/agbrio/issues/new?template=bug_report.yml).
 

@@ -26,7 +26,7 @@ body:
     attributes:
       label: Connection / 哪条连接出错
       options:
-        - Shared Codex / 共享 Codex
+        - Codex connection / Codex 连接
         - Phone pairing or HTTPS / 手机配对或入口
         - Assistant MCP or Events / 助手连接或事件
         - Claude Code
@@ -38,7 +38,7 @@ body:
     attributes:
       label: Exact error and failing step / 原始错误与失败步骤
       description: Include the error code, approximate time, startup entry used and whether a task is active. Do not include private paths, callback URLs or credentials.
-      placeholder: "Prepare shared connection / Open shared Codex / Pair phone; SHARED_...; time; active task yes/no"
+      placeholder: "Codex connection / Pair phone; error code; time; active task yes/no"
   - type: textarea
     id: steps
     attributes:

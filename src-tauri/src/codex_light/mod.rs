@@ -20,6 +20,8 @@ mod hub;
 mod ipc;
 #[cfg(windows)]
 mod native_files;
+#[cfg(windows)]
+pub(crate) mod retirement;
 #[cfg(all(windows, test))]
 mod host_live;
 #[cfg(all(windows, test))]
@@ -39,61 +41,41 @@ pub fn run_if_requested() -> bool {
     true
 }
 
-/// Off by default until the product surface and owner acceptance land. Shared stays
-/// first, because a Host must never run both connections.
+/// The only connection on Windows. Other platforms keep their independent app-server,
+/// which is also the path the Host's unit tests exercise on every platform.
 pub(crate) fn enabled() -> bool {
+    cfg!(all(windows, not(test)))
+}
+
+/// What first-run and settings read. `enabled` says this platform uses the light
+/// connection, never that Desktop is open.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Status {
+    pub enabled: bool,
+    pub ready: bool,
+    pub desktop_connected: bool,
+    pub state: String,
+    pub detail: Option<String>,
+}
+
+pub(crate) fn status() -> Status {
+    let waiting = |state: &str, detail: Option<String>| Status { enabled: enabled(), ready: false, desktop_connected: false, state: state.into(), detail };
     #[cfg(windows)]
     {
-        if std::env::var_os("AGBRIO_CODEX_LIGHT").is_some_and(|value| value == "1") {
-            return true;
+        match retirement::phase() {
+            Some(retirement::Phase::Waiting) => waiting("SHARED_RETIRING", None),
+            Some(retirement::Phase::Blocked(code)) => waiting("SHARED_RETIREMENT_BLOCKED", Some(code)),
+            None => {
+                let reachable = desktop_reachable();
+                Status { enabled: true, ready: true, desktop_connected: reachable, state: if reachable { "LIGHT_CONNECTED" } else { "LIGHT_WAITING" }.into(), detail: None }
+            }
         }
-        std::env::var_os("LOCALAPPDATA")
-            .map(|root| std::path::PathBuf::from(root).join("AIWorkRouter/codex-light.json"))
-            .and_then(|path| std::fs::read(path).ok())
-            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-            .is_some_and(|value| value["enabled"] == true)
     }
     #[cfg(not(windows))]
     {
-        false
+        waiting("UNSUPPORTED", None)
     }
-}
-
-/// Owner desktop choice only; no phone or MCP path reaches this.
-pub(crate) fn set_enabled(enabled: bool) -> Result<(), String> {
-    #[cfg(windows)]
-    {
-        let root = std::env::var_os("LOCALAPPDATA").ok_or("CODEX_LIGHT_SETTINGS_UNAVAILABLE")?;
-        write_preference(&std::path::PathBuf::from(root).join("AIWorkRouter"), enabled)
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = enabled;
-        Err("CODEX_LIGHT_UNSUPPORTED_PLATFORM".into())
-    }
-}
-
-#[cfg(windows)]
-fn write_preference(directory: &std::path::Path, enabled: bool) -> Result<(), String> {
-    use std::io::Write;
-    std::fs::create_dir_all(directory).map_err(|_| "CODEX_LIGHT_SETTINGS_UNAVAILABLE")?;
-    let path = directory.join("codex-light.json");
-    if std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.file_type().is_symlink() || meta.is_dir()) {
-        return Err("CODEX_LIGHT_SETTINGS_INVALID".into());
-    }
-    let temporary = directory.join(format!(".codex-light-{}.tmp", uuid::Uuid::new_v4()));
-    let written = (|| -> std::io::Result<()> {
-        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&temporary)?;
-        file.write_all(serde_json::json!({"enabled":enabled}).to_string().as_bytes())?;
-        file.sync_all()?;
-        drop(file);
-        std::fs::rename(&temporary, &path)
-    })();
-    if written.is_err() {
-        let _ = std::fs::remove_file(&temporary);
-        return Err("CODEX_LIGHT_SETTINGS_UNAVAILABLE".into());
-    }
-    Ok(())
 }
 
 /// Whether Desktop's pipe exists. Listing the namespace opens no connection.
@@ -120,21 +102,12 @@ pub(crate) fn transport_command() -> Result<std::process::Command, String> {
     Ok(command)
 }
 
-#[cfg(all(windows, test))]
-mod preference_tests {
-    #[test]
-    fn the_preference_round_trips_and_refuses_a_directory_in_its_place() {
-        let root = tempfile::tempdir().unwrap();
-        super::write_preference(root.path(), true).unwrap();
-        let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(root.path().join("codex-light.json")).unwrap()).unwrap();
-        assert_eq!(saved["enabled"], true);
-        super::write_preference(root.path(), false).unwrap();
-        let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(root.path().join("codex-light.json")).unwrap()).unwrap();
-        assert_eq!(saved["enabled"], false);
-        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1, "no temporary file is left behind");
-
-        let other = tempfile::tempdir().unwrap();
-        std::fs::create_dir(other.path().join("codex-light.json")).unwrap();
-        assert!(super::write_preference(other.path(), true).is_err());
-    }
+/// Ignored live gates cannot start the test binary as a transport, so they name the
+/// installed executable that can.
+#[cfg(test)]
+pub(crate) fn live_gate_transport_command() -> std::process::Command {
+    let executable = std::env::var_os("AGBRIO_LIVE_TRANSPORT_EXE").expect("AGBRIO_LIVE_TRANSPORT_EXE names an Agbrio executable");
+    let mut command = std::process::Command::new(executable);
+    command.arg(TRANSPORT_FLAG);
+    command
 }

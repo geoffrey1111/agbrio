@@ -275,11 +275,11 @@ mod tests {
         let messages=public_messages(&rows,"t").unwrap();assert_eq!(messages.len(),2);assert_eq!(messages[0]["text"],"first");assert_eq!(messages[1]["text"],"second");assert!(public_messages(&rows,"other").is_err());
     }
     #[test]
-    #[ignore="explicit read-only existing shared transport, no provider turn or lifecycle mutation"]
-    fn real_shared_live_read_only(){
+    #[ignore="explicit read-only named transport, no provider turn or lifecycle mutation"]
+    fn real_live_read_only(){
         use std::sync::Arc;
         let target=std::env::var("AIWR_READ_ONLY_WATCH_THREAD").expect("exact authorized watched thread");
-        let command=crate::shared_codex::transport_command().unwrap().expect("existing healthy shared gateway only");
+        let command=crate::codex_light::live_gate_transport_command();
         let mut adapter=crate::codex::adapter::CodexAdapter::start_shared_validation(command,Arc::new(|_|{})).unwrap();adapter.initialize().unwrap();
         let (_,_,snapshot,messages,activity)=inspect_live(&mut adapter,&target).unwrap();
         let page=adapter.read_public_chat_page(&target,None).unwrap();

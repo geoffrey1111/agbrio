@@ -1,6 +1,7 @@
 #[cfg(test)]
 use super::protocol::FeedEvent;
 pub use router_core::codex::adapter::WRITE_READINESS_TIMEOUT;
+#[cfg(any(test,not(windows)))]
 use router_core::codex::platform::codex_app_server_command;
 use router_core::{codex::adapter::CodexAdapter as CoreAdapter, events::EventSink};
 use serde_json::Value;
@@ -31,10 +32,14 @@ impl CodexAdapter {
         sink: Arc<dyn EventSink>,
         listener: Arc<dyn Fn(&Value) + Send + Sync>,
     ) -> Result<Self, String> {
-        match crate::shared_codex::transport_command()? {
-            Some(command)=>CoreAdapter::start_shared_transport(sink,listener,command).map(Self),
-            None if crate::codex_light::enabled()=>CoreAdapter::start_shared_transport(sink,listener,crate::codex_light::transport_command()?).map(Self),
-            None=>CoreAdapter::start(sink,listener,codex_app_server_command()).map(Self)
+        #[cfg(windows)]
+        {
+            crate::codex_light::retirement::require_clear()?;
+            CoreAdapter::start_shared_transport(sink,listener,crate::codex_light::transport_command()?).map(Self)
+        }
+        #[cfg(not(windows))]
+        {
+            CoreAdapter::start(sink,listener,codex_app_server_command()).map(Self)
         }
     }
     #[cfg(test)]

@@ -87,7 +87,6 @@ mod mobile_connection;
 mod hosted_relay;
 mod web_auth;
 mod web_availability;
-mod shared_codex;
 use host::HostRuntime;
 use host_application::*;
 #[cfg(test)]
@@ -153,70 +152,7 @@ async fn codex_watch_chat(thread_id:String,state:State<'_,RouterState>)->Result<
 async fn codex_watch_chat_command(input:watch_chat::ChatCommand,state:State<'_,RouterState>)->Result<serde_json::Value,String>{let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||watch_chat::command(&core,input)).await.map_err(|_|"WATCH_CHAT_FAILED".to_string())?}
 
 #[tauri::command]
-async fn shared_codex_status()->Result<shared_codex::Status,String>{tauri::async_runtime::spawn_blocking(||Ok(connection_status())).await.map_err(|_|"SHARED_STATUS_UNAVAILABLE".to_string())?}
-/// The light connection reuses this projection, so overview and first-run read one status.
-fn connection_status()->shared_codex::Status{
-    #[cfg(windows)]
-    if codex_light::enabled(){
-        let reachable=codex_light::desktop_reachable();
-        return shared_codex::Status{enabled:true,ready:true,desktop_connected:reachable,state:if reachable{"LIGHT_CONNECTED"}else{"LIGHT_WAITING"}.into(),update_pending:false,launch_as_administrator:false,current_administrator:None,launch_progress:None};
-    }
-    shared_codex::status()
-}
-/// Owner desktop action. Shared has its own guards against active work, and they apply here.
-#[tauri::command]
-async fn codex_light_set_enabled(app:AppHandle,state:State<'_,RouterState>,enabled:bool)->Result<shared_codex::Status,String>{
-    let core=state.inner().clone();let sink=Arc::new(TauriEventSink(app));
-    tauri::async_runtime::spawn_blocking(move||{
-        let mut session=core.session.lock().map_err(|_|"SHARED_ROUTER_BUSY")?;
-        if session.connecting||session.codex_adapter_borrowed||session.adapter.as_ref().is_some_and(|a|a.has_owned_turns()){return Err("SHARED_ROUTER_BUSY".to_string());}
-        if enabled&&shared_codex::status().enabled{shared_codex::disable()?;}
-        codex_light::set_enabled(enabled)?;
-        if let Some(mut adapter)=session.adapter.take(){adapter.shutdown();}
-        session.ready_threads.clear();session.codex_observer_epoch=session.codex_observer_epoch.wrapping_add(1);
-        drop(session);
-        // Leaving light mode starts nothing: the independent path would add a resident backend.
-        if enabled{connect_codex_for_resident_host(sink,&core);}
-        Ok(connection_status())
-    }).await.map_err(|_|"SHARED_SETUP_UNAVAILABLE".to_string())?
-}
-#[tauri::command]
-async fn shared_codex_set_launch_administrator(enabled:bool)->Result<shared_codex::Status,String>{tauri::async_runtime::spawn_blocking(move||shared_codex::set_launch_administrator(enabled)).await.map_err(|_|"SHARED_LAUNCH_PREFERENCES_UNAVAILABLE".to_string())?}
-#[tauri::command]
-async fn shared_codex_setup(app:AppHandle,state:State<'_,RouterState>)->Result<shared_codex::Status,String>{
-    if codex_light::enabled(){return Err("CODEX_LIGHT_ACTIVE".into());}
-    let core=state.inner().clone();let sink=Arc::new(TauriEventSink(app));
-    tauri::async_runtime::spawn_blocking(move||{
-        let mut session=core.session.lock().map_err(|_|"SHARED_ROUTER_BUSY")?;
-        if session.connecting||session.codex_adapter_borrowed||session.adapter.as_ref().is_some_and(|a|a.has_owned_turns()) {return Err("SHARED_ROUTER_BUSY".into());}
-        let status=shared_codex::setup()?;
-        if status.enabled && session.adapter.as_ref().is_some_and(|a|!a.is_shared()) {
-            if let Some(mut adapter)=session.adapter.take(){adapter.shutdown();}
-            session.ready_threads.clear();session.codex_observer_epoch=session.codex_observer_epoch.wrapping_add(1);
-        }
-        drop(session);if status.enabled {connect_codex_for_resident_host(sink,&core);}Ok(status)
-    }).await.map_err(|_|"SHARED_SETUP_UNAVAILABLE".to_string())?
-}
-#[tauri::command]
-async fn shared_codex_launch(app:AppHandle,state:State<'_,RouterState>)->Result<shared_codex::Status,String>{
-    shared_codex_change(app,state,true).await
-}
-#[tauri::command]
-async fn shared_codex_disable(app:AppHandle,state:State<'_,RouterState>)->Result<shared_codex::Status,String>{
-    shared_codex_change(app,state,false).await
-}
-async fn shared_codex_change(app:AppHandle,state:State<'_,RouterState>,launch:bool)->Result<shared_codex::Status,String>{
-    if launch&&codex_light::enabled(){return Err("CODEX_LIGHT_ACTIVE".into());}
-    let core=state.inner().clone();let sink=Arc::new(TauriEventSink(app));
-    tauri::async_runtime::spawn_blocking(move||{
-        let mut session=core.session.lock().map_err(|_|"SHARED_ROUTER_BUSY")?;
-        if session.connecting||session.codex_adapter_borrowed||session.adapter.as_ref().is_some_and(|a|a.has_owned_turns()){return Err("SHARED_ROUTER_BUSY".into());}
-        let status=if launch{shared_codex::launch()?}else{shared_codex::disable()?};
-        if let Some(mut adapter)=session.adapter.take(){adapter.shutdown();}
-        session.ready_threads.clear();session.codex_observer_epoch=session.codex_observer_epoch.wrapping_add(1);
-        drop(session);connect_codex_for_resident_host(sink,&core);Ok(status)
-    }).await.map_err(|_|"SHARED_SETUP_UNAVAILABLE".to_string())?
-}
+async fn codex_connection_status()->Result<codex_light::Status,String>{tauri::async_runtime::spawn_blocking(||Ok(codex_light::status())).await.map_err(|_|"CODEX_CONNECTION_STATUS_UNAVAILABLE".to_string())?}
 #[tauri::command]
 fn web_availability_status(host:State<'_,HostRuntime>)->web_availability::Status{host.web.status()}
 #[tauri::command]
@@ -288,6 +224,7 @@ use chatgpt::direct::CompletedChatGptResponse;
 use chatgpt::model::{
     ConversationHistory, ConversationHistoryDiagnostics, ConversationHistoryMessage,
 };
+#[cfg(test)]
 use codex::adapter::CodexAdapter;
 use persistence::{
     DashboardProjection, Endpoint, ExternalProjectLink, Project, Provider, RouterStore,
@@ -1507,13 +1444,11 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             resources,
             data,
         })?;
-    let shared_resources=app.path().resource_dir()?.join("codex-shared");
     let shared_node=std::env::current_exe()?.parent().ok_or("Host directory unavailable")?.join("browser-executor-node.exe");
-    #[cfg(debug_assertions)]let(shared_resources,shared_node)=if shared_resources.join("runtime.mjs").is_file(){(shared_resources,shared_node)}else{let source=std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));(source.join("resources/codex-shared"),source.join("binaries/browser-executor-node-x86_64-pc-windows-msvc.exe"))};
+    #[cfg(debug_assertions)]let shared_node=if shared_node.is_file(){shared_node}else{std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("binaries/browser-executor-node-x86_64-pc-windows-msvc.exe")};
     let hosted_resources=app.path().resource_dir()?.join("hosted-relay");
     #[cfg(debug_assertions)]let hosted_resources=if hosted_resources.join("connector.mjs").is_file(){hosted_resources}else{std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/hosted-relay")};
     crate::hosted_relay::configure_assets(hosted_resources,shared_node.clone());
-    crate::shared_codex::configure(shared_resources,shared_node);
     connect_codex_for_resident_host(Arc::new(TauriEventSink(app.handle().clone())), &core);
     host.start_shared_reconnection(core.clone(),Arc::new(TauriEventSink(app.handle().clone())));
     let observer_core = core.clone();
@@ -1646,8 +1581,7 @@ pub fn run() {
     let builder = builder.invoke_handler(tauri::generate_handler![
         pi_settings,pi_prepare_administrator,pi_authorize_directory,pi_authorize_workspace,pi_revoke_directory,resource_monitor_read,resource_monitor_apply,local_safety_status,local_safety_save,app_cache_status,app_cache_cleanup,management_zones_read,management_zones_change,review_board_publish,review_board_desktop_url,published_board_remove,published_boards_list,published_board_publish,published_board_snapshot,published_board_asset,app_capabilities,app_diagnostics,character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
         claude_code_sessions,claude_code_connections,claude_code_setup,claude_code_connect,claude_code_setup_mcp,claude_code_configure_mcp,claude_code_mcp_status,claude_code_authorizations,claude_code_open_authorization,claude_code_revoke,
-        desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,hosted_connection_trial,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_set_launch_administrator, shared_codex_setup, shared_codex_launch, shared_codex_disable,codex_light_set_enabled,
-        read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
+        desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,hosted_connection_trial,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, codex_connection_status, read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
         claude_watch_chat,claude_watch_chat_command,codex_watch_candidates,codex_watch_list, codex_watch_enable, codex_watch_show, codex_watch_pause, codex_watch_remove, computer_identity, codex_watch_mark_thread_read, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
         codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
         workspace_snapshot,
@@ -1735,8 +1669,7 @@ pub fn run() {
     let builder = builder.invoke_handler(tauri::generate_handler![
         pi_settings,pi_prepare_administrator,pi_authorize_directory,pi_authorize_workspace,pi_revoke_directory,resource_monitor_read,resource_monitor_apply,local_safety_status,local_safety_save,app_cache_status,app_cache_cleanup,management_zones_read,management_zones_change,review_board_publish,review_board_desktop_url,published_board_remove,published_boards_list,published_board_publish,published_board_snapshot,published_board_asset,app_capabilities,app_diagnostics,character_board_snapshot,character_board_asset,character_board_review,board_source_read,board_source_write,
         claude_code_sessions,claude_code_connections,claude_code_setup,claude_code_connect,claude_code_setup_mcp,claude_code_configure_mcp,claude_code_mcp_status,claude_code_authorizations,claude_code_open_authorization,claude_code_revoke,
-        desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,hosted_connection_trial,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, shared_codex_status, shared_codex_set_launch_administrator, shared_codex_setup, shared_codex_launch, shared_codex_disable,codex_light_set_enabled,
-        codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
+        desktop_update_status,desktop_update_check,desktop_update_download,desktop_update_install,desktop_update_open_release,hosted_connection_status,hosted_connection_redeem,hosted_connection_trial,assistant_help::assistant_open_help,assistant_settings,assistant_create_grant,assistant_create_instance_grant,assistant_connect_instance,assistant_revoke_grant,mobile_connection_view,mobile_connection_configure,web_pairing_code, web_paired_devices, web_revoke_device, web_availability_status, web_availability_retry, web_availability_setup, codex_connection_status, codex_delivery_settings, codex_delivery_command, codex_notification_navigation, codex_watch_chat, codex_watch_chat_command,
         read_message_media, bridge_directory_activity,role_bridge_state, create_bridge_workstream, rename_bridge_workstream, sync_role_bridge, role_bridge_threads, role_bridge_attachments, role_bridge_blocks, edit_role_handoff, bind_role_bridge, read_role_bridge, prepare_role_handoff, approve_role_handoff, send_role_handoff,
         claude_watch_chat,claude_watch_chat_command,codex_watch_candidates,codex_watch_list, codex_watch_enable, codex_watch_show, codex_watch_pause, codex_watch_remove, computer_identity, codex_watch_mark_thread_read, codex_watch_mark_read, codex_watch_mark_seen, codex_watch_feed, codex_watch_event, codex_notifications_web_url,
         workspace_snapshot,

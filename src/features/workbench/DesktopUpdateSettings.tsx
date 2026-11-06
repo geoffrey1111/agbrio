@@ -24,7 +24,7 @@ export function DesktopUpdateSettings({updateApi=api}:{updateApi?:UpdateApi}){
  {view.state==="AVAILABLE"&&view.version&&<button type="button" className="r2-action" disabled={working} onClick={()=>void act(()=>updateApi.download(view.version!))}><Download size={17}/>{t("下载更新")}</button>}
  {view.state==="READY"&&view.version&&<button type="button" className="r2-action" disabled={working} onClick={()=>install(view.version!)}>{t("安装并重启 Agbrio")}</button>}
  <button type="button" disabled={working} onClick={()=>void act(async()=>{await updateApi.openRelease();})}><ExternalLink size={16}/>{t("查看发布页面")}</button></div>
- {view.state==="READY"&&<p className="v4-meta">{t("安装前自动备份数据；共享 Codex 不重启，连接设置保留。")}</p>}
+ {view.state==="READY"&&<p className="v4-meta">{t("安装前自动备份数据；连接设置保留。")}</p>}
 
  <Dialog.Root open={restartVersion!==null} onOpenChange={open=>{if(!open)setRestartVersion(null);}}><Dialog.Portal><Dialog.Overlay className="v3-role-dialog-overlay"/><Dialog.Content className="r2-confirmation" aria-describedby="update-force-description"><Dialog.Title>{t("仍要强制更新？")}</Dialog.Title><p id="update-force-description">{t("有任务正在执行，或暂时无法确认任务状态。更新将重启 Agbrio，Pi 子任务可能中断，手机和 MCP 会短暂断开；不保证任务不中断。")}</p><p>{t("即将安装")} {restartVersion}</p><footer><Dialog.Close asChild><button type="button">{t("取消")}</button></Dialog.Close><button type="button" className="r2-action" disabled={working||view.state!=="READY"||view.version!==restartVersion} onClick={()=>{const version=restartVersion;setRestartVersion(null);if(version)install(version,true);}}>{t("确认强制更新")}</button></footer></Dialog.Content></Dialog.Portal></Dialog.Root>
  </section>;

@@ -3,11 +3,11 @@ import {cleanup,fireEvent,render,screen} from '@testing-library/react';
 import {ConnectionGuide,PwaInstallGuide} from './ConnectionGuides';
 import {setLanguagePreference} from '../../i18n';
 afterEach(()=>{cleanup();setLanguagePreference('zh-CN');});
-it('keeps shared preparation distinct from connecting the window and pairing a phone',()=>{
- render(<ConnectionGuide kind="shared" phase={2} open/>);
+it('asks only for a normally opened Codex and keeps pairing a phone separate',()=>{
+ render(<ConnectionGuide kind="codex" phase={1} open/>);
  const current=document.querySelector('[aria-current="step"]');
- expect(current).toHaveTextContent('从这里打开 Codex');
- expect(screen.getByText(/当前任务结束后，自行退出/)).toBeVisible();
+ expect(current).toHaveTextContent('正常打开 Codex');
+ expect(screen.getByText(/不需要退出、重开或专用入口/)).toBeVisible();
  expect(screen.getByText(/手机网址与配对在/)).toBeVisible();
 });
 it('explains activation and device pairing without exposing any example credential',()=>{

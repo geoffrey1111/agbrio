@@ -4,25 +4,24 @@ import {t,useLanguage} from '../../i18n';
 import './connectionGuides.css';
 import {BrandMark} from './BrandMark';
 
-export function ConnectionGuide({kind,phase=1,open=false}:{kind:'shared'|'phone';phase?:number;open?:boolean}){
- useLanguage();const shared=kind==='shared';
- const steps=shared?[
-  ['准备共享连接','点击“准备共享连接”，等待准备完成。'],
-  ['从这里打开 Codex','当前任务结束后，自行退出原来的 Codex 窗口，再点击“打开共享 Codex”。'],
-  ['选一个对话开始跟进','看到“Desktop 已接入共享连接”后，回到对话列表，点 + 监听电脑上的对话。'],
+export function ConnectionGuide({kind,phase=1,open=false}:{kind:'codex'|'phone';phase?:number;open?:boolean}){
+ useLanguage();const codex=kind==='codex';
+ const steps=codex?[
+  ['正常打开 Codex','不需要退出、重开或专用入口。任务由 Codex 自己运行。'],
+  ['选一个对话开始跟进','回到对话列表，点 + 监听电脑上的对话。'],
  ]:[
   ['开通手机入口','点击“免费试用 7 天”或输入激活码，开通后获得手机网址。已有 HTTPS 入口可选择“使用自己的服务器”。'],
   ['用手机打开网址','在手机的 Safari 或 Chrome 中打开这里提供的网址。电脑需保持开机、联网，Agbrio 在托盘运行即可。'],
   ['配对自己的手机','在电脑上生成配对码，再填到手机网页。兑换码用于开通入口，配对码用于登录设备，是两种不同的码。'],
  ];
- return <details className="connection-guide" open={open}><summary>{t(shared?'第一次使用共享连接？':'第一次连接手机？')}<ChevronDown size={16}/></summary><div className="connection-guide-content">
-  <p>{t(shared?'让 Codex 窗口和 Agbrio 接入同一组对话，手机才能查看进度并继续跟进。':'电脑上的 Agbrio 提供对话和文件；手机通过自己的网址访问。内容仍由这台电脑提供。')}</p>
+ return <details className="connection-guide" open={open}><summary>{t(codex?'第一次连接 Codex？':'第一次连接手机？')}<ChevronDown size={16}/></summary><div className="connection-guide-content">
+  <p>{t(codex?'Agbrio 读取和跟进你电脑上的 Codex 对话，手机才能查看进度并继续跟进。':'电脑上的 Agbrio 提供对话和文件；手机通过自己的网址访问。内容仍由这台电脑提供。')}</p>
   <div className="connection-map" aria-label={t('连接示意')}>
-   <span><Monitor/><strong>{shared?'Codex':t('你的电脑')}</strong></span><ArrowRight aria-hidden/><span>{shared?<MessageSquare/>:<Cloud/>}<strong>{t(shared?'共享连接':'手机网址')}</strong></span><ArrowRight aria-hidden/><span>{shared?<BrandMark size={25}/>:<Smartphone/>}<strong>{shared?'Agbrio':t('你的手机')}</strong></span>
+   <span><Monitor/><strong>{codex?'Codex':t('你的电脑')}</strong></span><ArrowRight aria-hidden/><span>{codex?<MessageSquare/>:<Cloud/>}<strong>{t(codex?'轻量连接':'手机网址')}</strong></span><ArrowRight aria-hidden/><span>{codex?<BrandMark size={25}/>:<Smartphone/>}<strong>{codex?'Agbrio':t('你的手机')}</strong></span>
   </div>
   <ol className="connection-steps">{steps.map(([title,body],i)=><li key={title} aria-current={i+1===phase?'step':undefined} data-done={i+1<phase}><span className="connection-step-number" aria-hidden>{i+1<phase?<Check size={15}/>:i+1}</span><div><strong>{t(title)}</strong><p>{t(body)}</p></div></li>)}</ol>
-  {shared&&<p>{t('手机网址与配对在“设置 → 设备”中完成。完成共享连接后，还需在那里连接自己的手机。')}</p>}
-  <details className="connection-help"><summary>{t('卡在这一步？')}</summary><p>{t(shared?'显示“对话正在执行”：先等任务结束，不要强行关闭。显示“已准备好”还不等于窗口已接入，需要再从这里打开共享 Codex。以后使用共享模式，也从“打开共享 Codex”或开始菜单“Codex (Agbrio shared)”进入。':'显示“连接中”：先保持电脑端打开，再检查连接。手机打不开时，核对电脑显示的“网页已连接”和完整网址；不要把兑换码当配对码，也不用反复创建新连接。')}</p></details>
+  {codex&&<p>{t('手机网址与配对在“设置 → 设备”中完成，还需在那里连接自己的手机。')}</p>}
+  <details className="connection-help"><summary>{t('卡在这一步？')}</summary><p>{t(codex?'手机发出的任务运行时，Codex 暂时打不开那个对话，任务结束后就能打开。':'显示“连接中”：先保持电脑端打开，再检查连接。手机打不开时，核对电脑显示的“网页已连接”和完整网址；不要把兑换码当配对码，也不用反复创建新连接。')}</p></details>
  </div></details>;
 }
 

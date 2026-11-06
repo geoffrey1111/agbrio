@@ -1,15 +1,15 @@
-//! Explicit disposable provider gate; uses the existing shared Gateway only.
+//! Explicit disposable provider gate; uses the transport named by the gate only.
 use super::*;
 use crate::codex::adapter::CodexAdapter;
 use crate::host_application::{exact_codex_completed_event_result,start_turn,Session};
-use router_core::{events::NullEventSink,store::{RouterStore,assistant::{GrantInput,BriefRule}}};
+use router_core::{store::{RouterStore,assistant::{GrantInput,BriefRule}}};
 use std::{sync::{Arc,Mutex},collections::HashMap,time::{Instant,Duration}};
 #[test]
 #[ignore="read-only completion metadata from existing archived disposable QA chats; zero model turns"]
 fn real_bridge_reply_completion_read_only(){
  assert_eq!(std::env::var("AGBRIO_RECENCY_READ_GATE").as_deref(),Ok("1"));
  let path=std::path::PathBuf::from(std::env::var("AGBRIO_RECENCY_QA_PROOF").unwrap());let proof:Value=serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();assert_eq!(proof["qaThreadsArchived"],true);
- let mut adapter=CodexAdapter::start(Arc::new(NullEventSink),Arc::new(|_|{})).unwrap();adapter.initialize().unwrap();assert!(adapter.is_shared());
+ let mut adapter=CodexAdapter::start_shared_validation(crate::codex_light::live_gate_transport_command(),Arc::new(|_|{})).unwrap();adapter.initialize().unwrap();assert!(adapter.is_shared());
  let mut times=Vec::new();for key in ["sourceThread","targetThread"]{
   let id=proof[key].as_str().unwrap();let read=crate::host_application::read_latest_codex_reply(&mut adapter,id).unwrap();let reply=read.reply.unwrap();assert_eq!(reply.thread.id,id);times.push(reply.completed_at);
  }
@@ -20,12 +20,11 @@ fn real_bridge_reply_completion_read_only(){
 #[ignore="explicit two-turn lowest-cost MCP/Codex shared gateway handoff proof"]
 fn real_assistant_mcp_shared_gateway_roundtrip(){
  assert_eq!(std::env::var("AGBRIO_REAL_ASSISTANT_GATE").as_deref(),Ok("1"));
- assert!(crate::shared_codex::transport_command().unwrap().is_some(),"Require the existing shared Gateway; never start another native backend");
  let root=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("runtime/assistant-mcp-validation");std::fs::create_dir_all(&root).unwrap();let dir=root.join(format!("real-{}",uuid::Uuid::new_v4()));std::fs::create_dir(&dir).unwrap();
  let source_root=dir.join("source");let target_root=dir.join("target");std::fs::create_dir(&source_root).unwrap();std::fs::create_dir(&target_root).unwrap();
  let events:Arc<Mutex<HashMap<String,(String,String,String)>>>=Arc::default();let seen=events.clone();
  let listener=Arc::new(move |event:&Value|{if event["method"]!="turn/completed"{return;}let Some(turn)=event.pointer("/params/turn/id").and_then(Value::as_str)else{return};let Some(thread)=event.pointer("/params/threadId").or_else(||event.pointer("/params/turn/threadId")).and_then(Value::as_str)else{return};if let Ok((item,text))=exact_codex_completed_event_result(thread,turn,event){seen.lock().unwrap().insert(turn.into(),(thread.into(),item,text));}});
- let mut adapter=CodexAdapter::start(Arc::new(NullEventSink),listener).unwrap();adapter.initialize().unwrap();assert!(adapter.is_shared());
+ let mut adapter=CodexAdapter::start_shared_validation(crate::codex_light::live_gate_transport_command(),listener).unwrap();adapter.initialize().unwrap();assert!(adapter.is_shared());
  let mut ids=Vec::new();for cwd in [&source_root,&target_root]{let started=adapter.request("thread/start",json!({"cwd":cwd,"model":"gpt-6-luna","config":{"model_reasoning_effort":"low"},"approvalPolicy":"never","sandbox":"read-only"})).unwrap();assert_eq!(started["model"],"gpt-6-luna");assert_eq!(started["reasoningEffort"],"low");ids.push(started["thread"]["id"].as_str().unwrap().to_owned());}
  let store=Arc::new(RouterStore::open_at(dir.join("router.db")).unwrap());let core=RouterCore{store:store.clone(),chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};
  {let mut s=core.session.lock().unwrap();s.ready_threads.extend(ids.iter().cloned());s.adapter=Some(adapter);}

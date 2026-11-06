@@ -6,7 +6,7 @@
 
 ### Which version should I download? What if 0.1.34 cannot connect?
 
-Use [0.1.35-rc.19, the latest recommended release](https://github.com/geoffrey1111/agbrio/releases/latest). 0.1.34 is historical. The installer retains its exact rc.19 version/signature and bounded validation, without claiming every scenario is accepted. Distinguish shared Codex, phone and assistant failures, retaining the exact error. An upgrade cannot be promised to fix all network/account issues. Use official assets and [setup](SETUP.md), not repeated reinstall/data deletion.
+Use [the latest recommended release](https://github.com/geoffrey1111/agbrio/releases/latest). 0.1.34 is historical. A recommended release has bounded validation, without claiming every scenario is accepted. Distinguish Codex connection, phone and assistant failures, retaining the exact error. An upgrade cannot be promised to fix all network/account issues. Use official assets and [setup](SETUP.md), not repeated reinstall/data deletion.
 
 ### Must I buy a code or new account? Does Agbrio reset quotas?
 
@@ -16,43 +16,27 @@ Self-deployment needs no code; optional hosted access is separately available. U
 
 No. SHA256 identifies bytes; `.sig` is for trusted updater-key validation. Neither promises Authenticode or no SmartScreen warning. Verify the official release and decide personally; do not disable security.
 
-## Shared Codex
+## Codex connection
 
-### Why open ordinary Codex and then close it?
+### Do I have to open Codex a special way?
 
-Older discovery used a running backend, but switching required exit to avoid replacing active work. **rc.5 can discover official installation with Desktop closed.** After official install/login the ordinary-first loop is unnecessary.
+No. Open it your usual way. Agbrio connects by itself; there is no shared entry, quit-and-reopen or resident backend any more. [How it works](CODEX_LIGHT_CONNECTION.md).
 
-### Must Agbrio be open before every launch?
+### What can't this connection do?
 
-The independent **Codex (Agbrio shared)** Start Menu entry does not need the Agbrio window. Bridge/mobile/assistant functions still need the Host. They are different parts.
+Change a Goal from Agbrio, launch Codex as administrator, keep tasks running after Codex Desktop quits, or stream token by token. It does not reduce the memory Codex itself uses.
 
-### Will my official/taskbar icon open shared mode?
+### Settings says the old shared backend is still there. What should I do?
 
-No. Official entry points remain unchanged. Pin/use the shared entry separately. Exit ordinary Desktop normally after tasks finish before switching.
+Finish your tasks and quit Codex. Agbrio then stops it once with that backend's own guarded disable and connects. If an error code is shown instead, nothing was ended; reopen Agbrio to try again, and report the code if it persists. Do not kill all Node. [Upgrading](SETUP.md#3-upgrading-from-a-version-with-the-shared-connection).
 
-### Is prepared the same as connected?
+### Codex says a chat is open in another app. What now?
 
-No. Backend-prepared precedes **Open shared Codex** and actual Desktop-connected status. Phone pairing and assistant authorization are separate too.
+A task started from your phone or an assistant is running on that chat in a temporary backend. Desktop can open it a few seconds after the task ends. To watch a task live, open the chat in Desktop first.
 
-### It says Desktop is still running or a task is active. What should I do?
+### Why are there several Node processes?
 
-This protects existing work. Save, wait for tasks and exit the whole app normally; closing one window may not exit the backend. Do not repeatedly click, kill active tasks or stop all Node. Retain the code/time if it persists.
-
-### What happens after reboot or official Codex updates?
-
-Use the shared entry as the same Windows user; normally keep Bridges/login/pairing. Idle startup checks official install/components. Updates stay official; no hot-swap or guarantee for every future version. On failure retain the error and follow guarded fallback.
-
-### A helper is missing, verification fails or no window appears. What now?
-
-Retain `SHARED_...` code/stage and versions. Check complete official installation and intended release. Do not download arbitrary helpers, copy profiles or loop restarts. Follow [fallback](SETUP.md#4-daily-startup-reboot-official-updates-and-fallback) and report sanitized diagnostics. Generic failure text does not identify a unique cause.
-
-### How do I disable shared mode? Why are there several Node processes?
-
-Save/finish work, exit shared Desktop and use **Codex (return to normal)** or **Disable shared connection**. Confirm disable before opening the official entry. Recovery verifies instance, creation and ancestry; unreachable-owner cleanup requires explicit local confirmation and may interrupt shared work. Unknown identities stay untouched. Apps/plugins/tools can have separate children: count alone proves neither leakage nor ownership. Never kill all Node as routine recovery.
-
-### Is shared mode an MCP server? Can I keep using ordinary Codex?
-
-MCP provides assistant tools; it does not itself attach Agbrio to a running ordinary Desktop backend. Shared mode lets Router/Desktop continue the same backend. Official ordinary startup remains available, but do not assume equal live collaborative capabilities.
+Apps, plugins and tools can have separate children: count alone proves neither leakage nor ownership. Never kill all Node as routine recovery.
 
 ## Messages and goals
 
@@ -74,7 +58,7 @@ No. They indicate reading/transition. An executing target may still show its pre
 
 ### Are paused Goal, failed turn, pending decision and completion equivalent?
 
-No. Verify original Goal/chat, authorization, pending decisions and uncertain sends. Resume only supported native states, without recreating work, increasing budgets or resending old instructions. [Goal controls](GOAL_RECOVERY.md).
+No. Verify original Goal/chat, authorization, pending decisions and uncertain sends. Change Goals in Codex itself on Windows; the light connection does not write them. Never recreate work, increase budgets or resend old instructions. [Goal controls](GOAL_RECOVERY.md).
 
 ## Phone, assistant and Claude
 

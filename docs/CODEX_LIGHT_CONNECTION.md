@@ -1,8 +1,17 @@
-# Codex light connection (beta, off by default, Windows only)
+# Codex light connection (Windows)
 
-An opt-in alternative to the shared Codex connection, in Settings. Codex is used as normally opened: no quit-and-reopen, no special entry and no resident shared backend. Phone and MCP keep reading, sending, steering, stopping, approving and answering.
+The only Codex connection on Windows, always on. Codex is used as normally opened: no quit-and-reopen, no special entry and no resident backend. Phone and MCP keep reading, sending, steering, stopping, approving and answering. Other platforms keep their independent app-server and have no light connection.
 
-Not available in this mode: Goal writes and automatic model-failure Goal recovery, administrator launch, tasks continuing after Codex Desktop quits, and token-by-token streaming. It does not reduce the memory Codex itself uses for open conversations.
+Not available: Goal writes and automatic model-failure Goal recovery, administrator launch, tasks continuing after Codex Desktop quits, and token-by-token streaming. It does not reduce the memory Codex itself uses for open conversations.
+
+## Upgrading from the shared connection
+
+The resident shared connection was removed, but an upgraded machine can still have its backend running from the pinned copy in `%LOCALAPPDATA%\AIWorkRouter\codex-shared\runtime`, which carries its own `node.exe`. `src-tauri/src/codex_light/retirement.rs` retires it once, using only that copy's guarded disable, while the Host stays off Codex:
+
+- It waits while the backend reports an active task or a connected Desktop, and retries from the reconnection loop.
+- An administrator backend asks for Windows consent. A declined consent or any other refusal stops the attempts until the next launch, and Settings shows the code.
+- Unreadable settings or a pinned copy without the files the disable needs are reported the same way, and nothing is run.
+- Nothing is killed by name. Nothing under `%LOCALAPPDATA%` is deleted, so the pinned copy and its native files stay on disk.
 
 ## How it works
 
@@ -30,4 +39,4 @@ A thread the on-demand backend holds cannot be opened in Desktop, which shows "o
 
 ## Validation
 
-`cargo test --lib codex_light` covers routing against a fake pipe and a scripted backend. `scripts/codex-ipc-probe.mjs` is a read-only probe. `real_host_send_paths_over_the_light_transport` is an explicit ignored live test that needs real Desktop and a disposable thread; never point it at a real conversation. File and permission approvals, async questions, large-conversation snapshots and reconnecting after Desktop restarts were not exercised at this revision.
+`cargo test --lib codex_light` covers routing against a fake pipe and a scripted backend, and the retirement decisions. `scripts/codex-ipc-probe.mjs` is a read-only probe. `real_host_send_paths_over_the_light_transport` is an explicit ignored live test that needs real Desktop and a disposable thread; never point it at a real conversation. File and permission approvals, async questions, large-conversation snapshots and reconnecting after Desktop restarts were not exercised at this revision.

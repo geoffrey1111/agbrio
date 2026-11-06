@@ -94,7 +94,7 @@ pub(crate) fn process_setup_request(core:&RouterCore,host:&HostRuntime){
   let root=std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("runtime/agbrio-release/live");std::fs::create_dir_all(&root).unwrap();
   let case=std::env::var("AGBRIO_RELEASE_CASE").map(std::path::PathBuf::from).unwrap_or_else(|_|root.join(uuid::Uuid::new_v4().to_string()));assert!(case.starts_with(&root));std::fs::create_dir_all(&case).unwrap();let material=case.join("material.md");std::fs::write(&material,"PUBLIC_QA_MATERIAL = release-fixture\n").unwrap();
   let core=RouterCore{store:Arc::new(crate::RouterStore::open_at(case.join("router.db")).unwrap()),chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default()};
-  let command=crate::shared_codex::transport_command().unwrap().expect("existing healthy shared connection only");let mut a=crate::codex::adapter::CodexAdapter::start_shared_validation(command,Arc::new(|_|{})).unwrap();a.initialize().unwrap();
+  let command=crate::codex_light::live_gate_transport_command();let mut a=crate::codex::adapter::CodexAdapter::start_shared_validation(command,Arc::new(|_|{})).unwrap();a.initialize().unwrap();
   let catalog=a.request("model/list",json!({"limit":100,"cursor":null})).unwrap();let rows=catalog["data"].as_array().unwrap();
   let preferred=["gpt-6-luna","gpt-5.1-codex-mini","gpt-5.4-mini"];
   let model=preferred.iter().find_map(|id|rows.iter().find(|m|m["model"].as_str()==Some(*id)||m["id"].as_str()==Some(*id))).or_else(||rows.iter().find(|m|m["model"].as_str()==Some("gpt-6.1-sol"))).expect("supported low-cost validation model");

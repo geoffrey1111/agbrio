@@ -65,7 +65,7 @@ function errorText(error: unknown) {
   if(text.includes("CLAUDE_BUSY_NO_IMPLICIT_QUEUE"))return uiText("Claude Code 正在执行，暂不支持引导；空闲后可发送。");
   if(text.includes("CLAUDE_INPUT_PLUGIN_NOT_READY"))return uiText("发送连接尚未就绪，请检查原 Claude Code 对话。草稿已保留。");
   if(text.includes("REPLY_PREVIOUS_PENDING_CHECK_FIRST"))return uiText("接收端有一条旧回复的送达状态尚未确认，本次还没有发送。请核查接收端发送记录；确认后只继续一个交接，不要重复发送。");
-  if (text.includes("owned by another application") || text.includes("THREAD_OWNED")) return uiText("对话正在 Codex Desktop 中使用。请在电脑端 Router 的设置 → 连接中准备共享连接，再自行退出 Desktop，点“打开共享 Codex”。已批准内容保留，尚未发送。");
+  if (text.includes("owned by another application") || text.includes("THREAD_OWNED")) return uiText("对话正在另一个 Codex 进程中使用。已批准内容保留，尚未发送。请在 Codex 中打开这个对话后重试。");
   if (text.includes("BRIDGE_SAME_NATIVE_TARGET")) return uiText("两端必须选择不同的 Codex 对话。");
   if (text.includes("BRIDGE_BINDING_CHANGED")) return uiText("绑定已发生变化，请重新打开审阅。旧批准不能用于新目标。");
   if (text.includes("BRIDGE_NATIVE_TARGET_ALREADY_BOUND")) return uiText("这条对话已绑定其他工作流，请先核对原绑定。");

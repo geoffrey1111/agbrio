@@ -88,11 +88,11 @@ mod tests {
         assert_eq!(project(&json!({"rateLimits":{"primary":{"usedPercent":null}}})).status,"UNAVAILABLE");
     }
     #[test]
-    #[ignore = "explicit read-only check against the resident shared Codex; no provider launch"]
+    #[ignore = "explicit read-only check through the named transport; no provider turn"]
     fn resident_adapter_read_only_quota() {
         use std::sync::{Arc,Mutex};
         assert_eq!(std::env::var("AGBRIO_READONLY_QUOTA_ACCEPTANCE").as_deref(),Ok("1"));
-        let command=crate::shared_codex::transport_command().unwrap().expect("Existing resident shared Codex is required");
+        let command=crate::codex_light::live_gate_transport_command();
         let mut adapter=crate::codex::adapter::CodexAdapter::start_shared_validation(command,Arc::new(|_|{})).unwrap();
         adapter.initialize().unwrap();
         let directory=tempfile::tempdir().unwrap();
