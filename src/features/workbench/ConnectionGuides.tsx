@@ -21,7 +21,7 @@ export function ConnectionGuide({kind,phase=1,open=false}:{kind:'codex'|'phone';
   </div>
   <ol className="connection-steps">{steps.map(([title,body],i)=><li key={title} aria-current={i+1===phase?'step':undefined} data-done={i+1<phase}><span className="connection-step-number" aria-hidden>{i+1<phase?<Check size={15}/>:i+1}</span><div><strong>{t(title)}</strong><p>{t(body)}</p></div></li>)}</ol>
   {codex&&<p>{t('手机网址与配对在“设置 → 设备”中完成，还需在那里连接自己的手机。')}</p>}
-  <details className="connection-help"><summary>{t('卡在这一步？')}</summary><p>{t(codex?'手机发出的任务运行时，Codex 暂时打不开那个对话，任务结束后就能打开。':'显示“连接中”：先保持电脑端打开，再检查连接。手机打不开时，核对电脑显示的“网页已连接”和完整网址；不要把兑换码当配对码，也不用反复创建新连接。')}</p></details>
+  <details className="connection-help"><summary>{t('卡在这一步？')}</summary><p>{t(codex?'手机或管理对话发出的任务会直接出现在 Codex 里，可以打开查看并继续发消息。任务运行期间不要退出 Agbrio。':'显示“连接中”：先保持电脑端打开，再检查连接。手机打不开时，核对电脑显示的“网页已连接”和完整网址；不要把兑换码当配对码，也不用反复创建新连接。')}</p></details>
  </div></details>;
 }
 

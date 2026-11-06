@@ -7,7 +7,7 @@ it("reports the connection with nothing to prepare, launch or switch",async()=>{
  show({enabled:true,ready:true,desktopConnected:true,state:"LIGHT_CONNECTED"});
  expect(await screen.findByRole("heading",{name:"轻量连接已接入 Codex"})).toBeVisible();
  expect(screen.getByText(/不需要退出或专用入口/)).toBeVisible();
- expect(screen.getByText(/轻量连接不支持：管理 Goal/)).toBeVisible();
+ expect(screen.queryByText(/管理 Goal|管理员/)).toBeNull();
  expect(screen.queryByRole("button")).toBeNull();
 });
 it("waits for a normally opened Codex",async()=>{

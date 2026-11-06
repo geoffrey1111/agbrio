@@ -16,12 +16,24 @@ The resident shared connection was removed, but an upgraded machine can still ha
 
 Once nothing is pending, `legacy_cleanup.rs` clears reproducible leftovers on a fixed list: the `codex-shared` folder of a backend recorded as `DISABLED`, downloaded browser files and extension copies, and the cache folders inside old browser profiles. The rest of each profile stays, including cookies, saved passwords and local storage, and links are not followed. Folders it does not list are left alone.
 
+## Threads running on the on-demand backend
+
+The writer lock keeps Desktop from loading a thread while the backend holds it. Desktop already shares a thread between its own windows, with one window as owner and the others following its state over the pipe, so `owner.rs` answers as the owner of exactly the threads loaded on this process's backend:
+
+- Each such thread has its own pipe connection, which claims only that thread. Closing it is how Desktop learns the owner has gone.
+- `owner_state.rs` keeps Desktop's private conversation state up to date from the backend's notifications and sends full snapshots. Requests Desktop sends as a follower go to the backend. Nothing is retried.
+- A `thread-unarchived` broadcast makes Desktop read a new thread and list it, so it appears without a restart.
+- When the turn ends, the backend lets the thread go, and the connection closes only once the lock is free. Desktop then loads the thread itself.
+- Nothing is claimed when the package's method table differs from the validated one, because a malformed state raises an error dialog in Desktop's main process. The thread then shows as open in another app until its turn ends.
+- While a thread is shown this way only its newest turns are available. Desktop reads the complete history when it takes over. A queued follow-up, editing the last turn and changing settings are refused rather than dropped silently.
+
 ## How it works
 
 The Host still talks app-server JSON-RPC over a child's stdio, so its receipts and uncertain-delivery handling are unchanged. `src-tauri/src/codex_light/` replaces only that child, as the same executable with `--codex-light-transport`:
 
 - Reads go to an on-demand stdio app-server, cached against the rollout file, so an idle machine runs no extra Codex process.
 - Writes to a thread Desktop holds go through Desktop's private pipe.
+- Opening a thread the backend holds shows it through this process, as below.
 - Writes to a free thread go to the on-demand app-server. Codex's own writer lock keeps it from sharing a thread with Desktop.
 - A held thread with no reachable owner is refused.
 - A write whose outcome is uncertain gets no reply, so the Host records it as unknown. Nothing retries a write.

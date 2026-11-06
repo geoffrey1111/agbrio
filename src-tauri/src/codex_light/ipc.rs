@@ -1,4 +1,5 @@
-//! Client for Desktop's private owner/follower pipe. It never claims a thread.
+//! Client for Desktop's private owner/follower pipe. An ordinary connection claims nothing;
+//! an owner connection claims the one thread it was opened for.
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
@@ -37,6 +38,43 @@ pub(super) const VALIDATED_VERSIONS: [(&str, u64); 9] = [
     ("thread-follower-submit-user-input", 1),
 ];
 
+/// The rest of the table an owner relies on. Desktop checks a broadcast's version and drops a
+/// mismatch, so any difference means no thread is claimed.
+const OWNER_VERSIONS: [(&str, u64); 12] = [
+    ("thread-stream-following-status-requested", 1),
+    ("thread-unarchived", 1),
+    ("thread-follower-load-complete-history", 1),
+    ("thread-follower-compact-thread", 1),
+    ("thread-follower-update-thread-settings", 2),
+    ("thread-follower-read-model-settings", 1),
+    ("thread-follower-permissions-request-approval-response", 1),
+    ("thread-follower-submit-mcp-server-elicitation-response", 1),
+    ("thread-follower-set-queued-follow-ups-state", 1),
+    ("thread-follower-remove-queued-message", 1),
+    ("thread-follower-clear-queued-messages", 1),
+    ("thread-follower-edit-last-user-turn", 2),
+];
+
+/// What Desktop sends the owner of a thread.
+pub(super) enum OwnerEvent {
+    Request(Value),
+    Following { client: String, following: bool },
+    ClientGone(String),
+    Disconnected,
+}
+
+struct Claim {
+    thread: String,
+    events: mpsc::UnboundedSender<OwnerEvent>,
+}
+
+impl Claim {
+    fn handles(&self, request: &Value) -> bool {
+        let method = request["method"].as_str().unwrap_or_default();
+        request.pointer("/params/conversationId").and_then(Value::as_str) == Some(self.thread.as_str()) && (method == "thread-owner-discovery" || method.starts_with("thread-follower-"))
+    }
+}
+
 pub(super) enum StateEvent {
     Snapshot(Value),
     Changed,
@@ -59,7 +97,9 @@ pub(super) struct Connection {
     subscribers: Subscribers,
     client_id: String,
     closed: Arc<AtomicBool>,
+    tasks: Mutex<Vec<tokio::task::AbortHandle>>,
     pub writes_allowed: bool,
+    pub owner_allowed: bool,
 }
 
 #[derive(Clone)]
@@ -131,8 +171,12 @@ pub(super) fn versions_match(installed: &HashMap<String, u64>) -> bool {
     VALIDATED_VERSIONS.iter().all(|(method, version)| installed.get(*method) == Some(version))
 }
 
+pub(super) fn owner_versions_match(installed: &HashMap<String, u64>) -> bool {
+    versions_match(installed) && OWNER_VERSIONS.iter().all(|(method, version)| installed.get(*method) == Some(version))
+}
+
 fn version_of(method: &str) -> u64 {
-    VALIDATED_VERSIONS.iter().find(|(name, _)| *name == method).map_or(0, |(_, version)| *version)
+    VALIDATED_VERSIONS.iter().chain(OWNER_VERSIONS.iter()).find(|(name, _)| *name == method).map_or(0, |(_, version)| *version)
 }
 
 fn encode(message: &Value) -> Vec<u8> {
@@ -146,6 +190,15 @@ fn encode(message: &Value) -> Vec<u8> {
 impl Connection {
     /// Fails closed: an unverifiable server gets no frame at all.
     pub async fn open(pipe: &str, policy: &PeerPolicy, client_type: &str) -> Result<Arc<Self>, String> {
+        Self::open_as(pipe, policy, client_type, None).await
+    }
+
+    /// A connection that answers as the owner of one thread until it is closed.
+    pub async fn open_owner(pipe: &str, policy: &PeerPolicy, thread: &str, events: mpsc::UnboundedSender<OwnerEvent>) -> Result<Arc<Self>, String> {
+        Self::open_as(pipe, policy, "agbrio-light", Some(Claim { thread: thread.to_owned(), events })).await
+    }
+
+    async fn open_as(pipe: &str, policy: &PeerPolicy, client_type: &str, claim: Option<Claim>) -> Result<Arc<Self>, String> {
         let client = ClientOptions::new().open(pipe).map_err(|error| format!("IPC_CONNECT_FAILED:{}", error.raw_os_error().unwrap_or(0)))?;
         let mut versions = policy.versions.clone();
         if policy.verify {
@@ -156,6 +209,7 @@ impl Connection {
             versions = installed_versions(&image);
         }
         let writes_allowed = versions.as_ref().is_some_and(versions_match);
+        let owner_allowed = versions.as_ref().is_some_and(owner_versions_match);
 
         let (mut read, mut write) = tokio::io::split(client);
         let (writer, mut outgoing) = mpsc::unbounded_channel::<Vec<u8>>();
@@ -163,29 +217,33 @@ impl Connection {
         let subscribers: Subscribers = Arc::default();
         let closed = Arc::new(AtomicBool::new(false));
 
-        tokio::spawn(async move {
+        let writing = tokio::spawn(async move {
             while let Some(frame) = outgoing.recv().await {
                 if write.write_all(&frame).await.is_err() {
                     break;
                 }
             }
         });
-        {
+        let reading = {
             let pending = pending.clone();
             let subscribers = subscribers.clone();
             let closed = closed.clone();
             let writer = writer.clone();
             tokio::spawn(async move {
-                let _ = read_loop(&mut read, &writer, &pending, &subscribers).await;
+                let _ = read_loop(&mut read, &writer, &pending, &subscribers, claim.as_ref()).await;
                 closed.store(true, Ordering::SeqCst);
                 pending.lock().unwrap().clear();
                 for subscriber in subscribers.lock().unwrap().values() {
                     let _ = subscriber.send(StateEvent::Disconnected);
                 }
-            });
-        }
+                if let Some(claim) = &claim {
+                    let _ = claim.events.send(OwnerEvent::Disconnected);
+                }
+            })
+        };
 
-        let mut connection = Self { writer, pending, subscribers, client_id: INITIALIZING_CLIENT.into(), closed, writes_allowed };
+        let tasks = Mutex::new(vec![writing.abort_handle(), reading.abort_handle()]);
+        let mut connection = Self { writer, pending, subscribers, client_id: INITIALIZING_CLIENT.into(), closed, tasks, writes_allowed, owner_allowed };
         let reply = connection.exchange(json!({"type":"request","method":"initialize","version":0,"params":{"clientType":client_type}}), Duration::from_secs(5)).await;
         let client_id = reply.and_then(|m| m.pointer("/result/clientId").and_then(Value::as_str).map(str::to_owned)).ok_or("IPC_INITIALIZE_FAILED")?;
         connection.client_id = client_id;
@@ -194,6 +252,34 @@ impl Connection {
 
     pub fn is_closed(&self) -> bool {
         self.closed.load(Ordering::SeqCst)
+    }
+
+    /// Ends the connection, which Desktop sees as this client disconnecting.
+    pub fn close(&self) {
+        self.closed.store(true, Ordering::SeqCst);
+        for task in self.tasks.lock().unwrap().drain(..) {
+            task.abort();
+        }
+    }
+
+    /// Sends to the named clients, or to every client. Returns the frame's size.
+    pub fn broadcast(&self, method: &str, targets: Option<Vec<String>>, params: Value) -> usize {
+        let mut message = json!({"type":"broadcast","method":method,"sourceClientId":self.client_id,"version":version_of(method),"params":params});
+        if let Some(targets) = targets {
+            message["targetClientIds"] = json!(targets);
+        }
+        let frame = encode(&message);
+        let size = frame.len();
+        let _ = self.writer.send(frame);
+        size
+    }
+
+    pub fn respond(&self, request_id: &Value, method: &str, result: Value) {
+        let _ = self.writer.send(encode(&json!({"type":"response","requestId":request_id,"resultType":"success","method":method,"handledByClientId":self.client_id,"result":result})));
+    }
+
+    pub fn respond_error(&self, request_id: &Value, error: &str) {
+        let _ = self.writer.send(encode(&json!({"type":"response","requestId":request_id,"resultType":"error","error":error})));
     }
 
     async fn exchange(&self, mut message: Value, timeout: Duration) -> Option<Value> {
@@ -261,6 +347,7 @@ async fn read_loop(
     writer: &mpsc::UnboundedSender<Vec<u8>>,
     pending: &Mutex<HashMap<String, oneshot::Sender<Value>>>,
     subscribers: &Subscribers,
+    claim: Option<&Claim>,
 ) -> std::io::Result<()> {
     loop {
         let length = read.read_u32_le().await? as usize;
@@ -287,12 +374,39 @@ async fn read_loop(
                 }
             }
             Some("client-discovery-request") => {
-                // Silence would stall the router for ten seconds, and this client owns nothing.
-                let _ = writer.send(encode(&json!({"type":"client-discovery-response","requestId":message["requestId"],"response":{"canHandle":false}})));
+                // Silence would stall the router for ten seconds.
+                let can_handle = claim.is_some_and(|claim| claim.handles(&message["request"]));
+                let _ = writer.send(encode(&json!({"type":"client-discovery-response","requestId":message["requestId"],"response":{"canHandle":can_handle}})));
             }
-            Some("broadcast") => dispatch_broadcast(message, subscribers),
+            Some("request") => {
+                if let Some(claim) = claim.filter(|claim| claim.handles(&message)) {
+                    let _ = claim.events.send(OwnerEvent::Request(message));
+                }
+            }
+            Some("broadcast") => {
+                if let Some(claim) = claim {
+                    dispatch_to_owner(&message, claim);
+                }
+                dispatch_broadcast(message, subscribers);
+            }
             _ => {}
         }
+    }
+}
+
+fn dispatch_to_owner(message: &Value, claim: &Claim) {
+    match message["method"].as_str() {
+        Some("thread-stream-following-changed") if message.pointer("/params/conversationId").and_then(Value::as_str) == Some(claim.thread.as_str()) => {
+            if let (Some(client), Some(following)) = (message["sourceClientId"].as_str(), message.pointer("/params/following").and_then(Value::as_bool)) {
+                let _ = claim.events.send(OwnerEvent::Following { client: client.to_owned(), following });
+            }
+        }
+        Some("client-status-changed") if message.pointer("/params/status").and_then(Value::as_str) != Some("connected") => {
+            if let Some(client) = message.pointer("/params/clientId").and_then(Value::as_str) {
+                let _ = claim.events.send(OwnerEvent::ClientGone(client.to_owned()));
+            }
+        }
+        _ => {}
     }
 }
 

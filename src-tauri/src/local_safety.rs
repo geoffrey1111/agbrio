@@ -26,7 +26,7 @@ pub(crate) fn recoverable(d:&router_core::codex::adapter::NativeTurnDiagnostic)-
 }
 fn target(w:&router_core::store::codex_watch::CodexWatch)->Target{Target{thread_id:w.thread_id.clone(),generation:w.generation,cwd:w.cwd.clone()}}
 #[derive(Serialize)]#[serde(rename_all="camelCase")]
-pub(crate) struct Status{recovery_scope:&'static str,settings:Settings,collector_available:bool,recent:Vec<Attempt>,targets:Vec<TargetOption>}
+pub(crate) struct Status{recovery_scope:&'static str,goal_recovery_available:bool,settings:Settings,collector_available:bool,recent:Vec<Attempt>,targets:Vec<TargetOption>}
 #[derive(Serialize)]#[serde(rename_all="camelCase")]
 struct TargetOption{#[serde(flatten)]target:Target,label:String}
 fn targets(core:&RouterCore)->Result<Vec<TargetOption>,String>{
@@ -35,7 +35,7 @@ fn targets(core:&RouterCore)->Result<Vec<TargetOption>,String>{
  for stream in core.store.active_workstreams()?{let b=core.store.role_bridge(&stream.id)?;for side in [b.decision,b.execution].into_iter().flatten(){let key=match side.endpoint.provider.as_str(){"CODEX"=>side.endpoint.external_id.clone(),"CLAUDE_CODE"=>format!("claude_code:{}",side.endpoint.external_id),_=>continue};if seen.contains(&key){continue;}if let Ok(w)=core.store.codex_chat_context(&key){seen.insert(key);result.push(TargetOption{target:target(&w),label:w.label});}}}
  Ok(result)
 }
-pub(crate) fn status(core:&RouterCore)->Result<Status,String>{Ok(Status{recovery_scope:"NATIVE_BLOCKED_GOAL_ONLY",settings:core.store.local_safety_settings()?,collector_available:collector_available(),recent:core.store.local_safety_recent()?,targets:targets(core)?})}
+pub(crate) fn status(core:&RouterCore)->Result<Status,String>{Ok(Status{recovery_scope:"NATIVE_BLOCKED_GOAL_ONLY",goal_recovery_available:!crate::codex_light::enabled(),settings:core.store.local_safety_settings()?,collector_available:collector_available(),recent:core.store.local_safety_recent()?,targets:targets(core)?})}
 pub(crate) fn save(core:&RouterCore,settings:Settings)->Result<Status,String>{core.store.save_local_safety_settings(&settings)?;status(core)}
 fn reconcile(core:&RouterCore,at:i64)->Result<(),String>{
  let pending=core.store.local_safety_uncertain()?;

@@ -7,7 +7,8 @@
 //!   idle machine runs no extra Codex process;
 //! - writes to a thread Desktop holds go through Desktop's private IPC pipe;
 //! - writes to a free thread go to the on-demand app-server, which the writer lock
-//!   keeps from ever sharing a thread with Desktop.
+//!   keeps from ever sharing a thread with Desktop. While it runs there, this process
+//!   answers Desktop as that thread's owner, so Desktop can show and use it.
 //!
 //! A write whose outcome is uncertain gets no reply, so the Host's own timeout records
 //! UNKNOWN. Nothing here retries a write. The IPC is private to OpenAI and unstable:
@@ -20,6 +21,10 @@ mod hub;
 mod ipc;
 #[cfg(windows)]
 mod native_files;
+#[cfg(windows)]
+mod owner;
+#[cfg(windows)]
+mod owner_state;
 #[cfg(windows)]
 mod legacy_cleanup;
 #[cfg(windows)]

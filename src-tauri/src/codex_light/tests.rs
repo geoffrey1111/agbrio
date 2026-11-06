@@ -22,7 +22,7 @@ const THREAD: &str = "11111111-1111-4111-8111-111111111111";
 
 /// Answers like Codex for the few methods the routing needs, and logs every call.
 const BACKEND_SCRIPT: &str = r#"
-const fs=require('fs');const log=process.argv[2];const rollout=process.argv[3];let reads=0;
+const fs=require('fs');const log=process.argv[2];const rollout=process.argv[3];let reads=0;const loaded=new Set(['new-thread']);
 require('readline').createInterface({input:process.stdin}).on('line',line=>{
  const m=JSON.parse(line);if(m.id===9&&m.result){fs.appendFileSync(log,'answer:'+m.result.decision+'\n');return process.stdout.write(JSON.stringify({method:'serverRequest/resolved',params:{threadId:'asks',requestId:9}})+'\n');}if(m.id===undefined)return;fs.appendFileSync(log,m.method+'\n');
  const reply=result=>process.stdout.write(JSON.stringify({id:m.id,result})+'\n');
@@ -34,7 +34,9 @@ require('readline').createInterface({input:process.stdin}).on('line',line=>{
  if(m.method==='thread/read')return reply({thread:{id:m.params.threadId,cwd:'C:/project',path:rollout,status:{type:'notLoaded'},read:++reads}});
  if(m.method==='thread/turns/list')return reply({data:[{id:'running-turn',status:'interrupted'}],nextCursor:null});
  if(m.method==='thread/start')return reply({thread:{id:'new-thread',cwd:'C:/project',path:rollout}});
- if(m.method==='thread/resume')return reply({thread:{id:m.params.threadId,cwd:'C:/project',path:rollout}});
+ if(m.method==='thread/resume'&&m.params.threadId==='gone')return process.stdout.write(JSON.stringify({id:m.id,error:{code:-32600,message:'no rollout found'}})+'\n');
+ if(m.method==='thread/resume'){loaded.add(m.params.threadId);return reply({thread:{id:m.params.threadId,cwd:'C:/project',path:rollout}});}
+ if(m.method==='turn/start'&&!loaded.has(m.params.threadId))return process.stdout.write(JSON.stringify({id:m.id,error:{code:-32600,message:'thread not found: '+m.params.threadId}})+'\n');
  if(m.method==='turn/start'&&m.params.threadId==='asks'){reply({turn:{id:'backend-turn',status:'inProgress'}});return process.stdout.write(JSON.stringify({id:9,method:'item/commandExecution/requestApproval',params:{threadId:'asks',turnId:'backend-turn',itemId:'item'}})+'\n');}
  if(m.method==='turn/start'&&m.params.threadId==='finishes'){reply({turn:{id:'backend-turn',status:'inProgress'}});return process.stdout.write(JSON.stringify({method:'turn/completed',params:{threadId:'finishes',turn:{id:'backend-turn',status:'completed'}}})+'\n');}
  if(m.method==='turn/start')return reply({turn:{id:'backend-turn',status:'inProgress'}});
@@ -282,6 +284,25 @@ async fn a_free_thread_uses_the_backend() {
     assert_eq!(t.call("thread/resume", json!({"threadId":THREAD})).await.unwrap()["result"]["thread"]["id"], THREAD);
     assert_eq!(t.call("turn/start", json!({"threadId":THREAD,"input":[]})).await.unwrap()["result"]["turn"]["id"], "backend-turn");
     assert_eq!(t.backend_calls("turn/start"), 1);
+}
+
+/// The Host still counts a thread as loaded after the backend let it go when its turn ended.
+#[tokio::test]
+async fn a_free_thread_the_host_did_not_resume_still_takes_the_message() {
+    let t = harness(DesktopScript::default(), validated_versions()).await;
+    assert_eq!(t.call("turn/start", json!({"threadId":THREAD,"input":[]})).await.unwrap()["result"]["turn"]["id"], "backend-turn");
+    assert_eq!(t.backend_calls("thread/resume"), 1);
+    assert_eq!(t.backend_calls("turn/start"), 1);
+    assert_eq!(t.call("turn/start", json!({"threadId":THREAD,"input":[]})).await.unwrap()["result"]["turn"]["id"], "backend-turn");
+    assert_eq!(t.backend_calls("thread/resume"), 1, "already loaded the second time");
+}
+
+#[tokio::test]
+async fn a_failed_resume_is_a_refusal_and_sends_no_turn() {
+    let t = harness(DesktopScript::default(), validated_versions()).await;
+    let reply = t.call("turn/start", json!({"threadId":"gone","input":[]})).await.unwrap();
+    assert_eq!(reply["error"]["message"], "no rollout found");
+    assert_eq!(t.backend_calls("turn/start"), 0);
 }
 
 #[tokio::test]

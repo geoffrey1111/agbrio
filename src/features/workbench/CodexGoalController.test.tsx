@@ -24,3 +24,9 @@ it('a lost control acknowledgement survives reopening and checks only the origin
 it('elapsed display uses native accounting, stops on pause, and freezes when the Host goes stale',()=>{
  const active=Object.freeze({...goal,status:'active'});expect(displayedGoalSeconds(active,10000,10000)).toBe(29);expect(displayedGoalSeconds(active,40000,10000)).toBe(44);expect(displayedGoalSeconds({...active,status:'paused'},40000,10000)).toBe(20);expect(active.timeUsedSeconds).toBe(20);
 });
+it('shows a Goal read-only when this connection cannot change it',()=>{
+ render(<CodexGoalController goal={goal} controls={{...controls,blockedReason:'GOAL_LIGHT_CONNECTION_UNSUPPORTED'}} api={{command:vi.fn()} as unknown as WatchChatApi} refresh={vi.fn(async()=>{})}/>);
+ expect(document.querySelector('.r2-codex-goal')).not.toBeNull();
+ expect(screen.queryByRole('button')).toBeNull();
+ expect(screen.queryByText(/管理目标|轻量连接/)).toBeNull();
+});

@@ -7,7 +7,7 @@ const key=(thread:string)=>`aiwr-goal-action:${thread}`;
 function pendingId(thread:string){try{const id=sessionStorage.getItem(key(thread));return id&&/^[0-9a-f-]{36}$/i.test(id)?id:null;}catch{return null;}}
 export function goalControlError(error:unknown){
  const code=String(error);
- if(code.includes('GOAL_LIGHT_CONNECTION_UNSUPPORTED'))return t('轻量连接不支持管理 Goal，请在 Codex 里操作。');
+ if(code.includes('GOAL_LIGHT_CONNECTION_UNSUPPORTED'))return t('请在 Codex 里管理目标。');
  if(code.includes('GOAL_NATIVE_RETRY_PENDING'))return t('Codex 正在自动重试，请等待本轮状态更新。');
  if(/GOAL_PRECHECK_FAILED|GOAL_BACKEND_UNAVAILABLE|GOAL_SESSION_UNAVAILABLE/.test(code))return t('暂时无法连接 Codex，本次目标操作未执行。');
  if(/GOAL_TARGET_CHANGED|GOAL_CHANGED_REFRESH|GOAL_NO_LONGER_EXISTS/.test(code))return t('目标或绑定已变化，请刷新后再操作。');
@@ -45,5 +45,7 @@ export function CodexGoalController({goal,controls,api,checkedAt,diagnostic,disa
  }
  async function check(){if(running.current||!pending)return;running.current=true;setBusy(true);try{await reconcile(await api.command<GoalControlReceipt|null>({action:'GOAL_RECEIPT',threadId:goal.threadId,id:pending}));}catch(cause){setError(goalControlError(cause));}finally{running.current=false;setBusy(false);}}
  const enabled=!disabled&&!pending&&Boolean(shownGoal.fingerprint);
- return <div className="r2-goal-manager">{nativeTurnErrorText(diagnostic)&&<p className="r2-goal-feedback">{nativeTurnErrorText(diagnostic)}</p>}{controls?.blockedReason==='GOAL_LIGHT_CONNECTION_UNSUPPORTED'&&<p className="r2-goal-feedback">{t('轻量连接不支持管理 Goal，请在 Codex 里操作。')}</p>}<CodexGoalStatus goal={shownGoal} checkedAt={checkedAt} busy={busy||!enabled||Boolean(controls?.blockedReason)||Boolean(shownGoal.status!=="active"&&!controls?.canResume)} onPause={Boolean(controls)&&shownGoal.status==="active"?()=>void control('PAUSE_GOAL'):undefined} onResume={Boolean(controls)&&["paused","blocked","usageLimited"].includes(shownGoal.status)?()=>void control('RESUME_GOAL'):undefined}/>{(pending||error)&&<p className="r2-goal-feedback" role="status">{error||t('正在同步目标状态…')}{pending&&!busy&&<button type="button" onClick={()=>void check()}>{t('检查目标操作记录')}</button>}</p>}{controls?.blockedReason&&!pending&&<p className="r2-goal-feedback">{goalControlError(controls.blockedReason)}</p>}</div>;
+ // This connection reads Goals but cannot change them, so nothing here offers to.
+ if(controls?.blockedReason==='GOAL_LIGHT_CONNECTION_UNSUPPORTED')return <div className="r2-goal-manager">{nativeTurnErrorText(diagnostic)&&<p className="r2-goal-feedback">{nativeTurnErrorText(diagnostic)}</p>}<CodexGoalStatus goal={shownGoal} checkedAt={checkedAt}/></div>;
+ return <div className="r2-goal-manager">{nativeTurnErrorText(diagnostic)&&<p className="r2-goal-feedback">{nativeTurnErrorText(diagnostic)}</p>}<CodexGoalStatus goal={shownGoal} checkedAt={checkedAt} busy={busy||!enabled||Boolean(controls?.blockedReason)||Boolean(shownGoal.status!=="active"&&!controls?.canResume)} onPause={Boolean(controls)&&shownGoal.status==="active"?()=>void control('PAUSE_GOAL'):undefined} onResume={Boolean(controls)&&["paused","blocked","usageLimited"].includes(shownGoal.status)?()=>void control('RESUME_GOAL'):undefined}/>{(pending||error)&&<p className="r2-goal-feedback" role="status">{error||t('正在同步目标状态…')}{pending&&!busy&&<button type="button" onClick={()=>void check()}>{t('检查目标操作记录')}</button>}</p>}{controls?.blockedReason&&!pending&&<p className="r2-goal-feedback">{goalControlError(controls.blockedReason)}</p>}</div>;
 }

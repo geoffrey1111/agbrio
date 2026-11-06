@@ -1838,12 +1838,10 @@
   "重新检查整机配置": "Check user-wide configuration",
   "操作结果暂未确认。请检查并完成这次操作，系统会沿用同一请求，不会重复创建。": "The outcome is unconfirmed. Check and finish this operation using the same request, without creating duplicates.",
   "已存在另一个 Agbrio 地址，已保留原配置。请核对后再连接。": "A different Agbrio address is configured and was preserved. Review it before connecting.",
-  "轻量连接不支持管理 Goal，请在 Codex 里操作。": "The light connection cannot manage Goals. Use Codex for that.",
   "轻量连接已接入 Codex": "Light connection is using Codex",
   "轻量连接已开启": "Light connection is on",
   "直接使用正常打开的 Codex，不需要退出或专用入口。": "Works with Codex as you normally open it, with no need to quit or use a special entry.",
   "请正常打开 Codex，Agbrio 会自动连接。": "Open Codex as usual and Agbrio connects automatically.",
-  "轻量连接不支持：管理 Goal、以管理员身份启动、退出 Codex 后继续执行任务。": "Not available with the light connection: managing Goals, starting as administrator, and tasks continuing after Codex quits.",
   "旧的共享后台未能停用": "The old shared backend could not be stopped",
   "已取消 Windows 授权，旧的共享后台保持原样。": "Windows consent was cancelled. The old shared backend was left as it is.",
   "没有结束任何进程，旧的共享后台保持原样。": "No process was ended. The old shared backend was left as it is.",
@@ -1855,7 +1853,6 @@
   "Codex 连接、Pi 子任务和 AI 助手。": "Codex connection, Pi tasks and AI assistants.",
   "Codex 连接、Pi 子任务和应用更新在电脑上设置。": "Codex connection, Pi tasks and app updates are set up on the computer.",
   "安装前自动备份数据；连接设置保留。": "Data is backed up automatically before installing. Connection settings are kept.",
-  "轻量连接不支持 Goal，这一项在 Windows 上不生效。": "The light connection does not support Goals, so this has no effect on Windows.",
   "正常打开 Codex": "Open Codex as usual",
   "不需要退出、重开或专用入口。任务由 Codex 自己运行。": "No need to quit, reopen or use a special entry. Codex runs the tasks itself.",
   "回到对话列表，点 + 监听电脑上的对话。": "Go back to the chat list and tap + to watch a chat on your computer.",
@@ -1863,7 +1860,6 @@
   "Agbrio 读取和跟进你电脑上的 Codex 对话，手机才能查看进度并继续跟进。": "Agbrio reads and follows up on the Codex chats on your computer, so your phone can check progress and continue them.",
   "轻量连接": "Light connection",
   "手机网址与配对在“设置 → 设备”中完成，还需在那里连接自己的手机。": "The phone address and pairing are in Settings → Devices. You still need to connect your own phone there.",
-  "手机发出的任务运行时，Codex 暂时打不开那个对话，任务结束后就能打开。": "While a task started from your phone is running, Codex cannot open that chat. It can once the task ends.",
   "Agbrio 直接连接你正常打开的 Codex，不需要退出、重开或专用入口。": "Agbrio connects directly to the Codex you opened as usual, with no need to quit, reopen or use a special entry.",
   "还没有检测到 Codex。请正常打开 Codex，再点一次。": "Codex was not detected yet. Open Codex as usual, then try again.",
   "检查 Codex 连接": "Check Codex connection",
@@ -1899,5 +1895,7 @@
   "在弹窗中确认后就会关闭它。选了稍后的话，可以到“设置 → 连接”关闭。": "Confirm in the dialog to stop it. If you chose later, you can stop it from Settings → Connection.",
   "还没有 Codex？先从微软商店安装官方 Codex 并登录，再正常打开它。": "No Codex yet? Install the official Codex from the Microsoft Store, sign in, then open it as usual.",
   "旧的共享后台还没有关闭，完成后再继续。": "The old shared backend has not stopped yet. Continue when it has.",
-  "旧的共享后台未关闭": "Old shared backend still running"
+  "旧的共享后台未关闭": "Old shared backend still running",
+  "请在 Codex 里管理目标。": "Manage Goals in Codex.",
+  "手机或管理对话发出的任务会直接出现在 Codex 里，可以打开查看并继续发消息。任务运行期间不要退出 Agbrio。": "Tasks sent from your phone or a managing conversation appear in Codex, where you can open them and keep sending messages. Keep Agbrio open while they run."
 }

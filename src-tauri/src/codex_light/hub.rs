@@ -3,6 +3,7 @@ use super::{
     backend::{Backend, BackendLost, PinKind},
     ipc::{Connection, PeerPolicy, Reply, StateEvent, OFFICIAL_PIPE},
     native_files::{self, Boundary, BoundaryKind, Signature},
+    owner::Sessions,
 };
 use serde_json::{json, Value};
 use std::{
@@ -10,7 +11,7 @@ use std::{
     io::{BufRead, Write},
     path::PathBuf,
     process::Command,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
     time::{Duration, Instant},
 };
 use tokio::sync::mpsc;
@@ -184,6 +185,8 @@ pub(super) struct Hub {
     follows: Mutex<HashMap<String, Follow>>,
     stale_open_turns: Mutex<HashMap<String, String>>,
     confirmed_interruptions: Mutex<HashSet<(String, String)>>,
+    sessions: Arc<Sessions>,
+    me: Weak<Hub>,
 }
 
 fn rpc_error(id: &Value, code: i64, message: &str) -> Value {
@@ -266,7 +269,9 @@ pub(super) fn parse_host_request_id(id: &str) -> Option<(String, String, Value)>
 
 impl Hub {
     pub fn new(config: Config, out: mpsc::UnboundedSender<Value>) -> Arc<Self> {
-        Arc::new(Self {
+        Arc::new_cyclic(|me| Self {
+            me: me.clone(),
+            sessions: Arc::default(),
             config,
             out,
             connection: Default::default(),
@@ -283,6 +288,14 @@ impl Hub {
 
     fn send(&self, message: Value) {
         let _ = self.out.send(message);
+    }
+
+    pub(super) fn owners(&self) -> &Sessions {
+        &self.sessions
+    }
+
+    pub(super) fn lock_held(&self, thread: &str) -> bool {
+        native_files::writer_lock_held(&self.config.codex_home, thread)
     }
 
     async fn pipe_connection(&self, force: bool) -> Option<Arc<Connection>> {
@@ -308,13 +321,22 @@ impl Hub {
         if let Some(existing) = slot.as_ref().filter(|backend| !backend.is_dead()) {
             return Ok(existing.clone());
         }
-        let backend = Backend::start((self.config.backend_command)(), self.out.clone())?;
+        // Everything the backend says also updates what Desktop is shown.
+        let (tap, mut tapped) = mpsc::unbounded_channel::<Value>();
+        let (sessions, out) = (self.sessions.clone(), self.out.clone());
+        tokio::spawn(async move {
+            while let Some(message) = tapped.recv().await {
+                sessions.observe(&message);
+                let _ = out.send(message);
+            }
+        });
+        let backend = Backend::start((self.config.backend_command)(), tap)?;
         backend.initialize().await?;
         *slot = Some(backend.clone());
         Ok(backend)
     }
 
-    async fn pinned_backend(&self, thread: &str) -> Option<Arc<Backend>> {
+    pub(super) async fn pinned_backend(&self, thread: &str) -> Option<Arc<Backend>> {
         self.backend.lock().await.as_ref().filter(|backend| !backend.is_dead() && backend.is_pinned(thread)).cloned()
     }
 
@@ -515,17 +537,39 @@ impl Hub {
             if let Some(thread) = &thread {
                 match method {
                     "thread/start" | "thread/resume" => {
-                        backend.pin(thread, if method == "thread/start" { PinKind::Created } else { PinKind::Resumed });
+                        let kind = if method == "thread/start" { PinKind::Created } else { PinKind::Resumed };
+                        backend.pin(thread, kind);
                         self.note_rollout(thread, &reply);
+                        if let Some(hub) = self.me.upgrade() {
+                            hub.claim(thread, &reply["result"], kind, backend.clone(), self.config.policy.clone(), self.config.pipe.clone());
+                        }
                     }
-                    "thread/unsubscribe" | "thread/archive" => backend.unpin(thread),
+                    "thread/unsubscribe" | "thread/archive" => {
+                        backend.unpin(thread);
+                        if let Some(hub) = self.me.upgrade() {
+                            hub.wait_then_close_owner(thread.clone());
+                        }
+                    }
                     _ => {}
                 }
             }
         }
+        if let (Some(turn), Some(thread)) = (reply.pointer("/result/turn/id").and_then(Value::as_str).filter(|_| method == "turn/start"), &thread) {
+            self.sessions.note_turn_request(thread, turn, params);
+        }
         let mut reply = reply;
         reply["id"] = id.clone();
         Some(reply)
+    }
+
+    /// A write Desktop asked for while following a thread. An uncertain one is reported as
+    /// failed to Desktop and never repeated.
+    pub(super) async fn follower_write(&self, method: &str, params: &Value) -> Result<Value, String> {
+        let reply = self.backend_write(&json!("follower"), method, params).await.ok_or("request-timeout")?;
+        match reply.get("error") {
+            Some(error) => Err(error["message"].as_str().unwrap_or("request-failed").to_owned()),
+            None => Ok(reply["result"].clone()),
+        }
     }
 
     fn held_error(id: &Value, thread: &str) -> Value {
@@ -784,7 +828,17 @@ impl Hub {
 
     async fn turn_start(self: &Arc<Self>, id: &Value, thread: &str, params: &Value) -> Option<Value> {
         match self.route(thread, true).await {
-            Route::Backend | Route::Free => self.backend_write(id, "turn/start", params).await,
+            Route::Backend => self.backend_write(id, "turn/start", params).await,
+            // The Host still counts a thread as loaded after the backend let it go, and app-server
+            // refuses a turn on a thread it has not loaded. A resume starts nothing, so a failed
+            // one is a plain refusal: the turn was never sent.
+            Route::Free => {
+                let resumed = self.backend_write(id, "thread/resume", &json!({"threadId":thread,"excludeTurns":true})).await?;
+                if resumed.get("error").is_some() {
+                    return Some(resumed);
+                }
+                self.backend_write(id, "turn/start", params).await
+            }
             Route::HeldElsewhere => Some(Self::held_error(id, thread)),
             Route::Desktop(connection, owner) => {
                 if !connection.writes_allowed {
@@ -893,21 +947,38 @@ impl Hub {
         let mut slot = self.backend.lock().await;
         let Some(backend) = slot.clone() else { return };
         let released = backend.release_finished(self.config.release_after_turn);
+        let hub = self.me.upgrade();
         // Exiting frees a held thread at once, while an unsubscribed one waits out
         // app-server's own unload delay. Desktop cannot open the thread until then.
         let free_now = !released.is_empty() && !backend.has_pins();
-        if backend.is_dead() || free_now || backend.reapable(self.config.idle_grace) {
+        if backend.is_dead() {
+            // The process and its turns are gone, so nothing is left to wait for.
             slot.take();
             backend.shut_down();
+            self.sessions.close_all();
+            return;
+        }
+        if free_now || backend.reapable(self.config.idle_grace) {
+            slot.take();
+            backend.shut_down();
+            if let Some(hub) = &hub {
+                for thread in released {
+                    hub.wait_then_close_owner(thread);
+                }
+            }
             return;
         }
         drop(slot);
         for thread in released {
             let _ = backend.call("thread/unsubscribe", json!({"threadId":thread}), Duration::from_secs(10)).await;
+            if let Some(hub) = &hub {
+                hub.wait_then_close_owner(thread);
+            }
         }
     }
 
     pub async fn shut_down(&self) {
+        self.sessions.close_all();
         if let Some(backend) = self.backend.lock().await.take() {
             backend.shut_down();
         }
