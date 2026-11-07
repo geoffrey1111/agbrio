@@ -48,12 +48,11 @@ fn isolated_browser_and_native_manager_host() {
         Arc::new(router_core::store::RouterStore::open_at(profile.join("router.db")).unwrap());
     let core = RouterCore {
         store: store.clone(),
-        chatgpt: Arc::default(),
+
         session: Arc::new(Mutex::new(Session {
             adapter: Some(adapter),
             ..Default::default()
         })),
-        completed_chatgpt_responses: Arc::default(),
     };
     if !profile.join("ready.json").exists() {
         store

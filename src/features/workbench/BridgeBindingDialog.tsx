@@ -10,8 +10,8 @@ import {activityTime,groupThreads,type CatalogWindow} from "../codex/threadCatal
 import type {RoleBridgeApi,RoleInput} from "./RoleBridgePanel";
 type Props={claudeApi?:ClaudePickerApi;workstreamName?:string;decision:RoleInput;execution:RoleInput;setDecision:(value:RoleInput)=>void;setExecution:(value:RoleInput)=>void;step:0|1|2;setStep:(step:0|1|2)=>void;catalog:Awaited<ReturnType<RoleBridgeApi["threads"]>>|null;busy:boolean;error:string|null;canSave:boolean;refresh:()=>void;close:()=>void;save:()=>void};
 const roles=["控制端","执行端"];
-const identity=(input:RoleInput)=>{try{const match=new URL(input.externalId).pathname.match(/\/c\/([^/]+)/);return match?match[1]:input.externalId.trim();}catch{return input.externalId.trim();}};
-const avatarKey=(input:RoleInput)=>input.provider==="CLAUDE_CODE"?`w:claude_code:${identity(input)}`:input.provider==="CODEX"?`w:${identity(input)}`:`chatgpt:${identity(input)}`;
+const identity=(input:RoleInput)=>input.externalId.trim();
+const avatarKey=(input:RoleInput)=>input.provider==="CLAUDE_CODE"?`w:claude_code:${identity(input)}`:`w:${identity(input)}`;
 const avatarKind=(input:RoleInput)=>input.provider==="CLAUDE_CODE"?"claude":"codex";
 const spring={type:"spring",stiffness:520,damping:32,mass:.7} as const;
 const when=(seconds?:number|null)=>{if(!seconds)return "";const minutes=(Date.now()/1000-seconds)/60;if(minutes<1)return uiText("刚刚");if(minutes<60)return tc("{0} 分钟",Math.floor(minutes));const date=new Date(seconds*1000);return minutes<1440?new Intl.DateTimeFormat(getLanguage(),{hour:"2-digit",minute:"2-digit"}).format(date):new Intl.DateTimeFormat(getLanguage(),{month:"numeric",day:"numeric"}).format(date);};
@@ -55,7 +55,7 @@ export function BridgeBindingDialog({claudeApi,workstreamName,decision,execution
    <div className="v6-sheet-foot"><button type="button" className="v6-primary" disabled={busy||!valid} onClick={save}><Check size={18}/>{busy?uiText("保存中…"):uiText("保存两端")}</button></div>
   </motion.div>:<motion.div key={`edit-${editing}`} className="v6-step" initial={{opacity:0,x:20}} animate={{opacity:1,x:0}} transition={spring}>
    <div className="v6-binding-edit" aria-busy={busy}>
-    <div className="v6-seg" role="group" aria-label={uiText("选择{0}", uiText(roles[editing]))}>{(["CODEX","CLAUDE_CODE","CHATGPT"] as const).map(provider=><button key={provider} type="button" disabled={busy} aria-pressed={provider===input.provider} onClick={()=>{if(provider!==input.provider)update({provider,externalId:"",label:""});}}>{providerLabel(provider)}</button>)}</div>
+    <div className="v6-seg" role="group" aria-label={uiText("选择{0}", uiText(roles[editing]))}>{(["CODEX","CLAUDE_CODE"] as const).map(provider=><button key={provider} type="button" disabled={busy} aria-pressed={provider===input.provider} onClick={()=>{if(provider!==input.provider)update({provider,externalId:"",label:""});}}>{providerLabel(provider)}</button>)}</div>
     {input.provider==="CODEX"&&<>
      <label className="v6-search"><Search size={16} aria-hidden/><input type="search" aria-label={uiText("{0}搜索对话或项目", uiText(roles[editing]))} placeholder={project===null?uiText("搜索全部对话"):uiText("在这个项目里搜索")} value={query} onChange={e=>setQuery(e.target.value)}/></label>
      {project!==null&&<div className="v6-chips"><button type="button" className="v6-chip-back" aria-label={uiText("返回项目列表")} onClick={()=>{setProject(null);setQuery("");}}><ChevronLeft size={14}/>{project==="ALL"?uiText("全部项目"):projects.find(g=>g.key===project)?.label??uiText("项目")}</button>{([["1",uiText("1 天")],["3",uiText("3 天")],["7",uiText("7 天")],["30",uiText("30 天")],["ALL",uiText("全部")]] as const).map(([id,label])=><button key={id} type="button" aria-pressed={range===id} onClick={()=>setRange(id)}>{label}</button>)}</div>}
@@ -74,8 +74,6 @@ export function BridgeBindingDialog({claudeApi,workstreamName,decision,execution
      <button type="button" className="v6-swap" onClick={refresh}><RefreshCw size={14}/>{uiText("刷新目录")}</button>
     </>}
     {input.provider==="CLAUDE_CODE"&&<div className="v6-sheet-scroll"><ClaudeSessionPicker api={claudeApi??{}} value={input} onChange={next=>choose(next)}/></div>}
-    {input.provider==="CHATGPT"&&<><label className="v6-field">{uiText("对话链接")}<input aria-label={uiText("{0} ChatGPT 对话链接", uiText(roles[editing]))} value={input.externalId} placeholder="https://chatgpt.com/c/…" onChange={event=>update({...input,externalId:event.target.value,label:input.label||uiText("ChatGPT 对话")})}/></label>
-     <div className="v6-sheet-foot"><button type="button" className="v6-primary" disabled={busy||!identity(input)} onClick={()=>setEditing(null)}><Check size={18}/>{uiText("使用此对话")}</button></div></>}
    </div>
   </motion.div>}
  </Dialog.Content></Dialog.Portal></Dialog.Root>;

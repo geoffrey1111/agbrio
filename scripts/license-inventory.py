@@ -4,7 +4,7 @@ Run after npm ci in both package roots and cargo metadata --locked. No secrets,
 runtime records or absolute build-machine paths are written to the inventory.
 """
 from pathlib import Path
-import json, shutil, subprocess, urllib.request, re
+import json, shutil, subprocess, urllib.request, re, sys
 
 ROOT = Path(__file__).resolve().parent.parent
 DEST = ROOT / 'third-party'
@@ -43,7 +43,7 @@ def notices(kind, name, version, license_id, directory, source):
             shutil.copytree(directory,src,dirs_exist_ok=True,ignore=shutil.ignore_patterns('.cargo-checksum.json','.cargo-ok'))
     rows.append(dict(ecosystem=kind,name=name,version=version,license=license_id,source=source,notices=found))
 
-for folder in [ROOT, ROOT/'tools/isolated-browser-executor']:
+for folder in [ROOT, ROOT/'tools/node-runtime']:
     lock = json.loads((folder/'package-lock.json').read_text(encoding='utf-8'))
     for relative, row in lock['packages'].items():
         if not relative or 'node_modules/' not in relative:
@@ -56,7 +56,7 @@ for folder in [ROOT, ROOT/'tools/isolated-browser-executor']:
             continue
         notices('npm',package['name'],package['version'],package.get('license') or row.get('license'),directory,row.get('resolved','https://www.npmjs.com/package/'+package['name']))
 
-metadata = json.loads(subprocess.check_output(['cargo','metadata','--manifest-path',str(ROOT/'src-tauri/Cargo.toml'),'--locked','--format-version','1','--filter-platform','x86_64-pc-windows-msvc'],cwd=ROOT,text=True,encoding='utf-8'))
+metadata = json.loads(subprocess.check_output(['cargo','metadata','--manifest-path',str(ROOT/'src-tauri/Cargo.toml'),'--locked','--format-version','1','--filter-platform',sys.argv[1] if len(sys.argv)>1 else 'x86_64-pc-windows-msvc'],cwd=ROOT,text=True,encoding='utf-8'))
 for package in metadata['packages']:
     if not package['source']:
         continue # Agbrio itself

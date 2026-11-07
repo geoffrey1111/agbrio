@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {join,dirname} from 'node:path';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const require=createRequire(import.meta.url);
-const wsRoot=dirname(require.resolve('ws/package.json',{paths:[join(root,'tools/isolated-browser-executor')]}));
+const wsRoot=dirname(require.resolve('ws/package.json',{paths:[join(root,'tools/node-runtime')]}));
 const {WebSocketServer}=require(wsRoot);
 
 async function fixture(run){

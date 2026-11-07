@@ -3,10 +3,7 @@
 //! observations are presentation DTOs; service clones share the same resources.
 #[cfg(debug_assertions)]
 use crate::HostLifecycleObservation;
-use crate::{
-    mobile_http, ConversationHistory, ConversationHistoryDiagnostics, ConversationHistoryMessage,
-    HostEnvironmentStatus, Provider, RouterCore,
-};
+use crate::{mobile_http, HostEnvironmentStatus, RouterCore};
 use std::sync::{Arc, Mutex};
 
 /// Resident service resources. A hidden dashboard has no bearing on Core,
@@ -44,7 +41,7 @@ mod tests {
     #[test]
     fn failed_local_listener_recovers_using_the_same_host_store_and_identity() {
         let directory=tempfile::tempdir().unwrap();std::fs::write(directory.path().join("index.html"),"recovery-shell").unwrap();
-        let core=RouterCore{chatgpt:Arc::default(),store:Arc::new(RouterStore::open_at(directory.path().join("router.db")).unwrap()),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};
+        let core=RouterCore{store:Arc::new(RouterStore::open_at(directory.path().join("router.db")).unwrap()),session:Arc::new(Mutex::new(Session::default())),};
         let host=HostRuntime::default();let mut config=mobile_http::MobileHttpConfig::controlled_host_acceptance(directory.path().into());config.port=0;
         host.ensure_mobile(core.clone(),config.clone());let first=host.mobile.lock().unwrap().as_ref().unwrap().address;
         let client=reqwest::blocking::Client::new();let verify=|address|client.get(format!("http://{address}/v1/mobile/auth/session")).header("host","router.local.test").send().unwrap();
@@ -60,10 +57,9 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         std::fs::write(directory.path().join("index.html"), "headless-host-fixture").unwrap();
         let core = RouterCore {
-            chatgpt: Arc::default(),
+
             store: Arc::new(RouterStore::open_at(directory.path().join("router.db")).unwrap()),
             session: Arc::new(Mutex::new(Session::default())),
-            completed_chatgpt_responses: Arc::new(Mutex::new(HashMap::new())),
         };
         let host = HostRuntime::default();
         let clone = host.clone();
@@ -150,73 +146,12 @@ impl HostRuntime {
             while !stop.load(std::sync::atomic::Ordering::Acquire){crate::mobile_connection::process_setup_request(&core,&host);crate::hosted_relay::ensure(&host);crate::attachment_cache::maintain(&core);crate::local_safety::maintain(&core);for _ in 0..20{if stop.load(std::sync::atomic::Ordering::Acquire){return;}std::thread::sleep(std::time::Duration::from_millis(100));}}
         }));
     }
-    /// Explicit human intent only. AUTH_REQUIRED opens native human-only
-    /// Chromium; no automation connection or latch clearance occurs.
-    pub(crate) fn open_chatgpt_browser_setup(&self, core: &RouterCore) -> Result<(), String> {
-        let result = core.chatgpt.open_for_authentication()?;
-        if result["status"] == "OPEN" {
-            if result["focus"] == "ATTENTION" {
-                return Err("SECURITY_BROWSER_FOCUS_BLOCKED".into());
-            }
-            Ok(())
-        } else {
-            Err(result["code"].as_str().or(result["status"].as_str()).unwrap_or("UNAVAILABLE").into())
-        }
-    }
 
-    /// Reads one exact, terminal ChatGPT reply through the persistent
-    /// Playwright carrier. The direct provider contract intentionally exposes
-    /// no complete transcript, so this returns an explicit terminal-only
-    /// projection rather than inferring a browser-session history.
-    pub(crate) fn read_active_chatgpt_history(
-        &self,
-        core: &RouterCore,
-        workstream_id: &str,
-    ) -> Result<ConversationHistory, String> {
-        let endpoint = core
-            .store
-            .active_endpoint_for_workstream(workstream_id, Provider::Chatgpt)?
-            .ok_or("No ACTIVE ChatGPT Endpoint")?;
-        let latest = core.chatgpt.observe_exact(&endpoint.external_id)?;
-        let messages = std::iter::once(latest)
-            .map(|reply| ConversationHistoryMessage {
-                id: reply.message_id,
-                role: "assistant".into(),
-                text: reply.text,
-                blocks: Vec::new(),
-                code_blocks: Vec::new(),
-                resources: Vec::new(),
-            })
-            .collect::<Vec<_>>();
-        Ok(ConversationHistory {
-            id: endpoint.external_id,
-            title: endpoint.label,
-            branch_scope: "EXACT_CONVERSATION_LATEST_TERMINAL".into(),
-            completeness: "TERMINAL_ONLY".into(),
-            diagnostics: ConversationHistoryDiagnostics {
-                beginning_reached: false,
-                end_reached: true,
-                beginning_steps: 0,
-                end_steps: 0,
-                initial_dom_message_count: messages.len() as u32,
-                scroll_target: "playwright-exact-conversation".into(),
-                viewport_height: 0,
-                scrollable_height: 0,
-                end_last_scroll_top: 0,
-                end_last_scrollable_height: 0,
-                end_stalled_steps: 0,
-                scroll_restored: true,
-            },
-            messages,
-        })
-    }
 
-    pub(crate) fn environment_status(&self, core: &RouterCore) -> HostEnvironmentStatus {
+    pub(crate) fn environment_status(&self) -> HostEnvironmentStatus {
         HostEnvironmentStatus {
             host: "ONLINE".into(),
             mobile: self.mobile_status(),
-            browser_runtime: "OFFICIAL_NON_BRANDED_CHROMIUM".into(),
-            chatgpt_browser_mode: core.chatgpt.status().into(),
         }
     }
 

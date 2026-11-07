@@ -16,7 +16,7 @@ const state:WatchChatState={watch:pi,provider:"PI",inputReady:true,host:"工作�
  piTask:{taskId:"task",executionEpoch:"e",loaded:true,canRestore:false,state:"RUNNING",settings:{provider:"anthropic",model:"claude-opus-5-5",thinking:"high"},selectionSource:"EXPLICIT",parent:{provider:"CLAUDE_CODE",externalId:"10000000-0000-4000-8000-000000000001",cwd:"D:/fixture/card"}}};
 const chat:WatchChatApi={state:async()=>state,command:(async(input:{action:string})=>{if(input.action==="HISTORY")return{messages:[],nextCursor:null};throw Error("FIXTURE_NO_WRITES");}) as WatchChatApi["command"]};
 const watchApi:NotificationApi={cachedWatches:()=>[pi],watches:async()=>[pi],threads:async()=>({complete:true,threads:[]}) as never,connect:async()=>undefined,enable:async()=>undefined,pause:async()=>undefined,feed:async()=>({events:[],nextCursor:0,hasMore:false}),event:async()=>{throw Error("none");},webUrl:async()=>null,chat};
-const base:UnifiedWorkbenchProps={items:[{id:"bridge-a",name:"战斗 Bridge",lifecycle:"ACTIVE"}],draft:{value:""},onDraftChange:()=>{},onSelectWorkstream:()=>{},watchApi};
+const base:UnifiedWorkbenchProps={items:[{id:"bridge-a",name:"战斗 Bridge",lifecycle:"ACTIVE"}],onSelectWorkstream:()=>{},watchApi};
 
 it("keeps the conversation list beside the open conversation on wide desktops",async()=>{
  render(<UnifiedWorkbench {...base} surface="BRIDGES"/>);

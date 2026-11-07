@@ -68,6 +68,8 @@ PC와 Agbrio는 온라인 상태여야 합니다. 알림을 받을 기기에서 
 
 ## Mac Beta
 
+소스 후보 업데이트: ChatGPT 브라우저와 내장 Chromium을 제거했습니다. 기존 Bridge의 저장된 답변은 유지하지만 다시 연결하기 전에는 읽거나 보낼 수 없습니다. ChatGPT MCP 도우미 연결은 유지합니다. Mac의 독립 app-server, Goal 제어, 자동 복구와 중계용 Node도 유지합니다. 위 다운로드는 이전 공개 테스트 버전이며 이 후보는 아직 출시하지 않았습니다.
+
 Windows rc.122의 관리 영역, 별자리 보기와 첫 실행 안내를 포함합니다. Mac에서는 Pi, 공유 Codex와 앱 내 업데이트를 계속 제공하지 않습니다.첫 실행 안내는 Mac에서 미지원인 공유 Codex 단계를 건너뜁니다. Claude MCP는 원래 Code 대화에서 수동 연결합니다.
 
 **Mac 공개 테스트 버전: Apple Silicon(ARM64) 전용. 정식 macOS 지원이 아니며 외부 테스터 소유 Mac의 실제 기기 검증이 없어 문제가 있을 수 있습니다.** Intel Mac은 지원하지 않습니다. macOS 13.5는 명시한 최소 버전일 뿐 OS/기종 검증은 미완료입니다. GitHub Mac CI는 엔지니어링 검증으로 실제 기기 UAT나 Windows 기능 동등성을 뜻하지 않습니다. 위 일반 소개는 주로 Windows에 해당하며 Mac에는 이 제한이 적용됩니다.

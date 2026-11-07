@@ -48,7 +48,7 @@ jobs:
         run: |
           npm ci
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
-          npm ci --prefix tools/isolated-browser-executor
+          npm ci --prefix tools/node-runtime
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           npm test -- --maxWorkers=2
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
@@ -68,7 +68,7 @@ jobs:
       - name: Core tests
         run: cargo test --manifest-path crates/Cargo.toml --locked
       - name: Stage verified runtime
-        run: npm run build:browser-executor
+        run: npm run build:node-runtime
       - name: Native tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked -- --test-threads=2
       - name: Native published board isolation

@@ -100,7 +100,7 @@ async fn exchange(
     mut stream: UnixStream,
     core: &RouterCore,
     host: &HostRuntime,
-    seen: &mut HashMap<String, (Request, Value)>,
+    seen: &mut ReplayStore,
 ) -> Result<bool, ()> {
     if stream.peer_cred().map_err(|_| ())?.uid() != uid() {
         return Err(());
@@ -135,7 +135,7 @@ async fn serve_at(
     on_shutdown: impl FnOnce() + Send + 'static,
 ) -> Result<(), String> {
     let (listener, _owner) = bind(&path)?;
-    let mut seen = HashMap::new();
+    let mut seen = ReplayStore::new()?;
     loop {
         let (stream, _) = listener
             .accept()
@@ -174,6 +174,26 @@ mod tests {
             .prefix("agbrio-ipc-")
             .tempdir_in("/private/tmp")
             .unwrap()
+    }
+    async fn call(path: &Path, request: &[u8], ack: bool) -> Value {
+        let deadline=std::time::Instant::now()+std::time::Duration::from_secs(3);
+        let mut stream = loop {
+            if let Ok(s) = UnixStream::connect(path).await {
+                break BufReader::new(s);
+            }
+            assert!(std::time::Instant::now()<deadline,"owned socket did not become ready");
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        };
+        stream.get_mut().write_all(request).await.unwrap();
+        stream.get_mut().write_all(b"\n").await.unwrap();
+        let mut line = String::new();
+        stream.read_line(&mut line).await.unwrap();
+        if ack {
+            stream.get_mut().write_all(b"ACK\n").await.unwrap();
+            let mut end = String::new();
+            stream.read_line(&mut end).await.unwrap();
+        }
+        serde_json::from_str(&line).unwrap()
     }
     #[test]
     fn ownership_rejects_unsafe_directories_symlinks_and_second_writers() {
@@ -249,26 +269,7 @@ mod tests {
             let server = tokio::spawn(serve_at(core, owned, address, move || {
                 count.fetch_add(1, Ordering::SeqCst);
             }));
-            async fn call(path: &Path, request: &[u8], ack: bool) -> Value {
-                let deadline=std::time::Instant::now()+std::time::Duration::from_secs(3);
-                let mut stream = loop {
-                    if let Ok(s) = UnixStream::connect(path).await {
-                        break BufReader::new(s);
-                    }
-                    assert!(std::time::Instant::now()<deadline,"owned socket did not become ready");
-                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-                };
-                stream.get_mut().write_all(request).await.unwrap();
-                stream.get_mut().write_all(b"\n").await.unwrap();
-                let mut line = String::new();
-                stream.read_line(&mut line).await.unwrap();
-                if ack {
-                    stream.get_mut().write_all(b"ACK\n").await.unwrap();
-                    let mut end = String::new();
-                    stream.read_line(&mut end).await.unwrap();
-                }
-                serde_json::from_str(&line).unwrap()
-            }
+
             for _ in 0..16 {
                 assert_eq!(
                     call(&path, &request("STATUS", None), true).await["data"]["instanceId"],
@@ -293,4 +294,31 @@ mod tests {
             assert!(!path.exists());
         });
     }
+    #[test]
+    fn more_than_128_real_socket_receipts_preserve_unacknowledged_shutdown_fences() {
+        let (_data, core, host) = fixture();
+        let temp = directory();
+        let path = temp.path().join("private/control.sock");
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let count=calls.clone();let address=path.clone();
+            let server=tokio::spawn(serve_at(core.clone(),host.clone(),address,move||{count.fetch_add(1,std::sync::atomic::Ordering::SeqCst);}));
+            for _ in 0..100 {if path.exists(){break}tokio::time::sleep(std::time::Duration::from_millis(10)).await;}
+            let first=request("SHUTDOWN",Some(host.instance_id()));
+            for n in 0..512 {
+                let bytes=if n==0{first.clone()}else{request("SHUTDOWN",Some(host.instance_id()))};
+                let reply=call(&path,&bytes,false).await;
+                assert!(reply.get("errorCode").is_none(),"receipt {n}: {reply}");
+            }
+            assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst),0);
+            // ACKing an old result must not admit its shutdown again.
+            let replay=call(&path,&first,true).await;assert!(replay.get("errorCode").is_none());
+            assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst),0);
+            call(&path,&request("SHUTDOWN",Some(host.instance_id())),true).await;
+            tokio::time::timeout(std::time::Duration::from_secs(5),server).await.unwrap().unwrap().unwrap();
+            assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst),1);
+            assert!(!path.exists());
+        });
+    }
+
 }

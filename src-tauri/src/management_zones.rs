@@ -41,7 +41,7 @@ pub(crate) fn poll(store:&Arc<RouterStore>,session:&Arc<Mutex<Session>>){
     let Ok(rows)=store.management_codex_deliveries()else{return};if rows.is_empty(){return;}
     static NEXT:AtomicUsize=AtomicUsize::new(0);
     let offset=NEXT.fetch_add(4,Ordering::Relaxed)%rows.len();
-    let core=RouterCore{store:store.clone(),session:session.clone(),chatgpt:Default::default(),completed_chatgpt_responses:Default::default()};
+    let core=RouterCore{store:store.clone(),session:session.clone(),};
     for(n,s,old,attempt)in rows.iter().cycle().skip(offset).take(rows.len().min(4)){
         if n.status=="UNKNOWN"{
             if let Some(reply)=old{
@@ -91,6 +91,6 @@ pub(crate) fn poll(store:&Arc<RouterStore>,session:&Arc<Mutex<Session>>){
         assert_eq!(sent.lines().count(),1,"{sent}");
         assert!(sent.contains("request-a"));assert!(sent.contains("metadata only"));assert!(sent.contains(&source));
         assert!(!sent.contains("private business text"));
-        let core=RouterCore{store,session,chatgpt:Default::default(),completed_chatgpt_responses:Default::default()};core.shutdown_owned_adapter();
+        let core=RouterCore{store,session,};core.shutdown_owned_adapter();
     }
 }

@@ -18,7 +18,7 @@ it("uses the primary system language and distinguishes Traditional Chinese",()=>
 });
 it("changes every mounted surface without remounting reader state or changing routing",()=>{
  const select=vi.fn();function Draft(){const[value,setValue]=useState("设置\n通知\nunchanged instructions");return <textarea aria-label="private draft" value={value} onChange={e=>setValue(e.target.value)}/>;}
- render(<NativeWorkbench items={[{id:"exact-id",name:"通知",lifecycle:"ACTIVE"}]} draft={{value:""}} onDraftChange={()=>{}} onSelectWorkstream={select} surface="SETTINGS" selectedWorkstreamId="exact-id" bridgePanel={<Draft/>}/>);
+ render(<NativeWorkbench items={[{id:"exact-id",name:"通知",lifecycle:"ACTIVE"}]} onSelectWorkstream={select} surface="SETTINGS" selectedWorkstreamId="exact-id" bridgePanel={<Draft/>}/>);
  const draft=screen.getByRole("textbox",{name:"private draft",hidden:true});
  fireEvent.change(screen.getByRole("combobox",{name:"语言"}),{target:{value:"en"}});
  expect(screen.getByRole("combobox",{name:"Language"})).toHaveValue("en");
@@ -34,7 +34,7 @@ it("keeps original content verbatim even when it equals an application phrase",(
  expect(screen.getByRole("checkbox",{name:/Block 1/})).not.toBeChecked();
 });
 it("keeps a Bridge title unchanged when it matches a translated navigation label",()=>{
- setLanguagePreference("en");render(<NativeWorkbench items={[{id:"exact-id",name:"通知",lifecycle:"ACTIVE"}]} draft={{value:""}} onDraftChange={()=>{}} onSelectWorkstream={()=>{}} selectedWorkstreamId="exact-id" surface="WORKSPACE"/>);
+ setLanguagePreference("en");render(<NativeWorkbench items={[{id:"exact-id",name:"通知",lifecycle:"ACTIVE"}]} onSelectWorkstream={()=>{}} selectedWorkstreamId="exact-id" surface="WORKSPACE"/>);
  expect(screen.getByRole("heading",{level:1})).toHaveTextContent("通知");expect(screen.getByRole("navigation",{name:"Desktop navigation"})).toHaveTextContent("To-do");
 });
 it("updates an existing failure and preserves the exact HTTPS input without retrying",async()=>{

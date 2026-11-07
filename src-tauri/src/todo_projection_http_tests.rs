@@ -11,9 +11,8 @@ fn t_items_http_auth_read_projection_and_thread_cutoff() {
     std::fs::write(d.path().join("index.html"), "fixture").unwrap();
     let core = RouterCore {
         store: Arc::new(RouterStore::open_at(d.path().join("router.db")).unwrap()),
-        chatgpt: Arc::default(),
+
         session: Arc::default(),
-        completed_chatgpt_responses: Arc::default(),
     };
     let snapshot = |state: &str, turn: &str| router_core::store::codex_watch::WatchSnapshot {
         state: state.into(),

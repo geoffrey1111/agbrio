@@ -7,7 +7,7 @@ import {CodexQuota} from "./CodexQuota";
 import {UnifiedWorkbench,type UnifiedWorkbenchProps,type WorkbenchSurface} from "./UnifiedWorkbench";
 
 afterEach(()=>{cleanup();localStorage.clear();});
-const base:UnifiedWorkbenchProps={items:[{id:"exact-a",name:"同名 Bridge",lifecycle:"ACTIVE"},{id:"exact-b",name:"同名 Bridge",lifecycle:"ACTIVE"}],draft:{value:""},onDraftChange:()=>{},onSelectWorkstream:()=>{}};
+const base:UnifiedWorkbenchProps={items:[{id:"exact-a",name:"同名 Bridge",lifecycle:"ACTIVE"},{id:"exact-b",name:"同名 Bridge",lifecycle:"ACTIVE"}],onSelectWorkstream:()=>{}};
 it('offers interface updates in mobile About without replacing desktop installer controls',()=>{
  const previous=location.pathname;history.replaceState({},'', '/mobile');
  try{render(<UnifiedWorkbench {...base} surface='SETTINGS'/>);expect(screen.queryByRole('button',{name:'检查界面更新'})).toBeNull();fireEvent.click(screen.getByRole('button',{name:/^关于/}));expect(screen.getAllByRole('button',{name:'检查界面更新'})).toHaveLength(1);expect(screen.getByRole('button',{name:'检查界面更新'})).toBeVisible();}

@@ -28,7 +28,7 @@ const protectedBefore=await snapshot();
 const inspected=JSON.parse((await exec(ps,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(source,'native-runtime.ps1'),'-Action','Inspect','-Binary',binary],{windowsHide:true,timeout:60000,maxBuffer:262144})).stdout);
 assert.equal(inspected.cohortVerified,true);
 const ownerSid=(await exec(ps,['-NoProfile','-NonInteractive','-Command','[Security.Principal.WindowsIdentity]::GetCurrent().User.Value'],{windowsHide:true})).stdout.trim();
-const require=createRequire(import.meta.url),wsRoot=dirname(require.resolve('ws/package.json',{paths:[resolve('tools/isolated-browser-executor')]})),{WebSocket}=require(wsRoot);
+const require=createRequire(import.meta.url),wsRoot=dirname(require.resolve('ws/package.json',{paths:[resolve('tools/node-runtime')]})),{WebSocket}=require(wsRoot);
 const scratch=resolve('runtime/shared-native-compatibility');await mkdir(scratch,{recursive:true});
 const root=await mkdtemp(join(scratch,'gateway-code-mode-')),runtime=join(root,'runtime'),home=join(root,'home');
 const files=['runtime.mjs','privilege.mjs','privilege.ps1','native-cohort.mjs','backend-recovery.mjs','state-file.mjs','peer-service.ps1'];

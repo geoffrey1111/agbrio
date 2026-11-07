@@ -3,53 +3,12 @@ on:
   push:
   pull_request:
   workflow_dispatch:
-    inputs:
-      audit_chromium:
-        description: Audit the fixed official Mac Chromium archive without starting a browser
-        type: boolean
-        default: false
-      native_browser_check:
-        description: Run the disposable offline Chromium native lifecycle fixture without accounts
-        type: boolean
-        default: false
 permissions:
   contents: read
 concurrency:
   group: macos-source-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
-  browser-boundary:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.native_browser_check }}
-    runs-on: macos-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24.16.0
-      - name: Install locked browser helper dependencies
-        run: npm ci --prefix tools/isolated-browser-executor
-      - name: Stage native helper without downloading Chromium
-        run: node scripts/build-browser-executor.mjs
-      - name: Run disposable native browser fixture
-        env:
-          AGBRIO_MAC_BROWSER_FIXTURE: '1'
-        run: |
-          export TMPDIR="$RUNNER_TEMP"
-          node --test tools/isolated-browser-executor/macos-browser-native.integration.test.mjs
-  chromium-audit:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.audit_chromium }}
-    runs-on: macos-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - name: Audit pinned official Chromium archive
-        run: python3 scripts/audit-macos-chromium.py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos-chromium-audit
-          path: ${{ runner.temp }}/agbrio-chromium-audit/*.json
-          if-no-files-found: error
   source:
     runs-on: macos-latest
     timeout-minutes: 45
@@ -82,7 +41,6 @@ jobs:
       - name: Locked frontend and helper dependencies
         run: |
           npm ci
-          npm ci --prefix tools/isolated-browser-executor
       - name: Frontend and platform tests
         run: |
           /bin/sh -n src/features/workbench/claudeManualInstall.macos.sh
@@ -93,12 +51,9 @@ jobs:
           python3 -m unittest discover -s scripts -p test_macos_update_package.py
           node --test scripts/create-macos-update-manifest.test.mjs
           node --test scripts/claude-usage-statusline.test.mjs
-          node --test tools/isolated-browser-executor/browser-package-macos.test.mjs
           npm run build
       - name: Stage native Node and helper resources
-        run: npm run build:browser-executor
-      - name: Native macOS profile boundary tests
-        run: node --test tools/isolated-browser-executor/macos-native.test.mjs tools/isolated-browser-executor/native-runtime.test.mjs
+        run: npm run build:node-runtime
       - name: Isolated TLS listener preflight (CI service only)
         shell: bash
         env:

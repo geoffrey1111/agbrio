@@ -49,7 +49,7 @@ fn now_ms()->i64{clock() as i64*1000}
 fn real_mcp_create_empty_codex_and_read_without_any_model_turn(){
  let root=std::path::PathBuf::from(std::env::var("AGBRIO_CREATE_QA_ROOT").unwrap());assert!(root.is_absolute()&&root.is_dir());
  let store=Arc::new(RouterStore::open_at(root.join("isolated-create.db")).unwrap());
- let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};
+ let core=RouterCore{store,session:Arc::new(Mutex::new(Session::default())),};
  let mut command=std::process::Command::new("node");command.arg(std::env::var("AGBRIO_READONLY_TRANSPORT").unwrap()).arg(std::env::var("AGBRIO_READONLY_SHARED_URL").unwrap());
  #[cfg(windows)]{use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}
  let mut adapter=crate::codex::adapter::CodexAdapter::start_shared_validation(command,Arc::new(|_|{})).unwrap();adapter.initialize().unwrap();core.session.lock().unwrap().adapter=Some(adapter);
@@ -153,7 +153,7 @@ fn fixture()->(tempfile::TempDir,RouterCore,String,String){
  let src=bindings.decision.unwrap().endpoint;store.record_reply_observation(&w.id,&src.id,Some("codex:qa-turn:qa-item"),"Owner-approved plan: continue. No change of scope.",None).unwrap();
  let observation=store.reply_observations_for_workstream(&w.id).unwrap()[0].id.clone();
  let g=store.create_assistant_grant(GrantInput{workstream_id:w.id,source_role:"DECISION".into(),binding_revision:bindings.binding_revision,label:"QA assistant".into(),rules:vec![BriefRule{id:"continue".into(),text:"Forward the approved plan; ask me about any change.".into()}],expires_at:now_ms()+86400000}).unwrap();
- let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};
+ let core=RouterCore{store,session:Arc::new(Mutex::new(Session::default())),};
  let path=dir.path().join("fixture-native.mjs");std::fs::write(&path,r#"
 import readline from 'node:readline';
 import fs from 'node:fs';
@@ -257,6 +257,53 @@ fn client()->reqwest::Client{reqwest::Client::builder().no_proxy().redirect(reqw
 async fn rpc(client:&reqwest::Client,base:&str,token:&str,name:&str,args:Value)->Value{
  let r=client.post(format!("{base}/mcp")).header("host","assistant.fixture.invalid").header("accept","application/json, text/event-stream").bearer_auth(token)
  .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":args}})).send().await.unwrap();assert_eq!(r.status(),StatusCode::OK);r.json().await.unwrap()
+}
+#[test]
+fn the_local_entrance_serves_only_mcp_with_the_same_grant(){
+ let(d,core,gid,_)=fixture();let host=crate::HostRuntime::default();let runtime=tokio::runtime::Runtime::new().unwrap();runtime.block_on(async {let token=core.store.issue_assistant_access(&gid,"https://assistant.fixture.invalid/mcp",now_ms()+600000).unwrap();
+ let handle=start(core.clone(),config(d.path()),host.clone()).await.unwrap();let base=format!("http://{}",handle.address);let c=client();let local="127.0.0.1:0";
+ let list=json!({"jsonrpc":"2.0","id":1,"method":"tools/list"});
+ let post=|name:&str|c.post(format!("{base}/mcp")).header("host",name).header("accept","application/json, text/event-stream");
+ let unauth=post(local).json(&list).send().await.unwrap();assert_eq!(unauth.status(),StatusCode::UNAUTHORIZED);assert!(unauth.headers()["www-authenticate"].to_str().unwrap().contains("http://127.0.0.1:0/.well-known/oauth-protected-resource/mcp"));
+ assert_eq!(post(local).bearer_auth("invalid-fixture-token").json(&list).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
+ let meta:Value=c.get(format!("{base}/.well-known/oauth-protected-resource/mcp")).header("host",local).send().await.unwrap().json().await.unwrap();assert_eq!(meta["resource"],"http://127.0.0.1:0/mcp");assert_eq!(meta["authorization_servers"][0],"https://assistant.fixture.invalid");
+ let public:Value=c.get(format!("{base}/.well-known/oauth-protected-resource/mcp")).header("host","assistant.fixture.invalid").send().await.unwrap().json().await.unwrap();assert_eq!(public["resource"],"https://assistant.fixture.invalid/mcp");
+ assert_eq!(post(local).bearer_auth(&token).json(&list).send().await.unwrap().status(),StatusCode::OK);
+ assert_eq!(post("assistant.fixture.invalid").bearer_auth(&token).json(&list).send().await.unwrap().status(),StatusCode::OK);
+ for origin in ["http://127.0.0.1:0","https://evil.invalid","null"]{assert_eq!(post(local).header("origin",origin).bearer_auth(&token).json(&list).send().await.unwrap().status(),StatusCode::FORBIDDEN);}
+ for origin in ["", "null", "https://evil.invalid"]{assert_eq!(c.get(format!("{base}/.well-known/oauth-protected-resource/mcp")).header("host",local).header("origin",origin).send().await.unwrap().status(),StatusCode::FORBIDDEN);}
+ for name in ["localhost:0","127.0.0.1:1","127.0.0.1","evil.invalid"]{assert_eq!(post(name).bearer_auth(&token).json(&list).send().await.unwrap().status(),StatusCode::FORBIDDEN);}
+ assert_eq!(c.post(format!("{base}/oauth/register")).header("host",local).json(&json!({"redirect_uris":["http://127.0.0.1:1/cb"]})).send().await.unwrap().status(),StatusCode::FORBIDDEN);
+ assert_eq!(c.post(format!("{base}/oauth/token")).header("host",local).form(&[("grant_type","refresh_token"),("client_id","x"),("refresh_token","y")]).send().await.unwrap().status(),StatusCode::FORBIDDEN);
+ assert_eq!(c.get(format!("{base}/.well-known/oauth-authorization-server")).header("host",local).send().await.unwrap().status(),StatusCode::FORBIDDEN);
+ assert_eq!(c.get(format!("{base}/v1/mobile/assistant/settings")).header("host",local).send().await.unwrap().status(),StatusCode::FORBIDDEN);
+ core.store.revoke_assistant_grant(&gid).unwrap();assert_eq!(post(local).bearer_auth(&token).json(&list).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);assert_eq!(post("assistant.fixture.invalid").bearer_auth(&token).json(&list).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
+ let _=handle.shutdown.send(());handle.task.await.unwrap();
+ });
+}
+#[test]
+fn signing_in_for_the_local_entrance_issues_the_same_audience(){
+ let(d,core,gid,_)=fixture();let host=crate::HostRuntime::default();let runtime=tokio::runtime::Runtime::new().unwrap();runtime.block_on(async { let web=Arc::new(crate::web_auth::WebAuth::open(None).unwrap());
+ let code=web.issue().unwrap();let owner=web.exchange(&code.code,"QA owner",false).unwrap();let cookie=format!("{}={owner}",crate::web_auth::COOKIE);
+ let handle=start_with_web_auth(core.clone(),config(d.path()),host.clone(),web).await.unwrap();let base=format!("http://{}",handle.address);let c=client();let public="assistant.fixture.invalid";let callback="http://127.0.0.1:34567/oauth/callback";let local="http://127.0.0.1:0/mcp";
+ let request=|path:&str|c.post(format!("{base}{path}")).header("host",public);
+ let meta:Value=request("/oauth/register").json(&json!({"client_name":"QA local","redirect_uris":[callback],"token_endpoint_auth_method":"none","grant_types":["authorization_code","refresh_token"],"response_types":["code"]})).send().await.unwrap().json().await.unwrap();let cid=meta["client_id"].as_str().unwrap();
+ let verifier="a".repeat(64);let challenge=Base64UrlUnpadded::encode_string(&Sha256::digest(verifier.as_bytes()));
+ let mut url=url::Url::parse(&format!("{base}/oauth/authorize")).unwrap();url.query_pairs_mut().extend_pairs([("client_id",cid),("redirect_uri",callback),("response_type","code"),("code_challenge",&challenge),("code_challenge_method","S256"),("state","s"),("resource",local),("scope",SCOPE)]);
+ let auth=c.get(url).header("host",public).send().await.unwrap();assert_eq!(auth.status(),StatusCode::SEE_OTHER);
+ let next=auth.headers()["location"].to_str().unwrap();let intent=url::Url::parse(&format!("{base}{next}")).unwrap().query_pairs().find(|(k,_)|k=="request").unwrap().1.to_string();
+ let pending=crate::owner_authorization::list("https://assistant.fixture.invalid/mcp");assert!(pending.iter().any(|row|row.request_id==intent),"the owner's card binds the one real resource");
+ let approve:Value=request("/v1/mobile/assistant/consent").header("cookie",&cookie).header("origin","https://assistant.fixture.invalid").json(&json!({"request":intent,"grantId":gid,"allow":true})).send().await.unwrap().json().await.unwrap();
+ let code=url::Url::parse(approve["redirect"].as_str().unwrap()).unwrap().query_pairs().find(|(k,_)|k=="code").unwrap().1.to_string();
+ assert_eq!(request("/oauth/token").form(&[("grant_type","authorization_code"),("client_id",cid),("redirect_uri",callback),("code",code.as_str()),("code_verifier",verifier.as_str()),("resource","http://127.0.0.1:1/mcp")]).send().await.unwrap().status(),StatusCode::BAD_REQUEST);
+ let pair:Value=request("/oauth/token").form(&[("grant_type","authorization_code"),("client_id",cid),("redirect_uri",callback),("code",code.as_str()),("code_verifier",verifier.as_str()),("resource",local)]).send().await.unwrap().json().await.unwrap();
+ let list=json!({"jsonrpc":"2.0","id":1,"method":"tools/list"});let call=|name:&str,token:String|{let name=name.to_owned();let list=list.clone();let c=c.clone();let base=base.clone();async move{c.post(format!("{base}/mcp")).header("host",name).header("accept","application/json, text/event-stream").bearer_auth(token).json(&list).send().await.unwrap().status()}};
+ let access=pair["access_token"].as_str().unwrap().to_owned();
+ assert_eq!(call("127.0.0.1:0",access.clone()).await,StatusCode::OK);assert_eq!(call(public,access).await,StatusCode::OK);
+ let refreshed:Value=request("/oauth/token").form(&[("grant_type","refresh_token"),("client_id",cid),("refresh_token",pair["refresh_token"].as_str().unwrap()),("resource",local)]).send().await.unwrap().json().await.unwrap();
+ assert_eq!(call("127.0.0.1:0",refreshed["access_token"].as_str().unwrap().to_owned()).await,StatusCode::OK);
+ let _=handle.shutdown.send(());handle.task.await.unwrap();
+ });
 }
 #[test]
 fn oauth_pkce_owner_consent_resource_binding_and_revocation_over_real_http(){

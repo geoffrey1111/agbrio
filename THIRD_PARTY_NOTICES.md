@@ -12,11 +12,9 @@ versioned source archives are linked in the inventory; recipients may obtain
 those sources without charge and exercise the rights of that license. Agbrio
 does not replace their license with MIT.
 
-Windows packages include Node.js, Puppeteer and the pinned non-branded Chromium
-runtime. Full Node notices and Chromium/Puppeteer license texts are installed
-under `browser-executor/`. Chromium's bundled component notices remain available
-at `chrome://credits`. `tools/isolated-browser-executor/runtime-policy.json`
-identifies the exact public Chromium archive and verified hashes.
+Windows and Mac packages include Node.js. Its notices and license text are installed
+under `node-runtime/`. The retained Windows shared runtime uses the locked ws
+dependency; Mac hosted relay uses Node’s built-in WebSocket.
 
 Noto Sans SC is under the SIL Open Font License; its notice is retained at
 `public/fonts/OFL-NotoSansSC.txt` and in the web build. Generated Agbrio marks are

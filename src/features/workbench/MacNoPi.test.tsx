@@ -6,7 +6,7 @@ import {HostPiAvailability} from './HostPiAvailability';
 import {ConversationHome} from './ConversationHome';
 import type {NotificationApi} from './CodexNotifications';
 afterEach(()=>{cleanup();localStorage.clear();});
-const base:UnifiedWorkbenchProps={items:[],draft:{value:''},onDraftChange:()=>{},onSelectWorkstream:()=>{},surface:'SETTINGS'};
+const base:UnifiedWorkbenchProps={items:[],onSelectWorkstream:()=>{},surface:'SETTINGS'};
 const mac=async()=>({hostName:'Fixture Mac',platform:'macos',features:{pi:false}});
 function overview():OverviewApi{return {shared:vi.fn().mockResolvedValue({state:'UNSUPPORTED'}),pi:vi.fn().mockResolvedValue({installed:false}),devices:vi.fn().mockResolvedValue([]),update:vi.fn().mockResolvedValue({state:'UNSUPPORTED'})};}
 it('Mac desktop omits Pi overview/settings and never reads Pi installation',async()=>{

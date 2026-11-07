@@ -464,9 +464,8 @@ mod tests {
         }
         let core = RouterCore {
             store,
-            chatgpt: Arc::default(),
+
             session: Arc::new(Mutex::new(session)),
-            completed_chatgpt_responses: Arc::default(),
         };
         let w = core.store.registered_codex_watch("exact").unwrap();
         let (rows, available) = codex_pending(&core, &w);

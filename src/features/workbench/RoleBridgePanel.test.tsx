@@ -140,35 +140,22 @@ describe("role-compatible Bridge", () => {
     await waitFor(() => expect(api.bind).toHaveBeenCalledWith("work-a", 4, { provider: "CODEX", externalId: "thread-a", label: "决策对话" }, { provider: "CODEX", externalId: "thread-b", label: "执行对话" }));
     expect(api.send).not.toHaveBeenCalled();
   });
-  it("changes one end, retains the other, and swaps only the local review before save", async () => {
+  it("offers only Codex and Claude Code for an end, and swaps only the local review before save", async () => {
     const {api}=fixture(); render(<RoleBridgePanel workstreamId="work-a" api={api}/>);
     fireEvent.click(await screen.findByRole("button", {name:"对话设置"}));
     await waitFor(()=>expect(api.threads).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button",{name:"选择控制端"}));
-    fireEvent.click(within(screen.getByRole("group",{name:"选择控制端"})).getByRole("button",{name:"ChatGPT"}));
-    fireEvent.change(screen.getByRole("textbox",{name:"控制端 ChatGPT 对话链接"}),{target:{value:"https://chatgpt.com/c/new-exact-id"}});
-    fireEvent.click(screen.getByRole("button",{name:"使用此对话"}));
-    expect(screen.getByRole("button",{name:"选择执行端"})).toHaveTextContent("执行对话");
-    fireEvent.click(screen.getByRole("button",{name:"交换两端"}));
-    expect(api.bind).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button",{name:"保存两端"}));
-    await waitFor(()=>expect(api.bind).toHaveBeenCalledWith("work-a",4,{provider:"CODEX",externalId:"thread-b",label:"执行对话"},{provider:"CHATGPT",externalId:"https://chatgpt.com/c/new-exact-id",label:"ChatGPT 对话"}));
+    expect(within(screen.getByRole("group",{name:"选择控制端"})).getAllByRole("button").map(button=>button.textContent)).toEqual(["Codex","Claude Code"]);
+    expect(screen.queryByRole("textbox",{name:/对话链接/})).toBeNull();
   });
-  it("recognizes the same ChatGPT target with URL variants and blocks saving", async()=>{
-    const {api}=fixture(false);render(<RoleBridgePanel workstreamId="work-a" api={api}/>);
-    fireEvent.click(await screen.findByRole("button",{name:"绑定控制端与执行端"}));
-    await waitFor(()=>expect(screen.getByRole("button",{name:"选择控制端"})).toBeEnabled());
-    fireEvent.click(screen.getByRole("button",{name:"选择控制端"}));
-    fireEvent.click(within(screen.getByRole("group",{name:"选择控制端"})).getByRole("button",{name:"ChatGPT"}));
-    fireEvent.change(screen.getByRole("textbox",{name:"控制端 ChatGPT 对话链接"}),{target:{value:"https://chatgpt.com/c/shared-id"}});
-
-    fireEvent.click(screen.getByRole("button",{name:"使用此对话"}));
-    fireEvent.click(screen.getByRole("button",{name:"选择执行端"}));
-    fireEvent.click(within(screen.getByRole("group",{name:"选择执行端"})).getByRole("button",{name:"ChatGPT"}));
-    fireEvent.change(screen.getByRole("textbox",{name:"执行端 ChatGPT 对话链接"}),{target:{value:"https://chatgpt.com/c/shared-id?source=mobile"}});
-
-    fireEvent.click(screen.getByRole("button",{name:"使用此对话"}));
-    expect(screen.getByRole("button",{name:"保存两端"})).toBeDisabled();expect(api.bind).not.toHaveBeenCalled();
+  it("keeps a Bridge bound to removed ChatGPT readable and asks for a rebind", async () => {
+    const {api,state}=fixture();const old={id:"endpoint-old",provider:"CHATGPT" as const,externalId:"old-conversation",label:"旧 ChatGPT 对话"};
+    const retired={...state,bindings:{...state.bindings,decision:{role:"DECISION" as const,endpoint:old}},readOutcome:{role:"DECISION" as const,endpointId:old.id,state:"PROVIDER_RETIRED",retainedReply:false}};
+    api.state.mockResolvedValue(retired);api.read.mockResolvedValue(retired);
+    render(<RoleBridgePanel workstreamId="work-a" api={api}/>);
+    expect((await screen.findAllByText("旧 ChatGPT 对话")).length).toBeGreaterThan(0);
+    expect(await screen.findByText(/ChatGPT 已不再支持。这里只显示已保存的回复/)).toBeVisible();
+    expect(api.send).not.toHaveBeenCalled();
   });
   it("opens the guided editor from the existing manage entry without a duplicate entry or binding",async()=>{
     const {api}=fixture(false);const {rerender}=render(<RoleBridgePanel workstreamId="work-a" api={api} externalBindingEntry bindingRequest={0}/>);

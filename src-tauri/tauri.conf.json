@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build && npm run build:browser-executor",
+    "beforeBuildCommand": "npm run build && npm run build:node-runtime",
     "frontendDist": "../dist"
   },
   "app": {
@@ -45,7 +45,7 @@
       "../tools/agbrio-control": "app-control",
       "../tools/resource-monitor": "resource-monitor",
       "../tools/pi-adapter": "pi-adapter",
-      "resources/browser-executor-lite": "browser-executor"
+      "resources/node-runtime": "node-runtime"
     },
     "externalBin": [
       "binaries/browser-executor-node"
