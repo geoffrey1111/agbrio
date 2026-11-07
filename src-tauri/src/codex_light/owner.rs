@@ -12,7 +12,7 @@ use super::{
     backend::{Backend, PinKind},
     hub::Hub,
     ipc::{Connection, OwnerEvent, PeerPolicy},
-    owner_state::OwnerState,
+    owner_state::{OwnerState, SNAPSHOT_BYTE_BUDGET},
 };
 use serde_json::{json, Value};
 use std::{
@@ -25,6 +25,7 @@ use std::{
 };
 
 const HISTORY_TURNS: u64 = 20;
+const HISTORY_PAGE: u64 = 2;
 const SEND_INTERVAL: Duration = Duration::from_millis(400);
 /// A large state takes real work to send and to render, so it is sent less often.
 const BYTES_PER_EXTRA_SECOND: usize = 2 * 1024 * 1024;
@@ -140,6 +141,31 @@ impl Sessions {
     }
 }
 
+/// Newest first, a page at a time, until the snapshot budget is full, so a thread whose tools
+/// return images is never read into memory whole just to show its last few turns.
+async fn recent_turns(backend: &Backend, thread: &str) -> Vec<Value> {
+    let mut rows = Vec::new();
+    let mut bytes = 0;
+    let mut cursor = Value::Null;
+    while (rows.len() as u64) < HISTORY_TURNS && bytes <= SNAPSHOT_BYTE_BUDGET {
+        let Ok(mut reply) = backend.call("thread/turns/list", json!({"threadId":thread,"cursor":cursor,"limit":HISTORY_PAGE,"sortDirection":"desc","itemsView":"full"}), Duration::from_secs(60)).await else { break };
+        let next = reply.pointer("/result/nextCursor").and_then(Value::as_str).filter(|next| !next.is_empty()).map(str::to_owned);
+        let Some(Value::Array(page)) = reply.pointer_mut("/result/data").map(Value::take) else { break };
+        if page.is_empty() {
+            break;
+        }
+        for row in page {
+            bytes += row.to_string().len();
+            rows.push(row);
+        }
+        match next {
+            Some(next) => cursor = json!(next),
+            None => break,
+        }
+    }
+    rows
+}
+
 impl Hub {
     /// Answers for a thread the backend just loaded. Fails closed to the plain behaviour:
     /// on an unvalidated Desktop nothing is claimed.
@@ -148,9 +174,9 @@ impl Hub {
         let Some(session) = self.owners().add(thread, state, kind) else { return };
         tokio::spawn(async move {
             if kind == PinKind::Resumed {
-                let reply = backend.call("thread/turns/list", json!({"threadId":session.thread,"cursor":null,"limit":HISTORY_TURNS,"sortDirection":"desc","itemsView":"full"}), Duration::from_secs(60)).await;
-                if let Some(rows) = reply.ok().as_ref().and_then(|reply| reply.pointer("/result/data")).and_then(Value::as_array) {
-                    session.state.lock().unwrap().load_turns(rows, true);
+                let rows = recent_turns(&backend, &session.thread).await;
+                if !rows.is_empty() {
+                    session.state.lock().unwrap().load_turns(&rows, true);
                 }
             }
             self.owner_loop(session, policy, pipe).await;

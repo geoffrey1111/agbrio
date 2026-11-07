@@ -7,7 +7,7 @@ use serde_json::{json, Map, Value};
 
 /// Oldest turns are dropped past this, so a long thread cannot produce an enormous frame.
 /// Desktop reads the complete history itself once it takes the thread over.
-const SNAPSHOT_BYTE_BUDGET: usize = 24 * 1024 * 1024;
+pub(super) const SNAPSHOT_BYTE_BUDGET: usize = 24 * 1024 * 1024;
 const NOW_FALLBACK: i64 = 0;
 
 fn now_ms() -> i64 {
@@ -102,6 +102,23 @@ impl OwnerState {
             loaded.reverse();
         }
         self.turns = loaded;
+        self.trim_to_budget();
+    }
+
+    /// Keeps only what a snapshot can show: the newest turns within the budget, and always the
+    /// newest one. A thread whose tools return images would otherwise hold every older turn,
+    /// hundreds of megabytes, that Desktop is never sent.
+    fn trim_to_budget(&mut self) {
+        let mut first = self.turns.len();
+        let mut bytes = 0;
+        for turn in self.turns.iter().rev() {
+            bytes += turn.to_string().len();
+            if bytes > SNAPSHOT_BYTE_BUDGET && first < self.turns.len() {
+                break;
+            }
+            first -= 1;
+        }
+        self.turns.drain(..first);
     }
 
     fn entity_from_row(&self, row: &Value) -> Option<Value> {
@@ -127,6 +144,7 @@ impl OwnerState {
         }
         let turn = turn_entity(self, id, "inProgress");
         self.turns.push(turn);
+        self.trim_to_budget();
         self.turns.last_mut().unwrap()
     }
 
@@ -412,6 +430,28 @@ mod tests {
         assert!(entities.contains_key("turn:u4"));
         assert!(!entities.contains_key("turn:u0"));
         assert!(entities.len() < 5);
+    }
+
+    #[test]
+    fn turns_past_the_budget_are_not_kept_in_memory() {
+        let mut s = state();
+        let large = "x".repeat(SNAPSHOT_BYTE_BUDGET / 2);
+        let rows: Vec<Value> = (0..6).map(|index| json!({"id":format!("u{index}"),"status":"completed","items":[{"id":"i","type":"agentMessage","text":large}]})).collect();
+        s.load_turns(&rows, false);
+        let kept: Vec<String> = s.turns.iter().map(|turn| turn["turnId"].as_str().unwrap().to_owned()).collect();
+        assert_eq!(kept, ["u5"], "only what the snapshot shows survives");
+        let shown = s.snapshot();
+        let entities = shown["turnHistory"]["history"]["entitiesByKey"].as_object().unwrap();
+        assert!(entities.contains_key("turn:u5") && !entities.contains_key("turn:u4"));
+        // A new turn arriving drops an older one that no longer fits beside it.
+        assert!(s.apply("turn/started", &json!({"turn":{"id":"u6"}})));
+        assert!(s.apply("item/completed", &json!({"turnId":"u6","item":{"id":"j","type":"agentMessage","text":large}})));
+        assert!(s.apply("turn/started", &json!({"turn":{"id":"u7"}})));
+        let kept: Vec<String> = s.turns.iter().map(|turn| turn["turnId"].as_str().unwrap().to_owned()).collect();
+        assert_eq!(kept, ["u6", "u7"]);
+        let small: Vec<Value> = (0..4).map(|index| json!({"id":format!("s{index}"),"status":"completed","items":[]})).collect();
+        s.load_turns(&small, false);
+        assert_eq!(s.turns.len(), 4, "a small history is kept whole");
     }
 
     #[test]
