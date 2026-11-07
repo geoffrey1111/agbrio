@@ -47,9 +47,19 @@ fn boundary(headers:&HeaderMap,state:&MobileHttpState)->Result<(),ApiError>{
 }
 fn bad()->ApiError{ApiError(StatusCode::BAD_REQUEST,"ASSISTANT_OAUTH_REQUEST_INVALID".into())}
 fn resource(state:&MobileHttpState)->String{format!("{}/mcp",state.config.allowed_origin.trim_end_matches('/'))}
+/// This computer's own entrance, so a local assistant does not depend on the public path.
+/// Only /mcp and its metadata use it. A browser sends Origin on any POST that could carry a
+/// token, so requiring none keeps web pages out, and a bearer token is still required.
+fn local_origin(state:&MobileHttpState)->String{format!("http://127.0.0.1:{}",state.config.port)}
+fn local_resource(state:&MobileHttpState)->String{format!("{}/mcp",local_origin(state))}
+fn local_caller(headers:&HeaderMap,state:&MobileHttpState)->bool{headers.get("host").and_then(|v|v.to_str().ok())==Some(format!("127.0.0.1:{}",state.config.port).as_str())&&!headers.contains_key("origin")}
+/// True for the local entrance. Everything else keeps the exact public boundary.
+fn resource_boundary(headers:&HeaderMap,state:&MobileHttpState)->Result<bool,ApiError>{if local_caller(headers,state){return Ok(true);}boundary(headers,state)?;Ok(false)}
+/// One grant, one audience: both entrances reach the same resource.
+fn canonical_resource(state:&MobileHttpState,value:&str)->String{if value==local_resource(state){resource(state)}else{value.to_owned()}}
 pub(super) async fn metadata(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<serde_json::Value>{
- boundary(&headers,&state)?;let origin=&state.config.allowed_origin;
- Ok(Json(serde_json::json!({"resource":resource(&state),"authorization_servers":[origin],"scopes_supported":[SCOPE,INSTANCE_SCOPE],"bearer_methods_supported":["header"]})))
+ let local=resource_boundary(&headers,&state)?;let origin=&state.config.allowed_origin;
+ Ok(Json(serde_json::json!({"resource":if local{local_resource(&state)}else{resource(&state)},"authorization_servers":[origin],"scopes_supported":[SCOPE,INSTANCE_SCOPE],"bearer_methods_supported":["header"]})))
 }
 pub(super) async fn authorization_metadata(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<serde_json::Value>{
  boundary(&headers,&state)?;let origin=&state.config.allowed_origin;
@@ -84,9 +94,10 @@ pub(super) async fn register(State(state):State<MobileHttpState>,headers:HeaderM
 #[derive(Deserialize)]pub(super) struct Authorization{client_id:String,redirect_uri:String,response_type:String,code_challenge:String,code_challenge_method:String,state:String,resource:String,scope:Option<String>}
 pub(super) async fn authorize(State(state):State<MobileHttpState>,headers:HeaderMap,Query(input):Query<Authorization>)->Result<Redirect,ApiError>{
  boundary(&headers,&state)?;let mut auth=oauth(&state)?;auth.prune();let client=auth.clients.get(&input.client_id).cloned().ok_or_else(bad)?;
- if input.response_type!="code"||input.code_challenge_method!="S256"||input.code_challenge.len()!=43||!input.code_challenge.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'_')||!client.redirects.contains(&input.redirect_uri)||input.resource!=resource(&state)||input.scope.as_deref().is_some_and(|s|!valid_scope_request(s))||input.state.is_empty()||input.state.len()>2048{return Err(bad());}
+ let requested=canonical_resource(&state,&input.resource);
+ if input.response_type!="code"||input.code_challenge_method!="S256"||input.code_challenge.len()!=43||!input.code_challenge.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'_')||!client.redirects.contains(&input.redirect_uri)||requested!=resource(&state)||input.scope.as_deref().is_some_and(|s|!valid_scope_request(s))||input.state.is_empty()||input.state.len()>2048{return Err(bad());}
  if auth.intents.len()>=128{return Err(ApiError(StatusCode::TOO_MANY_REQUESTS,"ASSISTANT_AUTHORIZATION_LIMIT".into()));}
- let id=secret();crate::owner_authorization::observed(&id,&client.name,&input.redirect_uri,&input.resource,clock()+300);auth.intents.insert(id.clone(),Intent{client,client_id:input.client_id,redirect:input.redirect_uri,challenge:input.code_challenge,state:input.state,resource:input.resource,scope:input.scope.unwrap_or_default(),expires:clock()+300});
+ let id=secret();crate::owner_authorization::observed(&id,&client.name,&input.redirect_uri,&requested,clock()+300);auth.intents.insert(id.clone(),Intent{client,client_id:input.client_id,redirect:input.redirect_uri,challenge:input.code_challenge,state:input.state,resource:requested,scope:input.scope.unwrap_or_default(),expires:clock()+300});
  Ok(Redirect::to(&format!("/assistant/connect?request={id}")))
 }
 pub(super) async fn page(State(state):State<MobileHttpState>,headers:HeaderMap)->Result<Response,ApiError>{
@@ -126,20 +137,21 @@ pub(super) async fn consent(State(state):State<MobileHttpState>,headers:HeaderMa
 pub(super) async fn token(State(state):State<MobileHttpState>,headers:HeaderMap,Form(input):Form<Exchange>)->Result<Response,ApiError>{
  boundary(&headers,&state)?;let mut auth=oauth(&state)?;auth.prune();
  if input.grant_type=="refresh_token"{
-  let audience=if input.resource.is_empty(){resource(&state)}else{input.resource.clone()};
+  let audience=if input.resource.is_empty(){resource(&state)}else{canonical_resource(&state,&input.resource)};
   let result=if audience!=resource(&state){Err("ASSISTANT_OAUTH_INVALID_GRANT".into())}else{state.core.store.refresh_assistant_oauth_tokens(&input.refresh_token,&input.client_id,&audience,input.scope.as_deref())};
   return Ok(match result{Ok(pair)=>oauth_token_response(serde_json::json!({"access_token":pair.access_token,"refresh_token":pair.refresh_token,"token_type":"Bearer","expires_in":(pair.expires_at/1000-clock() as i64).max(0),"scope":pair.scope})),Err(_)=>{let mut r=oauth_token_response(serde_json::json!({"error":"invalid_grant"}));*r.status_mut()=StatusCode::BAD_REQUEST;r}});
  }
+ let requested=canonical_resource(&state,&input.resource);
  let code=auth.codes.get(&digest(&input.code)).ok_or_else(bad)?;
- if input.grant_type!="authorization_code"||input.client_id!=code.intent.client_id||input.redirect_uri!=code.intent.redirect||input.resource!=code.intent.resource||input.resource!=resource(&state)||!(43..=128).contains(&input.code_verifier.len())||!input.code_verifier.bytes().all(|b|b.is_ascii_alphanumeric()||b"-._~".contains(&b))||Base64UrlUnpadded::encode_string(&Sha256::digest(input.code_verifier.as_bytes()))!=code.intent.challenge{return Err(bad());}
+ if input.grant_type!="authorization_code"||input.client_id!=code.intent.client_id||input.redirect_uri!=code.intent.redirect||requested!=code.intent.resource||requested!=resource(&state)||!(43..=128).contains(&input.code_verifier.len())||!input.code_verifier.bytes().all(|b|b.is_ascii_alphanumeric()||b"-._~".contains(&b))||Base64UrlUnpadded::encode_string(&Sha256::digest(input.code_verifier.as_bytes()))!=code.intent.challenge{return Err(bad());}
  let grant=state.core.store.assistant_grant(&code.grant_id).map_err(core_error)?;
  // Tokens are revocable via the owner grant, expire no later than it, and never
  // authenticate human/device routes. Only their one-way hashes are persisted.
  let result=if code.intent.client.refresh{
-  let pair=state.core.store.issue_assistant_oauth_tokens(&grant.id,&input.client_id,&input.resource).map_err(core_error)?;
+  let pair=state.core.store.issue_assistant_oauth_tokens(&grant.id,&input.client_id,&requested).map_err(core_error)?;
   serde_json::json!({"access_token":pair.access_token,"refresh_token":pair.refresh_token,"token_type":"Bearer","expires_in":(pair.expires_at/1000-clock() as i64).max(0),"scope":pair.scope})
  }else{
-  let access=state.core.store.issue_assistant_access(&grant.id,&input.resource,grant.expires_at).map_err(core_error)?;
+  let access=state.core.store.issue_assistant_access(&grant.id,&requested,grant.expires_at).map_err(core_error)?;
   serde_json::json!({"access_token":access,"token_type":"Bearer","expires_in":(grant.expires_at/1000-clock() as i64).max(0),"scope":if grant.scope=="INSTANCE"{INSTANCE_SCOPE}else{SCOPE}})
  };
  auth.codes.remove(&digest(&input.code));
@@ -156,10 +168,10 @@ pub(super) async fn mcp(State(state):State<MobileHttpState>,headers:HeaderMap,Js
  result
 }
 async fn mcp_response(state:&MobileHttpState,headers:HeaderMap,input:serde_json::Value,trace:Option<u64>)->Result<Response,ApiError>{
- boundary(&headers,&state)?;
+ let local=resource_boundary(&headers,state)?;
  let credential=headers.get("authorization").and_then(|v|v.to_str().ok()).and_then(|v|v.strip_prefix("Bearer ")).unwrap_or("");
  let grant=match state.core.store.authenticate_assistant(credential,&resource(&state)){
-    Ok(g)=>g,Err(_)=>{let mut response=(StatusCode::UNAUTHORIZED,Json(serde_json::json!({"error":"invalid_token"}))).into_response();response.headers_mut().insert("www-authenticate",format!("Bearer resource_metadata=\"{}/.well-known/oauth-protected-resource/mcp\", scope=\"{INSTANCE_SCOPE}\"",state.config.allowed_origin).parse().map_err(|_|bad())?);return Ok(response);}
+    Ok(g)=>g,Err(_)=>{let mut response=(StatusCode::UNAUTHORIZED,Json(serde_json::json!({"error":"invalid_token"}))).into_response();response.headers_mut().insert("www-authenticate",format!("Bearer resource_metadata=\"{}/.well-known/oauth-protected-resource/mcp\", scope=\"{INSTANCE_SCOPE}\"",if local{local_origin(state)}else{state.config.allowed_origin.clone()}).parse().map_err(|_|bad())?);return Ok(response);}
  };
  state.assistant_discovery.authorized(trace);
  if let Some(v)=headers.get("mcp-protocol-version"){if !matches!(v.to_str().ok(),Some("2026-07-28"|"2025-11-25"|"2025-06-18"|"2025-03-26")){return Err(bad());}}
