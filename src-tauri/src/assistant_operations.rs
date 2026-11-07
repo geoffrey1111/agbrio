@@ -97,7 +97,7 @@ mod scope_tests {
   let dir=tempfile::tempdir().unwrap();let store=std::sync::Arc::new(crate::RouterStore::open_at(dir.path().join("test.db")).unwrap());
   let first=store.create_project("first".into(),None).unwrap();let a=store.create_workstream(&first.id,"a".into()).unwrap();
   let second=store.create_project("second".into(),None).unwrap();store.create_workstream(&second.id,"b".into()).unwrap();
-  let core=RouterCore{store:store.clone(),chatgpt:std::sync::Arc::default(),session:std::sync::Arc::new(std::sync::Mutex::new(crate::host_application::Session::default())),completed_chatgpt_responses:std::sync::Arc::default()};
+  let core=RouterCore{store:store.clone(),session:std::sync::Arc::new(std::sync::Mutex::new(crate::host_application::Session::default())),};
   let operation=Operation::RenameBridge{workstream_id:a.id.clone(),binding_revision:a.binding_revision,name:"new".into()};
   assert!(validate(&core,&operation).is_ok());
   assert!(validate(&core,&Operation::RenameBridge{workstream_id:a.id.clone(),binding_revision:a.binding_revision+1,name:"wrong".into()}).is_err());

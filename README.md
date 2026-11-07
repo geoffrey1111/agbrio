@@ -70,6 +70,8 @@ Read linked documents, images and project boards in place. API / MCP is availabl
 
 ## Mac Beta
 
+Source candidate update: the ChatGPT browser and bundled Chromium have been retired. Historical ChatGPT Bridge replies remain saved; rebind that end before reading or sending. ChatGPT as an MCP assistant remains available. Mac keeps its independent app-server, Goal controls, automatic recovery and hosted-relay Node. The download above still points to the previous released beta; this candidate has not been published.
+
 This beta includes the management areas, constellation view and first-run flow from Windows rc.122. Mac still excludes Pi, shared Codex and in-app updates. First-run skips shared Codex on Mac; Claude MCP uses manual setup in the original Code conversation.
 
 **Mac public beta — Apple Silicon (ARM64) only. Not formal macOS support. External testers have not yet validated it on their own Macs; problems may exist.** Intel Macs are unsupported. macOS 13.5 is the declared minimum, not a verified OS/model matrix. GitHub Mac CI is engineering evidence, not user UAT or Windows feature parity. General feature descriptions above primarily describe Windows; these beta limits govern Mac.

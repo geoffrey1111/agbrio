@@ -16,7 +16,7 @@ export async function sharedResourcesMatch({directory,source,node}){
  // Compare actual files, not a marker or the native version. Missing, renamed,
  // changed or linked resources cannot authorize reuse of an idle old writer.
  try{
-  const expected=await resourceMap(source),ws=await resourceMap(join(dirname(source),'browser-executor/node_modules/ws'));
+  const expected=await resourceMap(source),ws=await resourceMap(join(dirname(source),'node-runtime/node_modules/ws'));
   for(const [name,hash] of ws)expected.set('ws/'+name,hash);
   expected.set('node.exe',createHash('sha256').update(await readFile(node)).digest('hex'));
   const actual=await resourceMap(join(directory,'runtime'));actual.delete('version');
@@ -29,7 +29,7 @@ export async function stageSharedResources({directory,source,node,stamp},{move=r
   if(stamp!==undefined&&!/^[a-f0-9]{64}$/.test(stamp))throw Error('SHARED_RUNTIME_STAMP_INVALID');
   const next=join(directory,'runtime-next-'+randomUUID());
   try{await copyTree(source,next);
-  await copyTree(join(dirname(source),'browser-executor/node_modules/ws'),join(next,'ws'));await copyFile(node,join(next,'node.exe'));
+  await copyTree(join(dirname(source),'node-runtime/node_modules/ws'),join(next,'ws'));await copyFile(node,join(next,'node.exe'));
   if(stamp!==undefined)await writeFile(join(next,'version'),stamp);
   const current=join(directory,'runtime');let exists=false;try{const stat=await lstat(current);if(stat.isSymbolicLink())throw Error('SHARED_RUNTIME_LINK_REJECTED');exists=stat.isDirectory();}catch(e){if(e.code!=='ENOENT')throw e;}
   const old=join(directory,'runtime-previous-'+randomUUID());if(exists)await move(current,old);

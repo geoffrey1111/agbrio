@@ -229,7 +229,7 @@ mod native_root_tests {
  fn shell_directory_changes_do_not_rebind_native_media_identity(){
   let d=tempfile::tempdir().unwrap();let root=d.path().to_string_lossy().into_owned();let sid="10000000-0000-4000-8000-000000000001";
   let store=Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap());
-  let core=RouterCore{chatgpt:Arc::default(),session:Arc::new(Mutex::new(crate::host_application::Session::default())),completed_chatgpt_responses:Arc::default(),store:store.clone()};
+  let core=RouterCore{session:Arc::new(Mutex::new(crate::host_application::Session::default())),store:store.clone()};
   let pair=store.create_claude_connection().unwrap();
   let event=router_core::claude_code::Event{event_id:uuid::Uuid::new_v4().to_string(),session_id:sid.into(),instance_id:"20000000-0000-4000-8000-000000000001".into(),sequence:1,cwd:root.clone(),version:"2.1.309".into(),kind:"SESSION_START".into(),turn_id:None,text:None,completed_at:None};
   store.ingest_claude_event(&pair.token,&event).unwrap();
@@ -251,7 +251,7 @@ mod native_media_http_tests {
  #[ignore="isolated authenticated native HISTORY -> media HTTP; run alone, no provider"]
  fn changed_shell_directory_survives_authenticated_native_history_to_media(){
   let d=tempfile::tempdir().unwrap();let root=d.path().to_string_lossy().into_owned();let sid="10000000-0000-4000-8000-000000000001";
-  let store=Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap());let core=RouterCore{chatgpt:Arc::default(),session:Arc::new(Mutex::new(crate::host_application::Session::default())),completed_chatgpt_responses:Arc::default(),store:store.clone()};
+  let store=Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap());let core=RouterCore{session:Arc::new(Mutex::new(crate::host_application::Session::default())),store:store.clone()};
   let pair=store.create_claude_connection().unwrap();let e=router_core::claude_code::Event{event_id:uuid::Uuid::new_v4().to_string(),session_id:sid.into(),instance_id:"20000000-0000-4000-8000-000000000001".into(),sequence:1,cwd:root.clone(),version:"2.1.309".into(),kind:"SESSION_START".into(),turn_id:None,text:None,completed_at:None};store.ingest_claude_event(&pair.token,&e).unwrap();
   let thread=format!("claude_code:{sid}");store.enable_codex_watch(&thread,"fixture",&root,&router_core::store::codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()}).unwrap();
   let projects=d.path().join("projects");let project=projects.join("registered-project");std::fs::create_dir_all(&project).unwrap();let file=d.path().join("图 #1.gif");let bytes=b"GIF89a original animation";std::fs::write(&file,bytes).unwrap();

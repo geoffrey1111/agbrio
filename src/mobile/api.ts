@@ -119,44 +119,7 @@ export type CodexHistory = { history: { id: string; kind: string; text?: string 
 export type MobileCodexGoal = { fingerprint?:string; threadId: string; objective: string; status: string; tokensUsed?: number | null; timeUsedSeconds?:number|null; tokenBudget?:number|null; createdAt?:number|null; updatedAt?: number | null; activeTurnId?: string | null };
 export type MobileWorkstreamDraft = { workstreamId: string; text: string; revision: number; updatedAt: number };
 export type MobileCodexFeedbackDraft = { workstreamId: string; sourceRunId: string; text: string; revision: number; updatedAt: number };
-export type MobileReview = {
-  actionId: string;
-  revision: number;
-  status: string;
-  message: string;
-  attachments?: string[];
-  attachmentOptions?: string[];
-  /** Router-authoritative safety capability; this is not a delivery result. */
-  requiresManualDispatch?: boolean;
-  /** Present only for a restart-safe Codex → ChatGPT review. All fields are
-   * exact Router records, never text/title-based reconstruction. */
-  codexOutboundIdentity?: {
-    workstreamId: string;
-    sourceId: string;
-    sourceKind: "REPLY_OBSERVATION" | "PROVIDER_RUN";
-    sourceEndpointId: string;
-    sourceCodexThreadId: string;
-    destinationChatgptConversationId: string;
-  };
-  /** Present only for a restart-safe ChatGPT → Codex review. */
-  chatgptInboundIdentity?: {
-    workstreamId: string;
-    sourceId: string;
-    sourceKind: "REPLY_OBSERVATION" | "PROVIDER_RUN";
-    sourceEndpointId: string;
-    sourceChatgptConversationId: string;
-    destinationCodexThreadId: string;
-  };
-};
-export type MobileOutboundHandoffResult = { status: "SENT" | "SENDING" | "FAILED"; handoffId?: string | null; detail?: string | null };
 /** A read-only, exact owner-navigation target. It is not a provider send. */
-export type MobileManualChatGptDestination = { canonicalUrl: string; conversationId: string };
-export type MobileChatGptResultRecovery = { recovered: boolean; message: string };
-export type MobileFeedbackProgress = {
-  runId: string;
-  phase: "WAITING_FOR_REVISED_RESULT" | "DELIVERY_UNCONFIRMED" | "DELIVERY_FAILED" | "REVISED_RESULT_READY";
-  message: string;
-};
 
 export type MobileTurnStartResult = { turn_id: string };
 
@@ -174,14 +137,6 @@ export type MobileExternalProjectLink = {
 };
 
 /** Read-only U10 projection; Core resolves the saved exact Project URL. */
-export type MobileChatGptProjectDirectory = {
-  projectUrl: string;
-  conversations: { conversationId: string; canonicalUrl: string; title: string; occurredAt?: string | null; preview?: string | null }[];
-  completeness: "COMPLETE" | "PARTIAL" | "EMPTY";
-  hasMore: boolean;
-  sourceKind: "PROJECT_CONTAINER";
-  diagnostic?: string | null;
-};
 
 export type MobileUnprojectedThreadStart = {
   thread: { id: string; name?: string; preview?: string };
@@ -189,14 +144,6 @@ export type MobileUnprojectedThreadStart = {
 };
 
 /** Session-only result of the managed Host exact-conversation proof. */
-export type MobileExplicitChatGptBindingCandidate = {
-  workstreamId: string;
-  externalId: string;
-  label: string;
-  verification: "PLAYWRIGHT_EXACT_ROUTE" | "OWNER_CONFIRMED_EXACT_URL";
-  expectedOldEndpointId?: string | null;
-  expectedBindingRevision: number;
-};
 
 /** Returned only by the checked, session-candidate-backed confirmation. */
 export type MobileConfirmedChatGptEndpoint = {
@@ -347,8 +294,6 @@ export const mobileApi = {
   refreshWorkstreams:()=>readModels.refresh("directory:mobile",()=>liveRequest<MobileWorkstream[]>("/workstreams"),5000,{supersede:true}),
   workstream: (workstreamId: string) => request<MobileWorkstreamSnapshot>(`/workstreams/${encodeURIComponent(workstreamId)}`),
   projectLinks: (workstreamId: string) => request<MobileExternalProjectLink[]>(`/workstreams/${encodeURIComponent(workstreamId)}/project-links`),
-  confirmChatGptAuthenticationCompleted: () => request<void>("/chatgpt-browser/authentication-completed", { method: "POST" }),
-  openHostChatGptBrowserSetup: () => request<void>("/chatgpt-browser/setup", { method: "POST" }),
   upsertProjectLink: (workstreamId: string, input: { provider: "CHATGPT" | "CODEX"; externalProjectId?: string | null; canonicalUrl?: string | null; label: string; sourceKind: string; sourceVersion?: string | null; verifiedAt?: number | null }) => request<MobileExternalProjectLink>(`/workstreams/${encodeURIComponent(workstreamId)}/project-links`, { method: "POST", body: JSON.stringify(input) }),
   startUnprojectedCodexThread: (workstreamId: string, directory?: string) => request<MobileUnprojectedThreadStart>(`/workstreams/${encodeURIComponent(workstreamId)}/no-project-codex-thread`, { method: "POST", body: JSON.stringify({ directory: directory?.trim() || null }) }),
   createVerifiedLocalBackup: () => request<{ path: string; sha256: string; bytes: number }>("/backup", { method: "POST" }),
@@ -362,40 +307,20 @@ export const mobileApi = {
   restoreWorkstream: (workstreamId: string) => request<void>(`/workstreams/${encodeURIComponent(workstreamId)}/lifecycle/restore`, { method: "POST" }),
   purgeTrashedWorkstream: (workstreamId: string, expectedBindingRevision: number, confirmation: string) => request<void>(`/workstreams/${encodeURIComponent(workstreamId)}/lifecycle/purge`, { method: "POST", body: JSON.stringify({ expectedBindingRevision, confirmation }) }),
   pairWorkstreamEndpoints: (workstreamId: string, input: { expectedBindingRevision: number; chatgpt?: { expectedActiveEndpointId?: string | null; externalId: string; label: string } | null; codex?: { expectedActiveEndpointId?: string | null; externalId: string; label: string } | null }) => request(`/workstreams/${encodeURIComponent(workstreamId)}/endpoint-pairing`, { method: "POST", body: JSON.stringify(input) }),
-  prepareOwnerConfirmedChatGptEndpointBinding: (workstreamId: string, input: string) => request<MobileExplicitChatGptBindingCandidate>(`/workstreams/${encodeURIComponent(workstreamId)}/chatgpt-binding/prepare`, { method: "POST", body: JSON.stringify({ input }) }),
-  confirmExplicitChatGptEndpointBinding: (workstreamId: string) => request<MobileConfirmedChatGptEndpoint>(`/workstreams/${encodeURIComponent(workstreamId)}/chatgpt-binding/confirm`, { method: "POST" }),
   reviewResults: (workstreamId: string) => request<MobileReviewResult[]>(`/workstreams/${encodeURIComponent(workstreamId)}/review-results`),
   providerRunStatus: (workstreamId: string, runId: string) => request<MobileProviderRunStatus>(`/workstreams/${encodeURIComponent(workstreamId)}/provider-runs/${encodeURIComponent(runId)}`),
   replyObservations: (workstreamId: string) => request<MobileReplyObservation[]>(`/workstreams/${encodeURIComponent(workstreamId)}/reply-observations`),
-  checkNewChatGptReplies: (workstreamId: string) => request<MobileManualReplyCheck>(`/workstreams/${encodeURIComponent(workstreamId)}/chatgpt-replies/check`, { method: "POST" }),
   checkNewCodexReplies: (workstreamId: string) => request<MobileManualReplyCheck>(`/workstreams/${encodeURIComponent(workstreamId)}/codex-replies/check`, { method: "POST" }),
   markReplyObservationRead: (workstreamId: string, observationId: string) => request<void>(`/workstreams/${encodeURIComponent(workstreamId)}/reply-observations/${encodeURIComponent(observationId)}/read`, { method: "POST" }),
   markReplyObservationHandled: (workstreamId: string, observationId: string) => request<void>(`/workstreams/${encodeURIComponent(workstreamId)}/reply-observations/${encodeURIComponent(observationId)}/handled`, { method: "POST" }),
-  recoverChatGptResult: (workstreamId: string) => request<MobileChatGptResultRecovery>(`/workstreams/${encodeURIComponent(workstreamId)}/chatgpt-result-recovery`, { method: "POST" }),
-  recoverChatGptFeedbackResult: (workstreamId: string, runId: string) => request<MobileChatGptResultRecovery>(`/workstreams/${encodeURIComponent(workstreamId)}/chatgpt-feedback/${encodeURIComponent(runId)}/result-recovery`, { method: "POST" }),
   codexRequests: (workstreamId: string) => request<MobileCodexRequest[]>(`/workstreams/${encodeURIComponent(workstreamId)}/codex-requests`),
-  chatgptHistory: (workstreamId: string) => request<ChatHistory>(`/workstreams/${encodeURIComponent(workstreamId)}/chatgpt-history`),
   codexHistory: (workstreamId: string) => request<CodexHistory>(`/workstreams/${encodeURIComponent(workstreamId)}/codex-history`),
   codexGoal: (workstreamId: string) => request<MobileCodexGoal | null>(`/workstreams/${encodeURIComponent(workstreamId)}/codex-goal`),
   pauseCodexGoal: (workstreamId: string) => request<MobileCodexGoal>(`/workstreams/${encodeURIComponent(workstreamId)}/codex-goal/pause`, { method: "POST", body: JSON.stringify({ confirmed: true }) }),
   resumeCodexGoal: (workstreamId: string) => request<MobileCodexGoal>(`/workstreams/${encodeURIComponent(workstreamId)}/codex-goal/resume`, { method: "POST", body: JSON.stringify({ confirmed: true }) }),
   clearCodexGoal: (workstreamId: string) => request<void>(`/workstreams/${encodeURIComponent(workstreamId)}/codex-goal/clear`, { method: "POST", body: JSON.stringify({ confirmed: true }) }),
   interruptCodexTurn: (workstreamId: string, turnId: string) => request<{ threadId: string; turnId: string; requested: boolean }>(`/workstreams/${encodeURIComponent(workstreamId)}/codex-turns/${encodeURIComponent(turnId)}/interrupt`, { method: "POST", body: JSON.stringify({ confirmed: true }) }),
-  prepareHandoff: (workstreamId: string, responseId: string, initialMessage?: string) => request<MobileReview>(`/workstreams/${encodeURIComponent(workstreamId)}/handoff-review`, { method: "POST", body: JSON.stringify(initialMessage?.trim() ? { responseId, initialMessage } : { responseId }) }),
-  selectHandoffAttachments: (actionId: string, revision: number, attachmentFilenames: string[]) => request<MobileReview>(`/handoff-review/${encodeURIComponent(actionId)}/attachments`, { method: "POST", body: JSON.stringify({ revision, attachmentFilenames }) }),
-  approveHandoff: (actionId: string, revision: number, message: string) => request<MobileReview>(`/handoff-review/${encodeURIComponent(actionId)}/approve`, { method: "POST", body: JSON.stringify({ revision, message }) }),
-  sendHandoff: (actionId: string, revision: number) => request(`/handoff-review/${encodeURIComponent(actionId)}/send`, { method: "POST", body: JSON.stringify({ revision }) }),
-  prepareCodexHandoff: (workstreamId: string, runId: string, attachmentIds: string[]) => request<MobileReview>(`/workstreams/${encodeURIComponent(workstreamId)}/codex-handoff-review`, { method: "POST", body: JSON.stringify({ runId, attachmentIds }) }),
-  approveCodexHandoff: (actionId: string, revision: number, message: string) => request<MobileReview>(`/codex-handoff-review/${encodeURIComponent(actionId)}/approve`, { method: "POST", body: JSON.stringify({ revision, message }) }),
-  codexHandoffReview: (actionId: string) => request<MobileReview>(`/codex-handoff-review/${encodeURIComponent(actionId)}`),
-  codexHandoffManualDestination: (actionId: string) => request<MobileManualChatGptDestination>(`/codex-handoff-review/${encodeURIComponent(actionId)}/manual-destination`),
-  chatGptHandoffReview: (actionId: string) => request<MobileReview>(`/chatgpt-handoff-review/${encodeURIComponent(actionId)}`),
-  sendCodexHandoff: (actionId: string, revision: number) => request<MobileOutboundHandoffResult>(`/codex-handoff-review/${encodeURIComponent(actionId)}/send`, { method: "POST", body: JSON.stringify({ revision }) }),
-  sendChatGptFeedback: (workstreamId: string, runId: string, feedback: string) => request<MobileFeedbackProgress>(`/workstreams/${encodeURIComponent(workstreamId)}/chatgpt-feedback`, { method: "POST", body: JSON.stringify({ runId, feedback }) }),
-  chatgptFeedbackProgress: (workstreamId: string, runId: string) => request<MobileFeedbackProgress>(`/workstreams/${encodeURIComponent(workstreamId)}/chatgpt-feedback/${encodeURIComponent(runId)}`),
   sendCodexFeedback: (workstreamId: string, runId: string, feedback: string) => request<MobileTurnStartResult>(`/workstreams/${encodeURIComponent(workstreamId)}/codex-feedback`, { method: "POST", body: JSON.stringify({ runId, feedback }) }),
-  sendChatGptDiscussion: (workstreamId: string, message: string) => request<unknown>(`/workstreams/${encodeURIComponent(workstreamId)}/chatgpt-discussion`, { method: "POST", body: JSON.stringify({ message }) }),
   /** Owner-led, read-only exact destination for a manually sent discussion. */
-  manualChatGptDiscussionDestination: (workstreamId: string) => request<MobileManualChatGptDestination>(`/workstreams/${encodeURIComponent(workstreamId)}/manual-chatgpt-destination`),
   respondToCodexRequest: (workstreamId: string, requestId: string, input: { revision: number; decision?: string; answers?: Record<string, string> }) => request<void>(`/workstreams/${encodeURIComponent(workstreamId)}/codex-requests/${encodeURIComponent(requestId)}/respond`, { method: "POST", body: JSON.stringify(input) }),
 };

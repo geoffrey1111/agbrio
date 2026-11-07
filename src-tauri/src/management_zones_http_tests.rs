@@ -9,7 +9,7 @@ fn management_http_requires_owner_and_origin_and_reconciles_same_request(){
     let store=Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap());
     let manager=uuid::Uuid::new_v4().to_string();
     store.enable_codex_watch(&manager,"Manager",&d.path().to_string_lossy(),&router_core::store::codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()}).unwrap();
-    let core=RouterCore{store:store.clone(),chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default()};
+    let core=RouterCore{store:store.clone(),session:Arc::default(),};
     let auth=Arc::new(crate::web_auth::WebAuth::open(None).unwrap());
     let token=auth.exchange(&auth.issue().unwrap().code,"management fixture",false).unwrap();let cookie=format!("{}={token}",crate::web_auth::COOKIE);
     let runtime=tokio::runtime::Runtime::new().unwrap();

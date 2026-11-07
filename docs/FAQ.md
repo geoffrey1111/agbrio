@@ -1,5 +1,10 @@
 # FAQ and troubleshooting
 
+## Mac source candidate: rc.131 cross-platform sync
+
+This source candidate retires the ChatGPT browser/Chromium feature; it does not add Windows light connection or shared-backend retirement to Mac. Mac uses its independent app-server, retains Goal controls and automatic recovery, and keeps the hosted connector Node and native resource sampler. Historical ChatGPT Bridge replies remain readable as saved data, but that end cannot refresh or send and must be rebound. ChatGPT as an MCP assistant is separate and remains available. Published Mac downloads remain the earlier rc.122 beta until a new candidate is approved, built and released.
+
+
 [Complete setup](SETUP.md) · [简体中文 FAQ](FAQ.zh-CN.md) · [Home](../README.md)
 
 ## Installation
@@ -34,6 +39,11 @@ No. Official entry points remain unchanged. Pin/use the shared entry separately.
 
 No. Backend-prepared precedes **Open shared Codex** and actual Desktop-connected status. Phone pairing and assistant authorization are separate too.
 
+### What happened to ChatGPT Bridges and the Router browser?
+
+They were removed. A Bridge with a ChatGPT end keeps its saved replies and must be rebound to Codex or Claude Code to continue. ChatGPT connected as an assistant through MCP still works.
+
+### Why are there several Node processes?
 ### It says Desktop is still running or a task is active. What should I do?
 
 This protects existing work. Save, wait for tasks and exit the whole app normally; closing one window may not exit the backend. Do not repeatedly click, kill active tasks or stop all Node. Retain the code/time if it persists.
@@ -66,7 +76,7 @@ No. Delivery, execution and completion differ. UNKNOWN is not proof of non-deliv
 
 ### Can I select part of a reply? Are files automatically uploaded?
 
-Select/edit/preview actual content, destination and files. Codex files go into `.aiwr/incoming/<handoff-id>/` with paths/hashes. That is not a ChatGPT upload or proof of image-model input.
+Select/edit/preview actual content, destination and files. Codex files go into `.aiwr/incoming/<handoff-id>/` with paths/hashes. That is not proof of image-model input.
 
 ### Is an attention dot or AI-assistant-handled label a receipt?
 
@@ -97,10 +107,6 @@ No. Delivery, real wake, source read, dedupe and prepare/review/send/receipt nee
 ### Claude plugin is installed, but no session or reply control appears. Why?
 
 Saved configuration, reload, real session registration and manual-input readiness differ. Wait for the original task to finish before safe reload, without --force or test prompts. Replies need plugin 0.1.3 actually advertising protocol 1. Observation alone is not sending; autonomous/MCP Claude writes and Claude Goal controls remain unavailable. [Claude](CLAUDE_CODE.md).
-
-### Can automation refresh through a ChatGPT security challenge?
-
-No. Stop automated navigation/refresh/submit; the owner completes verification. No cookie copying, identity rotation or retry loop. Browser integration is experimental.
 
 ### What belongs in a useful bug report?
 

@@ -190,7 +190,6 @@ pub(crate) fn bind(
     if decision.provider == execution.provider && decision.external_id == execution.external_id {
         return Err("BRIDGE_SAME_NATIVE_TARGET".into());
     }
-    let mut urls = Vec::new();
     for input in [&mut decision, &mut execution] {
         match input.provider.as_str() {
             "CLAUDE_CODE" => {
@@ -208,28 +207,10 @@ pub(crate) fn bind(
                 let v = metadata(a, &input.external_id)?;
                 input.cwd = Some(native_root(&v)?);
             }
-            "CHATGPT" => {
-                let url = input.external_id.clone();
-                input.external_id = crate::chatgpt::direct::parse_explicit_conversation_url(&url)?;
-                core.chatgpt.verify_exact(&input.external_id)?;
-                input.cwd = None;
-                urls.push((input.external_id.clone(), url));
-            }
             _ => return Err("BRIDGE_PROVIDER_UNSUPPORTED".into()),
         }
     }
-    let b = core
-        .store
-        .bind_role_bridge(workstream, revision, decision, execution)?;
-    for (id, url) in urls {
-        for side in [&b.decision, &b.execution].into_iter().flatten() {
-            if side.endpoint.provider == "CHATGPT" && side.endpoint.external_id == id {
-                core.store
-                    .save_chatgpt_endpoint_canonical_url(&side.endpoint.id, &url)?;
-            }
-        }
-    }
-    Ok(b)
+    core.store.bind_role_bridge(workstream, revision, decision, execution)
 }
 fn side(core: &RouterCore, workstream: &str, role: &str) -> Result<RoleEndpoint, String> {
     let b = core.store.role_bridge(workstream)?;
@@ -280,10 +261,8 @@ pub(crate) fn read(core: &RouterCore, workstream: &str, role: &str) -> Result<Br
                 r.completed_at,
             )
         }
-        "CHATGPT" => {
-            let r = core.chatgpt.observe_exact(&side.endpoint.external_id)?;
-            (r.message_id, r.text,None)
-        }
+        // ChatGPT was removed. A Bridge bound to it keeps its stored replies and reads no new ones.
+        "CHATGPT" => return read_without_new_reply(core,workstream,role,&side.endpoint.id,"PROVIDER_RETIRED"),
         _ => return Err("BRIDGE_PROVIDER_UNSUPPORTED".into()),
     };
     core.store.record_reply_observation(
@@ -297,7 +276,7 @@ pub(crate) fn read(core: &RouterCore, workstream: &str, role: &str) -> Result<Br
     state(core, workstream)
 }
 fn read_without_new_reply(core:&RouterCore,workstream:&str,role:&str,endpoint:&str,outcome:&str)->Result<BridgeState,String>{
-    if !matches!(outcome,"LATEST_TURN_INTERRUPTED"|"LATEST_TURN_ACTIVE"|"NO_NEW_TERMINAL_REPLY"|"OBSERVATION_MATERIALIZATION_PENDING"|"EXTERNAL_STATUS_UNCONFIRMED"){return Err(outcome.into());}
+    if !matches!(outcome,"LATEST_TURN_INTERRUPTED"|"LATEST_TURN_ACTIVE"|"NO_NEW_TERMINAL_REPLY"|"OBSERVATION_MATERIALIZATION_PENDING"|"EXTERNAL_STATUS_UNCONFIRMED"|"PROVIDER_RETIRED"){return Err(outcome.into());}
     let mut value=state(core,workstream)?;let retained=value.replies.iter().any(|r|r.endpoint_id==endpoint);
     value.read_outcome=Some(BridgeReadOutcome{role:role.into(),endpoint_id:endpoint.into(),state:outcome.into(),retained_reply:retained});Ok(value)
 }
@@ -324,9 +303,9 @@ fn observation(
         .ok_or("BRIDGE_SOURCE_OBSERVATION_CHANGED")?;
     Ok((src, obs))
 }
-pub(crate) fn blocks(core: &RouterCore, workstream: &str, role: &str, id: &str) -> Result<Vec<crate::chatgpt::model::RelayTextBlock>, String> {
+pub(crate) fn blocks(core: &RouterCore, workstream: &str, role: &str, id: &str) -> Result<Vec<crate::relay_model::RelayTextBlock>, String> {
     let (_, obs) = observation(core, workstream, role, id)?;
-    Ok(crate::chatgpt::model::relay_text_blocks(&obs.text))
+    Ok(crate::relay_model::relay_text_blocks(&obs.text))
 }
 fn codex_candidates(
     src: &RoleEndpoint,
@@ -376,20 +355,7 @@ pub(crate) fn attachments(
     let (src, obs) = observation(core, workstream, role, id)?;
     if src.endpoint.provider=="CLAUDE_CODE" {return Ok(Vec::new());}
     if src.endpoint.provider == "CHATGPT" {
-        let native = obs
-            .assistant_identity
-            .ok_or("BRIDGE_SOURCE_IDENTITY_MISSING")?;
-        return Ok(core
-            .chatgpt
-            .list_attachments(&src.endpoint.external_id, &native)?
-            .into_iter()
-            .map(|r| AttachmentOption {
-                id: r.resource_id,
-                filename: r.filename,
-                sha256: None,
-                size: None,
-            })
-            .collect());
+        return Ok(Vec::new());
     }
     {
         let mut session = core
@@ -433,22 +399,7 @@ pub(crate) fn prepare(
         if !chosen.insert(id) || !available.iter().any(|a| &a.id == id) {
             return Err("BRIDGE_ATTACHMENT_SELECTION_CHANGED".into());
         }
-        if src.endpoint.provider == "CHATGPT" {
-            let native = obs
-                .assistant_identity
-                .as_deref()
-                .ok_or("BRIDGE_SOURCE_IDENTITY_MISSING")?;
-            let captured =
-                core.chatgpt
-                    .materialize_attachment(&src.endpoint.external_id, native, id)?;
-            files.push(crate::chatgpt::model::HandoffAttachment {
-                id: id.clone(),
-                filename: captured.filename,
-                path: captured.path,
-                actual_sha256: Some(captured.sha256),
-                integrity_status: Some("VERIFIED".into()),
-            });
-        } else {
+        {
             let a = candidates
                 .iter()
                 .find(|a| &a.id == id)
@@ -460,7 +411,7 @@ pub(crate) fn prepare(
             ) {
                 return Err("BRIDGE_ATTACHMENT_HASH_MISMATCH".into());
             }
-            files.push(crate::chatgpt::model::HandoffAttachment {
+            files.push(crate::relay_model::HandoffAttachment {
                 id: id.clone(),
                 filename: a.filename.clone(),
                 path: a
@@ -483,7 +434,7 @@ pub(crate) fn prepare(
 }
 fn handoff_files(
     h: &HandoffHistoryItem,
-) -> Result<Vec<crate::chatgpt::model::HandoffAttachment>, String> {
+) -> Result<Vec<crate::relay_model::HandoffAttachment>, String> {
     let mut files = Vec::new();
     for a in &h.attachments {
         if a.sha256.as_deref()
@@ -491,7 +442,7 @@ fn handoff_files(
         {
             return Err("BRIDGE_ATTACHMENT_CHANGED_AFTER_REVIEW".into());
         }
-        files.push(crate::chatgpt::model::HandoffAttachment {
+        files.push(crate::relay_model::HandoffAttachment {
             id: a.id.clone(),
             filename: a.filename.clone(),
             path: a.original_path.clone(),
@@ -555,25 +506,7 @@ fn send_as(core: &RouterCore, handoff: &str, owner: bool) -> Result<BridgeState,
     }
     let mut files = preclaim(core,&preview,"FILES",handoff_files(&preview))?;
     if destination.provider == "CHATGPT" {
-        let h = core.store.claim_role_handoff(handoff)?;
-        let run = core.store.create_chatgpt_dispatch_run(
-            &h.workstream_id,
-            &destination.id,
-            Some(&h.id),
-        )?;
-        match crate::chatgpt_direct_writer::send_handoff(
-            core,
-            &h.workstream_id,
-            &destination,
-            &run.id,
-            &h.id,
-            &h.approved_text,
-            &files,
-        ) {
-            Ok(_) => {}
-            Err(e) if e == "CHATGPT_ACCEPTED_PENDING_TERMINAL" => {}
-            Err(e) => return Err(e),
-        }
+        preclaim(core,&preview,"BINDING",Err::<(),String>("BRIDGE_PROVIDER_RETIRED".into()))?;
     } else {
         preclaim(core,&preview,"WATCH_WRITER",core.store.require_no_watch_reply_writer(&destination.external_id))?;
         let bindings = preclaim(core,&preview,"BINDING",core.store.role_bridge(&preview.workstream_id))?;

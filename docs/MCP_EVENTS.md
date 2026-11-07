@@ -114,8 +114,7 @@ Bridge-only grant does not gain whole-app question-response authority.
   are not retried. Four bounded deliveries can run concurrently.
 - Old observations are quarantined during migration; subscriptions do not replay
   events recorded before their creation. Native completion timestamps have
-  one-second precision tolerance. A passive ChatGPT source without an exact
-  completed-run identity first establishes a read baseline. Resolved native
+  one-second precision tolerance. Resolved native
   questions are tombstoned; after restart an unresolved stored question is not
   delivered until the current native session confirms the exact pending request.
 

@@ -2,6 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {invoke} from '@tauri-apps/api/core';
 import {Bot,ChevronRight,Monitor,Smartphone,Download} from 'lucide-react';
 import {t,tc,useLanguage} from '../../i18n';
+import {useHostPlatform} from './HostPiAvailability';
 import {FirstRunLauncher} from '../onboarding/DesktopFirstRun';
 import type {SharedCodexStatus} from './SharedCodexConnection';
 import type {UpdateView} from './DesktopUpdateSettings';
@@ -26,15 +27,16 @@ export type OverviewTarget='CODEX'|'PI_SETTINGS'|'DEVICES'|'UPDATE';
 function Status({tone,children}:{tone:'ok'|'need'|'muted';children:string}){return <span className="v7-set-status" data-tone={tone}>{children}</span>;}
 export function DesktopOverview({api,onNavigate,onPair,piAvailable=true}:{api:OverviewApi;onNavigate:(target:OverviewTarget)=>void;onPair?:()=>void;piAvailable?:boolean}){
  useLanguage();
+ const independent=useHostPlatform()==='macos';
  const [snap,setSnap]=useState<Snapshot|null>(null),[busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[error,setError]=useState('');
  const alive=useRef(true),pending=useRef(false),readGeneration=useRef(0);
  async function load(){const ticket=++readGeneration.current;const [shared,pi,devices,update]=await Promise.allSettled([api.shared(),piAvailable?api.pi():Promise.resolve({platformSupported:false,installed:false}),api.devices(),api.update()]);if(alive.current&&ticket===readGeneration.current)setSnap({shared:settle(shared),pi:settle(pi),devices:settle(devices),update:settle(update)});}
  useEffect(()=>{alive.current=true;void load();const timer=setInterval(()=>{if(document.visibilityState!=='hidden')void load();},15000);return()=>{alive.current=false;readGeneration.current++;clearInterval(timer);};},[api,piAvailable]);
  async function prepare(){if(!api.prepareAdministrator||pending.current)return;pending.current=true;setBusy(true);setNotice('');setError('');try{await api.prepareAdministrator();if(alive.current)setNotice(t('管理员后台已就绪。'));}catch(reason){if(alive.current)setError(t(String(reason).includes('UAC_CANCELLED')?'已取消 Windows 授权，未启动管理员后台。':'管理员后台没有准备好。请到 Pi 子任务页查看后重试。'));}finally{pending.current=false;if(alive.current){setBusy(false);void load();}}}
  const shared=snap?.shared.value,pi=snap?.pi.value,devices=snap?.devices.value,update=snap?.update.value;
- const sharedText=!snap?t('正在读取…'):snap.shared.failed?t('暂时无法读取'):shared?.state==='UNSUPPORTED'?t('该平台尚未支持'):!shared?.enabled?t('未开启'):shared.ready&&shared.desktopConnected?t('已接入'):shared.ready?t('已准备，Desktop 未接入'):t('未就绪');
- const sharedTone=shared?.ready&&shared.desktopConnected?'ok':'muted';
- const adminText=shared?.currentAdministrator===true?t('管理员权限'):shared?.currentAdministrator===false?t('普通权限'):'';
+ const sharedText=independent?t('使用独立 app-server'):!snap?t('正在读取…'):snap.shared.failed?t('暂时无法读取'):shared?.state==='UNSUPPORTED'?t('该平台尚未支持'):!shared?.enabled?t('未开启'):shared.ready&&shared.desktopConnected?t('已接入'):shared.ready?t('已准备，Desktop 未接入'):t('未就绪');
+ const sharedTone=!independent&&shared?.ready&&shared.desktopConnected?'ok':'muted';
+ const adminText=independent?'':shared?.currentAdministrator===true?t('管理员权限'):shared?.currentAdministrator===false?t('普通权限'):'';
  const piReady=Boolean(pi?.administratorBackend?.ready);
  const piText=!snap?t('正在读取…'):snap.pi.failed?t('暂时无法读取'):pi?.platformSupported===false?t('该平台尚未支持'):!pi?.installed?t('本机尚未安装 Pi'):piReady?t('已就绪'):pi.administratorBackend?.preparing?t('正在准备'):t('未准备');
  const deviceText=!snap?t('正在读取…'):snap.devices.failed?t('暂时无法读取'):devices?.length?tc('{0} 台已登录',devices.length):t('还没有配对的手机');
@@ -43,7 +45,7 @@ export function DesktopOverview({api,onNavigate,onPair,piAvailable=true}:{api:Ov
   <FirstRunLauncher/>
   <h3 className="v7-set-cap">{t('这台电脑')}</h3>
   <div className="v7-set-group">
-   <div className="v7-set-item"><span className="v7-set-icon"><Monitor size={18} aria-hidden/></span><button type="button" className="v7-set-main" onClick={()=>onNavigate('CODEX')}><strong>{t('Codex 共享连接')}</strong><small><Status tone={sharedTone}>{sharedText}</Status>{adminText&&` · ${adminText}`}</small></button><button type="button" className="v7-set-btn" onClick={()=>onNavigate('CODEX')}>{t('管理')}</button></div>
+   <div className="v7-set-item"><span className="v7-set-icon"><Monitor size={18} aria-hidden/></span><button type="button" className="v7-set-main" onClick={()=>onNavigate('CODEX')}><strong>{t(independent?'Codex 连接':'Codex 共享连接')}</strong><small><Status tone={sharedTone}>{sharedText}</Status>{adminText&&` · ${adminText}`}</small></button><button type="button" className="v7-set-btn" onClick={()=>onNavigate('CODEX')}>{t('管理')}</button></div>
    {piAvailable&&pi?.platformSupported!==false&&<div className="v7-set-item"><span className="v7-set-icon"><Bot size={18} aria-hidden/></span><button type="button" className="v7-set-main" onClick={()=>onNavigate('PI_SETTINGS')}><strong>{t('Pi 管理员后台')}</strong><small><Status tone={piReady?'ok':pi?.installed?'need':'muted'}>{piText}</Status>{pi?.installed&&!piReady?` · ${t('新 Pi 子任务需要它；重启 Agbrio 后要重新准备')}`:''}</small></button>{pi?.installed&&!piReady&&api.prepareAdministrator&&<button type="button" className="v7-set-btn" data-primary disabled={busy} onClick={()=>void prepare()}>{t(busy?'请在 Windows 弹窗中确认…':'准备')}</button>}</div>}
    <div className="v7-set-item"><span className="v7-set-icon"><Smartphone size={18} aria-hidden/></span><button type="button" className="v7-set-main" onClick={()=>onPair?onPair():onNavigate('DEVICES')}><strong>{t('手机')}</strong><small><Status tone={devices?.length?'ok':'muted'}>{deviceText}</Status></small></button>{onPair&&<button type="button" className="v7-set-btn" onClick={onPair}>{t('配对新手机')}</button>}</div>
    <div className="v7-set-item"><span className="v7-set-icon"><Download size={18} aria-hidden/></span><button type="button" className="v7-set-main" onClick={()=>onNavigate('UPDATE')}><strong>{t('Agbrio 版本')} {update?.currentVersion??''}</strong><small><Status tone={update?.state==='UP_TO_DATE'?'ok':update?.state==='READY'||update?.state==='AVAILABLE'?'need':'muted'}>{updateText}</Status></small></button><button type="button" className="v7-set-btn" onClick={()=>onNavigate('UPDATE')}>{t('检查更新')}</button></div>

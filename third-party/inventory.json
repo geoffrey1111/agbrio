@@ -154,6 +154,17 @@
   },
   {
     "ecosystem": "cargo",
+    "name": "async-compression",
+    "version": "0.4.51",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/api/v1/crates/async-compression/0.4.51/download",
+    "notices": [
+      "third-party/cargo/async-compression-0.4.51/LICENSE-APACHE",
+      "third-party/cargo/async-compression-0.4.51/LICENSE-MIT"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
     "name": "atomic-waker",
     "version": "1.1.2",
     "license": "Apache-2.0 OR MIT",
@@ -558,6 +569,38 @@
     "source": "https://crates.io/api/v1/crates/coarsetime/0.1.37/download",
     "notices": [
       "third-party/cargo/coarsetime-0.1.37/LICENSE"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "color_quant",
+    "version": "1.1.0",
+    "license": "MIT",
+    "source": "https://crates.io/api/v1/crates/color_quant/1.1.0/download",
+    "notices": [
+      "third-party/cargo/color_quant-1.1.0/LICENSE"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "compression-codecs",
+    "version": "0.4.46",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/api/v1/crates/compression-codecs/0.4.46/download",
+    "notices": [
+      "third-party/cargo/compression-codecs-0.4.46/LICENSE-APACHE",
+      "third-party/cargo/compression-codecs-0.4.46/LICENSE-MIT"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "compression-core",
+    "version": "0.4.34",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/api/v1/crates/compression-core/0.4.34/download",
+    "notices": [
+      "third-party/cargo/compression-core-0.4.34/LICENSE-APACHE",
+      "third-party/cargo/compression-core-0.4.34/LICENSE-MIT"
     ]
   },
   {
@@ -1264,6 +1307,17 @@
   },
   {
     "ecosystem": "cargo",
+    "name": "filetime",
+    "version": "0.2.29",
+    "license": "MIT/Apache-2.0",
+    "source": "https://crates.io/api/v1/crates/filetime/0.2.29/download",
+    "notices": [
+      "third-party/cargo/filetime-0.2.29/LICENSE-APACHE",
+      "third-party/cargo/filetime-0.2.29/LICENSE-MIT"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
     "name": "find-msvc-tools",
     "version": "0.1.11",
     "license": "MIT OR Apache-2.0",
@@ -1456,6 +1510,17 @@
     "notices": [
       "third-party/cargo/ghash-0.6.0/LICENSE-APACHE",
       "third-party/cargo/ghash-0.6.0/LICENSE-MIT"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "gif",
+    "version": "0.14.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/api/v1/crates/gif/0.14.2/download",
+    "notices": [
+      "third-party/cargo/gif-0.14.2/LICENSE-APACHE",
+      "third-party/cargo/gif-0.14.2/LICENSE-MIT"
     ]
   },
   {
@@ -1870,6 +1935,17 @@
     "notices": [
       "third-party/cargo/image-0.25.10/LICENSE-APACHE",
       "third-party/cargo/image-0.25.10/LICENSE-MIT"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "image-webp",
+    "version": "0.2.4",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/api/v1/crates/image-webp/0.2.4/download",
+    "notices": [
+      "third-party/cargo/image-webp-0.2.4/LICENSE-APACHE",
+      "third-party/cargo/image-webp-0.2.4/LICENSE-MIT"
     ]
   },
   {
@@ -2711,6 +2787,17 @@
     "notices": [
       "third-party/cargo/pxfm-0.1.30/LICENSE-APACHE.md",
       "third-party/cargo/pxfm-0.1.30/LICENSE.md"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "quick-error",
+    "version": "2.0.1",
+    "license": "MIT/Apache-2.0",
+    "source": "https://crates.io/api/v1/crates/quick-error/2.0.1/download",
+    "notices": [
+      "third-party/cargo/quick-error-2.0.1/LICENSE-APACHE",
+      "third-party/cargo/quick-error-2.0.1/LICENSE-MIT"
     ]
   },
   {
@@ -3609,6 +3696,17 @@
   },
   {
     "ecosystem": "cargo",
+    "name": "tar",
+    "version": "0.4.46",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/api/v1/crates/tar/0.4.46/download",
+    "notices": [
+      "third-party/cargo/tar-0.4.46/LICENSE-APACHE",
+      "third-party/cargo/tar-0.4.46/LICENSE-MIT"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
     "name": "tauri",
     "version": "2.11.5",
     "license": "Apache-2.0 OR MIT",
@@ -4399,6 +4497,17 @@
   },
   {
     "ecosystem": "cargo",
+    "name": "weezl",
+    "version": "0.1.12",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/api/v1/crates/weezl/0.1.12/download",
+    "notices": [
+      "third-party/cargo/weezl-0.1.12/LICENSE-APACHE",
+      "third-party/cargo/weezl-0.1.12/LICENSE-MIT"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
     "name": "winapi",
     "version": "0.3.9",
     "license": "MIT/Apache-2.0",
@@ -4871,6 +4980,30 @@
     ]
   },
   {
+    "ecosystem": "cargo",
+    "name": "zune-core",
+    "version": "0.5.3",
+    "license": "MIT OR Apache-2.0 OR Zlib",
+    "source": "https://crates.io/api/v1/crates/zune-core/0.5.3/download",
+    "notices": [
+      "third-party/cargo/zune-core-0.5.3/LICENSE-APACHE",
+      "third-party/cargo/zune-core-0.5.3/LICENSE-MIT",
+      "third-party/cargo/zune-core-0.5.3/LICENSE-ZLIB"
+    ]
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "zune-jpeg",
+    "version": "0.5.15",
+    "license": "MIT OR Apache-2.0 OR Zlib",
+    "source": "https://crates.io/api/v1/crates/zune-jpeg/0.5.15/download",
+    "notices": [
+      "third-party/cargo/zune-jpeg-0.5.15/LICENSE-APACHE",
+      "third-party/cargo/zune-jpeg-0.5.15/LICENSE-MIT",
+      "third-party/cargo/zune-jpeg-0.5.15/LICENSE-ZLIB"
+    ]
+  },
+  {
     "ecosystem": "npm",
     "name": "@adobe/css-tools",
     "version": "4.5.0",
@@ -5250,17 +5383,6 @@
     "notices": [
       "third-party/npm/playwright_test-1.63.0/LICENSE",
       "third-party/npm/playwright_test-1.63.0/NOTICE"
-    ]
-  },
-  {
-    "ecosystem": "npm",
-    "name": "@puppeteer/browsers",
-    "version": "3.2.3",
-    "license": "Apache-2.0",
-    "source": "https://registry.npmjs.org/@puppeteer/browsers/-/browsers-3.2.3.tgz",
-    "notices": [
-      "third-party/npm/puppeteer_browsers-3.2.3/UPSTREAM-ATTRIBUTION.txt",
-      "third-party/licenses/Apache-2.0.txt"
     ]
   },
   {
@@ -5831,32 +5953,12 @@
   },
   {
     "ecosystem": "npm",
-    "name": "ansi-regex",
-    "version": "6.4.0",
-    "license": "MIT",
-    "source": "https://registry.npmjs.org/ansi-regex/-/ansi-regex-6.4.0.tgz",
-    "notices": [
-      "third-party/npm/ansi-regex-6.4.0/license"
-    ]
-  },
-  {
-    "ecosystem": "npm",
     "name": "ansi-styles",
     "version": "5.2.0",
     "license": "MIT",
     "source": "https://registry.npmjs.org/ansi-styles/-/ansi-styles-5.2.0.tgz",
     "notices": [
       "third-party/npm/ansi-styles-5.2.0/license"
-    ]
-  },
-  {
-    "ecosystem": "npm",
-    "name": "ansi-styles",
-    "version": "6.2.3",
-    "license": "MIT",
-    "source": "https://registry.npmjs.org/ansi-styles/-/ansi-styles-6.2.3.tgz",
-    "notices": [
-      "third-party/npm/ansi-styles-6.2.3/license"
     ]
   },
   {
@@ -6001,32 +6103,12 @@
   },
   {
     "ecosystem": "npm",
-    "name": "chromium-bidi",
-    "version": "17.0.2",
-    "license": "Apache-2.0",
-    "source": "https://registry.npmjs.org/chromium-bidi/-/chromium-bidi-17.0.2.tgz",
-    "notices": [
-      "third-party/npm/chromium-bidi-17.0.2/LICENSE"
-    ]
-  },
-  {
-    "ecosystem": "npm",
     "name": "classnames",
     "version": "2.5.1",
     "license": "MIT",
     "source": "https://registry.npmjs.org/classnames/-/classnames-2.5.1.tgz",
     "notices": [
       "third-party/npm/classnames-2.5.1/LICENSE"
-    ]
-  },
-  {
-    "ecosystem": "npm",
-    "name": "cliui",
-    "version": "9.0.1",
-    "license": "ISC",
-    "source": "https://registry.npmjs.org/cliui/-/cliui-9.0.1.tgz",
-    "notices": [
-      "third-party/npm/cliui-9.0.1/LICENSE.txt"
     ]
   },
   {
@@ -6161,16 +6243,6 @@
   },
   {
     "ecosystem": "npm",
-    "name": "devtools-protocol",
-    "version": "0.0.1687809",
-    "license": "BSD-3-Clause",
-    "source": "https://registry.npmjs.org/devtools-protocol/-/devtools-protocol-0.0.1687809.tgz",
-    "notices": [
-      "third-party/npm/devtools-protocol-0.0.1687809/LICENSE"
-    ]
-  },
-  {
-    "ecosystem": "npm",
     "name": "dom-accessibility-api",
     "version": "0.5.16",
     "license": "MIT",
@@ -6197,16 +6269,6 @@
     "source": "https://registry.npmjs.org/electron-to-chromium/-/electron-to-chromium-1.5.413.tgz",
     "notices": [
       "third-party/npm/electron-to-chromium-1.5.413/LICENSE"
-    ]
-  },
-  {
-    "ecosystem": "npm",
-    "name": "emoji-regex",
-    "version": "10.6.0",
-    "license": "MIT",
-    "source": "https://registry.npmjs.org/emoji-regex/-/emoji-regex-10.6.0.tgz",
-    "notices": [
-      "third-party/npm/emoji-regex-10.6.0/LICENSE-MIT.txt"
     ]
   },
   {
@@ -6347,26 +6409,6 @@
     "source": "https://registry.npmjs.org/gensync/-/gensync-1.0.0-beta.2.tgz",
     "notices": [
       "third-party/npm/gensync-1.0.0-beta.2/LICENSE"
-    ]
-  },
-  {
-    "ecosystem": "npm",
-    "name": "get-caller-file",
-    "version": "2.0.5",
-    "license": "ISC",
-    "source": "https://registry.npmjs.org/get-caller-file/-/get-caller-file-2.0.5.tgz",
-    "notices": [
-      "third-party/npm/get-caller-file-2.0.5/LICENSE.md"
-    ]
-  },
-  {
-    "ecosystem": "npm",
-    "name": "get-east-asian-width",
-    "version": "1.7.0",
-    "license": "MIT",
-    "source": "https://registry.npmjs.org/get-east-asian-width/-/get-east-asian-width-1.7.0.tgz",
-    "notices": [
-      "third-party/npm/get-east-asian-width-1.7.0/license"
     ]
   },
   {
@@ -7091,26 +7133,6 @@
   },
   {
     "ecosystem": "npm",
-    "name": "mitt",
-    "version": "3.0.1",
-    "license": "MIT",
-    "source": "https://registry.npmjs.org/mitt/-/mitt-3.0.1.tgz",
-    "notices": [
-      "third-party/npm/mitt-3.0.1/LICENSE"
-    ]
-  },
-  {
-    "ecosystem": "npm",
-    "name": "modern-tar",
-    "version": "0.8.5",
-    "license": "MIT",
-    "source": "https://registry.npmjs.org/modern-tar/-/modern-tar-0.8.5.tgz",
-    "notices": [
-      "third-party/npm/modern-tar-0.8.5/LICENSE"
-    ]
-  },
-  {
-    "ecosystem": "npm",
     "name": "motion",
     "version": "13.1.1",
     "license": "MIT",
@@ -7303,13 +7325,13 @@
   },
   {
     "ecosystem": "npm",
-    "name": "puppeteer-core",
-    "version": "25.12.0",
-    "license": "Apache-2.0",
-    "source": "https://registry.npmjs.org/puppeteer-core/-/puppeteer-core-25.12.0.tgz",
+    "name": "qrcode-generator",
+    "version": "2.0.4",
+    "license": "MIT",
+    "source": "https://registry.npmjs.org/qrcode-generator/-/qrcode-generator-2.0.4.tgz",
     "notices": [
-      "third-party/npm/puppeteer-core-25.12.0/UPSTREAM-ATTRIBUTION.txt",
-      "third-party/licenses/Apache-2.0.txt"
+      "third-party/npm/qrcode-generator-2.0.4/UPSTREAM-ATTRIBUTION.txt",
+      "third-party/licenses/MIT.txt"
     ]
   },
   {
@@ -7547,42 +7569,12 @@
   },
   {
     "ecosystem": "npm",
-    "name": "string-width",
-    "version": "7.2.0",
-    "license": "MIT",
-    "source": "https://registry.npmjs.org/string-width/-/string-width-7.2.0.tgz",
-    "notices": [
-      "third-party/npm/string-width-7.2.0/license"
-    ]
-  },
-  {
-    "ecosystem": "npm",
-    "name": "string-width",
-    "version": "8.3.0",
-    "license": "MIT",
-    "source": "https://registry.npmjs.org/string-width/-/string-width-8.3.0.tgz",
-    "notices": [
-      "third-party/npm/string-width-8.3.0/license"
-    ]
-  },
-  {
-    "ecosystem": "npm",
     "name": "stringify-entities",
     "version": "4.0.4",
     "license": "MIT",
     "source": "https://registry.npmjs.org/stringify-entities/-/stringify-entities-4.0.4.tgz",
     "notices": [
       "third-party/npm/stringify-entities-4.0.4/license"
-    ]
-  },
-  {
-    "ecosystem": "npm",
-    "name": "strip-ansi",
-    "version": "7.2.0",
-    "license": "MIT",
-    "source": "https://registry.npmjs.org/strip-ansi/-/strip-ansi-7.2.0.tgz",
-    "notices": [
-      "third-party/npm/strip-ansi-7.2.0/license"
     ]
   },
   {
@@ -7734,16 +7726,6 @@
     "notices": [
       "third-party/npm/tslib-2.8.1/CopyrightNotice.txt",
       "third-party/npm/tslib-2.8.1/LICENSE.txt"
-    ]
-  },
-  {
-    "ecosystem": "npm",
-    "name": "typed-query-selector",
-    "version": "2.12.3",
-    "license": "MIT",
-    "source": "https://registry.npmjs.org/typed-query-selector/-/typed-query-selector-2.12.3.tgz",
-    "notices": [
-      "third-party/npm/typed-query-selector-2.12.3/LICENSE"
     ]
   },
   {
@@ -7928,16 +7910,6 @@
   },
   {
     "ecosystem": "npm",
-    "name": "webdriver-bidi-protocol",
-    "version": "0.4.3",
-    "license": "Apache-2.0",
-    "source": "https://registry.npmjs.org/webdriver-bidi-protocol/-/webdriver-bidi-protocol-0.4.3.tgz",
-    "notices": [
-      "third-party/npm/webdriver-bidi-protocol-0.4.3/LICENSE"
-    ]
-  },
-  {
-    "ecosystem": "npm",
     "name": "webidl-conversions",
     "version": "8.0.1",
     "license": "BSD-2-Clause",
@@ -7988,16 +7960,6 @@
   },
   {
     "ecosystem": "npm",
-    "name": "wrap-ansi",
-    "version": "9.0.2",
-    "license": "MIT",
-    "source": "https://registry.npmjs.org/wrap-ansi/-/wrap-ansi-9.0.2.tgz",
-    "notices": [
-      "third-party/npm/wrap-ansi-9.0.2/license"
-    ]
-  },
-  {
-    "ecosystem": "npm",
     "name": "ws",
     "version": "8.22.0",
     "license": "MIT",
@@ -8028,52 +7990,12 @@
   },
   {
     "ecosystem": "npm",
-    "name": "y18n",
-    "version": "5.0.8",
-    "license": "ISC",
-    "source": "https://registry.npmjs.org/y18n/-/y18n-5.0.8.tgz",
-    "notices": [
-      "third-party/npm/y18n-5.0.8/LICENSE"
-    ]
-  },
-  {
-    "ecosystem": "npm",
     "name": "yallist",
     "version": "3.1.1",
     "license": "ISC",
     "source": "https://registry.npmjs.org/yallist/-/yallist-3.1.1.tgz",
     "notices": [
       "third-party/npm/yallist-3.1.1/LICENSE"
-    ]
-  },
-  {
-    "ecosystem": "npm",
-    "name": "yargs",
-    "version": "18.2.0",
-    "license": "MIT",
-    "source": "https://registry.npmjs.org/yargs/-/yargs-18.2.0.tgz",
-    "notices": [
-      "third-party/npm/yargs-18.2.0/LICENSE"
-    ]
-  },
-  {
-    "ecosystem": "npm",
-    "name": "yargs-parser",
-    "version": "22.0.0",
-    "license": "ISC",
-    "source": "https://registry.npmjs.org/yargs-parser/-/yargs-parser-22.0.0.tgz",
-    "notices": [
-      "third-party/npm/yargs-parser-22.0.0/LICENSE.txt"
-    ]
-  },
-  {
-    "ecosystem": "npm",
-    "name": "zod",
-    "version": "3.25.76",
-    "license": "MIT",
-    "source": "https://registry.npmjs.org/zod/-/zod-3.25.76.tgz",
-    "notices": [
-      "third-party/npm/zod-3.25.76/LICENSE"
     ]
   },
   {

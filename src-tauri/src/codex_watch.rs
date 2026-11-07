@@ -317,9 +317,8 @@ mod tests {
         reader.initialize().unwrap();
         let core = RouterCore {
             store: store.clone(),
-            chatgpt: Arc::default(),
+
             session: Arc::new(Mutex::new(Session::default())),
-            completed_chatgpt_responses: Arc::default(),
         };
         core.session.lock().unwrap().adapter = Some(reader);
         enable(&core, target).unwrap();

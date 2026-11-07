@@ -85,7 +85,7 @@ fn resource_stamp(source:&Path,node:&Path,ws:&Path)->Result<String,String>{
  let mut files:Vec<_>=fs::read_dir(ws.join("lib")).map_err(|_|"SHARED_WS_MISSING")?.collect::<Result<_,_>>().map_err(|_|"SHARED_WS_MISSING")?;
  files.sort_by_key(|f|f.file_name());for f in files{let bytes=fs::read(f.path()).map_err(|_|"SHARED_WS_MISSING")?;digest.update(f.file_name().to_string_lossy().as_bytes());digest.update((bytes.len() as u64).to_le_bytes());digest.update(bytes);}Ok(format!("{:x}",digest.finalize()))
 }
-fn asset_stamp(a:&Assets)->Result<String,String>{resource_stamp(&a.source,&a.node,&a.source.parent().ok_or("SHARED_RUNTIME_ASSET_MISSING")?.join("browser-executor/node_modules/ws"))}
+fn asset_stamp(a:&Assets)->Result<String,String>{resource_stamp(&a.source,&a.node,&a.source.parent().ok_or("SHARED_RUNTIME_ASSET_MISSING")?.join("node-runtime/node_modules/ws"))}
 fn cached_resources_match(root:&Path,stamp:&str)->bool{
  fs::read_to_string(root.join("version")).ok().as_deref()==Some(stamp)&&resource_stamp(root,&root.join("node.exe"),&root.join("ws")).ok().as_deref()==Some(stamp)
 }
@@ -97,7 +97,7 @@ fn live_assets_stamp(source:&Path,node:&Path,ws:&Path)->Option<String>{
 }
 fn runtime_update_pending()->bool{
  let Some(a)=ASSETS.get()else{return false};let Some(root)=folder().ok().map(|f|f.join("runtime"))else{return true};
- let Some(ws)=a.source.parent().map(|p|p.join("browser-executor/node_modules/ws"))else{return true};
+ let Some(ws)=a.source.parent().map(|p|p.join("node-runtime/node_modules/ws"))else{return true};
  // Control/environment scripts execute from the installed package, not the
  // resident supervisor. Updating launch UI must not require ending active turns.
  let expected=live_assets_stamp(&a.source,&a.node,&ws);expected.is_none()||expected!=live_assets_stamp(&root,&root.join("node.exe"),&root.join("ws"))

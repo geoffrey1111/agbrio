@@ -2,16 +2,16 @@
 
 Prerequisites: Windows x64, Node 24.16.0, Rust 1.98 stable MSVC toolchain, Python
 3.12+, PowerShell 7, Microsoft C++ build tools/Windows SDK, and WebView2.
-The first native build and pinned Chromium download are substantial. Do not
-copy another user's app-data, credentials or browser profile.
+The first native build is substantial. Do not copy another user's app-data or
+credentials.
 
 ```powershell
 npm ci
-npm ci --prefix tools/isolated-browser-executor
+npm ci --prefix tools/node-runtime
 npm test
 npm run build
 cargo test --manifest-path crates/Cargo.toml --locked
-npm run build:browser-executor
+npm run build:node-runtime
 cargo test --manifest-path src-tauri/Cargo.toml --locked
 python scripts/license-inventory.py
 # Optional: build with your own verified hosted service. Omit for self-host-only.
@@ -21,8 +21,8 @@ npm run build:windows
 
 `build:windows` runs the web build and verified runtime packaging automatically.
 The NSIS installer is under `src-tauri/target/release/bundle/nsis/`. Packaging
-uses a hash-pinned official non-branded Chromium and your Node 24 executable,
-plus retained dependency notices. Codex Desktop, its account/session data and
+uses your Node 24 executable, which the hosted connector runs on, plus retained
+dependency notices. Codex Desktop, its account/session data and
 your tunnel credentials are never bundled.
 
 `npm run dev` is a browser UI surface; `npm run tauri dev` runs native IPC.

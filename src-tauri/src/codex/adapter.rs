@@ -31,10 +31,13 @@ impl CodexAdapter {
         sink: Arc<dyn EventSink>,
         listener: Arc<dyn Fn(&Value) + Send + Sync>,
     ) -> Result<Self, String> {
-        match crate::shared_codex::transport_command()? {
+        #[cfg(windows)]
+        return match crate::shared_codex::transport_command()? {
             Some(command)=>CoreAdapter::start_shared_transport(sink,listener,command).map(Self),
             None=>CoreAdapter::start(sink,listener,codex_app_server_command()).map(Self)
-        }
+        };
+        #[cfg(not(windows))]
+        CoreAdapter::start(sink,listener,codex_app_server_command()).map(Self)
     }
     #[cfg(test)]
     pub(crate) fn start_shared_validation(command:std::process::Command,listener:Arc<dyn Fn(&Value)+Send+Sync>)->Result<Self,String>{CoreAdapter::start_shared_transport(Arc::new(ValidationEventSink),listener,command).map(Self)}

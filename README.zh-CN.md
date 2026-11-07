@@ -70,6 +70,8 @@ flowchart TD
 
 ## Mac Beta
 
+源码候选更新：已退役 ChatGPT 浏览器和内置 Chromium；旧 ChatGPT Bridge 保留已存回复，要继续读取或发送须重新绑定。ChatGPT 作为 MCP 助手仍可用。Mac 保留独立 app-server、Goal 控制、自动恢复及托管中继 Node。上方下载仍是此前已发布测试版，本候选尚未发布。
+
 本测试版同步 Windows rc.122 的管理区、星图和首次引导；Mac 仍不提供 Pi、共享 Codex 和应用内更新。首次引导跳过 Mac 不可用的共享 Codex；Claude MCP 在原 Code 对话中手动接入。
 
 **Mac 公开测试版，仅 Apple Silicon（ARM64）；不是正式 macOS 支持。尚未经外部测试者自有 Mac 真机验证，可能有问题。** 不支持 Intel Mac。macOS 13.5 只是声明的最低版本，系统／机型验证尚未完成。GitHub Mac CI 是工程验证，不代表真机 UAT 或与 Windows 功能对齐。上方通用功能介绍主要描述 Windows；Mac 以本节限制为准。

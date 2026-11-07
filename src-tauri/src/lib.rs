@@ -77,8 +77,7 @@ async fn character_board_asset(revision:String,asset_id:String,variant:Option<St
     tauri::async_runtime::spawn_blocking(move||character_board::display_asset(&revision,&asset_id,variant.as_deref().unwrap_or("original"))).await.map_err(|_|"BOARD_UNAVAILABLE".to_string())?
 }
 mod artifact;
-mod chatgpt;
-mod chatgpt_direct_writer;
+mod relay_model;
 mod codex;
 mod host;
 mod host_application;
@@ -94,13 +93,7 @@ mod shared_codex;
 mod shared_codex;
 use host::HostRuntime;
 use host_application::*;
-#[cfg(test)]
-mod normal_browser;
-#[cfg(test)]
-mod normal_chrome_extension;
 mod persistence;
-#[cfg(test)]
-mod playwright_chatgpt;
 mod presentation;
 mod push;
 mod runtime_reconciler;
@@ -266,17 +259,15 @@ fn codex_watch_event(sequence:i64,state:State<'_,RouterState>)->Result<router_co
 fn codex_notifications_web_url()->Option<String>{crate::mobile_http::configured_mobile_allowed_origin().and_then(|s|{let mut u=url::Url::parse(&s).ok()?;if u.scheme()!="https"||u.host_str().is_none()||!u.username().is_empty()||u.password().is_some(){return None;}u.set_path("/mobile/notifications");u.set_query(None);u.set_fragment(None);Some(u.to_string())})}
 
 use artifact::detector::{detect, AttachmentCandidate};
-use chatgpt::direct::CompletedChatGptResponse;
-use chatgpt::model::{
-    ConversationHistory, ConversationHistoryDiagnostics, ConversationHistoryMessage,
-};
+#[cfg(test)]
 use codex::adapter::CodexAdapter;
 use persistence::{
-    DashboardProjection, Endpoint, ExternalProjectLink, Project, Provider, RouterStore,
+    DashboardProjection, Endpoint, ExternalProjectLink, Project, RouterStore,
     WorkspaceSnapshot, Workstream,
 };
 use presentation::TauriEventSink;
 use serde::Serialize;
+#[cfg(test)]
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -342,7 +333,7 @@ fn approve_role_handoff(handoff_id:String,expected_hash:String,state:State<'_,Ro
 #[tauri::command]
 fn role_bridge_attachments(workstream_id:String,role:String,observation_id:String,state:State<'_,RouterState>)->Result<Vec<role_bridge::AttachmentOption>,String>{role_bridge::attachments(state.inner(),&workstream_id,&role,&observation_id)}
 #[tauri::command]
-fn role_bridge_blocks(workstream_id:String,role:String,observation_id:String,state:State<'_,RouterState>)->Result<Vec<chatgpt::model::RelayTextBlock>,String>{role_bridge::blocks(state.inner(),&workstream_id,&role,&observation_id)}
+fn role_bridge_blocks(workstream_id:String,role:String,observation_id:String,state:State<'_,RouterState>)->Result<Vec<crate::relay_model::RelayTextBlock>,String>{role_bridge::blocks(state.inner(),&workstream_id,&role,&observation_id)}
 #[tauri::command]
 fn edit_role_handoff(handoff_id:String,expected_hash:String,text:String,state:State<'_,RouterState>)->Result<persistence::HandoffHistoryItem,String>{state.store.edit_role_handoff(&handoff_id,&expected_hash,&text)}
 #[tauri::command]
@@ -715,66 +706,11 @@ fn bind_workspace_endpoint(
     )
 }
 
-/// Validates the exact user-supplied ChatGPT URL through the native provider surface
-/// but deliberately persists nothing. The candidate is scoped to one
-/// Workstream and one reviewed binding revision for this Router session.
-// Native UI-window creation must run off the Windows IPC/UI thread.
-#[tauri::command(async)]
-fn prepare_explicit_chatgpt_endpoint_binding(
-    workstream_id: String,
-    input: String,
-    state: State<'_, RouterState>,
-) -> Result<ExplicitChatGptBindingCandidate, String> {
-    state.prepare_explicit_chatgpt_endpoint_binding(&workstream_id, &input)
-}
 
-/// Creates a session-only candidate from an exact URL the owner has already
-/// checked in the Windows default browser. It deliberately performs no
-/// browser/provider operation and cannot change an Endpoint by itself.
-#[tauri::command]
-fn prepare_owner_confirmed_chatgpt_endpoint_binding(
-    workstream_id: String,
-    input: String,
-    state: State<'_, RouterState>,
-) -> Result<ExplicitChatGptBindingCandidate, String> {
-    state.prepare_owner_confirmed_chatgpt_endpoint_binding(&workstream_id, &input)
-}
 
-/// Performs the only Endpoint write for an explicit ChatGPT binding. The
-/// existing revision-checked atomic transaction preserves lineage and rejects
-/// stale review before any ACTIVE Endpoint changes.
-/// Prepare the exact provider-native browser selection; confirmation is still separate.
-#[tauri::command(async)]
-fn prepare_current_chatgpt_endpoint_binding(
-    workstream_id: String,
-    state: State<'_, RouterState>,
-) -> Result<ExplicitChatGptBindingCandidate, String> {
-    host_application::service_prepare_current_chatgpt_endpoint_binding(workstream_id, state.inner())
-}
 
-/// Only the owner-facing explicit login/security completion action calls this.
-#[tauri::command(async)]
-fn confirm_chatgpt_authentication_completed(state: State<'_, RouterState>) -> Result<(), String> {
-    state.chatgpt.owner_confirmed_authentication()?;
-    Ok(())
-}
 
-#[tauri::command]
-fn confirm_explicit_chatgpt_endpoint_binding(
-    workstream_id: String,
-    state: State<'_, RouterState>,
-) -> Result<Endpoint, String> {
-    state.confirm_explicit_chatgpt_endpoint_binding(&workstream_id)
-}
 
-#[tauri::command]
-fn confirm_explicit_chatgpt_codex_pairing(
-    workstream_id: String,
-    codex: EndpointPairingSideInput,
-    state: State<'_, RouterState>,
-) -> Result<persistence::EndpointPairingResult, String> {
-    state.confirm_explicit_chatgpt_codex_pairing(&workstream_id, codex)
-}
 
 #[tauri::command]
 fn begin_codex_rollover(
@@ -835,11 +771,8 @@ fn codex_status(state: State<'_, RouterState>) -> Result<BackendStatus, String> 
 
 /// Local Host facts only; external login and provider connectivity are separate.
 #[tauri::command]
-fn host_environment_status(
-    host: State<'_, HostRuntime>,
-    state: State<'_, RouterState>,
-) -> HostEnvironmentStatus {
-    host.environment_status(&state)
+fn host_environment_status(host: State<'_, HostRuntime>) -> HostEnvironmentStatus {
+    host.environment_status()
 }
 
 #[tauri::command]
@@ -1084,120 +1017,19 @@ fn mark_reply_observation_handled(
     state.acknowledge_mobile_reply_observation(&workstream_id, &observation_id, true)
 }
 
-#[tauri::command]
-fn prepare_chatgpt_to_codex_handoff(
-    workstream_id: String,
-    response_id: String,
-    initial_message: Option<String>,
-    attachment_filenames: Option<Vec<String>>,
-    state: State<'_, RouterState>,
-) -> Result<MobileHandoffReview, String> {
-    host_application::service_prepare_chatgpt_to_codex_handoff(
-        workstream_id,
-        response_id,
-        initial_message,
-        attachment_filenames,
-        state.inner(),
-    )
-}
 
-#[tauri::command]
-fn select_chatgpt_to_codex_handoff_attachments(
-    action_id: String,
-    revision: u64,
-    attachment_filenames: Vec<String>,
-    state: State<'_, RouterState>,
-) -> Result<MobileHandoffReview, String> {
-    host_application::service_select_chatgpt_to_codex_handoff_attachments(
-        action_id,
-        revision,
-        attachment_filenames,
-        state.inner(),
-    )
-}
 
-#[tauri::command]
-fn approve_chatgpt_to_codex_handoff(
-    action_id: String,
-    revision: u64,
-    message: String,
-    state: State<'_, RouterState>,
-) -> Result<MobileHandoffReview, String> {
-    state.approve_mobile_reverse(&action_id, MobileApproveInput { revision, message })
-}
 
-#[tauri::command]
-async fn send_chatgpt_to_codex_handoff_review(
-    action_id: String,
-    revision: u64,
-    state: State<'_, RouterState>,
-) -> Result<TurnStartResult, String> {
-    let core = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        core.send_mobile_reverse(&action_id, MobileSendInput { revision })
-    })
-    .await
-    .map_err(|error| format!("ChatGPT-to-Codex Handoff worker ended unexpectedly: {error}"))?
-}
 
-#[tauri::command]
-fn prepare_codex_to_chatgpt_handoff(
-    workstream_id: String,
-    run_id: String,
-    attachment_ids: Vec<String>,
-    state: State<'_, RouterState>,
-) -> Result<MobileHandoffReview, String> {
-    host_application::service_prepare_codex_to_chatgpt_handoff(
-        workstream_id,
-        run_id,
-        attachment_ids,
-        state.inner(),
-    )
-}
 
-#[tauri::command]
-fn approve_codex_to_chatgpt_handoff(
-    action_id: String,
-    revision: u64,
-    message: String,
-    state: State<'_, RouterState>,
-) -> Result<MobileHandoffReview, String> {
-    state.approve_mobile_codex_outbound(&action_id, MobileApproveInput { revision, message })
-}
 
-#[tauri::command]
-async fn send_codex_to_chatgpt_handoff(
-    action_id: String,
-    revision: u64,
-    state: State<'_, RouterState>,
-) -> Result<OutboundHandoffResult, String> {
-    let core = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        core.send_mobile_codex_outbound(&action_id, MobileSendInput { revision })
-    })
-    .await
-    .map_err(|error| format!("Codex-to-ChatGPT Handoff worker ended unexpectedly: {error}"))?
-}
 
 #[tauri::command]
 fn detect_attachments(source_message_id: String, text: String) -> Vec<AttachmentCandidate> {
     detect(&source_message_id, &text)
 }
 
-/// Historical DevTools setup. The retired observer is hard-paused and this
-/// command cannot be used as a fallback from the installed Connector.
-#[tauri::command]
-async fn connect_normal_chrome_read_only() -> Result<(), String> {
-    Err("LEGACY_CHATGPT_TRANSPORT_RETIRED".into())
-}
 
-#[tauri::command]
-async fn check_new_chatgpt_replies(
-    workstream_id: String,
-    state: State<'_, RouterState>,
-) -> Result<ChatGptManualRefreshResult, String> {
-    state.check_mobile_chatgpt_replies(&workstream_id)
-}
 
 /// One explicit, read-only check against the selected Workstream's exact
 /// active Codex endpoint. It does not reconnect, resume, or create a run.
@@ -1214,125 +1046,12 @@ fn check_new_codex_replies(
     )
 }
 
-/// Proves the persisted ACTIVE endpoint through the Router-owned Playwright
-/// carrier. The sidecar opens only the canonical exact route and rejects a
-/// redirect or non-matching URL; no embedded surface, client, title, or page text
-/// is used as routing authority.
-#[tauri::command]
-async fn bound_chatgpt_provider_surface_status(
-    workstream_id: String,
-    state: State<'_, RouterState>,
-    host: State<'_, HostRuntime>,
-) -> Result<BoundChatGptProviderSurfaceStatus, String> {
-    let _operation = host
-        .exact_host_operation
-        .lock()
-        .map_err(|_| "ChatGPT direct-carrier operation is unavailable")?;
-    let endpoint = state
-        .store
-        .active_endpoint_for_workstream(&workstream_id, Provider::Chatgpt)?
-        .ok_or("The Workstream has no ACTIVE ChatGPT Endpoint")?;
-    state.chatgpt.verify_exact(&endpoint.external_id)?;
-    Ok(BoundChatGptProviderSurfaceStatus {
-        state: "EXACT_BOUND".into(),
-        current_conversation_id: Some(endpoint.external_id),
-    })
-}
 
-/// Returns one bounded terminal-assistant summary from the exact ACTIVE
-/// conversation. This direct-carrier projection is not a transcript read.
-#[tauri::command]
-async fn read_active_chatgpt_provider_latest_snapshot(
-    workstream_id: String,
-    state: State<'_, RouterState>,
-    host: State<'_, HostRuntime>,
-) -> Result<ChatGptProviderSurfaceSnapshot, String> {
-    let _operation = host
-        .exact_host_operation
-        .lock()
-        .map_err(|_| "ChatGPT direct-carrier operation is unavailable")?;
-    let endpoint = state
-        .store
-        .active_endpoint_for_workstream(&workstream_id, Provider::Chatgpt)?
-        .ok_or("The Workstream has no ACTIVE ChatGPT Endpoint")?;
-    let turns = std::iter::once(state.chatgpt.observe_exact(&endpoint.external_id)?)
-        .map(|reply| DirectChatGptTerminalTurn {
-            id: Some(reply.message_id),
-            role: "ASSISTANT",
-            text: reply.text,
-            streaming: false,
-            terminal: true,
-        })
-        .collect();
-    Ok(ChatGptProviderSurfaceSnapshot {
-        href: format!("https://chatgpt.com/c/{}", endpoint.external_id),
-        conversation_id: endpoint.external_id,
-        turns,
-    })
-}
 
-/// Opens and URL-verifies the exact persisted ACTIVE endpoint through the
-/// Router-owned Playwright carrier. It never changes an Endpoint or sends a
-/// provider request.
-#[tauri::command(async)]
-fn open_bound_chatgpt_conversation(
-    workstream_id: String,
-    state: State<'_, RouterState>,
-    host: State<'_, HostRuntime>,
-) -> Result<(), String> {
-    host_application::service_open_bound_chatgpt_conversation(
-        workstream_id,
-        state.inner(),
-        host.inner(),
-    )
-}
 
-/// Opens the exact ACTIVE conversation in the user's default browser only
-/// after the narrow read-only observer proved no matching normal-Chrome tab is
-/// already open. This never starts/restarts the observer or opens a duplicate.
-#[tauri::command]
-fn open_bound_chatgpt_in_default_browser(
-    workstream_id: String,
-    state: State<'_, RouterState>,
-) -> Result<DefaultBrowserOpenResult, String> {
-    host_application::service_open_bound_chatgpt_in_default_browser(workstream_id, state.inner())
-}
 
-/// Opens the shared native provider profile at its fixed sign-in home.
-/// No provider startup or Router binding side effect.
-#[tauri::command(async)]
-fn open_host_chatgpt_browser_setup(
-    host: State<'_, HostRuntime>,
-    state: State<'_, RouterState>,
-) -> Result<(), String> {
-    host.open_chatgpt_browser_setup(&state)
-}
 
-#[tauri::command]
-async fn send_chatgpt_request(
-    workstream_id: String,
-    message: String,
-    state: State<'_, RouterState>,
-) -> Result<CompletedChatGptResponse, String> {
-    let core = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        send_chatgpt_request_for_workstream(&core, &workstream_id, &message)
-    })
-    .await
-    .map_err(|_| "ChatGPT request worker stopped")?
-}
 
-/// Test-only V0-005 source fixture. The only synthetic part of the routing
-/// smoke is the completed ChatGPT response; downstream candidate extraction,
-/// approval, persistence, endpoint resolution, and Codex delivery remain the
-/// production application path.
-#[cfg(debug_assertions)]
-#[tauri::command]
-fn seed_v0_005_routing_fixture(
-    state: State<'_, RouterState>,
-) -> Result<V0_005RoutingFixture, String> {
-    host_application::service_seed_v0_005_routing_fixture(state.inner())
-}
 
 fn show_dashboard<R: tauri::Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
@@ -1467,49 +1186,17 @@ fn configure_host(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let static_dir = packaged_dist
         .filter(|path| path.join("index.html").is_file())
         .unwrap_or_else(development_dist);
-    let resources = app.path().resource_dir()?.join("browser-executor");
-    let node = std::env::current_exe()?
-        .parent()
-        .ok_or("Host executable directory unavailable")?
-        .join(platform::node_filename());
-    #[cfg(debug_assertions)]
-    let (resources, node) = if resources.join("production-entry.mjs").is_file() {
-        (resources, node)
-    } else {
-        let source = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        (
-            source.join("resources/browser-executor"),
-            source.join("binaries").join(platform::development_node_filename()),
-        )
-    };
-    let data = std::path::PathBuf::from(
-        router_core::platform::local_data_base()?,
-    )
-    .join("AIWorkRouter/browser-executor");
-    core.chatgpt
-        .configure(router_core::chatgpt_service::ExecutorConfiguration {
-            node,
-            resources,
-            data,
-        })?;
-    let shared_resources=app.path().resource_dir()?.join("codex-shared");
-    let shared_node=std::env::current_exe()?.parent().ok_or("Host directory unavailable")?.join(platform::node_filename());
-    #[cfg(debug_assertions)]let(shared_resources,shared_node)=if shared_resources.join("runtime.mjs").is_file(){(shared_resources,shared_node)}else{let source=std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));(source.join("resources/codex-shared"),source.join("binaries").join(platform::development_node_filename()))};
+    let node=std::env::current_exe()?.parent().ok_or("Host directory unavailable")?.join(platform::node_filename());
+    #[cfg(debug_assertions)]let node=if node.is_file(){node}else{std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("binaries").join(platform::development_node_filename())};
     let hosted_resources=app.path().resource_dir()?.join("hosted-relay");
     #[cfg(debug_assertions)]let hosted_resources=if hosted_resources.join("connector.mjs").is_file(){hosted_resources}else{std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/hosted-relay")};
-    crate::hosted_relay::configure_assets(hosted_resources,shared_node.clone());
-    crate::shared_codex::configure(shared_resources,shared_node);
+    crate::hosted_relay::configure_assets(hosted_resources,node.clone());
+    #[cfg(windows)]crate::shared_codex::configure(app.path().resource_dir()?.join("codex-shared"),node);
+
     connect_codex_for_resident_host(Arc::new(TauriEventSink(app.handle().clone())), &core);
     host.start_shared_reconnection(core.clone(),Arc::new(TauriEventSink(app.handle().clone())));
-    let observer_core = core.clone();
-    std::thread::spawn(move || run_chatgpt_existing_conversation_observer(observer_core));
     crate::claude_watch::start(core.clone());
     local_control::start(app.handle().clone(),core.clone(),host.inner().clone());
-    // Integrated startup has exactly one ChatGPT transport: Core's Executor.
-    // Clearing AUTH_REQUIRED must not reactivate Connector/Native Messaging
-    // registration, provisioning or its listener on the next normal startup.
-    // Keep the paused legacy implementation/resources until replacement
-    // coverage permits their separate retirement; do not initialize them here.
     host.start_mobile(core, static_dir, controlled_host_acceptance_requested());
 
     let handle = app.handle();
@@ -1608,9 +1295,8 @@ pub fn run() {
         .expect("Could not open Router persistence database"),
     );
     let core = RouterCore {
-        chatgpt: Arc::default(),
+
         session: Arc::new(Mutex::new(Session::default())),
-        completed_chatgpt_responses: Arc::new(Mutex::new(HashMap::new())),
         store,
     };
     let builder = tauri::Builder::default()
@@ -1687,12 +1373,6 @@ pub fn run() {
         save_codex_feedback_draft,
         select_workspace,
         bind_workspace_endpoint,
-        prepare_explicit_chatgpt_endpoint_binding,
-        prepare_owner_confirmed_chatgpt_endpoint_binding,
-        confirm_explicit_chatgpt_endpoint_binding,
-        prepare_current_chatgpt_endpoint_binding,
-        confirm_chatgpt_authentication_completed,
-        confirm_explicit_chatgpt_codex_pairing,
         begin_codex_rollover,
         initialize_codex_rollover,
         verify_codex_rollover,
@@ -1721,26 +1401,10 @@ pub fn run() {
         reply_observations,
         mark_reply_observation_read,
         mark_reply_observation_handled,
-        prepare_chatgpt_to_codex_handoff,
-        select_chatgpt_to_codex_handoff_attachments,
-        approve_chatgpt_to_codex_handoff,
-        send_chatgpt_to_codex_handoff_review,
-        prepare_codex_to_chatgpt_handoff,
-        approve_codex_to_chatgpt_handoff,
-        send_codex_to_chatgpt_handoff,
         detect_attachments,
-        connect_normal_chrome_read_only,
-        check_new_chatgpt_replies,
         check_new_codex_replies,
-        bound_chatgpt_provider_surface_status,
-        read_active_chatgpt_provider_latest_snapshot,
-        open_bound_chatgpt_conversation,
-        open_bound_chatgpt_in_default_browser,
-        open_host_chatgpt_browser_setup,
-        send_chatgpt_request,
         autostart_enabled,
         set_autostart_enabled,
-        seed_v0_005_routing_fixture
     ]);
     #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(tauri::generate_handler![
@@ -1774,12 +1438,6 @@ pub fn run() {
         save_codex_feedback_draft,
         select_workspace,
         bind_workspace_endpoint,
-        prepare_explicit_chatgpt_endpoint_binding,
-        prepare_owner_confirmed_chatgpt_endpoint_binding,
-        confirm_explicit_chatgpt_endpoint_binding,
-        prepare_current_chatgpt_endpoint_binding,
-        confirm_chatgpt_authentication_completed,
-        confirm_explicit_chatgpt_codex_pairing,
         begin_codex_rollover,
         initialize_codex_rollover,
         verify_codex_rollover,
@@ -1808,23 +1466,8 @@ pub fn run() {
         reply_observations,
         mark_reply_observation_read,
         mark_reply_observation_handled,
-        prepare_chatgpt_to_codex_handoff,
-        select_chatgpt_to_codex_handoff_attachments,
-        approve_chatgpt_to_codex_handoff,
-        send_chatgpt_to_codex_handoff_review,
-        prepare_codex_to_chatgpt_handoff,
-        approve_codex_to_chatgpt_handoff,
-        send_codex_to_chatgpt_handoff,
         detect_attachments,
-        connect_normal_chrome_read_only,
-        check_new_chatgpt_replies,
         check_new_codex_replies,
-        bound_chatgpt_provider_surface_status,
-        read_active_chatgpt_provider_latest_snapshot,
-        open_bound_chatgpt_conversation,
-        open_bound_chatgpt_in_default_browser,
-        open_host_chatgpt_browser_setup,
-        send_chatgpt_request,
         autostart_enabled,
         set_autostart_enabled
     ]);
@@ -1846,10 +1489,5 @@ pub fn run() {
 #[path = "host_application_tests.rs"]
 mod tests;
 
-/// Historical protocol fixtures only; absent from the production executable.
-#[cfg(test)]
-pub fn run_native_messaging_bridge() -> Result<(), String> {
-    host_application::run_legacy_native_messaging_bridge()
-}
 
 mod native_runtime;

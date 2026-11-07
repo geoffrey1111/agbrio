@@ -96,7 +96,7 @@ mod tests {
         let mut adapter=crate::codex::adapter::CodexAdapter::start_shared_validation(command,Arc::new(|_|{})).unwrap();
         adapter.initialize().unwrap();
         let directory=tempfile::tempdir().unwrap();
-        let core=RouterCore {store:Arc::new(crate::RouterStore::open_at(directory.path().join("quota-only.db")).unwrap()),chatgpt:Arc::default(),session:Arc::new(Mutex::new(crate::Session{adapter:Some(adapter),..Default::default()})),completed_chatgpt_responses:Arc::default()};
+        let core=RouterCore {store:Arc::new(crate::RouterStore::open_at(directory.path().join("quota-only.db")).unwrap()),session:Arc::new(Mutex::new(crate::Session{adapter:Some(adapter),..Default::default()})),};
         let q=read(&core);assert_eq!(q.status,"AVAILABLE");assert!(!q.buckets.is_empty());
         let counts=core.session.lock().unwrap().adapter.as_ref().unwrap().request_counts();
         assert_eq!(counts.get("account/rateLimits/read"),Some(&1));assert_eq!(counts.get("account/read"),Some(&2));

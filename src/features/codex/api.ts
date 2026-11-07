@@ -19,8 +19,6 @@ function invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>{
 export const codexApi = {
   createBridge: (name:string)=>invoke<string>("create_bridge_workstream",{name}),
   renameBridge:(workstreamId:string,name:string)=>invoke<void>("rename_bridge_workstream",{workstreamId,name}),
-  nativeWriterAcceptanceAvailable: () => invoke<boolean>("native_writer_acceptance_available"),
-  debugAcceptNativeChatGptWriter: (workstreamId: string, expectedEndpointId: string) => invoke<Record<string, unknown>>("debug_accept_native_chatgpt_writer", { workstreamId, expectedEndpointId }),
   workspaceSnapshot: () => invoke<WorkspaceSnapshot>("workspace_snapshot"),
   workstreamSnapshot: (workstreamId: string) => invoke<WorkspaceSnapshot>("workstream_snapshot", { workstreamId }),
   dashboardProjection: () => invoke<DashboardProjection>("dashboard_projection"),
@@ -43,12 +41,6 @@ export const codexApi = {
   saveCodexFeedbackDraft: (workstreamId: string, sourceRunId: string, text: string, expectedRevision?: number | null) => invoke<CodexFeedbackDraft>("save_codex_feedback_draft", { workstreamId, sourceRunId, text, expectedRevision: expectedRevision ?? null }),
   selectWorkspace: (projectId: string, workstreamId?: string) => invoke<WorkspaceSnapshot>("select_workspace", { projectId, workstreamId: workstreamId || null }),
   bindWorkspaceEndpoint: (workstreamId: string, provider: "CHATGPT" | "CODEX", externalId: string, label: string, replace: boolean) => invoke<RouterEndpoint>("bind_workspace_endpoint", { workstreamId, provider, externalId, label, replace }),
-  prepareCurrentChatGptEndpointBinding: (workstreamId: string) => invoke<ExplicitChatGptBindingCandidate>("prepare_current_chatgpt_endpoint_binding", { workstreamId }),
-  confirmChatGptAuthenticationCompleted: () => invoke<void>("confirm_chatgpt_authentication_completed"),
-  prepareExplicitChatGptEndpointBinding: (workstreamId: string, input: string) => invoke<ExplicitChatGptBindingCandidate>("prepare_explicit_chatgpt_endpoint_binding", { workstreamId, input }),
-  prepareOwnerConfirmedChatGptEndpointBinding: (workstreamId: string, input: string) => invoke<ExplicitChatGptBindingCandidate>("prepare_owner_confirmed_chatgpt_endpoint_binding", { workstreamId, input }),
-  confirmExplicitChatGptEndpointBinding: (workstreamId: string) => invoke<RouterEndpoint>("confirm_explicit_chatgpt_endpoint_binding", { workstreamId }),
-  confirmExplicitChatGptCodexPairing: (workstreamId: string, codex: EndpointPairingSideInput) => invoke<EndpointPairingResult>("confirm_explicit_chatgpt_codex_pairing", { workstreamId, codex }),
   beginCodexRollover: (workstreamId: string) => invoke<RolloverCandidate>("begin_codex_rollover", { workstreamId }),
   initializeCodexRollover: (workstreamId: string, text: string) => invoke<RolloverCandidate>("initialize_codex_rollover", { workstreamId, text }),
   verifyCodexRollover: (workstreamId: string) => invoke<RolloverCandidate>("verify_codex_rollover", { workstreamId }),
@@ -78,29 +70,14 @@ export const codexApi = {
   providerRunStatus: (workstreamId: string, runId: string) => invoke<ProviderRunStatus>("provider_run_status", { workstreamId, runId }),
   replyObservations: (workstreamId: string) => invoke<ReplyObservation[]>("reply_observations", { workstreamId }),
   /** Desktop-only one-time Chrome consent setup. It reads no tab or page. */
-  connectNormalChromeReadOnly: () => invoke<void>("connect_normal_chrome_read_only"),
   /** One explicit, exact-endpoint read. It never sends a ChatGPT message. */
-  checkNewChatGptReplies: (workstreamId: string) => invoke<ChatGptManualRefreshResult>("check_new_chatgpt_replies", { workstreamId }),
   /** One explicit, exact Codex existing-thread read. It never writes or resumes. */
   checkNewCodexReplies: (workstreamId: string) => invoke<CodexManualRefreshResult>("check_new_codex_replies", { workstreamId }),
   markReplyObservationRead: (workstreamId: string, observationId: string) => invoke<void>("mark_reply_observation_read", { workstreamId, observationId }),
   markReplyObservationHandled: (workstreamId: string, observationId: string) => invoke<void>("mark_reply_observation_handled", { workstreamId, observationId }),
-  prepareChatGptToCodexHandoff: (workstreamId: string, responseId: string, initialMessage?: string, attachmentFilenames: string[] = []) => invoke<HandoffReviewSession>("prepare_chatgpt_to_codex_handoff", { workstreamId, responseId, initialMessage: initialMessage || null, attachmentFilenames }),
-  selectChatGptToCodexHandoffAttachments: (actionId: string, revision: number, attachmentFilenames: string[]) => invoke<HandoffReviewSession>("select_chatgpt_to_codex_handoff_attachments", { actionId, revision, attachmentFilenames }),
-  approveChatGptToCodexHandoff: (actionId: string, revision: number, message: string) => invoke<HandoffReviewSession>("approve_chatgpt_to_codex_handoff", { actionId, revision, message }),
-  sendChatGptToCodexHandoffReview: (actionId: string, revision: number) => invoke<TurnStartResult>("send_chatgpt_to_codex_handoff_review", { actionId, revision }),
-  prepareCodexToChatGptHandoff: (workstreamId: string, runId: string, attachmentIds: string[]) => invoke<HandoffReviewSession>("prepare_codex_to_chatgpt_handoff", { workstreamId, runId, attachmentIds }),
-  approveCodexToChatGptHandoff: (actionId: string, revision: number, message: string) => invoke<HandoffReviewSession>("approve_codex_to_chatgpt_handoff", { actionId, revision, message }),
-  sendCodexToChatGptHandoffReview: (actionId: string, revision: number) => invoke<OutboundHandoffResult>("send_codex_to_chatgpt_handoff", { actionId, revision }),
   detectAttachments: (sourceMessageId: string, text: string) =>
     invoke<AttachmentCandidate[]>("detect_attachments", { sourceMessageId, text }),
   copyPath: (path: string) => navigator.clipboard.writeText(path),
-  boundChatGptProviderSurfaceStatus: (workstreamId: string) => invoke<BoundChatGptProviderSurfaceStatus>("bound_chatgpt_provider_surface_status", { workstreamId }),
-  readActiveChatGptProviderLatestSnapshot: (workstreamId: string) => invoke<ChatGptProviderSurfaceSnapshot>("read_active_chatgpt_provider_latest_snapshot", { workstreamId }),
-  openBoundChatGptConversation: (workstreamId: string) => invoke<void>("open_bound_chatgpt_conversation", { workstreamId }),
-  openBoundChatGptInDefaultBrowser: (workstreamId: string) => invoke<import("./types").DefaultBrowserOpenResult>("open_bound_chatgpt_in_default_browser", { workstreamId }),
-  openHostChatGptBrowserSetup: () => invoke<void>("open_host_chatgpt_browser_setup"),
-  sendChatGptRequest: (workstreamId: string, message: string) => invoke<CompletedChatGptResponse>("send_chatgpt_request", { workstreamId, message }),
 };
 
 export function isFinalAgentEvent(event: FeedEvent): boolean {

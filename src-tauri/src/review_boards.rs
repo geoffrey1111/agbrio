@@ -773,8 +773,7 @@ mod tests {
         let core = RouterCore {
             store: Arc::new(crate::RouterStore::open_at(temp.path().join("qa.db")).unwrap()),
             session: Default::default(),
-            chatgpt: Default::default(),
-            completed_chatgpt_responses: Default::default(),
+
         };
         let auth = Arc::new(crate::web_auth::WebAuth::open(None).unwrap());
         let runtime = tokio::runtime::Runtime::new().unwrap();

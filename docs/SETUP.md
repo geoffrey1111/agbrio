@@ -1,5 +1,10 @@
 # Complete setup and everyday use
 
+## Mac source candidate: rc.131 cross-platform sync
+
+This source candidate retires the ChatGPT browser/Chromium feature; it does not add Windows light connection or shared-backend retirement to Mac. Mac uses its independent app-server, retains Goal controls and automatic recovery, and keeps the hosted connector Node and native resource sampler. Historical ChatGPT Bridge replies remain readable as saved data, but that end cannot refresh or send and must be rebound. ChatGPT as an MCP assistant is separate and remains available. Published Mac downloads remain the earlier rc.122 beta until a new candidate is approved, built and released.
+
+
 Open the Windows app and follow the first-run guide. Choose Codex, Claude Code, or both; the guide prepares supported connections and phone pairing. You can skip and reopen it from Settings. The sections below also explain the manual routes.
 
 [简体中文完整教程](SETUP.zh-CN.md) · [FAQ and troubleshooting](FAQ.md) · [Home](../README.md)
@@ -35,6 +40,11 @@ Prepared backend, connected Desktop, paired phone and authorized assistant are f
 3. Open **Codex (Agbrio shared)**. It checks the install, native tools and existing owner before starting the official app. The Agbrio window need not be open first.
 4. Run Agbrio Host for Bridge/mobile/assistant access. In Settings → Codex, verify **Desktop connected to shared connection** (`Desktop 已接入共享连接`).
 
+### Bridges bound to ChatGPT
+
+The ChatGPT browser feature was removed, along with the Router browser and its Chromium download. A Bridge with a ChatGPT end keeps its saved replies but reads and sends nothing there; rebind that end to Codex or Claude Code. Nothing is deleted, so its old data and any downloaded browser files stay under `%LOCALAPPDATA%\AIWorkRouter`. Connecting ChatGPT as an assistant through MCP is a different feature and still works.
+
+## 4. Daily startup, reboot and official updates
 ### Agbrio settings route
 
 With ordinary Desktop exited, choose Settings → Codex → **Prepare shared connection** (`准备共享连接`), then **Open shared Codex** (`打开共享 Codex`). **Shared connection prepared** (`共享连接已准备好`) only means backend-ready; wait for actual Desktop-connected status.
@@ -65,7 +75,7 @@ The independent return entry does not need the Agbrio window. Unreachable-owner 
 6. `SENT` confirms that handoff's delivery, not completion of the target task. Follow execution and the next complete reply.
 7. Timeout or `UNKNOWN` is not proof of non-delivery. Read the same request receipt and exact target history before another action. Do not create another request to hide uncertainty or resend on duplicate notifications.
 
-Selected Codex files are copied to the target project's `.aiwr/incoming/<handoff-id>/`, with paths/SHA-256 in the message. This is not a ChatGPT upload or proof that every model received a visual image input. Check supported content in the preview.
+Selected Codex files are copied to the target project's `.aiwr/incoming/<handoff-id>/`, with paths/SHA-256 in the message. This is not proof that every model received a visual image input. Check supported content in the preview.
 
 Deleting a Bridge removes local association, not native chats. A deleted Bridge still claiming a chat is a bug to report, not a reason to edit the database.
 

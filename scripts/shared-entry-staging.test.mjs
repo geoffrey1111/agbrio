@@ -11,7 +11,7 @@ const exec=promisify(execFile),entry=resolve('src-tauri/resources/codex-shared/l
 async function discard(path){for(const e of await readdir(path,{withFileTypes:true})){const file=join(path,e.name);assert.equal((await lstat(file)).isSymbolicLink(),false);if(e.isDirectory())await discard(file);else await unlink(file);}await rmdir(path);}
 async function fixture(run){
  const root=resolve('runtime/shared-native-compatibility','stage-'+randomUUID()),source=join(root,'install/codex-shared'),directory=join(root,'owner');
- const ws=join(root,'install/browser-executor/node_modules/ws');await mkdir(source,{recursive:true});await mkdir(ws,{recursive:true});await mkdir(join(directory,'runtime'),{recursive:true});
+ const ws=join(root,'install/node-runtime/node_modules/ws');await mkdir(source,{recursive:true});await mkdir(ws,{recursive:true});await mkdir(join(directory,'runtime'),{recursive:true});
  const node=join(root,'install/fixture-node.txt');await writeFile(node,'not an executable');await writeFile(join(source,'control.mjs'),'new text');await writeFile(join(ws,'index.js'),'ws fixture');await writeFile(join(directory,'runtime/control.mjs'),'previous text');
  try{await run({root,source,directory,node});}finally{await discard(root);}
 }

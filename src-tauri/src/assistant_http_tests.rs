@@ -49,7 +49,7 @@ fn now_ms()->i64{clock() as i64*1000}
 fn real_mcp_create_empty_codex_and_read_without_any_model_turn(){
  let root=std::path::PathBuf::from(std::env::var("AGBRIO_CREATE_QA_ROOT").unwrap());assert!(root.is_absolute()&&root.is_dir());
  let store=Arc::new(RouterStore::open_at(root.join("isolated-create.db")).unwrap());
- let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};
+ let core=RouterCore{store,session:Arc::new(Mutex::new(Session::default())),};
  let mut command=std::process::Command::new("node");command.arg(std::env::var("AGBRIO_READONLY_TRANSPORT").unwrap()).arg(std::env::var("AGBRIO_READONLY_SHARED_URL").unwrap());
  #[cfg(windows)]{use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}
  let mut adapter=crate::codex::adapter::CodexAdapter::start_shared_validation(command,Arc::new(|_|{})).unwrap();adapter.initialize().unwrap();core.session.lock().unwrap().adapter=Some(adapter);
@@ -153,7 +153,7 @@ fn fixture()->(tempfile::TempDir,RouterCore,String,String){
  let src=bindings.decision.unwrap().endpoint;store.record_reply_observation(&w.id,&src.id,Some("codex:qa-turn:qa-item"),"Owner-approved plan: continue. No change of scope.",None).unwrap();
  let observation=store.reply_observations_for_workstream(&w.id).unwrap()[0].id.clone();
  let g=store.create_assistant_grant(GrantInput{workstream_id:w.id,source_role:"DECISION".into(),binding_revision:bindings.binding_revision,label:"QA assistant".into(),rules:vec![BriefRule{id:"continue".into(),text:"Forward the approved plan; ask me about any change.".into()}],expires_at:now_ms()+86400000}).unwrap();
- let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};
+ let core=RouterCore{store,session:Arc::new(Mutex::new(Session::default())),};
  let path=dir.path().join("fixture-native.mjs");std::fs::write(&path,r#"
 import readline from 'node:readline';
 import fs from 'node:fs';

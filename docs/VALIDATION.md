@@ -51,8 +51,7 @@ These scopes are distinct; none implies all-platform or physical-device UAT.
 - Core: clean-export database/state/migration suite, 176 checks, one explicit
   provider gate ignored.
 - Native: 161 checks, with 19 account-writing gates explicitly ignored by default.
-- Runtime packaging: official pinned Chromium archive and executable hashes,
-  Node notices and 757 locked dependency license entries retained.
+- Runtime packaging: Node notices and 757 locked dependency license entries retained.
 - Real remote fixture: empty Agbrio database/config and ephemeral browser
   authentication; independent temporary public HTTPS tunnel; no personal
   Cloudflare Access/config; existing native Codex 0.160.0 backend, low-effort gpt-6-luna.
@@ -75,8 +74,8 @@ resubmission of an uncertain handoff.
 Clean Windows installation and maximized native first-setup UI are separately
 verified by the Windows Actions candidate gate. The localized release gate
 succeeded on source e490066; its actual installer hash is recorded below.
-Tailscale real-account provisioning, macOS, other agent adapters and ChatGPT
-browser handoffs are unaccepted scopes. iPhone screenshots/owner reports from
+Tailscale real-account provisioning, macOS, other agent adapters are
+unaccepted scopes. ChatGPT browser handoffs have since been removed. iPhone screenshots/owner reports from
 the personal build do not replace a fresh-install physical-device test.
 
 ## Clean Windows result

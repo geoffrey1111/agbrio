@@ -8,7 +8,7 @@ fn event(root:&std::path::Path,session:&str,kind:&str,sequence:i64)->Event {
 }
 #[test]fn codex_wait_http_is_local_metadata_only_and_never_opens_a_provider(){
  let temp=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
- let core=RouterCore{chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default(),store:store.clone()};let host=crate::HostRuntime::default();
+ let core=RouterCore{session:Arc::new(Mutex::new(Session::default())),store:store.clone()};let host=crate::HostRuntime::default();
  *host.test_web_auth.lock().unwrap()=Some(Arc::new(crate::web_auth::WebAuth::open(None).unwrap()));
  let config=crate::mobile_http::MobileHttpConfig{port:0,allowed_host:"127.0.0.1:0".into(),allowed_origin:"http://127.0.0.1:0".into(),access_issuer:String::new(),access_audience:String::new(),access_jwks_url:String::new(),static_dir:temp.path().into()};
  host.ensure_mobile(core.clone(),config);let address=host.mobile_address().unwrap();let pair=store.create_claude_connection().unwrap();let sid="10000000-0000-4000-8000-000000000001";let e=event(temp.path(),sid,"SESSION_START",1);store.ingest_claude_event(&pair.token,&e).unwrap();
@@ -22,7 +22,7 @@ fn event(root:&std::path::Path,session:&str,kind:&str,sequence:i64)->Event {
 }
 #[test]fn manual_claude_chat_uses_current_bridge_generation_and_never_enables_mcp_writes(){
  let temp=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
- let core=RouterCore{chatgpt:Arc::new(Default::default()),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::new(Mutex::new(HashMap::new())),store:store.clone()};
+ let core=RouterCore{session:Arc::new(Mutex::new(Session::default())),store:store.clone()};
  let pair=store.create_claude_connection().unwrap();let sid="10000000-0000-4000-8000-000000000001";
  ingest(&core,&pair.token,&event(temp.path(),sid,"SESSION_START",1)).unwrap();
  let project=store.create_project("fictional".into(),None).unwrap();let w=store.create_workstream(&project.id,"fictional".into()).unwrap();
@@ -42,7 +42,7 @@ fn event(root:&std::path::Path,session:&str,kind:&str,sequence:i64)->Event {
 #[test] fn claude_fixture_bridge_read_review_and_send_gate_without_any_provider() {
  let temp=tempfile::tempdir().unwrap();
  let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
- let core=RouterCore{chatgpt:Arc::new(Default::default()),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::new(Mutex::new(HashMap::new())),store:store.clone()};
+ let core=RouterCore{session:Arc::new(Mutex::new(Session::default())),store:store.clone()};
  let pair=store.create_claude_connection().unwrap();
  let a="10000000-0000-4000-8000-000000000001";let b="10000000-0000-4000-8000-000000000002";
  for session in [a,b] {ingest(&core,&pair.token,&event(temp.path(),session,"SESSION_START",1)).unwrap();}
@@ -81,7 +81,7 @@ fn event(root:&std::path::Path,session:&str,kind:&str,sequence:i64)->Event {
 #[test] fn every_unarchived_desktop_conversation_is_selectable_before_it_reports() {
  let temp=tempfile::tempdir().unwrap();
  let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
- let core=RouterCore{chatgpt:Arc::new(Default::default()),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::new(Mutex::new(HashMap::new())),store:store.clone()};
+ let core=RouterCore{session:Arc::new(Mutex::new(Session::default())),store:store.clone()};
  let pair=store.create_claude_connection().unwrap();
  let live="10000000-0000-4000-8000-000000000001";let quiet="10000000-0000-4000-8000-000000000003";let archived="10000000-0000-4000-8000-000000000004";
  ingest(&core,&pair.token,&event(temp.path(),live,"SESSION_START",1)).unwrap();
@@ -109,7 +109,7 @@ fn event(root:&std::path::Path,session:&str,kind:&str,sequence:i64)->Event {
 #[test] fn owner_relay_into_claude_rides_the_plugin_heartbeat_at_most_once() {
  let temp=tempfile::tempdir().unwrap();let db=temp.path().join("router.db");
  let store=Arc::new(crate::RouterStore::open_at(&db).unwrap());
- let core=RouterCore{chatgpt:Arc::new(Default::default()),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::new(Mutex::new(HashMap::new())),store:store.clone()};
+ let core=RouterCore{session:Arc::new(Mutex::new(Session::default())),store:store.clone()};
  let pair=store.create_claude_connection().unwrap();
  let a="10000000-0000-4000-8000-000000000001";let b="10000000-0000-4000-8000-000000000002";
  for session in [a,b] {ingest(&core,&pair.token,&event(temp.path(),session,"SESSION_START",1)).unwrap();}
@@ -156,7 +156,7 @@ fn event(root:&std::path::Path,session:&str,kind:&str,sequence:i64)->Event {
 #[test]
 fn native_setup_uses_live_listener_not_deployment_parser_or_working_directory(){
  let temp=tempfile::tempdir().unwrap();
- let core=RouterCore{chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default(),store:Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap())};
+ let core=RouterCore{session:Arc::default(),store:Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap())};
  let host=crate::HostRuntime::default();
  assert!(setup(&core,&host,temp.path()).is_err());assert!(core.store.claude_connections().unwrap().is_empty());
  let plugin=temp.path().join("claude-code-plugin/.claude-plugin");std::fs::create_dir_all(&plugin).unwrap();std::fs::write(plugin.join("plugin.json"),"{}").unwrap();
@@ -226,7 +226,7 @@ impl crate::claude_code_desktop::PluginAdmin for FakePluginAdmin {
  }
 }
 fn connection_fixture(temp:&tempfile::TempDir)->(RouterCore,crate::HostRuntime,std::path::PathBuf,FakePluginAdmin){
- let core=RouterCore{chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default(),store:Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap())};
+ let core=RouterCore{session:Arc::default(),store:Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap())};
  let host=crate::HostRuntime::default();*host.test_web_auth.lock().unwrap()=Some(Arc::new(crate::web_auth::WebAuth::open(None).unwrap()));
  host.ensure_mobile(core.clone(),crate::mobile_http::MobileHttpConfig{port:0,allowed_host:"127.0.0.1:0".into(),allowed_origin:"http://127.0.0.1:0".into(),access_issuer:String::new(),access_audience:String::new(),access_jwks_url:String::new(),static_dir:temp.path().into()});
  let package=temp.path().join("claude-code-plugin/.claude-plugin");let cache=temp.path().join("cache/agbrio-observation/agbrio-bridge/0.1.2/.claude-plugin");
@@ -301,7 +301,7 @@ fn connection_fixture(temp:&tempfile::TempDir)->(RouterCore,crate::HostRuntime,s
 fn owner_reply_before_first_plugin_registration_waits_and_delivers_once(){
  let temp=tempfile::tempdir().unwrap();
  let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
- let core=RouterCore{chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default(),store:store.clone()};
+ let core=RouterCore{session:Arc::default(),store:store.clone()};
  let pair=store.create_claude_connection().unwrap();
  let sid="10000000-0000-4000-8000-000000000001";let key=format!("claude_code:{sid}");
  let cwd=temp.path().to_string_lossy().to_string();let turn="claude_turn:original";
@@ -328,7 +328,7 @@ fn owner_reply_before_first_plugin_registration_waits_and_delivers_once(){
 }
 #[test] fn opening_an_unwatched_session_projects_the_native_turn_without_rewriting_store(){
  let temp=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
- let core=RouterCore{chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default(),store:store.clone()};
+ let core=RouterCore{session:Arc::default(),store:store.clone()};
  let sid="10000000-0000-4000-8000-0000000000c1";let cwd=temp.path().to_string_lossy().to_string();
  let pair=store.create_claude_connection().unwrap();ingest(&core,&pair.token,&event(temp.path(),sid,"SESSION_START",1)).unwrap();
  store.apply_claude_transcript(sid,&cwd,"COMPLETE",Some("claude_turn:old"),None).unwrap();
@@ -364,7 +364,7 @@ fn owner_reply_before_first_plugin_registration_waits_and_delivers_once(){
 }
 #[test] fn a_bridge_receives_a_claude_reply_from_the_transcript_even_without_plugin_turn_events(){
  let temp=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
- let core=RouterCore{chatgpt:Arc::new(Default::default()),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::new(Mutex::new(HashMap::new())),store:store.clone()};
+ let core=RouterCore{session:Arc::new(Mutex::new(Session::default())),store:store.clone()};
  let pair=store.create_claude_connection().unwrap();
  let a="10000000-0000-4000-8000-0000000000a1";let b="10000000-0000-4000-8000-0000000000b1";
  for s in [a,b]{ingest(&core,&pair.token,&event(temp.path(),s,"SESSION_START",1)).unwrap();}
@@ -402,7 +402,7 @@ fn owner_reply_before_first_plugin_registration_waits_and_delivers_once(){
 }
 
 #[test]fn owner_phone_image_upload_uses_existing_claude_manual_receipt_once(){
- let temp=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());let core=RouterCore{store:store.clone(),chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default()};let pair=store.create_claude_connection().unwrap();let sid="10000000-0000-4000-8000-000000000001";let key=format!("claude_code:{sid}");let start=event(temp.path(),sid,"SESSION_START",1);ingest(&core,&pair.token,&start).unwrap();let turn="claude_turn:photo";store.apply_claude_transcript(sid,&start.cwd,"COMPLETE",Some(turn),None).unwrap();crate::claude_chat::enable(&core,&key).unwrap();let beat=event(temp.path(),sid,"HEARTBEAT",2);ingest(&core,&pair.token,&beat).unwrap();store.offer_claude_manual(&pair.token,&beat).unwrap();
+ let temp=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());let core=RouterCore{store:store.clone(),session:Arc::default(),};let pair=store.create_claude_connection().unwrap();let sid="10000000-0000-4000-8000-000000000001";let key=format!("claude_code:{sid}");let start=event(temp.path(),sid,"SESSION_START",1);ingest(&core,&pair.token,&start).unwrap();let turn="claude_turn:photo";store.apply_claude_transcript(sid,&start.cwd,"COMPLETE",Some(turn),None).unwrap();crate::claude_chat::enable(&core,&key).unwrap();let beat=event(temp.path(),sid,"HEARTBEAT",2);ingest(&core,&pair.token,&beat).unwrap();store.offer_claude_manual(&pair.token,&beat).unwrap();
  use base64ct::{Base64,Encoding};let mut png=std::io::Cursor::new(Vec::new());image::DynamicImage::new_rgb8(2,2).write_to(&mut png,image::ImageFormat::Png).unwrap();let uploaded=crate::claude_chat::command(&core,crate::watch_chat::ChatCommand::Upload{thread_id:key.clone(),name:"phone.png".into(),data:Base64::encode_string(png.get_ref())}).unwrap();let generation=store.codex_chat_context(&key).unwrap().generation;let id=uuid::Uuid::new_v4().to_string();let send=||crate::watch_chat::ChatCommand::Send{queue_requested:false,thread_id:key.clone(),id:id.clone(),generation,source_sequence:None,expected_turn_id:Some(turn.into()),mode:"SEND".into(),text:"请检查这张图".into(),options:crate::watch_chat::ReplyOptions{attachments:vec![uploaded["id"].as_str().unwrap().into()],..Default::default()}};
  let r=crate::claude_chat::command(&core,send()).unwrap();assert_eq!(r["status"],"QUEUED");assert_eq!(crate::claude_chat::command(&core,send()).unwrap(),r);let native=store.offer_claude_manual(&pair.token,&beat).unwrap().unwrap();assert!(native.text.contains("attachment.png"));assert!(native.text.starts_with("请检查这张图"));assert!(store.offer_claude_manual(&pair.token,&beat).unwrap().is_none());let receipt=router_core::store::claude_manual::ManualReceipt{request_id:id.clone(),session_id:sid.into(),instance_id:start.instance_id,cwd:start.cwd,status:"SENT".into(),message_id:Some(uuid::Uuid::new_v4().to_string()),text_sha256:native.text_sha256};store.accept_claude_manual_receipt(&pair.token,&receipt).unwrap();assert_eq!(store.watch_reply(&id).unwrap().unwrap().status,"SENT");assert_eq!(store.watch_replies(&key).unwrap().len(),1);
 }

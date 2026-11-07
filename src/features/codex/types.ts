@@ -71,8 +71,6 @@ export interface BackendStatus {
 export interface HostEnvironmentStatus {
   host: string;
   mobile: string;
-  browserRuntime: string;
-  chatgptBrowserMode: string;
 }
 /** `thread/start` proves the returned exact ID only; fresh-server reopen
  * capability is deliberately not inferred from its non-ephemeral request. */
@@ -101,7 +99,6 @@ export interface ChatGptManualRefreshResult { state: string; observationCreated:
 /** Narrow result of a user-requested default-browser lookup. Router will not
  * open a possibly duplicate tab when the existing read-only Chrome connection
  * cannot confirm the exact background-tab identity. */
-export interface DefaultBrowserOpenResult { state: "ALREADY_OPEN" | "OPEN_REQUESTED" | "CHECK_REQUIRED"; }
 /** One manual exact existing-Codex observation; never a ProviderRun. */
 export interface CodexManualRefreshResult { state: string; observationCreated: boolean; lastSuccessfulCheckAt?: number | null; }
 export interface HandoffReviewSession { actionId: string; revision: number; status: "READY" | "APPROVED" | "SENDING" | "SENT" | "FAILED"; message: string; attachments: string[]; /** Exact downloadable files on the reviewed ChatGPT message; none is preselected. */ attachmentOptions?: string[]; /** Router-authoritative safety capability: approved content must be copied and manually sent, not dispatched by Router. */ requiresManualDispatch?: boolean; }
@@ -120,17 +117,7 @@ export interface AttentionItem { kind: "DELIVERY_UNCERTAIN" | "HANDOFF_FAILED" |
 export interface WorkstreamDashboardItem { projectId: string; projectName: string; workstream: RouterWorkstream; chatgptEndpoint?: RouterEndpoint | null; codexEndpoint?: RouterEndpoint | null; chatgptRun?: ProviderRun | null; codexRun?: ProviderRun | null; attentionItems: AttentionItem[]; lastActivityAt: number; lastMessageAt?:number|null; }
 export interface DashboardProjection { workstreams: WorkstreamDashboardItem[]; attentionItems: AttentionItem[]; }
 
-export interface MessageAttachments {
-  source_message_id: string;
-  candidates: AttachmentCandidate[];
-}
 
-export interface ChatGptStatus {
-  connected: boolean;
-  detail?: string;
-  clients: number;
-  needsSelection: boolean;
-}
 
 /** Session-only fact from the Router-owned Playwright carrier. A requested URL
  * is never a binding proof; only its actual current URL may be EXACT_BOUND. */
@@ -145,10 +132,6 @@ export interface ChatGptProviderSurfaceSnapshot {
   turns: Array<{ id?: string | null; role: "USER" | "ASSISTANT" | "UNKNOWN"; text: string }>;
 }
 
-export interface BoundChatGptConversation {
-  id: string;
-  title?: string;
-}
 
 export interface ChatGptConversationHistory {
   id: string;
@@ -181,16 +164,6 @@ export interface ChatGptConversationHistoryMessage {
   resources: unknown[];
 }
 
-export interface ChatGptStreamEvent {
-  eventType: "answer.delta" | "answer.snapshot" | "artifact.snapshot" | "request.result" | string;
-  text?: string;
-  detail?: string;
-  artifacts?: unknown;
-  conversationId?: string;
-  responseIdentity?: string;
-  completed: boolean;
-  relayCandidates?: RelayCandidate[];
-}
 
 export interface HandoffAttachment {
   id: string;

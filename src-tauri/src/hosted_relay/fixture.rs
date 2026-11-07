@@ -27,7 +27,7 @@ fn native_hosted_transport(){
  let mut adapter=crate::codex::adapter::CodexAdapter::start_shared_validation(command,Arc::new(|_|{})).unwrap();adapter.initialize().unwrap();
  let store=Arc::new(crate::RouterStore::open_at(root.join("router.db")).unwrap());
  store.enable_codex_watch("fixture-chat","Hosted transport fixture",root.to_str().unwrap(),&router_core::store::codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some("fixture-seed".into()),item_id:Some("fixture-answer".into()),text:"Fixture ready".into()}).unwrap();
- let core=RouterCore{chatgpt:Arc::default(),store,session:Arc::new(Mutex::new(crate::Session{adapter:Some(adapter),..Default::default()})),completed_chatgpt_responses:Arc::default()};
+ let core=RouterCore{store,session:Arc::new(Mutex::new(crate::Session{adapter:Some(adapter),..Default::default()}))};
  let host=HostRuntime::default();let auth=Arc::new(crate::web_auth::WebAuth::open(Some(root.join("web-auth.json"))).unwrap());*host.test_web_auth.lock().unwrap()=Some(auth.clone());
  host.ensure_mobile(core.clone(),crate::mobile_http::MobileHttpConfig{port:0,allowed_host:"127.0.0.1:0".into(),allowed_origin:"http://127.0.0.1:0".into(),access_issuer:String::new(),access_audience:String::new(),access_jwks_url:String::new(),static_dir:source.parent().unwrap().join("dist")});
  configure_assets(source.join("resources/hosted-relay"),node);

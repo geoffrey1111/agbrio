@@ -5,10 +5,10 @@
 #[cfg(test)]#[path="management_zones_http_tests.rs"]mod management_zones_tests;
 
 use crate::{
-    send_chatgpt_request_for_workstream, EndpointPairingInput, EndpointPairingSideInput,
-    ExternalProjectLinkInput, MobileApproveInput, MobileAttachmentSelectionInput, MobileCodexGoalControlInput,
-    MobileCodexPrepareInput, MobileCodexResponseInput, MobileCodexTurnInterruptInput,
-    MobileFeedbackInput, MobileFeedbackProgress, MobilePrepareInput, MobileSendInput, RouterCore,
+    EndpointPairingInput, EndpointPairingSideInput,
+    ExternalProjectLinkInput, MobileCodexGoalControlInput,
+    MobileCodexResponseInput, MobileCodexTurnInterruptInput,
+    MobileFeedbackInput, RouterCore,
 };
 use axum::{
     extract::{Path, State, Query},
@@ -36,9 +36,6 @@ mod assistant_http;
 #[path="assistant_discovery_diagnostics.rs"]
 mod assistant_discovery_diagnostics;
 
-#[cfg(all(test, windows))]
-#[path = "mobile_real_provider_ui_tests.rs"]
-mod real_provider_ui_tests;
 
 /// These values define the authenticated mobile routing boundary, not an
 /// account credential or Push capability. Explorer may retain an old user
@@ -326,11 +323,6 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
             get(project_links).post(upsert_project_link),
         )
         .route(
-            "/v1/mobile/chatgpt-browser/setup",
-            post(open_chatgpt_browser_setup),
-        )
-        .route("/v1/mobile/chatgpt-browser/authentication-completed", post(confirm_chatgpt_authentication_completed))
-        .route(
             "/v1/mobile/workstreams/{workstream_id}/no-project-codex-thread",
             post(start_unprojected_codex_thread),
         )
@@ -368,14 +360,6 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
             post(pair_workstream_endpoints),
         )
         .route(
-            "/v1/mobile/workstreams/{workstream_id}/chatgpt-binding/prepare",
-            post(prepare_owner_confirmed_chatgpt_endpoint_binding),
-        )
-        .route(
-            "/v1/mobile/workstreams/{workstream_id}/chatgpt-binding/confirm",
-            post(confirm_explicit_chatgpt_endpoint_binding),
-        )
-        .route(
             "/v1/mobile/workstreams/{workstream_id}/codex-history",
             get(codex_history),
         )
@@ -400,20 +384,8 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
             post(interrupt_codex_turn),
         )
         .route(
-            "/v1/mobile/workstreams/{workstream_id}/chatgpt-history",
-            get(chatgpt_history),
-        )
-        .route(
-            "/v1/mobile/workstreams/{workstream_id}/observed-responses",
-            get(observed_responses),
-        )
-        .route(
             "/v1/mobile/workstreams/{workstream_id}/reply-observations",
             get(reply_observations),
-        )
-        .route(
-            "/v1/mobile/workstreams/{workstream_id}/chatgpt-replies/check",
-            post(check_new_chatgpt_replies),
         )
         .route(
             "/v1/mobile/workstreams/{workstream_id}/codex-replies/check",
@@ -436,77 +408,16 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
             get(provider_run_status),
         )
         .route(
-            "/v1/mobile/workstreams/{workstream_id}/chatgpt-result-recovery",
-            post(recover_chatgpt_result),
-        )
-        .route(
-            "/v1/mobile/workstreams/{workstream_id}/chatgpt-feedback/{run_id}/result-recovery",
-            post(recover_chatgpt_feedback_result),
-        )
-        .route(
             "/v1/mobile/workstreams/{workstream_id}/codex-requests",
             get(codex_requests),
-        )
-        .route(
-            "/v1/mobile/workstreams/{workstream_id}/chatgpt-feedback",
-            post(chatgpt_feedback),
-        )
-        .route(
-            "/v1/mobile/workstreams/{workstream_id}/chatgpt-feedback/{run_id}",
-            get(chatgpt_feedback_progress),
         )
         .route(
             "/v1/mobile/workstreams/{workstream_id}/codex-feedback",
             post(codex_feedback),
         )
         .route(
-            "/v1/mobile/workstreams/{workstream_id}/chatgpt-discussion",
-            post(send_chatgpt_discussion),
-        )
-        .route(
-            "/v1/mobile/workstreams/{workstream_id}/manual-chatgpt-destination",
-            get(manual_chatgpt_discussion_destination),
-        )
-        .route(
             "/v1/mobile/workstreams/{workstream_id}/codex-requests/{request_id}/respond",
             post(respond_codex_request),
-        )
-        .route(
-            "/v1/mobile/workstreams/{workstream_id}/handoff-review",
-            post(prepare_handoff),
-        )
-        .route("/v1/mobile/handoff-review/{action_id}/attachments", post(select_handoff_attachments))
-        .route(
-            "/v1/mobile/handoff-review/{action_id}/approve",
-            post(approve_handoff),
-        )
-        .route(
-            "/v1/mobile/handoff-review/{action_id}/send",
-            post(send_handoff),
-        )
-        .route(
-            "/v1/mobile/workstreams/{workstream_id}/codex-handoff-review",
-            post(prepare_codex_handoff),
-        )
-        .route(
-            "/v1/mobile/codex-handoff-review/{action_id}/approve",
-            post(approve_codex_handoff),
-        )
-        .route(
-            "/v1/mobile/codex-handoff-review/{action_id}/send",
-            post(send_codex_handoff),
-        )
-        .route(
-            "/v1/mobile/codex-handoff-review/{action_id}/manual-destination",
-            get(codex_handoff_manual_destination),
-        )
-        .route(
-            "/v1/mobile/codex-handoff-review/{action_id}",
-            get(codex_handoff_review),
-        )
-        .route(
-            "/v1/mobile/chatgpt-handoff-review/{action_id}",
-            get(chatgpt_handoff_review),
         )
         .layer(axum::extract::DefaultBodyLimit::max(64 * 1024))
         .with_state(state);
@@ -552,7 +463,7 @@ fn pairing_real_http_authenticates_and_revokes_without_access_jwt() {
  use crate::{RouterStore,Session};
  let directory=tempfile::tempdir().unwrap();std::fs::write(directory.path().join("index.html"),"public-login-shell").unwrap();
  let store=Arc::new(RouterStore::open_at(directory.path().join("router.db")).unwrap());
- let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};
+ let core=RouterCore{store,session:Arc::new(Mutex::new(Session::default())),};
  let auth=Arc::new(crate::web_auth::WebAuth::open(Some(directory.path().join("auth.json"))).unwrap());
  let runtime=tokio::runtime::Runtime::new().unwrap();let config=MobileHttpConfig{port:0,allowed_host:"router.fixture.invalid".into(),allowed_origin:"https://router.fixture.invalid".into(),access_issuer:"https://unused.invalid".into(),access_audience:"unused".into(),access_jwks_url:"https://unused.invalid/keys".into(),static_dir:directory.path().into()};
  let host=crate::HostRuntime::default();let handle=runtime.block_on(start_with_web_auth(core,config,host.clone(),auth.clone())).unwrap();let base=format!("http://{}",handle.address);
@@ -594,7 +505,7 @@ enum WatchCommand { Show { #[serde(rename="threadId")] thread_id:String }, MarkS
 fn owner_http_can_watch_claude_after_twenty_and_resurface_without_a_native_task(){
     let scratch=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("runtime/watch-polish-20261028");std::fs::create_dir_all(&scratch).unwrap();
     let dir=tempfile::tempdir_in(scratch).unwrap();std::fs::write(dir.path().join("index.html"),"fixture").unwrap();
-    let core=RouterCore{store:Arc::new(crate::RouterStore::open_at(dir.path().join("router.db")).unwrap()),chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default()};
+    let core=RouterCore{store:Arc::new(crate::RouterStore::open_at(dir.path().join("router.db")).unwrap()),session:Arc::default(),};
     let cwd=dir.path().to_string_lossy().to_string();let baseline=router_core::store::codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()};
     for i in 0..20{core.store.enable_codex_watch(&format!("fixture-{i}"),"fixture",&cwd,&baseline).unwrap();}
     let sid="10000000-0000-4000-8000-000000000021";let key=format!("claude_code:{sid}");let _pair=core.store.create_claude_connection().unwrap();core.store.apply_claude_transcript(sid,&cwd,"RUNNING",Some("claude_turn:fixture"),None).unwrap();
@@ -823,10 +734,6 @@ struct MobileEndpointPairingSideInput {
     label: String,
 }
 
-#[derive(Deserialize)]
-struct MobileExplicitChatGptBindingPrepareInput {
-    input: String,
-}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -845,13 +752,6 @@ struct MobileUnprojectedThreadInput {
     directory: Option<String>,
 }
 
-/// A normal discussion is deliberately distinct from an approved Handoff.
-/// The exact workstream path selects the persisted destination; no provider
-/// conversation identity is accepted from the mobile browser.
-#[derive(Deserialize)]
-struct MobileChatGptDiscussionInput {
-    message: String,
-}
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
@@ -1476,29 +1376,7 @@ async fn role_bridge_command(Path(workstream_id):Path<String>,State(state):State
  }).await?;Ok(Json(result))
 }
 
-async fn open_chatgpt_browser_setup(
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-) -> ApiResult<serde_json::Value> {
-    authenticated(&headers, &state, true).await?;
-    let host = state.host.clone();
-    let core = state.core.clone();
-    run_core_blocking("Mobile ChatGPT browser setup", move || {
-        host.open_chatgpt_browser_setup(&core)
-    })
-    .await?;
-    Ok(Json(serde_json::json!({})))
-}
 
-async fn confirm_chatgpt_authentication_completed(
-    State(state): State<MobileHttpState>, headers: HeaderMap,
-) -> ApiResult<serde_json::Value> {
-    authenticated(&headers, &state, true).await?;
-    let core = state.core.clone();
-    let result = run_core_blocking("Owner ChatGPT authentication confirmation", move ||
-        core.chatgpt.owner_confirmed_authentication()).await?;
-    Ok(Json(result))
-}
 
 async fn start_unprojected_codex_thread(
     Path(workstream_id): Path<String>,
@@ -1703,38 +1581,7 @@ async fn pair_workstream_endpoints(
         .map_err(core_error)
 }
 
-/// Mobile accepts only an exact URL the owner already checked in the default
-/// browser. This endpoint must not start, read, navigate, or control a browser.
-async fn prepare_owner_confirmed_chatgpt_endpoint_binding(
-    Path(workstream_id): Path<String>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-    Json(input): Json<MobileExplicitChatGptBindingPrepareInput>,
-) -> ApiResult<crate::ExplicitChatGptBindingCandidate> {
-    authenticated(&headers, &state, true).await?;
-    let core = state.core.clone();
-    run_core_blocking("Mobile owner-confirmed ChatGPT binding prepare", move || {
-        core.prepare_owner_confirmed_chatgpt_endpoint_binding(&workstream_id, &input.input)
-    })
-    .await
-    .map(Json)
-}
 
-/// Confirmation deliberately accepts no request body. The Core can persist
-/// only the exact identity held by its current session candidate.
-async fn confirm_explicit_chatgpt_endpoint_binding(
-    Path(workstream_id): Path<String>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-) -> ApiResult<crate::persistence::Endpoint> {
-    authenticated(&headers, &state, true).await?;
-    let core = state.core.clone();
-    run_core_blocking("Mobile explicit ChatGPT binding confirmation", move || {
-        core.confirm_explicit_chatgpt_endpoint_binding(&workstream_id)
-    })
-    .await
-    .map(Json)
-}
 
 async fn codex_goal(
     Path(workstream_id): Path<String>,
@@ -1810,33 +1657,7 @@ async fn interrupt_codex_turn(
     .map(Json)
 }
 
-async fn chatgpt_history(
-    Path(workstream_id): Path<String>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-) -> ApiResult<crate::ConversationHistory> {
-    authenticated(&headers, &state, false).await?;
-    let core = state.core.clone();
-    let host = state.host.clone();
-    run_core_blocking("Mobile ChatGPT history", move || {
-        host.read_active_chatgpt_history(&core, &workstream_id)
-    })
-    .await
-    .map(Json)
-}
 
-async fn observed_responses(
-    Path(workstream_id): Path<String>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-) -> ApiResult<Vec<crate::MobileObservedResponse>> {
-    authenticated(&headers, &state, false).await?;
-    state
-        .core
-        .mobile_observed_responses(&workstream_id)
-        .map(Json)
-        .map_err(core_error)
-}
 
 async fn reply_observations(
     Path(workstream_id): Path<String>,
@@ -1851,22 +1672,6 @@ async fn reply_observations(
         .map_err(core_error)
 }
 
-/// Explicit mobile intent for one exact, no-send ChatGPT check. An
-/// observation/push attempt is durable state, so this retains the normal
-/// authenticated mutation boundary even though it never sends a provider turn.
-async fn check_new_chatgpt_replies(
-    Path(workstream_id): Path<String>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-) -> ApiResult<crate::ChatGptManualRefreshResult> {
-    authenticated(&headers, &state, true).await?;
-    let core = state.core.clone();
-    run_core_blocking("Mobile ChatGPT reply check", move || {
-        core.check_mobile_chatgpt_replies(&workstream_id)
-    })
-    .await
-    .map(Json)
-}
 
 /// Explicit mobile intent for one passive, exact Codex thread read. It never
 /// resumes or starts a Codex turn.
@@ -1936,33 +1741,7 @@ async fn provider_run_status(
         .map_err(core_error)
 }
 
-async fn recover_chatgpt_result(
-    Path(workstream_id): Path<String>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-) -> ApiResult<crate::MobileChatGptResultRecovery> {
-    authenticated(&headers, &state, true).await?;
-    let core = state.core.clone();
-    run_core_blocking("Mobile ChatGPT result recovery", move || {
-        core.recover_active_chatgpt_result(&workstream_id)
-    })
-    .await
-    .map(Json)
-}
 
-async fn recover_chatgpt_feedback_result(
-    Path((workstream_id, run_id)): Path<(String, String)>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-) -> ApiResult<crate::MobileChatGptResultRecovery> {
-    authenticated(&headers, &state, true).await?;
-    let core = state.core.clone();
-    run_core_blocking("Mobile ChatGPT feedback result recovery", move || {
-        core.recover_chatgpt_feedback_result(&workstream_id, &run_id)
-    })
-    .await
-    .map(Json)
-}
 
 async fn codex_requests(
     Path(workstream_id): Path<String>,
@@ -1977,70 +1756,9 @@ async fn codex_requests(
         .map_err(core_error)
 }
 
-async fn chatgpt_feedback(
-    Path(workstream_id): Path<String>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-    Json(input): Json<MobileFeedbackInput>,
-) -> ApiResult<crate::MobileFeedbackProgress> {
-    authenticated(&headers, &state, true).await?;
-    let core = state.core.clone();
-    Ok(Json(
-        run_core_blocking("Mobile ChatGPT feedback", move || {
-            core.mobile_chatgpt_feedback(&workstream_id, input)
-        })
-        .await?,
-    ))
-}
 
-async fn send_chatgpt_discussion(
-    Path(workstream_id): Path<String>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-    Json(input): Json<MobileChatGptDiscussionInput>,
-) -> ApiResult<crate::chatgpt::direct::CompletedChatGptResponse> {
-    authenticated(&headers, &state, true).await?;
-    if input.message.trim().is_empty() {
-        return Err(ApiError(
-            StatusCode::BAD_REQUEST,
-            "A discussion message cannot be empty".into(),
-        ));
-    }
-    let core = state.core.clone();
-    run_core_blocking("Mobile ChatGPT discussion", move || {
-        send_chatgpt_request_for_workstream(&core, &workstream_id, &input.message)
-    })
-    .await
-    .map(Json)
-}
 
-/// Resolves the exact current ChatGPT binding for an owner-led discussion.
-/// This authenticated read neither opens a browser nor sends the draft.
-async fn manual_chatgpt_discussion_destination(
-    Path(workstream_id): Path<String>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-) -> ApiResult<crate::MobileManualChatGptDestination> {
-    authenticated(&headers, &state, false).await?;
-    state
-        .core
-        .mobile_current_chatgpt_manual_destination(&workstream_id)
-        .map(Json)
-        .map_err(core_error)
-}
 
-async fn chatgpt_feedback_progress(
-    Path((workstream_id, run_id)): Path<(String, String)>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-) -> ApiResult<MobileFeedbackProgress> {
-    authenticated(&headers, &state, false).await?;
-    state
-        .core
-        .mobile_chatgpt_feedback_progress(&workstream_id, &run_id)
-        .map(Json)
-        .map_err(core_error)
-}
 
 async fn codex_feedback(
     Path(workstream_id): Path<String>,
@@ -2072,149 +1790,15 @@ async fn respond_codex_request(
     Ok(Json(serde_json::json!({})))
 }
 
-async fn prepare_handoff(
-    Path(workstream_id): Path<String>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-    Json(input): Json<MobilePrepareInput>,
-) -> ApiResult<crate::MobileHandoffReview> {
-    authenticated(&headers, &state, true).await?;
-    state
-        .core
-        .prepare_mobile_reverse(&workstream_id, input)
-        .map(Json)
-        .map_err(core_error)
-}
 
-async fn select_handoff_attachments(
-    Path(action_id): Path<String>, State(state): State<MobileHttpState>,
-    headers: HeaderMap, Json(input): Json<MobileAttachmentSelectionInput>,
-) -> ApiResult<crate::MobileHandoffReview> {
-    authenticated(&headers, &state, true).await?;
-    let core = state.core.clone();
-    run_core_blocking("Exact selected ChatGPT attachments", move || core.select_mobile_reverse_attachments(&action_id, input))
-        .await.map(Json)
-}
 
-async fn approve_handoff(
-    Path(action_id): Path<String>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-    Json(input): Json<MobileApproveInput>,
-) -> ApiResult<crate::MobileHandoffReview> {
-    authenticated(&headers, &state, true).await?;
-    state
-        .core
-        .approve_mobile_reverse(&action_id, input)
-        .map(Json)
-        .map_err(core_error)
-}
 
-async fn send_handoff(
-    Path(action_id): Path<String>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-    Json(input): Json<MobileSendInput>,
-) -> ApiResult<crate::TurnStartResult> {
-    authenticated(&headers, &state, true).await?;
-    // Codex app-server calls are synchronous by contract.  Never occupy the
-    // mobile HTTP executor while the first-write exact-ID readiness probe is
-    // awaiting its bounded response; the review surface must remain readable
-    // and a timeout must return a normal failed-closed API response.
-    let core = state.core.clone();
-    run_core_blocking("Mobile Codex dispatch", move || {
-        core.send_mobile_reverse(&action_id, input)
-    })
-    .await
-    .map(Json)
-}
 
-async fn prepare_codex_handoff(
-    Path(workstream_id): Path<String>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-    Json(input): Json<MobileCodexPrepareInput>,
-) -> ApiResult<crate::MobileHandoffReview> {
-    authenticated(&headers, &state, true).await?;
-    state
-        .core
-        .prepare_mobile_codex_outbound(&workstream_id, input)
-        .map(Json)
-        .map_err(core_error)
-}
 
-async fn approve_codex_handoff(
-    Path(action_id): Path<String>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-    Json(input): Json<MobileApproveInput>,
-) -> ApiResult<crate::MobileHandoffReview> {
-    authenticated(&headers, &state, true).await?;
-    state
-        .core
-        .approve_mobile_codex_outbound(&action_id, input)
-        .map(Json)
-        .map_err(core_error)
-}
 
-async fn send_codex_handoff(
-    Path(action_id): Path<String>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-    Json(input): Json<MobileSendInput>,
-) -> ApiResult<crate::OutboundHandoffResult> {
-    authenticated(&headers, &state, true).await?;
-    // A reverse Handoff may wait through the bounded provider-acceptance
-    // observation. Keep that synchronous Core path out of Axum's executor so
-    // the mobile request resolves to its truthful SENDING/SENT/FAILED result
-    // and the Workbench never remains visually stuck at APPROVED.
-    let core = state.core.clone();
-    let worker_core = core.clone();
-    run_core_blocking("Mobile ChatGPT delivery", move || {
-        worker_core.send_mobile_codex_outbound(&action_id, input)
-    })
-    .await
-    .map(Json)
-}
 
-async fn codex_handoff_review(
-    Path(action_id): Path<String>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-) -> ApiResult<crate::MobileHandoffReview> {
-    authenticated(&headers, &state, false).await?;
-    state
-        .core
-        .mobile_codex_outbound_review(&action_id)
-        .map(Json)
-        .map_err(core_error)
-}
 
-async fn codex_handoff_manual_destination(
-    Path(action_id): Path<String>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-) -> ApiResult<crate::MobileManualChatGptDestination> {
-    authenticated(&headers, &state, false).await?;
-    state
-        .core
-        .mobile_codex_outbound_manual_destination(&action_id)
-        .map(Json)
-        .map_err(core_error)
-}
 
-async fn chatgpt_handoff_review(
-    Path(action_id): Path<String>,
-    State(state): State<MobileHttpState>,
-    headers: HeaderMap,
-) -> ApiResult<crate::MobileHandoffReview> {
-    authenticated(&headers, &state, false).await?;
-    state
-        .core
-        .mobile_chatgpt_inbound_review(&action_id)
-        .map(Json)
-        .map_err(core_error)
-}
 
 #[cfg(test)]
 mod tests {
@@ -2392,471 +1976,7 @@ process.stdout.write(JSON.stringify({keys:[jwk],token}));
         serde_json::from_slice(&generated.stdout).unwrap()
     }
 
-    #[test]
-    #[cfg(windows)]
-    fn authenticated_http_review_preserves_exact_approval_and_selected_hash_across_sqlite_reopen() {
-        use crate::{Provider, RouterStore, Session};
-        use std::collections::HashMap;
-        // Generate a disposable signing key in Node memory. Only the public JWK
-        // and short-lived local-test JWT enter Rust; no private key is saved.
-        let generated = ephemeral_access_fixture();
-        let token = generated["token"].as_str().unwrap().to_owned();
-        let public_keys = json!({"keys":generated["keys"]});
-        let root =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../runtime/integrated-provider-router");
-        fs::create_dir_all(&root).unwrap();
-        let directory = tempfile::tempdir_in(root).unwrap();
-        fs::write(directory.path().join("index.html"), "public mobile fixture").unwrap();
-        fs::write(directory.path().join("browser-auth-required.json"), "{}").unwrap();
-        let attachment = directory.path().join("selected.txt");
-        fs::write(&attachment, "public exact selected bytes\n").unwrap();
-        let hash = crate::sha256_path(&attachment).unwrap();
-        let full_result = format!(
-            "Public complete result\nARTIFACT:\n{}\nSHA256:\n{}",
-            attachment.display(),
-            hash
-        );
-        let database = directory.path().join("http-review.db");
-        let store = Arc::new(RouterStore::open_at(&database).unwrap());
-        let project = store
-            .create_project("public HTTP Bridge fixture".into(), None)
-            .unwrap();
-        let bridge = store
-            .create_workstream(&project.id, "Shared Bridge".into())
-            .unwrap();
-        store
-            .bind_endpoint(
-                &bridge.id,
-                Provider::Chatgpt,
-                "00000000-0000-4000-8000-000000000001".into(),
-                "Decision".into(),
-                false,
-            )
-            .unwrap();
-        let source = store
-            .bind_endpoint(
-                &bridge.id,
-                Provider::Codex,
-                "fixture-exact-thread".into(),
-                "Execution".into(),
-                false,
-            )
-            .unwrap();
-        let observation = store
-            .record_reply_observation(
-                &bridge.id,
-                &source.id,
-                Some("fixture-turn:fixture-item"),
-                &full_result,
-                None,
-            )
-            .unwrap()
-            .unwrap();
-        let candidate =
-            crate::artifact::detector::detect("fixture-turn:fixture-item", &full_result)
-                .into_iter()
-                .find(|candidate| candidate.filename == "selected.txt")
-                .unwrap();
-        assert!(candidate
-            .actual_sha256
-            .as_deref()
-            .unwrap()
-            .eq_ignore_ascii_case(&hash));
-        let make_core = |store: Arc<RouterStore>| {
-            let core = RouterCore {
-                store,
-                chatgpt: Arc::default(),
-                session: Arc::new(Mutex::new(Session::default())),
-                completed_chatgpt_responses: Arc::new(Mutex::new(HashMap::new())),
-            };
-            core.chatgpt
-                .configure(router_core::chatgpt_service::ExecutorConfiguration {
-                    node: directory.path().join("must-not-launch.exe"),
-                    resources: directory.path().join("missing-package"),
-                    data: directory.path().into(),
-                })
-                .unwrap();
-            core
-        };
-        let core = make_core(store.clone());
-        let host = crate::HostRuntime::default();
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        let (keys_url, keys_task) = runtime.block_on(async {
-            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-            let address = listener.local_addr().unwrap();
-            let server = Router::new().route(
-                "/certs",
-                get(move || {
-                    let keys = public_keys.clone();
-                    async move { Json(keys) }
-                }),
-            );
-            let task = tokio::spawn(async move {
-                axum::serve(listener, server).await.unwrap();
-            });
-            (format!("http://{address}/certs"), task)
-        });
-        let config = || MobileHttpConfig {
-            port: 0,
-            allowed_host: "router.fixture.invalid".into(),
-            allowed_origin: "https://router.fixture.invalid".into(),
-            access_issuer: "https://fixture.invalid".into(),
-            access_audience: "fixture-audience".into(),
-            access_jwks_url: keys_url.clone(),
-            static_dir: directory.path().into(),
-        };
-        let handle = runtime
-            .block_on(start(core.clone(), config(), host.clone()))
-            .unwrap();
-        let origin = format!("http://{}", handle.address);
-        let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(5))
-            .build()
-            .unwrap();
-        let get = |url: String| {
-            client
-                .get(url)
-                .header("host", "router.fixture.invalid")
-                .header(ACCESS_JWT_HEADER, &token)
-        };
-        let post = |url: String| {
-            client
-                .post(url)
-                .header("host", "router.fixture.invalid")
-                .header("origin", "https://router.fixture.invalid")
-                .header(ACCESS_JWT_HEADER, &token)
-        };
-        let list_url = format!("{origin}/v1/mobile/workstreams");
-        assert_eq!(
-            client
-                .get(&list_url)
-                .header("host", "router.fixture.invalid")
-                .send()
-                .unwrap()
-                .status(),
-            StatusCode::UNAUTHORIZED
-        );
-        assert_eq!(
-            client
-                .get(&list_url)
-                .header("host", "wrong.invalid")
-                .header(ACCESS_JWT_HEADER, &token)
-                .send()
-                .unwrap()
-                .status(),
-            StatusCode::FORBIDDEN
-        );
-        assert_eq!(get(list_url).send().unwrap().status(), StatusCode::OK);
-        let source_url = format!(
-            "{origin}/v1/mobile/workstreams/{}/reply-observations",
-            bridge.id
-        );
-        let result = get(source_url).send().unwrap();
-        assert_eq!(result.status(), StatusCode::OK);
-        let source: serde_json::Value = result.json().unwrap();
-        assert!(source[0]["text"]
-            .as_str()
-            .unwrap()
-            .contains("Public complete result"));
-        assert_eq!(source[0]["attachments"][0]["id"], candidate.id);
-        assert_eq!(source[0]["attachments"][0]["filename"], "selected.txt");
-        let prepare_url = format!(
-            "{origin}/v1/mobile/workstreams/{}/codex-handoff-review",
-            bridge.id
-        );
-        assert_eq!(
-            client
-                .post(prepare_url.clone())
-                .header("host", "router.fixture.invalid")
-                .header("origin", "https://wrong.invalid")
-                .header(ACCESS_JWT_HEADER, &token)
-                .json(&json!({"runId":observation.id}))
-                .send()
-                .unwrap()
-                .status(),
-            StatusCode::FORBIDDEN
-        );
-        let prepared = post(prepare_url)
-            .json(&json!({"runId":observation.id,"attachmentIds":[candidate.id]}))
-            .send()
-            .unwrap();
-        assert_eq!(prepared.status(), StatusCode::OK);
-        let prepared: serde_json::Value = prepared.json().unwrap();
-        let action = prepared["actionId"].as_str().unwrap();
-        let revision = prepared["revision"].as_u64().unwrap();
-        assert_eq!(prepared["status"], "READY");
-        assert_eq!(prepared["attachments"], json!(["selected.txt"]));
-        let send_url = format!("{origin}/v1/mobile/codex-handoff-review/{action}/send");
-        assert_eq!(
-            post(send_url)
-                .json(&json!({"revision":revision}))
-                .send()
-                .unwrap()
-                .status(),
-            StatusCode::BAD_REQUEST
-        );
-        assert!(store
-            .provider_runs_for_workstream(&bridge.id)
-            .unwrap()
-            .is_empty());
-        let approved_bytes = "  Exact owner edit\n中文\n ";
-        let approve_url = format!("{origin}/v1/mobile/codex-handoff-review/{action}/approve");
-        assert_eq!(
-            post(approve_url.clone())
-                .json(&json!({"revision":revision+10,"message":approved_bytes}))
-                .send()
-                .unwrap()
-                .status(),
-            StatusCode::BAD_REQUEST
-        );
-        let approved = post(approve_url)
-            .json(&json!({"revision":revision,"message":approved_bytes}))
-            .send()
-            .unwrap();
-        assert_eq!(approved.status(), StatusCode::OK);
-        let approved: serde_json::Value = approved.json().unwrap();
-        assert_eq!(approved["status"], "APPROVED");
-        assert_eq!(
-            approved["message"], approved_bytes,
-            "HTTP approval must preserve the exact owner edit"
-        );
-        let retained = store.mobile_codex_outbound_review(action).unwrap().unwrap();
-        assert_eq!(retained.approved_text.as_deref(), Some(approved_bytes));
-        assert!(retained
-            .attachments_json
-            .to_ascii_lowercase()
-            .contains(&hash));
-        let action = action.to_owned();
-        runtime.block_on(handle.shutdown());
-        drop(core);
-        drop(store);
-        let reopened = Arc::new(RouterStore::open_at(&database).unwrap());
-        let restored_core = make_core(reopened.clone());
-        let restored = runtime
-            .block_on(start(restored_core.clone(), config(), host.clone()))
-            .unwrap();
-        let url = format!(
-            "http://{}/v1/mobile/codex-handoff-review/{action}",
-            restored.address
-        );
-        let response = get(url).send().unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let response: serde_json::Value = response.json().unwrap();
-        assert_eq!(response["status"], "APPROVED");
-        assert_eq!(response["message"], approved_bytes);
-        assert_eq!(response["attachments"], json!(["selected.txt"]));
-        assert_eq!(
-            response["codexOutboundIdentity"]["sourceCodexThreadId"],
-            "fixture-exact-thread"
-        );
-        assert_eq!(restored_core.chatgpt.status(), "AUTH_REQUIRED");
-        assert!(restored_core.session.lock().unwrap().adapter.is_none());
-        assert!(reopened
-            .provider_runs_for_workstream(&bridge.id)
-            .unwrap()
-            .is_empty());
-        // Explicit Send after reopen reaches the same Core stop, never a browser.
-        let send_url = format!(
-            "http://{}/v1/mobile/codex-handoff-review/{action}/send",
-            restored.address
-        );
-        let blocked = post(send_url)
-            .json(&json!({"revision":response["revision"]}))
-            .send()
-            .unwrap();
-        assert_eq!(blocked.status(), StatusCode::OK);
-        let blocked: serde_json::Value = blocked.json().unwrap();
-        assert_eq!(blocked["status"], "FAILED");
-        assert!(blocked["detail"]
-            .as_str()
-            .unwrap()
-            .contains("AUTH_REQUIRED"));
-        let runs = reopened.provider_runs_for_workstream(&bridge.id).unwrap();
-        assert_eq!(runs.len(), 1);
-        assert_eq!(runs[0].status, "FAILED");
-        assert_eq!(runs[0].terminal_code.as_deref(), Some("AUTH_REQUIRED"));
-        assert!(runs[0].external_run_id.is_none());
-        let handoff = reopened
-            .handoff_by_id(runs[0].origin_handoff_id.as_deref().unwrap())
-            .unwrap();
-        assert_eq!(handoff.approved_text, approved_bytes);
-        assert_eq!(handoff.attachments.len(), 1);
-        assert!(handoff.attachments[0]
-            .sha256
-            .as_deref()
-            .unwrap()
-            .eq_ignore_ascii_case(&hash));
-        assert_eq!(restored_core.chatgpt.status(), "AUTH_REQUIRED");
-        let history_url = format!(
-            "http://{}/v1/mobile/codex-handoff-review/{action}",
-            restored.address
-        );
-        let history = get(history_url).send().unwrap();
-        assert_eq!(history.status(), StatusCode::OK);
-        let history: serde_json::Value = history.json().unwrap();
-        assert_eq!(history["status"], "FAILED");
-        runtime.block_on(restored.shutdown());
-        keys_task.abort();
-    }
 
-    #[test]
-    #[cfg(windows)]
-    #[ignore = "opt-in local mobile UI validation; no real provider"]
-    fn local_mobile_ui_http_harness() {
-        assert_eq!(
-            std::env::var("AIWR_LOCAL_MOBILE_UI_GATE").as_deref(),
-            Ok("1")
-        );
-        use crate::{Provider, RouterStore, Session};
-        use std::collections::HashMap;
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .to_path_buf();
-        let evidence = root.join("runtime/integrated-provider-router");
-        fs::create_dir_all(&evidence).unwrap();
-        let scratch = std::env::temp_dir().join("aiwr-mobile-e2e");
-        fs::create_dir_all(&scratch).unwrap();
-        let directory = tempfile::Builder::new()
-            .prefix("aiwr-mobile-ui-")
-            .tempdir_in(scratch)
-            .unwrap();
-        fs::write(directory.path().join("browser-auth-required.json"), "{}").unwrap();
-        let attachment = directory.path().join("selected.txt");
-        fs::write(&attachment, "public local UI selected bytes\n").unwrap();
-        let hash = crate::sha256_path(&attachment).unwrap();
-        let text=format!("# Public complete HTTP result\n\nAIWR_LOCAL_MOBILE_UI_RESULT\n\nThis is an isolated public fixture served by the actual Router HTTP/Core.\n\nARTIFACT:\n{}\nSHA256:\n{}",attachment.display(),hash);
-        let store = Arc::new(RouterStore::open_at(directory.path().join("router.db")).unwrap());
-        let project = store
-            .create_project("Public local HTTP fixture".into(), None)
-            .unwrap();
-        let bridge = store
-            .create_workstream(&project.id, "HTTP UI Bridge".into())
-            .unwrap();
-        store
-            .bind_endpoint(
-                &bridge.id,
-                Provider::Chatgpt,
-                "00000000-0000-4000-8000-000000000001".into(),
-                "Decision fixture".into(),
-                false,
-            )
-            .unwrap();
-        let endpoint = store
-            .bind_endpoint(
-                &bridge.id,
-                Provider::Codex,
-                "fixture-exact-thread".into(),
-                "Execution fixture".into(),
-                false,
-            )
-            .unwrap();
-        let observation = store
-            .record_reply_observation(
-                &bridge.id,
-                &endpoint.id,
-                Some("fixture-ui-turn:fixture-ui-item"),
-                &text,
-                None,
-            )
-            .unwrap()
-            .unwrap();
-        let core = RouterCore {
-            store: store.clone(),
-            chatgpt: Arc::default(),
-            session: Arc::new(Mutex::new(Session::default())),
-            completed_chatgpt_responses: Arc::new(Mutex::new(HashMap::new())),
-        };
-        core.chatgpt
-            .configure(router_core::chatgpt_service::ExecutorConfiguration {
-                node: directory.path().join("must-not-launch.exe"),
-                resources: directory.path().join("missing-package"),
-                data: directory.path().into(),
-            })
-            .unwrap();
-        let host = crate::HostRuntime::default();
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        let signed = ephemeral_access_fixture();
-        let token = signed["token"].as_str().unwrap().to_owned();
-        let keys = json!({"keys":signed["keys"]});
-        let (keys_url, keys_task) = runtime.block_on(async {
-            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-            let address = listener.local_addr().unwrap();
-            let server = Router::new().route(
-                "/certs",
-                get(move || {
-                    let value = keys.clone();
-                    async move { Json(value) }
-                }),
-            );
-            let task = tokio::spawn(async move {
-                axum::serve(listener, server).await.unwrap();
-            });
-            (format!("http://{address}/certs"), task)
-        });
-        let reservation = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = reservation.local_addr().unwrap().port();
-        drop(reservation);
-        let origin = format!("http://127.0.0.1:{port}");
-        let config = MobileHttpConfig {
-            port,
-            allowed_host: format!("127.0.0.1:{port}"),
-            allowed_origin: origin.clone(),
-            access_issuer: "https://fixture.invalid".into(),
-            access_audience: "fixture-audience".into(),
-            access_jwks_url: keys_url,
-            static_dir: root.join("dist"),
-        };
-        let handle = runtime
-            .block_on(start(core.clone(), config, host.clone()))
-            .unwrap();
-        let stop = evidence.join("local-mobile-ui-stop.json");
-        assert!(
-            !stop.exists(),
-            "previous gate stop record must be retained/renamed before a new run"
-        );
-        let manifest = json!({"scope":"LOCAL_FIXTURE_ONLY_NO_PROVIDER","origin":origin,"token":token,"workstreamId":bridge.id,"observationId":observation.id,"attachmentFilename":"selected.txt","attachmentSha256":hash,"stopFile":stop,"expiresSeconds":900});
-        // Ignored runtime evidence only. No private key or real account token.
-        fs::write(
-            evidence.join("local-mobile-ui-harness.json"),
-            serde_json::to_vec_pretty(&manifest).unwrap(),
-        )
-        .unwrap();
-        println!("LOCAL_MOBILE_UI_HTTP_READY_NO_PROVIDER");
-        let deadline = std::time::Instant::now() + Duration::from_secs(600);
-        while !stop.exists() {
-            assert!(
-                std::time::Instant::now() < deadline,
-                "local UI validation timed out; no provider action or retry"
-            );
-            std::thread::sleep(Duration::from_millis(100));
-        }
-        let outcome: serde_json::Value = serde_json::from_slice(&fs::read(&stop).unwrap()).unwrap();
-        let review_id = outcome["actionId"]
-            .as_str()
-            .expect("one UI-created action ID");
-        let review = store
-            .mobile_codex_outbound_review(review_id)
-            .unwrap()
-            .unwrap();
-        assert_eq!(review.workstream_id, bridge.id);
-        assert_eq!(review.status, "FAILED");
-        assert_eq!(
-            review.approved_text.as_deref(),
-            outcome["approvedText"].as_str()
-        );
-        assert!(review.attachments_json.to_ascii_lowercase().contains(&hash));
-        let runs = store.provider_runs_for_workstream(&bridge.id).unwrap();
-        assert_eq!(runs.len(), 1);
-        assert_eq!(runs[0].status, "FAILED");
-        assert_eq!(runs[0].terminal_code.as_deref(), Some("AUTH_REQUIRED"));
-        assert!(runs[0].external_run_id.is_none());
-        assert!(core.session.lock().unwrap().adapter.is_none());
-        assert_eq!(core.chatgpt.status(), "AUTH_REQUIRED");
-        runtime.block_on(handle.shutdown());
-        keys_task.abort();
-        println!("LOCAL_MOBILE_UI_HTTP_STORE_GATE_PASS_NO_PROVIDER");
-    }
 }
 
 #[cfg(all(test,windows))]
@@ -2867,7 +1987,7 @@ mod role_api_tests {
   use crate::{RouterStore,Session};use router_core::store::role_bridge::RoleBindingInput;
   let dir=tempfile::tempdir().unwrap();fs::write(dir.path().join("index.html"),"fixture").unwrap();let store=Arc::new(RouterStore::open_at(dir.path().join("router.db")).unwrap());let p=store.create_project("roles".into(),None).unwrap();let w=store.create_workstream(&p.id,"roles".into()).unwrap();let other=store.create_workstream(&p.id,"other".into()).unwrap();
   let input=|id:&str|RoleBindingInput{provider:"CODEX".into(),external_id:id.into(),label:id.into(),cwd:Some(dir.path().to_string_lossy().into_owned())};let b=store.bind_role_bridge(&w.id,store.role_bridge(&w.id).unwrap().binding_revision,input("thread-source"),input("thread-target")).unwrap();let src=b.decision.unwrap().endpoint;let obs=store.record_reply_observation(&w.id,&src.id,Some("fixture-native"),"source",None).unwrap().unwrap();let h=store.prepare_role_handoff(&w.id,"DECISION",&obs.id,"edited bytes").unwrap();
-  let core=RouterCore{store:store.clone(),chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};let signed=tests::ephemeral_access_fixture();let token=signed["token"].as_str().unwrap();let keys=json!({"keys":signed["keys"]});let runtime=tokio::runtime::Runtime::new().unwrap();
+  let core=RouterCore{store:store.clone(),session:Arc::new(Mutex::new(Session::default())),};let signed=tests::ephemeral_access_fixture();let token=signed["token"].as_str().unwrap();let keys=json!({"keys":signed["keys"]});let runtime=tokio::runtime::Runtime::new().unwrap();
   let (keys_url,task)=runtime.block_on(async{let listener=TcpListener::bind("127.0.0.1:0").await.unwrap();let address=listener.local_addr().unwrap();let server=Router::new().route("/certs",get(move||{let value=keys.clone();async move{Json(value)}}));let task=tokio::spawn(async move{axum::serve(listener,server).await.unwrap()});(format!("http://{address}/certs"),task)});
   let config=MobileHttpConfig{port:0,allowed_host:"router.fixture.invalid".into(),allowed_origin:"https://router.fixture.invalid".into(),access_issuer:"https://fixture.invalid".into(),access_audience:"fixture-audience".into(),access_jwks_url:keys_url,static_dir:dir.path().into()};let handle=runtime.block_on(start(core,config,crate::HostRuntime::default())).unwrap();let base=format!("http://{}/v1/mobile/workstreams",handle.address);let url=format!("{}/{}/role-bridge",base,w.id);let client=reqwest::blocking::Client::new();
   assert_eq!(client.get(&url).header("host","router.fixture.invalid").send().unwrap().status(),StatusCode::UNAUTHORIZED);
@@ -2894,7 +2014,7 @@ mod watch_http_tests {
   let dir=tempfile::tempdir().unwrap();fs::write(dir.path().join("index.html"),"fixture").unwrap();let store=Arc::new(RouterStore::open_at(dir.path().join("router.db")).unwrap());
   let snap=|text:&str|WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some(text.into()),item_id:Some("item".into()),text:text.into()};
   store.enable_codex_watch("native-exact","Fixture",dir.path().to_str().unwrap(),&snap("baseline")).unwrap();store.record_codex_watch("native-exact",1,&snap("complete original result")).unwrap();
-  let core=RouterCore{store:store.clone(),chatgpt:Arc::default(),session:Arc::new(Mutex::new(Session::default())),completed_chatgpt_responses:Arc::default()};let signed=tests::ephemeral_access_fixture();let token=signed["token"].as_str().unwrap();let keys=json!({"keys":signed["keys"]});let runtime=tokio::runtime::Runtime::new().unwrap();
+  let core=RouterCore{store:store.clone(),session:Arc::new(Mutex::new(Session::default())),};let signed=tests::ephemeral_access_fixture();let token=signed["token"].as_str().unwrap();let keys=json!({"keys":signed["keys"]});let runtime=tokio::runtime::Runtime::new().unwrap();
   let (keys_url,task)=runtime.block_on(async{let listener=TcpListener::bind("127.0.0.1:0").await.unwrap();let address=listener.local_addr().unwrap();let server=Router::new().route("/certs",get(move||{let value=keys.clone();async move{Json(value)}}));let task=tokio::spawn(async move{axum::serve(listener,server).await.unwrap()});(format!("http://{address}/certs"),task)});
   let config=MobileHttpConfig{port:0,allowed_host:"router.fixture.invalid".into(),allowed_origin:"https://router.fixture.invalid".into(),access_issuer:"https://fixture.invalid".into(),access_audience:"fixture-audience".into(),access_jwks_url:keys_url,static_dir:dir.path().into()};let handle=runtime.block_on(start(core,config,crate::HostRuntime::default())).unwrap();let base=format!("http://{}/v1/mobile/codex-watches",handle.address);let client=reqwest::blocking::Client::new();
   assert!(!client.get(format!("{base}/events")).header("host","router.fixture.invalid").send().unwrap().status().is_success());
@@ -2925,7 +2045,7 @@ fn disposable_pwa_http_browser_gate(){
  if std::env::var("AIWR_PWA_BROWSER_GATE").as_deref()!=Ok("1"){return;}
  let root=PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf();let evidence=root.join("runtime/web-availability");let directory=tempfile::tempdir().unwrap();
  let port=std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();let authority=format!("127.0.0.1:{port}");let origin=format!("http://{authority}");
- let core=RouterCore{chatgpt:Arc::default(),store:Arc::new(crate::RouterStore::open_at(directory.path().join("router.db")).unwrap()),session:Arc::default(),completed_chatgpt_responses:Arc::default()};
+ let core=RouterCore{store:Arc::new(crate::RouterStore::open_at(directory.path().join("router.db")).unwrap()),session:Arc::default(),};
  let auth=Arc::new(crate::web_auth::WebAuth::open(None).unwrap());let code=auth.issue().unwrap().code;let stop=evidence.join(format!("pwa-stop-{}",uuid::Uuid::new_v4()));
  let host=crate::HostRuntime::default();let runtime=tokio::runtime::Runtime::new().unwrap();let config=MobileHttpConfig{port,allowed_host:authority,allowed_origin:origin.clone(),access_issuer:"https://unused.invalid".into(),access_audience:"unused".into(),access_jwks_url:"https://unused.invalid/keys".into(),static_dir:root.join("dist")};
  let handle=runtime.block_on(start_with_web_auth(core,config,host.clone(),auth)).unwrap();
@@ -2948,24 +2068,6 @@ async fn read_message_media(State(state):State<MobileHttpState>,headers:HeaderMa
 #[cfg(all(test,windows))]
 mod character_board_http_tests {
     use super::*;
-    #[test]
-    #[ignore="Explicit isolated real browser-to-Host-to-Card-service gate; no production auth or notification"]
-    fn disposable_board_review_browser_gate(){
-        if std::env::var("AGBRIO_BOARD_BROWSER_GATE").as_deref()!=Ok("1"){return;}
-        let evidence=PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("runtime/board-upgrade-20261018");fs::create_dir_all(&evidence).unwrap();
-        let directory=tempfile::Builder::new().prefix("http-fixture-").tempdir_in(&evidence).unwrap();fs::write(directory.path().join("index.html"),"isolated fixture").unwrap();
-        let store=Arc::new(crate::RouterStore::open_at(directory.path().join("router.db")).unwrap());
-        let core=RouterCore{store,chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default()};
-        let _adapter_owner=core.chatgpt.clone();
-        let signed=tests::ephemeral_access_fixture();let keys=serde_json::json!({"keys":signed["keys"]});let runtime=tokio::runtime::Runtime::new().unwrap();
-        let (keys_url,task)=runtime.block_on(async{let listener=TcpListener::bind("127.0.0.1:0").await.unwrap();let address=listener.local_addr().unwrap();let server=Router::new().route("/certs",get(move||{let value=keys.clone();async move{Json(value)}}));let task=tokio::spawn(async move{axum::serve(listener,server).await.unwrap()});(format!("http://{address}/certs"),task)});
-        let config=MobileHttpConfig{port:0,allowed_host:"router.fixture.invalid".into(),allowed_origin:"https://router.fixture.invalid".into(),access_issuer:"https://fixture.invalid".into(),access_audience:"fixture-audience".into(),access_jwks_url:keys_url,static_dir:directory.path().into()};
-        let host=crate::HostRuntime::default();let handle=runtime.block_on(start(core,config,host.clone())).unwrap();let snapshot=crate::character_board::snapshot(None).unwrap();let stop=evidence.join("board-http.stop");
-        assert!(!stop.exists(),"Retire a previous fixture before starting another");
-        fs::write(evidence.join("board-http-private-ready.json"),serde_json::to_vec(&serde_json::json!({"origin":format!("http://{}",handle.address),"host":"router.fixture.invalid","allowedOrigin":"https://router.fixture.invalid","token":signed["token"],"revision":snapshot.revision,"stop":stop,"disposable":true})).unwrap()).unwrap();
-        println!("ISOLATED_BOARD_HTTP_BROWSER_READY");for _ in 0..180{if stop.exists(){break;}std::thread::sleep(Duration::from_secs(1));}
-        runtime.block_on(handle.shutdown());task.abort();
-    }
 }
 
 async fn app_capabilities(State(state):State<MobileHttpState>,headers:HeaderMap)->Result<axum::response::Response,ApiError>{
@@ -2978,7 +2080,7 @@ async fn app_diagnostics(State(state):State<MobileHttpState>,headers:HeaderMap)-
 }
 
 #[cfg(test)]#[test]fn owner_cache_and_large_upload_http_keep_auth_and_origin_boundaries(){
- use base64ct::{Base64,Encoding};let scratch=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("runtime/notice-attachments-20261025");std::fs::create_dir_all(&scratch).unwrap();let d=tempfile::tempdir_in(scratch).unwrap();std::fs::write(d.path().join("index.html"),"fixture").unwrap();let core=RouterCore{store:Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap()),chatgpt:Arc::default(),session:Arc::default(),completed_chatgpt_responses:Arc::default()};core.store.enable_codex_watch("exact","fixture",&d.path().to_string_lossy(),&router_core::store::codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()}).unwrap();let auth=Arc::new(crate::web_auth::WebAuth::open(None).unwrap());let token=auth.exchange(&auth.issue().unwrap().code,"cache fixture",false).unwrap();let cookie=format!("{}={token}",crate::web_auth::COOKIE);let rt=tokio::runtime::Runtime::new().unwrap();let config=MobileHttpConfig{port:0,allowed_host:"router.fixture.invalid".into(),allowed_origin:"https://router.fixture.invalid".into(),access_issuer:"https://unused.invalid".into(),access_audience:"unused".into(),access_jwks_url:"https://unused.invalid/keys".into(),static_dir:d.path().into()};let handle=rt.block_on(start_with_web_auth(core,config,crate::HostRuntime::default(),auth)).unwrap();let base=format!("http://{}/v1/mobile",handle.address);let client=reqwest::blocking::Client::builder().timeout(std::time::Duration::from_secs(30)).build().unwrap();let get=|cookie:&str|client.get(format!("{base}/cache")).header("host","router.fixture.invalid").header("cookie",cookie).send().unwrap();assert_eq!(get("").status(),StatusCode::UNAUTHORIZED);assert_eq!(get(&cookie).json::<serde_json::Value>().unwrap()["retentionDays"],7);
+ use base64ct::{Base64,Encoding};let scratch=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("runtime/notice-attachments-20261025");std::fs::create_dir_all(&scratch).unwrap();let d=tempfile::tempdir_in(scratch).unwrap();std::fs::write(d.path().join("index.html"),"fixture").unwrap();let core=RouterCore{store:Arc::new(crate::RouterStore::open_at(d.path().join("router.db")).unwrap()),session:Arc::default(),};core.store.enable_codex_watch("exact","fixture",&d.path().to_string_lossy(),&router_core::store::codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()}).unwrap();let auth=Arc::new(crate::web_auth::WebAuth::open(None).unwrap());let token=auth.exchange(&auth.issue().unwrap().code,"cache fixture",false).unwrap();let cookie=format!("{}={token}",crate::web_auth::COOKIE);let rt=tokio::runtime::Runtime::new().unwrap();let config=MobileHttpConfig{port:0,allowed_host:"router.fixture.invalid".into(),allowed_origin:"https://router.fixture.invalid".into(),access_issuer:"https://unused.invalid".into(),access_audience:"unused".into(),access_jwks_url:"https://unused.invalid/keys".into(),static_dir:d.path().into()};let handle=rt.block_on(start_with_web_auth(core,config,crate::HostRuntime::default(),auth)).unwrap();let base=format!("http://{}/v1/mobile",handle.address);let client=reqwest::blocking::Client::builder().timeout(std::time::Duration::from_secs(30)).build().unwrap();let get=|cookie:&str|client.get(format!("{base}/cache")).header("host","router.fixture.invalid").header("cookie",cookie).send().unwrap();assert_eq!(get("").status(),StatusCode::UNAUTHORIZED);assert_eq!(get(&cookie).json::<serde_json::Value>().unwrap()["retentionDays"],7);
  let post=|route:&str,origin:&str,cookie:&str,body:&serde_json::Value|client.post(format!("{base}{route}")).header("host","router.fixture.invalid").header("origin",origin).header("cookie",cookie).json(body).send().unwrap();assert_eq!(post("/cache/cleanup","https://wrong.invalid",&cookie,&serde_json::json!({})).status(),StatusCode::FORBIDDEN);assert_eq!(post("/cache/cleanup","https://router.fixture.invalid","",&serde_json::json!({})).status(),StatusCode::UNAUTHORIZED);
  let body=serde_json::json!({"action":"UPLOAD","threadId":"exact","name":"large.txt","data":Base64::encode_string(&vec![b'x';10*1024*1024])});let upload=post("/codex-watches/chat","https://router.fixture.invalid",&cookie,&body);assert_eq!(upload.status(),StatusCode::OK);assert_eq!(upload.json::<serde_json::Value>().unwrap()["size"],10*1024*1024);let response=post("/claude-code/chat","https://router.fixture.invalid",&cookie,&body);assert_eq!(response.status(),StatusCode::OK);assert_eq!(response.json::<serde_json::Value>().unwrap()["size"],10*1024*1024);assert_eq!(post("/cache/cleanup","https://router.fixture.invalid",&cookie,&serde_json::json!({})).json::<serde_json::Value>().unwrap()["removedCount"],0);rt.block_on(handle.shutdown());
 }
