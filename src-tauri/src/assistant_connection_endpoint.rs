@@ -1,5 +1,7 @@
 //! Discovery uses this instance's validated listener/configuration, never a
 //! product-wide hostname, caller-supplied Host header or credential-bearing URL.
+/// The entrance an assistant on this computer uses, independent of the public path.
+pub(crate) fn local(port:u16)->String{format!("http://127.0.0.1:{port}/mcp")}
 pub(crate) fn endpoint(live_origin:Option<&str>,saved_origin:Option<&str>)->Option<String>{
  let origin=live_origin.or(saved_origin)?;
  let parsed=url::Url::parse(origin).ok()?;

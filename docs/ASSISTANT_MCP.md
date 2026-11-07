@@ -6,6 +6,21 @@
 
 # Agbrio assistant MCP — whole application
 
+## This computer's own entrance
+
+An assistant running on the same computer as Agbrio can use `http://127.0.0.1:47114/mcp` instead of the public address, so a network or proxy problem does not interrupt it. Agbrio's “Configure MCP on this computer” action uses this address for a new Claude Code setup and leaves an existing public entry alone, because changing the address requires signing in again.
+
+- It serves only `/mcp` and its resource metadata. Every other route still requires the exact public host.
+- The `Host` must be exactly `127.0.0.1:<port>` and the request must carry no `Origin`, so web pages cannot use it. A bearer token is still required.
+- Sign-in still goes through the public address once: the browser consent page and token endpoint live there, and later token refreshes use it too.
+- Both addresses are one resource with one audience. A token for one works on the other, and revoking the grant ends both.
+
+Phones and assistants on other computers keep using the public address.
+
+A project's `.mcp.json` overrides the user-level entry. If a project pins the public address, sessions in that project keep using it until that entry is changed. Changing an entry's address signs running sessions out until someone signs in again, so do it when nothing is waiting on them.
+
+The sign-in button opens its own console window, because Claude Code will not sign in without a terminal. It closes when sign-in finishes.
+
 ## 2026-10-17 source update: general MCP clients and WorkBuddy
 
 Main now includes client-specific WorkBuddy/other-MCP onboarding, narrowly validated native WorkBuddy OAuth redirects and opt-in rotating refresh credentials. Existing Dot registrations default to their old code-only behavior; existing access tokens, grants and Events are not recreated. Refresh is hashed, client/resource/grant-bound and cannot extend the original lease; replay revokes only its token family. Webhook public-address/signature guards remain unchanged.
