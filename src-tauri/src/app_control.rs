@@ -23,7 +23,7 @@ pub(crate) fn capabilities(scope: &str) -> Value {
             "CHATGPT":{"read":true,"writes":"EXISTING_REVIEWED_HANDOFF","accountSecurityStop":true},
             "CLAUDE_CODE":{"read":true,"writes":"OWNER_TEXT_AND_SELECTED_FILE_REFERENCES","mcpWrite":false,"attachments":"OWNER_LOCAL_FILE_REFERENCE","attachmentLimits":{"fileBytes":10485760,"totalBytes":41943040,"files":4},"goalControl":false}
         },
-        "localMaintenance":{"transport":"WINDOWS_CURRENT_USER_NAMED_PIPE","commands":["STATUS","CAPABILITIES","DIAGNOSTICS","SHUTDOWN","PUBLISH_BOARD","PUBLISH_REVIEW_BOARD"],"start":"external local CLI","shutdownRequiresExactInstance":true,"remoteShutdown":false},
+        "localMaintenance":{"transport":"WINDOWS_CURRENT_USER_NAMED_PIPE","commands":["STATUS","CAPABILITIES","DIAGNOSTICS","SHUTDOWN","PUBLISH_BOARD","PUBLISH_REVIEW_BOARD","READ_MANAGEMENT_ZONE","REPLACE_ZONE_MANAGER","ADD_ZONE_EXECUTORS"],"start":"external local CLI","shutdownRequiresExactInstance":true,"remoteShutdown":false},
         "rules":["Discovery is not delegation or runtime readiness","Use stable native identities and existing review/receipt commands","After uncertain writes inspect the original receipt; never resend automatically","No shell, credentials, provider restart or permission changes"]
     })
 }

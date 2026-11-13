@@ -2,7 +2,7 @@ import {useRef,useState,type ReactNode} from 'react';
 import {ArrowLeft,ArrowRight,Check} from 'lucide-react';
 import {t,getLanguage,useLanguage} from '../../i18n';
 import {CopyAction} from './NativeReaderActions';
-import {ClaudeNativeConnection} from './ClaudeNativeConnection';
+import {ClaudeNativeConnection,type ClaudePolicyControl} from './ClaudeNativeConnection';
 import type {ClaudeConnectionResult} from './ClaudeSessionPicker';
 import {claudeCodeAddCommand,claudeManualConnectionInstructions} from './claudeConnectionInstructions';
 import {assistantMcpConfig} from './assistantClientInstructions';
@@ -11,7 +11,7 @@ import {mcpAddressDiscoveryPowerShell} from './claudeConnectionRecovery';
 import {AssistantDailyReport,type ReportBridge} from './AssistantDailyReport';
 import {ClaudeMcpScopeSetup} from './ClaudeMcpScopeSetup';
 
-export function ClaudeAssistantSetup({mcpUrl,hasGrant,onAddGrant,grantForm,onRefresh,onConfigureConnection,connectClaude,bridges=[]}:{mcpUrl:string|null;hasGrant:boolean;onAddGrant:()=>void;grantForm?:ReactNode;onRefresh?:()=>Promise<void>;onConfigureConnection?:()=>void;connectClaude?:()=>Promise<ClaudeConnectionResult>;bridges?:ReportBridge[]}){
+export function ClaudeAssistantSetup({mcpUrl,hasGrant,onAddGrant,grantForm,onRefresh,onConfigureConnection,connectClaude,claudePolicy,bridges=[]}:{mcpUrl:string|null;hasGrant:boolean;onAddGrant:()=>void;grantForm?:ReactNode;onRefresh?:()=>Promise<void>;onConfigureConnection?:()=>void;connectClaude?:()=>Promise<ClaudeConnectionResult>;claudePolicy?:ClaudePolicyControl;bridges?:ReportBridge[]}){
  useLanguage();const [step,setStep]=useState(0),[client,setClient]=useState<'desktop'|'terminal'>('desktop'),[error,setError]=useState(''),[refreshing,setRefreshing]=useState(false);const heading=useRef<HTMLHeadingElement>(null),refreshPending=useRef(false);
  const url=assistantMcpConfig(mcpUrl)?mcpUrl:null,labels=['准备连接','添加并授权','验证工具'];
  function navigate(next:number){setStep(next);setError('');requestAnimationFrame(()=>heading.current?.focus());}
@@ -19,7 +19,7 @@ export function ClaudeAssistantSetup({mcpUrl,hasGrant,onAddGrant,grantForm,onRef
  const address=<section className="assistant-setup-address" aria-label={t('当前 MCP 地址')}><span>{t('当前 MCP 地址')}</span>{url?<div><code>{url}</code><CopyAction text={url} label={t('复制 MCP 地址')}/></div>:<p>{t('尚未取得连接地址')}</p>}</section>;
  return <section className="assistant-setup" aria-label={t('Claude Code 完整接入')}>
   <header><h2>{t('连接 Claude Code')}</h2><p>{t('让 Claude 查看电脑上的进度、创建 Codex 对话并跟进任务。')}</p></header>
-  <section className="assistant-setup-native" aria-label={t('Claude Code 插件')}><ClaudeNativeConnection connect={connectClaude} mcpUrl={url}/><p className="assistant-setup-note">{t('MCP 负责读取和派发；本机插件负责通知和手机回复。MCP 已连好时，保留原连接，只补装插件即可。')}</p></section>
+  <section className="assistant-setup-native" aria-label={t('Claude Code 插件')}><ClaudeNativeConnection connect={connectClaude} policy={claudePolicy} mcpUrl={url}/><p className="assistant-setup-note">{t('MCP 负责读取和派发；本机插件负责通知和手机回复。MCP 已连好时，保留原连接，只补装插件即可。')}</p></section>
   <nav className="assistant-setup-steps" aria-label={t('Claude 连接步骤')}>{labels.map((label,index)=><button key={label} type="button" aria-current={step===index?'step':undefined} onClick={()=>navigate(index)}><span>{index+1}</span>{t(["准备","添加","验证"][index])}</button>)}</nav>
   <div className="assistant-setup-panel">
    <h3 ref={heading} tabIndex={-1}>{t(labels[step])}</h3>

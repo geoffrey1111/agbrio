@@ -20,6 +20,7 @@ pub(crate) fn list(core:&RouterCore)->Result<Vec<WatchView>,String>{
     let mut watches=core.store.codex_watches()?;
     for task in core.store.pi_tasks()?{if let Ok(watch)=crate::pi::presentation::watch(&task){if !core.store.is_codex_watch_removed(&watch.thread_id)?&&!watches.iter().any(|w|w.thread_id==watch.thread_id){watches.push(watch);}}}
     Ok(watches.into_iter().map(|mut watch|{
+        crate::codex_watch::refresh_display_label(&mut watch);
         let mut tree=None;
         if watch.thread_id.starts_with("pi:"){
             if let Ok(task)=core.store.pi_task(&watch.thread_id){
@@ -32,7 +33,7 @@ pub(crate) fn list(core:&RouterCore)->Result<Vec<WatchView>,String>{
         }
         if watch.enabled {if let Ok(sid)=native_id(&watch.thread_id){
             watch.runtime=crate::native_runtime::claude(sid);if let Some(v)=watch.runtime.clone(){router_core::store::codex_watch::record_runtime(&watch.thread_id,&watch.cwd,v);}
-            if let Ok(s)=crate::claude_code::observed_session(core,sid,Some(&watch.cwd)){watch.snapshot=snapshot(&s);watch.checked_at=s.checked_at;}
+            if let Ok(s)=crate::claude_code::observed_session(core,sid,Some(&watch.cwd)){if let Some(title)=s.title.as_deref().filter(|t|!t.trim().is_empty()){watch.label=title.chars().take(120).collect();}watch.snapshot=snapshot(&s);watch.checked_at=s.checked_at;}
             tree=Some(crate::claude_task_tree::read(core,sid,&watch.cwd));
         }}
         let last_message_at=core.store.conversation_message_at(&watch.thread_id,&watch.cwd).ok().flatten();

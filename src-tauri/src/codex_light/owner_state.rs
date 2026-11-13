@@ -4,10 +4,12 @@
 //! this keeps one up to date from the backend's own notifications. The field set was read
 //! from Desktop 26.1103.3517.0 and is only used behind that build's method-table fence.
 use serde_json::{json, Map, Value};
+use super::owner_stream::{preview_item,preview_text,trim_items};
+use std::collections::HashSet;
 
 /// Oldest turns are dropped past this, so a long thread cannot produce an enormous frame.
 /// Desktop reads the complete history itself once it takes the thread over.
-pub(super) const SNAPSHOT_BYTE_BUDGET: usize = 24 * 1024 * 1024;
+pub(super) const SNAPSHOT_BYTE_BUDGET: usize = 1024 * 1024;
 const NOW_FALLBACK: i64 = 0;
 
 fn now_ms() -> i64 {
@@ -125,9 +127,9 @@ impl OwnerState {
         let id = row["id"].as_str()?;
         let mut turn = turn_entity(self, id, row["status"].as_str().unwrap_or("completed"));
         turn["error"] = row.get("error").cloned().unwrap_or(Value::Null);
-        turn["items"] = row.get("items").cloned().unwrap_or(json!([]));
+        turn["items"] = json!(row["items"].as_array().into_iter().flatten().cloned().map(preview_item).collect::<Vec<_>>());
         if let Some(message) = turn["items"].as_array().and_then(|items| items.iter().find(|item| item["type"] == "userMessage")).cloned() {
-            turn["params"]["input"] = message["content"].clone();
+            turn["params"]["input"] = with_text_elements(&message["content"]);
         }
         if let Some(started) = seconds_to_ms(&row["startedAt"]) {
             turn["turnStartedAtMs"] = json!(started);
@@ -135,6 +137,7 @@ impl OwnerState {
         turn["durationMs"] = row.get("durationMs").cloned().unwrap_or(Value::Null);
         let finished: Map<String, Value> = turn["items"].as_array().into_iter().flatten().filter_map(|item| item["id"].as_str().map(|id| (id.to_owned(), json!(true)))).collect();
         turn["completedItemIds"] = Value::Object(finished);
+        trim_items(&mut turn,&HashSet::new());
         Some(turn)
     }
 
@@ -155,7 +158,8 @@ impl OwnerState {
     fn append(item: &mut Value, field: &str, text: &str) {
         let mut joined = item[field].as_str().unwrap_or_default().to_owned();
         joined.push_str(text);
-        item[field] = json!(joined);
+        let limit=if field=="aggregatedOutput"{16*1024}else{256*1024};
+        item[field] = json!(preview_text(&joined,limit));
     }
 
     /// The request that started a turn. Desktop shows the user's message from this: the
@@ -203,7 +207,7 @@ impl OwnerState {
                 let (Some(turn), Some(id)) = (params["turnId"].as_str(), params.pointer("/item/id").and_then(Value::as_str)) else { return false };
                 let (turn, id) = (turn.to_owned(), id.to_owned());
                 let done = method == "item/completed";
-                let mut item = params["item"].clone();
+                let mut item = preview_item(params["item"].clone());
                 let turn = self.turn_mut(&turn);
                 if turn["params"]["input"].as_array().is_some_and(Vec::is_empty) && item["type"] == "userMessage" {
                     turn["params"]["input"] = item["content"].clone();
@@ -243,6 +247,10 @@ impl OwnerState {
                 self.requests.retain(|row| Some(row["id"].to_string().trim_matches('"').to_owned()) != id);
             }
             _ => return false,
+        }
+        if let Some(id)=params["turnId"].as_str().or_else(||params.pointer("/turn/id").and_then(Value::as_str)){
+            let protected:HashSet<String>=self.requests.iter().filter_map(|r|r.pointer("/params/itemId").and_then(Value::as_str).map(str::to_owned)).collect();
+            if let Some(turn)=self.turns.iter_mut().find(|t|t["turnId"]==id){trim_items(turn,&protected);}
         }
         true
     }
@@ -439,25 +447,30 @@ mod tests {
         let rows: Vec<Value> = (0..6).map(|index| json!({"id":format!("u{index}"),"status":"completed","items":[{"id":"i","type":"agentMessage","text":large}]})).collect();
         s.load_turns(&rows, false);
         let kept: Vec<String> = s.turns.iter().map(|turn| turn["turnId"].as_str().unwrap().to_owned()).collect();
-        assert_eq!(kept, ["u5"], "only what the snapshot shows survives");
+        assert_eq!(kept,["u3","u4","u5"],"only the bounded recent preview survives");
         let shown = s.snapshot();
         let entities = shown["turnHistory"]["history"]["entitiesByKey"].as_object().unwrap();
-        assert!(entities.contains_key("turn:u5") && !entities.contains_key("turn:u4"));
+        assert!(entities.contains_key("turn:u5") && !entities.contains_key("turn:u0"));
         // A new turn arriving drops an older one that no longer fits beside it.
         assert!(s.apply("turn/started", &json!({"turn":{"id":"u6"}})));
         assert!(s.apply("item/completed", &json!({"turnId":"u6","item":{"id":"j","type":"agentMessage","text":large}})));
         assert!(s.apply("turn/started", &json!({"turn":{"id":"u7"}})));
         let kept: Vec<String> = s.turns.iter().map(|turn| turn["turnId"].as_str().unwrap().to_owned()).collect();
-        assert_eq!(kept, ["u6", "u7"]);
+        assert_eq!(kept,["u4","u5","u6","u7"]);
         let small: Vec<Value> = (0..4).map(|index| json!({"id":format!("s{index}"),"status":"completed","items":[]})).collect();
         s.load_turns(&small, false);
         assert_eq!(s.turns.len(), 4, "a small history is kept whole");
     }
 
     #[test]
-    fn one_turn_past_the_budget_is_still_shown() {
+    fn one_large_turn_keeps_a_bounded_preview_and_preserves_the_native_payload() {
         let mut s = state();
-        s.load_turns(&[json!({"id":"only","status":"completed","items":[{"id":"i","type":"agentMessage","text":"x".repeat(SNAPSHOT_BYTE_BUDGET + 1)}]})], false);
-        assert!(s.snapshot()["turnHistory"]["history"]["entitiesByKey"].as_object().unwrap().contains_key("turn:only"));
+        let native=json!({"id":"only","status":"completed","items":[{"id":"i","type":"agentMessage","text":"x".repeat(25*1024*1024)}]});
+        s.load_turns(&[native.clone()], false);
+        let snapshot=s.snapshot();
+        assert!(snapshot["turnHistory"]["history"]["entitiesByKey"].as_object().unwrap().contains_key("turn:only"));
+        assert!(super::super::owner_stream::fits(&snapshot,SNAPSHOT_BYTE_BUDGET));
+        assert_eq!(native["items"][0]["text"].as_str().unwrap().len(),25*1024*1024);
+        assert!(snapshot["turnHistory"]["history"]["entitiesByKey"]["turn:only"]["items"][0]["text"].as_str().unwrap().contains("Agbrio"));
     }
 }

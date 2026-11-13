@@ -83,3 +83,13 @@ test('native stored user envelope also acknowledges only the exact plugin notice
 
 test('status reads durable Host subscriptions even when local plugin storage is empty',async()=>{const f=fixture();f.$.http.fetch=async()=>({ok:true,text:JSON.stringify({subscriptions:[{id:'durable',mode:'TASK',status:'ACTIVE',threadId:tid,generation:1}]})});const v=await handleCodexWait(f.$,f.state,{action:'status'});assert.equal(v.persistentSubscriptions[0].id,'durable');assert.equal(v.capacity.waiting,1);assert.equal(v.capacity.persistentActive,1);assert.equal(v.capacity.legacyWaiting,0);assert.equal(f.submits(),0);});
 test('registration failures preserve safe Host reason and HTTP status without raw secrets',async()=>{const f=fixture();f.$.http.fetch=async()=>({ok:false,status:400,text:JSON.stringify({error:'CLAUDE_ROOT_CHANGED',token:'PRIVATE_DO_NOT_FORWARD'})});const result=JSON.parse((await f.hooks['tool.call'](f.$,{action:'wait',threadId:tid,generation:1,followTask:true})).result);assert.equal(result.error,'CLAUDE_ROOT_CHANGED');assert.equal(result.httpStatus,400);assert.ok(!JSON.stringify(result).includes('PRIVATE_DO_NOT_FORWARD'));});
+
+test('expired Claude authorization asks to reconnect without changing executor assignment',async()=>{
+ const f=fixture();
+ f.$.http.fetch=async()=>({ok:false,status:401,text:JSON.stringify({error:'CLAUDE_CONNECTION_UNAUTHORIZED'})});
+ const result=JSON.parse((await f.hooks['tool.call'](f.$,input)).result);
+ assert.equal(result.error,'CLAUDE_CONNECTION_UNAUTHORIZED');
+ assert.match(result.instruction,/reconnect the Claude Code plugin/);
+ assert.match(result.instruction,/Adding the executor again cannot restore/);
+ assert.equal(f.submits(),0);
+});

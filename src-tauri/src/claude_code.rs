@@ -115,17 +115,20 @@ fn connect_admin(core:&RouterCore,host:&crate::HostRuntime,resources:&std::path:
     let identities=[id,"agbrio-bridge@inline"];
     // Claude 2.1.299+: --plugin-dir shadows the installed identity, so only the inline one uses it.
     let scoped=|identity:&str,rest:&[&str]|{let mut v=if identity==id{vec![]}else{vec!["--plugin-dir".to_string(),path.to_string()]};v.extend(["plugin","configure",identity].iter().chain(rest).map(|s|s.to_string()));v};
-    let mut missing_token=false;let mut missing_hosts=Vec::new();
+    let mut missing_token=false;let mut missing_hosts=Vec::new();let mut same_host=false;
     for identity in identities {
         let config=admin.run(&scoped(identity,&["--json"]),None)?;
         if config["pluginId"]!=identity||!config["configured"].is_array()||!config["unconfigured"].is_array(){return Err("CLAUDE_PLUGIN_ADMIN_INVALID_RESULT".into());}
-        if let Some(existing)=config["inputs"]["hostUrl"].as_str().filter(|s|!s.is_empty()) {if existing!=origin {return Err("CLAUDE_PLUGIN_DIFFERENT_HOST".into());}}
+        if let Some(existing)=config["inputs"]["hostUrl"].as_str().filter(|s|!s.is_empty()) {if existing!=origin {return Err("CLAUDE_PLUGIN_DIFFERENT_HOST".into());}same_host=true;}
         missing_token|=!config["configured"].as_array().unwrap().iter().any(|v|v=="token");
         if !config["configured"].as_array().unwrap().iter().any(|v|v=="hostUrl")||config["inputs"]["hostUrl"].as_str().is_none_or(str::is_empty){missing_hosts.push(identity);}
     }
     // Existing saved credentials remain in their native secure store. Never
-    // export them, rotate them on repeat connection, or claim a live publisher.
-    if !missing_token {
+    // export them, rotate a valid credential, or claim a live publisher.
+    // Only an explicit desktop owner action, with a matching local host and an
+    // expired authorization, can replace an otherwise configured credential.
+    let renew_expired=same_host&&core.store.claude_connection_needs_renewal()?;
+    if !missing_token&&!renew_expired {
         // Repair only the missing non-secret address; never export/copy/rotate
         // a saved native credential merely because hostUrl was absent.
         for identity in missing_hosts {

@@ -21,7 +21,7 @@ Once nothing is pending, `legacy_cleanup.rs` clears reproducible leftovers on a 
 The writer lock keeps Desktop from loading a thread while the backend holds it. Desktop already shares a thread between its own windows, with one window as owner and the others following its state over the pipe, so `owner.rs` answers as the owner of exactly the threads loaded on this process's backend:
 
 - Each such thread has its own pipe connection, which claims only that thread. Closing it is how Desktop learns the owner has gone.
-- `owner_state.rs` keeps Desktop's private conversation state up to date from the backend's notifications and sends full snapshots. Requests Desktop sends as a follower go to the backend. Nothing is retried.
+- `owner_state.rs` keeps Desktop's private conversation state up to date from the backend's notifications and sends an initial snapshot followed by native revisioned patches. Requests Desktop sends as a follower go to the backend. Nothing is retried.
 - A `thread-unarchived` broadcast makes Desktop read a new thread and list it, so it appears without a restart.
 - When the turn ends, the backend lets the thread go, and the connection closes only once the lock is free. Desktop then loads the thread itself.
 - Nothing is claimed when the package's method table differs from the validated one, because a malformed state raises an error dialog in Desktop's main process. The thread then shows as open in another app until its turn ends.
@@ -55,3 +55,23 @@ A thread the on-demand backend holds cannot be opened in Desktop, which shows "o
 ## Validation
 
 `cargo test --lib codex_light` covers routing against a fake pipe and a scripted backend, and the retirement decisions. `scripts/codex-ipc-probe.mjs` is a read-only probe. `real_host_send_paths_over_the_light_transport` is an explicit ignored live test that needs real Desktop and a disposable thread; never point it at a real conversation. File and permission approvals, async questions, large-conversation snapshots and reconnecting after Desktop restarts were not exercised at this revision.
+
+## Responsiveness repair (local performance candidate)
+
+The Desktop owner stream coalesces live changes at a 750 ms minimum interval plus its existing byte-rate delay. A new follower or requested resync receives a full baseline; subsequent changes use the installed Desktop's native `patches` shape with `baseRevision`, `revision`, and Immer array paths. Each thread retains one baseline, with only revision numbers per follower. Joining, leaving and reconnecting reset the appropriate baselines without invalidating other followers.
+
+A publisher waits for its preceding pipe write before admitting another state frame. A three-second wait timeout defers further state updates and later rebaselines; it does not disconnect Desktop or cancel provider/control requests. The generic control/reply path keeps its original semantics. Completed display items are bounded to a recent 64-item / 768 KiB window, while user input, unfinished items and pending-request parent items are protected. Recent turn previews target 1 MiB. Tool text previews retain up to 16 KiB, assistant text previews 256 KiB; omitted content is explicitly labelled. Oversized tool images in typed content use a labelled text preview. Native logs, native attachments, source messages and model history are not edited; Desktop reads original history after the backend hands the thread back.
+
+Serialized state is capped at 8 MiB and the framed owner update at 8 MiB + 64 KiB. Protected input or decision data is not silently shortened to fit: if it exceeds that safety bound, live state publication pauses and an explicit history-resync request reports that the preview is too large. The running backend and its task remain intact. This safety behavior is not full native history virtualization.
+
+This performance batch does not implement the previously missing queued-follow-up or edit-last-user-turn contracts. Those requests keep their existing rejection rather than being acknowledged and dropped or changed into immediate sends.
+
+Verification uses synthetic state and fake transport endpoints; a local offline check also applies generated frames through the actual installed Desktop 26.1103.4239.0 patch library. It does not send provider prompts or manipulate business conversations. Native typing and all private Desktop consumer behavior still require owner acceptance after local deployment; wire-volume reductions alone are not a CPU or typing-performance result.
+
+### Desktop-to-Agbrio observation
+
+The dominant traffic found during investigation was in the other direction: Desktop was repeatedly sending complete state to the observer. The old observer treated every text/history patch as an invalidation and followed the thread again for a new full snapshot, including on its regular refresh timeout. This caused Desktop itself to repeatedly serialize large histories.
+
+The observer now follows once and tracks the native revision sequence. A borrowed-JSON projection retains only `rolloutPath`, `threadRuntimeStatus` and exact native `requests`; streamed history/text is skipped rather than cloned into the event queue. Only semantic metadata changes notify the Host. Regular refreshes inspect the lightweight cached projection and existing rollout boundary; they do not request another Desktop snapshot. A revision gap can request a baseline once, with a 30-second resync limit. Only the discovered owner can update the projection; owner departure or an IPC reset re-establishes its baseline. Native decision IDs and JSON types stay intact. The event loop no longer drains and discards a different pending event while coalescing a wakeup.
+
+A regression sends 100 native-style streaming patches after one large baseline, then an approval request, and crosses the active refresh interval. It requires exactly one initial follow request and delivery of that exact approval. The outgoing-only rc.136 package was withheld after directional I/O exposed this second, more important loop; it was never installed or published.

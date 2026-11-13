@@ -5,16 +5,105 @@ use router_core::store::RouterStore;
 use std::sync::{Arc,Mutex,atomic::{AtomicBool,AtomicUsize,Ordering}};
 use sha2::{Digest,Sha256};
 
-pub(crate) fn read(core:&RouterCore)->Result<serde_json::Value,String>{
+use router_core::store::management_zones::{Change,Conversation};
+use serde_json::{json,Value};
+use std::collections::{HashMap,HashSet};
+
+pub(crate) fn read(core:&RouterCore)->Result<Value,String>{
     let mut view=core.store.management_zones()?;
-    let labels:std::collections::HashMap<_,_>=crate::claude_code::catalog(core).map(|catalog|catalog.sessions.into_iter().filter_map(|s|s.title.map(|title|(format!("claude_code:{}",s.session_id),title))).collect()).unwrap_or_default();
-    fn decorate(value:&mut serde_json::Value,labels:&std::collections::HashMap<String,String>){
+    let desktop=crate::claude_code_desktop::fresh_sessions();
+    let metadata:HashMap<_,_>=desktop.iter().map(|s|(format!("claude_code:{}",s.session_id),s)).collect();
+    fn decorate(value:&mut Value,metadata:&HashMap<String,&crate::claude_code_desktop::DesktopSession>){
         match value{
-            serde_json::Value::Object(object)=>{if let Some(title)=object.get("threadId").and_then(|v|v.as_str()).and_then(|id|labels.get(id)){if object.contains_key("provider"){object.insert("label".into(),serde_json::json!(title));}}for v in object.values_mut(){decorate(v,labels);}},
-            serde_json::Value::Array(rows)=>for row in rows{decorate(row,labels);},_=>{},
+            Value::Object(object)=>{
+                if object.get("provider").and_then(Value::as_str)==Some("CODEX"){
+                    if let (Some(id),Some(cwd))=(object.get("threadId").and_then(Value::as_str),object.get("cwd").and_then(Value::as_str)){
+                        if let Some(title)=router_core::codex::source_index::current_display_name(id,cwd){object.insert("label".into(),json!(title));}
+                    }
+                }
+                if object.contains_key("provider"){
+                    let native=object.get("threadId").and_then(Value::as_str).and_then(|id|metadata.get(id));
+                    let cwd=object.get("cwd").and_then(Value::as_str);
+                    if let Some(s)=native.filter(|s|cwd.is_some_and(|cwd|router_core::claude_code::same_root(cwd,&s.cwd)||router_core::claude_code::spare_root(cwd))){
+                        if let Some(title)=&s.title{object.insert("label".into(),json!(title));}
+                        if let Some(local)=&s.local_id{object.insert("localSessionId".into(),json!(local));}
+                    }
+                }
+                for v in object.values_mut(){decorate(v,metadata);}
+            }
+            Value::Array(rows)=>for row in rows{decorate(row,metadata);},_=>{},
         }
     }
-    decorate(&mut view,&labels);Ok(view)
+    if let Some(rows)=view["candidates"].as_array_mut(){
+        let existing:HashSet<_>=rows.iter().filter_map(|row|row["threadId"].as_str().map(str::to_owned)).collect();
+        rows.retain(|row|!metadata.get(row["threadId"].as_str().unwrap_or_default()).is_some_and(|s|s.archived));
+        for s in desktop.iter().filter(|s|!s.archived){
+            let id=format!("claude_code:{}",s.session_id);
+            if existing.contains(&id){continue;}
+            rows.push(json!(Conversation{thread_id:id,label:format!("Claude Code · {}",&s.session_id[..8]),provider:"CLAUDE_CODE".into(),cwd:s.cwd.clone(),generation:1,state:"DESKTOP".into(),checked_at:s.last_activity,available:false,watch_enabled:false}));
+        }
+    }
+    decorate(&mut view,&metadata);
+    // Only the desktop/PWA presentation consumes this metadata. Assignments,
+    // revisions and notification subscriptions are deliberately untouched.
+    if let Some(zones)=view["zones"].as_array_mut(){
+        for zone in zones{
+            let Some(members)=zone["members"].as_array_mut() else{continue;};
+            for member in members{
+                let row=&mut member["conversation"];
+                let Some(id)=row["threadId"].as_str() else{continue;};
+                let Some(cwd)=row["cwd"].as_str() else{continue;};
+                let activity=match row["provider"].as_str(){
+                    Some("CODEX")=>router_core::codex::source_index::current_activity_at(id,cwd),
+                    Some("CLAUDE_CODE")=>metadata.get(id).filter(|s|router_core::claude_code::same_root(&s.cwd,cwd)).map(|s|s.last_activity),
+                    Some("PI")=>id.strip_prefix("pi:").and_then(|sid|core.store.pi_management_activity(sid)),
+                    _=>None,
+                };
+                if let Some(at)=activity.filter(|at|*at>0){row["lastActivityAt"]=json!(at);}
+            }
+        }
+    }
+    Ok(view)
+}
+
+/// Shared by the owner desktop, paired PWA and current-user local control.
+pub(crate) fn change(core:&RouterCore,input:&Change)->Result<Value,String>{
+    change_with_identity(core,input,None)
+}
+fn change_with_identity(core:&RouterCore,input:&Change,identity:Option<&[u8]>)->Result<Value,String>{
+    let desktop=if matches!(input.action.as_str(),"CREATE"|"APPOINT"){
+        input.manager_id.as_deref().and_then(|id|id.strip_prefix("claude_code:")).and_then(|sid|{
+            crate::claude_code_desktop::fresh_sessions().into_iter().find(|s|s.session_id==sid&&!s.archived)
+        })
+    }else{None};
+    core.store.change_management_zone_with_identity(input,desktop.as_ref().map(|s|s.cwd.as_str()),identity)
+}
+
+#[derive(Clone,PartialEq,Eq,serde::Deserialize,serde::Serialize)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+pub(crate) struct ManagerTarget {provider:String,session_id:String}
+
+pub(crate) fn replace(core:&RouterCore,request_id:&str,zone_id:&str,expected_revision:i64,target:&ManagerTarget)->Result<Value,String>{
+    if uuid::Uuid::parse_str(zone_id).is_err()||expected_revision<1{
+        return Err("MANAGEMENT_REQUEST_INVALID".into());
+    }
+    let identity=serde_json::to_vec(&("REPLACE_ZONE_MANAGER",zone_id,expected_revision,target)).map_err(|_|"MANAGEMENT_REQUEST_INVALID")?;
+    if let Some(receipt)=core.store.management_change_receipt(request_id,&identity)?{return Ok(receipt);}
+    let manager_id=match target.provider.as_str(){
+        "CLAUDE_CODE"=>{
+            let sid=if let Some(local)=target.session_id.strip_prefix("local_"){
+                if !crate::claude_code_desktop::native_uuid(local){return Err("MANAGEMENT_CONVERSATION_INVALID".into());}
+                crate::claude_code_desktop::resolve_local(&target.session_id)?
+            }else{
+                if !crate::claude_code_desktop::native_uuid(&target.session_id){return Err("MANAGEMENT_CONVERSATION_INVALID".into());}
+                target.session_id.clone()
+            };
+            format!("claude_code:{sid}")
+        }
+        "CODEX" if uuid::Uuid::parse_str(&target.session_id).is_ok()=>target.session_id.clone(),
+        _=>return Err("MANAGEMENT_MANAGER_UNSUPPORTED".into()),
+    };
+    change_with_identity(core,&Change{request_id:request_id.into(),action:"APPOINT".into(),zone_id:Some(zone_id.into()),revision:Some(expected_revision),name:None,manager_id:Some(manager_id),thread_id:None,generation:None,from_revision:None,from_zone_id:None,thread_ids:None},Some(&identity))
 }
 
 fn request_id(notice:&str,attempt:i64)->String{

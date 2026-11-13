@@ -78,6 +78,7 @@ impl Claim {
 pub(super) enum StateEvent {
     Snapshot(Value),
     Changed,
+    Resync,
     TooLarge,
     Disconnected,
 }
@@ -89,10 +90,17 @@ pub(super) enum Reply {
     Uncertain,
 }
 
-type Subscribers = Arc<Mutex<HashMap<String, mpsc::UnboundedSender<StateEvent>>>>;
+struct Subscriber {events:mpsc::UnboundedSender<StateEvent>,owner:String,mirror:super::follower_state::Mirror}
+type Subscribers = Arc<Mutex<HashMap<String, Subscriber>>>;
+
+struct StateWrite {done:Option<oneshot::Sender<()>>,pending:Arc<AtomicBool>,released:bool}
+impl StateWrite {fn release(&mut self){if !self.released{self.released=true;self.pending.store(false,Ordering::SeqCst);}}}
+impl Drop for StateWrite {fn drop(&mut self){self.release();}}
+struct Outgoing {bytes:Vec<u8>,written:Option<StateWrite>}
+impl From<Vec<u8>> for Outgoing {fn from(bytes:Vec<u8>)->Self{Self{bytes,written:None}}}
 
 pub(super) struct Connection {
-    writer: mpsc::UnboundedSender<Vec<u8>>,
+    writer: mpsc::UnboundedSender<Outgoing>,
     pending: Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>>,
     subscribers: Subscribers,
     client_id: String,
@@ -100,6 +108,7 @@ pub(super) struct Connection {
     tasks: Mutex<Vec<tokio::task::AbortHandle>>,
     pub writes_allowed: bool,
     pub owner_allowed: bool,
+    state_pending:Arc<AtomicBool>,
 }
 
 #[derive(Clone)]
@@ -212,18 +221,12 @@ impl Connection {
         let owner_allowed = versions.as_ref().is_some_and(owner_versions_match);
 
         let (mut read, mut write) = tokio::io::split(client);
-        let (writer, mut outgoing) = mpsc::unbounded_channel::<Vec<u8>>();
+        let (writer, outgoing) = mpsc::unbounded_channel::<Outgoing>();
         let pending: Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>> = Arc::default();
         let subscribers: Subscribers = Arc::default();
         let closed = Arc::new(AtomicBool::new(false));
 
-        let writing = tokio::spawn(async move {
-            while let Some(frame) = outgoing.recv().await {
-                if write.write_all(&frame).await.is_err() {
-                    break;
-                }
-            }
-        });
+        let writing = tokio::spawn(async move {write_loop(&mut write,outgoing).await;});
         let reading = {
             let pending = pending.clone();
             let subscribers = subscribers.clone();
@@ -234,7 +237,7 @@ impl Connection {
                 closed.store(true, Ordering::SeqCst);
                 pending.lock().unwrap().clear();
                 for subscriber in subscribers.lock().unwrap().values() {
-                    let _ = subscriber.send(StateEvent::Disconnected);
+                    let _ = subscriber.events.send(StateEvent::Disconnected);
                 }
                 if let Some(claim) = &claim {
                     let _ = claim.events.send(OwnerEvent::Disconnected);
@@ -243,7 +246,7 @@ impl Connection {
         };
 
         let tasks = Mutex::new(vec![writing.abort_handle(), reading.abort_handle()]);
-        let mut connection = Self { writer, pending, subscribers, client_id: INITIALIZING_CLIENT.into(), closed, tasks, writes_allowed, owner_allowed };
+        let mut connection = Self { writer, pending, subscribers, client_id: INITIALIZING_CLIENT.into(), closed, tasks, writes_allowed, owner_allowed,state_pending:Arc::new(AtomicBool::new(false)) };
         let reply = connection.exchange(json!({"type":"request","method":"initialize","version":0,"params":{"clientType":client_type}}), Duration::from_secs(5)).await;
         let client_id = reply.and_then(|m| m.pointer("/result/clientId").and_then(Value::as_str).map(str::to_owned)).ok_or("IPC_INITIALIZE_FAILED")?;
         connection.client_id = client_id;
@@ -270,16 +273,32 @@ impl Connection {
         }
         let frame = encode(&message);
         let size = frame.len();
-        let _ = self.writer.send(frame);
+        let _ = self.writer.send(frame.into());
+        size
+    }
+
+    /// A state publisher has at most one frame in flight. A stalled Desktop
+    /// cannot retain an unbounded queue of obsolete snapshots/patches here.
+    pub fn state_write_busy(&self)->bool{self.state_pending.load(Ordering::SeqCst)}
+    pub async fn broadcast_state(&self,targets:Vec<String>,params:Value)->usize {
+        if self.state_pending.compare_exchange(false,true,Ordering::SeqCst,Ordering::SeqCst).is_err(){return 0;}
+        let mut state=StateWrite{done:None,pending:self.state_pending.clone(),released:false};
+        let frame=encode(&json!({"type":"broadcast","method":"thread-stream-state-changed","sourceClientId":self.client_id,"version":version_of("thread-stream-state-changed"),"targetClientIds":targets,"params":params}));
+        if frame.len()>super::owner_stream::STATE_LIMIT+64*1024 {return 0;}
+        let size=frame.len();let(done,written)=oneshot::channel();state.done=Some(done);
+        if self.writer.send(Outgoing{bytes:frame,written:Some(state)}).is_err(){return 0;}
+        // A timeout leaves the single frame in flight. Keep the connection and
+        // provider requests alive; later updates wait and rebaseline afterwards.
+        if !matches!(tokio::time::timeout(Duration::from_secs(3),written).await,Ok(Ok(()))) {return 0;}
         size
     }
 
     pub fn respond(&self, request_id: &Value, method: &str, result: Value) {
-        let _ = self.writer.send(encode(&json!({"type":"response","requestId":request_id,"resultType":"success","method":method,"handledByClientId":self.client_id,"result":result})));
+        let _ = self.writer.send(encode(&json!({"type":"response","requestId":request_id,"resultType":"success","method":method,"handledByClientId":self.client_id,"result":result})).into());
     }
 
     pub fn respond_error(&self, request_id: &Value, error: &str) {
-        let _ = self.writer.send(encode(&json!({"type":"response","requestId":request_id,"resultType":"error","error":error})));
+        let _ = self.writer.send(encode(&json!({"type":"response","requestId":request_id,"resultType":"error","error":error})).into());
     }
 
     async fn exchange(&self, mut message: Value, timeout: Duration) -> Option<Value> {
@@ -288,7 +307,7 @@ impl Connection {
         message["sourceClientId"] = json!(self.client_id);
         let (sender, receiver) = oneshot::channel();
         self.pending.lock().unwrap().insert(request_id.clone(), sender);
-        if self.writer.send(encode(&message)).is_err() {
+        if self.writer.send(encode(&message).into()).is_err() {
             self.pending.lock().unwrap().remove(&request_id);
             return None;
         }
@@ -329,12 +348,12 @@ impl Connection {
                 "type":"broadcast","method":"thread-stream-following-changed","sourceClientId":self.client_id,
                 "targetClientIds":[owner],"version":version_of("thread-stream-following-changed"),
                 "params":{"conversationId":thread,"hostId":LOCAL_HOST,"following":following}
-            })))
+            })).into())
             .is_ok()
     }
 
-    pub fn subscribe(&self, thread: &str, events: mpsc::UnboundedSender<StateEvent>) {
-        self.subscribers.lock().unwrap().insert(thread.to_owned(), events);
+    pub fn subscribe(&self, thread: &str, owner:&str, events: mpsc::UnboundedSender<StateEvent>) {
+        self.subscribers.lock().unwrap().insert(thread.to_owned(),Subscriber{events,owner:owner.into(),mirror:Default::default()});
     }
 
     pub fn unsubscribe(&self, thread: &str) {
@@ -342,9 +361,16 @@ impl Connection {
     }
 }
 
+async fn write_loop(write:&mut (impl AsyncWriteExt+Unpin),mut outgoing:mpsc::UnboundedReceiver<Outgoing>){
+    while let Some(frame)=outgoing.recv().await{
+        if write.write_all(&frame.bytes).await.is_err(){break;}
+        if let Some(mut state)=frame.written{state.release();if let Some(done)=state.done.take(){let _=done.send(());}}
+    }
+}
+
 async fn read_loop(
     read: &mut (impl AsyncReadExt + Unpin),
-    writer: &mpsc::UnboundedSender<Vec<u8>>,
+    writer: &mpsc::UnboundedSender<Outgoing>,
     pending: &Mutex<HashMap<String, oneshot::Sender<Value>>>,
     subscribers: &Subscribers,
     claim: Option<&Claim>,
@@ -358,14 +384,18 @@ async fn read_loop(
             // Skip without buffering; a huge state must not take this process with it.
             tokio::io::copy(&mut read.take(length as u64), &mut tokio::io::sink()).await?;
             for subscriber in subscribers.lock().unwrap().values() {
-                let _ = subscriber.send(StateEvent::TooLarge);
+                let _ = subscriber.events.send(StateEvent::TooLarge);
             }
             continue;
         }
         let mut body = vec![0_u8; length];
         read.read_exact(&mut body).await?;
+        if route_state_frame(&body,subscribers){continue;}
         let Ok(message) = serde_json::from_slice::<Value>(&body) else { continue };
         drop(body);
+        if message["type"]=="broadcast"&&message["method"]=="ipc-connection-reset"{
+            return Err(std::io::ErrorKind::ConnectionReset.into());
+        }
         match message["type"].as_str() {
             Some("response") => {
                 let sender = message["requestId"].as_str().and_then(|id| pending.lock().unwrap().remove(id));
@@ -376,7 +406,7 @@ async fn read_loop(
             Some("client-discovery-request") => {
                 // Silence would stall the router for ten seconds.
                 let can_handle = claim.is_some_and(|claim| claim.handles(&message["request"]));
-                let _ = writer.send(encode(&json!({"type":"client-discovery-response","requestId":message["requestId"],"response":{"canHandle":can_handle}})));
+                let _ = writer.send(encode(&json!({"type":"client-discovery-response","requestId":message["requestId"],"response":{"canHandle":can_handle}})).into());
             }
             Some("request") => {
                 if let Some(claim) = claim.filter(|claim| claim.handles(&message)) {
@@ -410,19 +440,64 @@ fn dispatch_to_owner(message: &Value, claim: &Claim) {
     }
 }
 
-fn dispatch_broadcast(mut message: Value, subscribers: &Subscribers) {
-    let method = message["method"].as_str().unwrap_or_default().to_owned();
-    if !matches!(method.as_str(), "thread-stream-state-changed" | "thread-stream-following-status-requested") {
+/// Deserialize only observed fields. In particular no turn/image/tool history
+/// is materialized or retained merely to observe status and native decisions.
+fn route_state_frame(body:&[u8],subscribers:&Subscribers)->bool{
+    use super::follower_state::{Envelope,Packet,Update};
+    let Ok(frame)=serde_json::from_slice::<Envelope<'_>>(body)else{return false};
+    if frame.kind!="broadcast"||frame.method!=Some("thread-stream-state-changed"){return false;}
+    let Some(raw)=frame.params else{return true};let Ok(packet)=serde_json::from_str::<Packet<'_>>(raw.get())else{return true};
+    if packet.host.is_some_and(|host|host!=LOCAL_HOST){return true;}
+    let mut subscriptions=subscribers.lock().unwrap();let Some(subscriber)=subscriptions.get_mut(packet.thread)else{return true};
+    if frame.source!=Some(subscriber.owner.as_str()){return true;}
+    let event=match subscriber.mirror.ingest(packet.change){Update::State(state)=>StateEvent::Snapshot(state),Update::Resync=>StateEvent::Resync,Update::Quiet=>return true};
+    let _=subscriber.events.send(event);true
+}
+
+fn dispatch_broadcast(message: Value, subscribers: &Subscribers) {
+    if message["method"]=="client-status-changed"&&message.pointer("/params/status").and_then(Value::as_str)!=Some("connected"){
+        if let Some(client)=message.pointer("/params/clientId").and_then(Value::as_str){
+            for sub in subscribers.lock().unwrap().values().filter(|sub|sub.owner==client){let _=sub.events.send(StateEvent::Disconnected);}
+        }
         return;
     }
-    let Some(thread) = message.pointer("/params/conversationId").and_then(Value::as_str).map(str::to_owned) else { return };
-    let subscribers = subscribers.lock().unwrap();
-    let Some(subscriber) = subscribers.get(&thread) else { return };
-    let is_snapshot = method == "thread-stream-state-changed" && message.pointer("/params/change/type").and_then(Value::as_str) == Some("snapshot");
-    let event = if is_snapshot {
-        StateEvent::Snapshot(message.pointer_mut("/params/change/conversationState").map(Value::take).unwrap_or(Value::Null))
-    } else {
-        StateEvent::Changed
-    };
-    let _ = subscriber.send(event);
+    if message["method"]!="thread-stream-following-status-requested"{return;}
+    let Some(thread)=message.pointer("/params/conversationId").and_then(Value::as_str)else{return};
+    let subscriptions=subscribers.lock().unwrap();let Some(subscriber)=subscriptions.get(thread)else{return};
+    if message["sourceClientId"].as_str()!=Some(subscriber.owner.as_str()){return;}
+    let _=subscriber.events.send(StateEvent::Resync);
+}
+
+#[cfg(test)]mod backpressure_tests{
+ use super::*;
+ async fn read_frame(server:&mut tokio::io::DuplexStream)->Value{let len=server.read_u32_le().await.unwrap();let mut bytes=vec![0;len as usize];server.read_exact(&mut bytes).await.unwrap();serde_json::from_slice(&bytes).unwrap()}
+ #[tokio::test]async fn stalled_state_write_keeps_one_frame_and_does_not_close_the_control_connection(){
+  // A bounded duplex gives deterministic backpressure; Windows pipe buffering
+  // may accept a whole frame before its application reads it.
+  let(mut client,mut server)=tokio::io::duplex(1024);let(writer,outgoing)=mpsc::unbounded_channel();
+  let writing=tokio::spawn(async move{write_loop(&mut client,outgoing).await;});
+  let c=Arc::new(Connection{writer,pending:Arc::default(),subscribers:Arc::default(),client_id:"fixture".into(),closed:Arc::new(AtomicBool::new(false)),tasks:Mutex::new(vec![writing.abort_handle()]),writes_allowed:true,owner_allowed:true,state_pending:Arc::new(AtomicBool::new(false))});
+  let(release,wait)=oneshot::channel();let(count,received)=oneshot::channel();
+  let peer=tokio::spawn(async move{wait.await.unwrap();let a=read_frame(&mut server).await;assert_eq!(a["method"],"thread-stream-state-changed");let _=count.send(());let b=read_frame(&mut server).await;assert_eq!(b["params"]["value"],"after");});
+  let copy=c.clone();let sending=tokio::spawn(async move{copy.broadcast_state(vec!["reader".into()],json!({"value":"x".repeat(4*1024*1024)})).await});
+  tokio::time::timeout(Duration::from_secs(5),async{while !c.state_write_busy(){assert!(!sending.is_finished());tokio::time::sleep(Duration::from_millis(1)).await;}}).await.unwrap();
+  assert_eq!(c.broadcast_state(vec!["reader".into()],json!({"value":"must-not-queue"})).await,0);
+  assert_eq!(sending.await.unwrap(),0);assert!(c.state_write_busy());assert!(!c.is_closed(),"a slow view must not cancel provider/control requests");
+  release.send(()).unwrap();received.await.unwrap();tokio::time::timeout(Duration::from_secs(2),async{while c.state_write_busy(){tokio::task::yield_now().await;}}).await.unwrap();
+  assert!(c.broadcast_state(vec!["reader".into()],json!({"value":"after"})).await>0);peer.await.unwrap();c.close();
+ }
+ #[test]fn releasing_an_old_write_cannot_clear_a_new_writes_slot(){
+  let pending=Arc::new(AtomicBool::new(true));let mut old=StateWrite{done:None,pending:pending.clone(),released:false};old.release();pending.store(true,Ordering::SeqCst);drop(old);assert!(pending.load(Ordering::SeqCst));
+ }
+}
+
+#[cfg(test)]mod projection_tests{
+ use super::*;
+ #[test]fn only_the_discovered_owner_can_update_the_metadata_projection(){
+  let subscribers:Subscribers=Arc::default();let(tx,mut rx)=mpsc::unbounded_channel();subscribers.lock().unwrap().insert("t".into(),Subscriber{events:tx,owner:"owner".into(),mirror:Default::default()});
+  let mut frame=json!({"type":"broadcast","method":"thread-stream-state-changed","sourceClientId":"foreign","params":{"conversationId":"t","hostId":"local","change":{"type":"snapshot","revision":1,"conversationState":{"threadRuntimeStatus":{"type":"active"},"requests":[],"history":"x".repeat(1024*1024)}}}});
+  assert!(route_state_frame(frame.to_string().as_bytes(),&subscribers));assert!(rx.try_recv().is_err());
+  frame["sourceClientId"]=json!("owner");assert!(route_state_frame(frame.to_string().as_bytes(),&subscribers));let StateEvent::Snapshot(state)=rx.try_recv().unwrap()else{panic!()};assert!(state.to_string().len()<200);assert!(state.get("history").is_none());
+  dispatch_broadcast(json!({"method":"client-status-changed","params":{"status":"disconnected","clientId":"owner"}}),&subscribers);assert!(matches!(rx.try_recv(),Ok(StateEvent::Disconnected)));
+ }
 }

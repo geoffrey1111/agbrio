@@ -413,3 +413,55 @@ fn owner_reply_before_first_plugin_registration_waits_and_delivers_once(){
  let sid=uuid::Uuid::new_v4().to_string();let pair=core.store.create_claude_connection().unwrap();ingest(&core,&pair.token,&event(temp.path(),&sid,"SESSION_START",1)).unwrap();record_plugin_version(&sid,"0.1.2");
  assert_eq!(connect_admin(&core,&host,temp.path(),&admin,&cache).unwrap().phase,"WAITING_SESSION");assert!(admin.calls.lock().unwrap().iter().any(|args|args.get(1).map(String::as_str)==Some("update")));host.shutdown(&core);
 }
+
+#[test]
+fn explicit_connection_renews_expired_same_host_and_preserves_existing_managed_subscription(){
+ let temp=tempfile::tempdir().unwrap();let(core,host,cache,admin)=connection_fixture(&temp);
+ let old=core.store.create_claude_connection().unwrap();
+ let origin=format!("http://{}",host.mobile_address().unwrap());
+ for id in ["agbrio-bridge@agbrio-observation","agbrio-bridge@inline"] {
+  admin.configured.lock().unwrap().insert(id.into(),(origin.clone(),old.token.clone()));
+ }
+ let sid=uuid::Uuid::new_v4().to_string();let mut publisher=event(temp.path(),&sid,"SESSION_START",1);
+ ingest(&core,&old.token,&publisher).unwrap();
+ let source=uuid::Uuid::new_v4().to_string();
+ core.store.enable_codex_watch(&source,"Executor",&publisher.cwd,&router_core::store::codex_watch::WatchSnapshot{
+  state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()
+ }).unwrap();
+ let change=|value|core.store.change_management_zone(&serde_json::from_value(value).unwrap()).unwrap();
+ let area=change(serde_json::json!({"action":"CREATE","requestId":uuid::Uuid::new_v4(),"name":"Fixture","managerId":format!("claude_code:{sid}")}));
+ change(serde_json::json!({"action":"ADD","requestId":uuid::Uuid::new_v4(),"zoneId":area["zoneId"],"revision":1,"threadId":source,"generation":1}));
+ let before=core.store.management_zones().unwrap()["zones"].clone();
+ let original=before[0]["members"][0]["subscriptions"][0]["id"].clone();
+ assert_eq!(core.store.claude_connection_policy().unwrap()["days"],365);
+ assert!(core.store.set_claude_connection_days(9999).is_err());
+ core.store.set_claude_connection_days(730).unwrap();
+ assert_eq!(core.store.claude_connection_policy().unwrap()["latestExpiresAt"],old.expires_at);
+ let db=rusqlite::Connection::open(temp.path().join("router.db")).unwrap();
+ db.execute("UPDATE claude_connections SET expires_at=0 WHERE id=?1",[&old.connection_id]).unwrap();
+ drop(db);
+ let request=|instance:&str|serde_json::from_value(serde_json::json!({
+  "sessionId":sid,"instanceId":instance,"cwd":publisher.cwd,"action":"REGISTER","threadId":source,"generation":1,"followTask":true
+ })).unwrap();
+ assert_eq!(crate::codex_notices::register(&core,&old.token,&request(&publisher.instance_id)).unwrap_err(),"CLAUDE_CONNECTION_UNAUTHORIZED");
+ assert_eq!(connect_admin(&core,&host,temp.path(),&admin,&cache).unwrap().phase,"WAITING_SESSION");
+ let new_token=admin.configured.lock().unwrap()["agbrio-bridge@inline"].1.clone();
+ assert_ne!(new_token,old.token);
+ assert_eq!(core.store.claude_connections().unwrap().len(),2);
+ let remaining=core.store.claude_connections().unwrap()[0].expires_at-crate::local_safety::now();
+ assert!((730*86_400_000-60_000..=730*86_400_000).contains(&remaining));
+ let request_before_reload=request(&publisher.instance_id);
+ assert!(crate::codex_notices::register(&core,&new_token,&request_before_reload).is_err());
+ publisher.event_id=uuid::Uuid::new_v4().to_string();
+ publisher.instance_id=uuid::Uuid::new_v4().to_string();
+ ingest(&core,&new_token,&publisher).unwrap();
+ let result=crate::codex_notices::register(&core,&new_token,&request(&publisher.instance_id)).unwrap();
+ assert_eq!(result["subscription"]["id"],original);
+ assert_eq!(result["alreadyRegistered"],true);
+ let after=core.store.management_zones().unwrap()["zones"].clone();
+ assert_eq!(after[0]["revision"],before[0]["revision"]);
+ assert_eq!(after[0]["members"][0]["subscriptions"],before[0]["members"][0]["subscriptions"]);
+ assert_eq!(connect_admin(&core,&host,temp.path(),&admin,&cache).unwrap().phase,"WAITING_SESSION");
+ assert_eq!(core.store.claude_connections().unwrap().len(),2);
+ host.shutdown(&core);
+}

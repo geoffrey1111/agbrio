@@ -6,12 +6,27 @@ import {readModels} from './readModelCache';
 const event='agbrio-attention-dismissed';
 const memory=new Map<string,string[]>();
 const storageKey=()=>`agbrio.dismissed-attention.v1:${readModels.presentationScope()??'unscoped'}`;
+// Older receipts included projection timestamps. Keep them valid for the exact
+// same Claude transcript row even if a later refresh fills in those timestamps.
+function normalizeSavedKey(id:string){
+ if(!id.startsWith('["failure","claude_code:'))return id;
+ try{
+  const parts=JSON.parse(id);
+  if(parts.length===8&&parts[3]==='FAILED'&&parts[4]&&parts[5])return JSON.stringify(parts.slice(0,6));
+ }catch{}
+ return id;
+}
 function read(key:string){
- try{const value=JSON.parse(localStorage.getItem(key)??'null');if(Array.isArray(value))return value.filter((v):v is string=>typeof v==='string'&&v.length<1500).slice(-256);}catch{}
+ try{const value=JSON.parse(localStorage.getItem(key)??'null');if(Array.isArray(value))return value.filter((v):v is string=>typeof v==='string'&&v.length<1500).slice(-256).map(normalizeSavedKey);}catch{}
  return memory.get(key)??[];
 }
 export function dismissAttention(id:string){const key=storageKey();const rows=[...read(key).filter(v=>v!==id),id].slice(-256);memory.set(key,rows);if(readModels.presentationScope())try{localStorage.setItem(key,JSON.stringify(rows));}catch{}window.dispatchEvent(new Event(event));}
 export function useDismissedAttention(){const [,rerender]=useState(0);useEffect(()=>{const update=()=>rerender(n=>n+1);window.addEventListener(event,update);window.addEventListener('storage',update);return()=>{window.removeEventListener(event,update);window.removeEventListener('storage',update);};},[]);const rows=read(storageKey());return (id:string)=>rows.includes(id);}
 export const replyAttentionKey=(threadId:string,id:string)=>JSON.stringify(['reply',threadId,id]);
 export const decisionAttentionKey=(threadId:string,childId:string|undefined,id:string,revision:number)=>JSON.stringify(['decision',threadId,childId??null,id,revision]);
-export function failedAttentionKey(w:{threadId:string;generation:number;lastMessageAt?:number|null;changedAt?:number|null;snapshot:{state:string;turnId:string|null;itemId:string|null}}){return JSON.stringify(['failure',w.threadId,w.generation,w.snapshot.state,w.snapshot.turnId,w.snapshot.itemId,w.lastMessageAt??null,w.changedAt??null]);}
+export function failedAttentionKey(w:{threadId:string;generation:number;lastMessageAt?:number|null;changedAt?:number|null;snapshot:{state:string;turnId:string|null;itemId:string|null}}){
+ const {state,turnId,itemId}=w.snapshot;
+ const identity=['failure',w.threadId,w.generation,state,turnId,itemId];
+ if(w.threadId.startsWith('claude_code:')&&state==='FAILED'&&turnId&&itemId)return JSON.stringify(identity);
+ return JSON.stringify([...identity,w.lastMessageAt??null,w.changedAt??null]);
+}

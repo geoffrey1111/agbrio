@@ -22,7 +22,7 @@ const THREAD: &str = "11111111-1111-4111-8111-111111111111";
 
 /// Answers like Codex for the few methods the routing needs, and logs every call.
 const BACKEND_SCRIPT: &str = r#"
-const fs=require('fs');const log=process.argv[2];const rollout=process.argv[3];let reads=0;const loaded=new Set(['new-thread']);
+const fs=require('fs');const log=process.argv[2];const rollout=process.argv[3];const cwd=fs.existsSync(rollout+'.cwd')?fs.readFileSync(rollout+'.cwd','utf8'):'C:/project';let reads=0;const loaded=new Set(['new-thread']);
 require('readline').createInterface({input:process.stdin}).on('line',line=>{
  const m=JSON.parse(line);if(m.id===9&&m.result){fs.appendFileSync(log,'answer:'+m.result.decision+'\n');return process.stdout.write(JSON.stringify({method:'serverRequest/resolved',params:{threadId:'asks',requestId:9}})+'\n');}if(m.id===undefined)return;fs.appendFileSync(log,m.method+'\n');
  const reply=result=>process.stdout.write(JSON.stringify({id:m.id,result})+'\n');
@@ -31,11 +31,11 @@ require('readline').createInterface({input:process.stdin}).on('line',line=>{
  if(m.method==='thread/read'&&m.params.threadId==='materializing'&&reads++<2)return process.stdout.write(JSON.stringify({id:m.id,error:{code:-32603,message:'failed to read thread: thread-store internal error: failed to read session metadata x: rollout at x is empty'}})+'\n');
  if(m.method==='thread/read'&&m.params.threadId==='never-written')return process.stdout.write(JSON.stringify({id:m.id,error:{code:-32603,message:'failed to read thread: rollout at x is empty'}})+'\n');
  if(m.method==='thread/read'&&m.params.threadId==='other-error')return process.stdout.write(JSON.stringify({id:m.id,error:{code:-32600,message:'no rollout found'}})+'\n');
- if(m.method==='thread/read')return reply({thread:{id:m.params.threadId,cwd:'C:/project',path:rollout,status:{type:'notLoaded'},read:++reads}});
+ if(m.method==='thread/read')return reply({thread:{id:m.params.threadId,cwd,path:rollout,status:{type:'notLoaded'},read:++reads}});
  if(m.method==='thread/turns/list')return reply({data:[{id:'running-turn',status:'interrupted'}],nextCursor:null});
- if(m.method==='thread/start')return reply({thread:{id:'new-thread',cwd:'C:/project',path:rollout}});
+ if(m.method==='thread/start')return reply({thread:{id:'new-thread',cwd,path:rollout}});
  if(m.method==='thread/resume'&&m.params.threadId==='gone')return process.stdout.write(JSON.stringify({id:m.id,error:{code:-32600,message:'no rollout found'}})+'\n');
- if(m.method==='thread/resume'){loaded.add(m.params.threadId);return reply({thread:{id:m.params.threadId,cwd:'C:/project',path:rollout}});}
+ if(m.method==='thread/resume'){loaded.add(m.params.threadId);return reply({thread:{id:m.params.threadId,cwd,path:rollout}});}
  if(m.method==='turn/start'&&!loaded.has(m.params.threadId))return process.stdout.write(JSON.stringify({id:m.id,error:{code:-32600,message:'thread not found: '+m.params.threadId}})+'\n');
  if(m.method==='turn/start'&&m.params.threadId==='asks'){reply({turn:{id:'backend-turn',status:'inProgress'}});return process.stdout.write(JSON.stringify({id:9,method:'item/commandExecution/requestApproval',params:{threadId:'asks',turnId:'backend-turn',itemId:'item'}})+'\n');}
  if(m.method==='turn/start'&&m.params.threadId==='finishes'){reply({turn:{id:'backend-turn',status:'inProgress'}});return process.stdout.write(JSON.stringify({method:'turn/completed',params:{threadId:'finishes',turn:{id:'backend-turn',status:'completed'}}})+'\n');}
@@ -59,6 +59,7 @@ struct DesktopScript {
     state: Option<Value>,
     interrupted_turn: Option<String>,
     close_on_write: bool,
+    patch_stream: bool,
 }
 
 async fn fake_desktop(pipe: String, script: DesktopScript, log: Arc<Mutex<Vec<Value>>>) {
@@ -93,6 +94,10 @@ async fn fake_desktop(pipe: String, script: DesktopScript, log: Arc<Mutex<Vec<Va
                             if message.pointer("/params/following") == Some(&json!(true)) {
                                 if let Some(state) = &script.state {
                                     frames.push(json!({"type":"broadcast","method":"thread-stream-state-changed","sourceClientId":"owner-1","version":11,"params":{"conversationId":THREAD,"hostId":"local","change":{"type":"snapshot","revision":1,"conversationState":state}}}));
+                                    if script.patch_stream{
+                                        for revision in 2..=101{frames.push(json!({"type":"broadcast","method":"thread-stream-state-changed","sourceClientId":"owner-1","version":11,"params":{"conversationId":THREAD,"hostId":"local","change":{"type":"patches","baseRevision":revision-1,"revision":revision,"patches":[{"op":"replace","path":["turnHistory","history","entitiesByKey","turn:live","items",0,"text"],"value":"streaming output"}]}}}));}
+                                        frames.push(json!({"type":"broadcast","method":"thread-stream-state-changed","sourceClientId":"owner-1","version":11,"params":{"conversationId":THREAD,"hostId":"local","change":{"type":"patches","baseRevision":101,"revision":102,"patches":[{"op":"add","path":["requests",0],"value":{"id":42,"method":"item/commandExecution/requestApproval","params":{"threadId":THREAD,"turnId":"live"}}}]}}}));
+                                    }
                                 }
                             }
                         }
@@ -579,4 +584,38 @@ async fn resuming_a_running_thread_does_not_forget_its_turn() {
     t.hub.reap().await;
     t.call("account/read", json!({})).await.unwrap();
     assert_eq!(t.backend_calls("initialize"), 1, "the turn is still running, so the backend must stay");
+}
+
+#[tokio::test]
+async fn native_rename_overlays_cached_metadata_without_replaying_history(){
+ let t=harness(DesktopScript::default(),validated_versions()).await;
+ let root=t.home.path().to_str().unwrap();std::fs::write(format!("{}.cwd",t.rollout.display()),root).unwrap();
+ let db=rusqlite::Connection::open(t.home.path().join("state_5.sqlite")).unwrap();db.execute_batch("CREATE TABLE threads(id TEXT PRIMARY KEY,cwd TEXT,title TEXT,name TEXT)").unwrap();db.execute("INSERT INTO threads VALUES(?1,?2,'Preview','Before')",rusqlite::params![THREAD,root]).unwrap();
+ assert_eq!(t.call("thread/read",READ()).await.unwrap()["result"]["thread"]["name"],"Before");
+ db.execute_batch("UPDATE threads SET name='After'").unwrap();
+ assert_eq!(t.call("thread/read",READ()).await.unwrap()["result"]["thread"]["name"],"After");assert_eq!(t.backend_calls("thread/read"),1);
+}
+
+#[tokio::test]
+async fn streaming_desktop_patches_and_periodic_checks_do_not_request_full_snapshots_again(){
+ let state=json!({"threadRuntimeStatus":{"type":"active","activeFlags":[]},"requests":[],"turnHistory":{"huge":"x".repeat(2*1024*1024)}});
+ let mut t=harness(DesktopScript{owns:true,state:Some(state),patch_stream:true,..Default::default()},validated_versions()).await;
+ t.call("thread/resume",json!({"threadId":THREAD,"excludeTurns":true})).await.unwrap();
+ let question=t.next_where(|m|m["method"]=="item/commandExecution/requestApproval").await;
+ assert!(question["id"].as_str().unwrap().contains("42"));assert_eq!(question["params"]["turnId"],"live");
+ // Cross the active refresh timeout: the previous implementation re-followed
+ // at this point even without a metadata change, causing another full history.
+ tokio::time::sleep(Duration::from_millis(5500)).await;
+ assert_eq!(t.pipe_calls("thread-stream-following-changed").iter().filter(|m|m["params"]["following"]==true).count(),1);
+ assert!(t.pipe_log.lock().unwrap().iter().all(|m|!m["method"].as_str().unwrap_or_default().starts_with("thread-follower-")),"observation never writes a provider request");
+}
+
+#[tokio::test]
+async fn observer_stops_following_when_this_backend_becomes_the_owner(){
+ let mut t=harness(DesktopScript{owns:true,state:Some(json!({"threadRuntimeStatus":{"type":"active"},"requests":[]})),..Default::default()},validated_versions()).await;
+ t.call("thread/resume",json!({"threadId":THREAD,"excludeTurns":true})).await.unwrap();
+ t.next_where(|m|m["method"]=="thread/status/changed"&&m["params"]["status"]["type"]=="active").await;
+ let state=super::owner_state::OwnerState::from_reply(&json!({"thread":{"id":THREAD},"model":"fixture"})).unwrap();t.hub.owners().add(THREAD,state,super::backend::PinKind::Created).unwrap();
+ tokio::time::sleep(Duration::from_millis(5500)).await;
+ let calls=t.pipe_calls("thread-stream-following-changed");assert_eq!(calls.iter().filter(|m|m["params"]["following"]==true).count(),1);assert_eq!(calls.iter().filter(|m|m["params"]["following"]==false).count(),1,"the direct backend route replaces, rather than duplicates, the old follower route");
 }

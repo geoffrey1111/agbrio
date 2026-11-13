@@ -45,6 +45,9 @@ html .management-page .mz-zones .v6-badge{display:none}
 .mz-status[data-tier=ATTENTION]{color:var(--v7-accent-ink);font-weight:600}.mz-status[data-tier=ATTENTION]>i{background:var(--v7-accent)}
 
 /* ---------- stage + inspector ---------- */
+.management-page .mz-inactive-toggle{justify-content:flex-start;padding-inline:6px;margin-bottom:4px;color:var(--v7-ink-2);font-size:var(--v7-fs-row)}
+.management-page .mz-inactive-toggle:hover{background:var(--v7-bg-sunken)}
+.mz-inactive-toggle[aria-expanded=true]>svg{transform:rotate(180deg)}
 .mz-stage{position:relative;display:grid;grid-template-columns:minmax(0,1fr);gap:20px;align-items:start}
 .mz-inspector{position:absolute;right:0;top:0;z-index:5;width:300px;padding:20px;background:var(--v7-surface);border-radius:var(--v7-r-card);box-shadow:var(--v7-pop);display:flex;flex-direction:column;gap:14px}
 .mz-inspector-head{display:flex;gap:12px;align-items:flex-start}
@@ -170,7 +173,7 @@ html .management-page .management-legacy .v6-avatar{width:32px;height:32px}
 .mz-editor-source small{font-size:var(--v7-fs-meta);color:var(--v7-muted)}
 .mz-editor-note{font-size:var(--v7-fs-2);color:var(--v7-ink-2);margin:16px 0 0}
 .management-field{display:flex;flex-direction:column;gap:8px;margin:16px 0 0;font-weight:500}
-.management-field input,.management-search input{min-width:0;width:100%;padding:12px;border:0;border-radius:var(--v7-r-ctl);background:var(--v7-bg-sunken);color:var(--v7-ink)}
+.management-field input,.management-field select,.management-search input{min-width:0;width:100%;padding:12px;border:0;border-radius:var(--v7-r-ctl);background:var(--v7-bg-sunken);color:var(--v7-ink)}
 .management-search{display:flex;gap:4px;align-items:center;background:var(--v7-bg-sunken);border-radius:var(--v7-r-ctl);padding-left:12px;color:var(--v7-muted)}
 .management-search input{padding-left:4px}
 .management-picker,.mz-targets{max-height:300px;overflow:auto;margin:8px -4px 0;padding:0 4px;scrollbar-gutter:stable;display:flex;flex-direction:column;gap:2px}
@@ -215,7 +218,7 @@ html .management-page .management-legacy .v6-avatar{width:32px;height:32px}
  .mz-map-center .mz-manager strong{font-size:13px}
  html .management-page .mz-map-center .mz-manager .v6-avatar{width:44px;height:44px}
  .management-page button.mz-map-add{bottom:-56px}
- .management-field input,.management-search input{font-size:16px}
+ .management-field input,.management-field select,.management-search input{font-size:16px}
  .mz-dialog{left:0;right:0;bottom:0;top:auto;transform:none;width:auto;max-height:88dvh;border-radius:20px 20px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom,0px))}
  .management-editor footer>button{flex:1}
 }

@@ -80,8 +80,33 @@ fn session_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Session> {
     let reply: Option<String> = r.get(9)?;
     Ok(Session { title: None, session_id: r.get(0)?, instance_id: r.get(1)?, cwd: r.get(2)?, version: r.get(3)?, state: r.get(4)?, turn_id: r.get(5)?, checked_at: r.get(6)?, lease_until: r.get(7)?, latest_reply: reply.map(|v| serde_json::from_str(&v)).transpose().map_err(|e| rusqlite::Error::FromSqlConversionFailure(9, rusqlite::types::Type::Text, Box::new(e)))? })
 }
+const DEFAULT_CLAUDE_TTL_DAYS: i64 = 365;
+const CLAUDE_TTL_OPTIONS: [i64; 5] = [30, 90, 180, 365, 730];
+fn claude_ttl_days(c: &Connection) -> Result<i64, String> {
+    Ok(c.query_row("SELECT duration_days FROM claude_connection_policy WHERE singleton=1",[],|r|r.get::<_,i64>(0)).optional().map_err(db_error)?.unwrap_or(DEFAULT_CLAUDE_TTL_DAYS))
+}
 const SESSION_FIELDS: &str = "session_id,instance_id,cwd,version,state,turn_id,checked_at,lease_until,sequence,latest_reply";
 impl RouterStore {
+    pub fn claude_connection_policy(&self)->Result<Value,String>{
+        self.with_connection(|c|{
+            let latest: Option<i64> = c.query_row(
+                "SELECT MAX(expires_at) FROM claude_connections WHERE revoked_at IS NULL",
+                [],|r|r.get(0)).map_err(db_error)?;
+            Ok(serde_json::json!({"days":claude_ttl_days(c)?,"options":CLAUDE_TTL_OPTIONS,"latestExpiresAt":latest}))
+        })
+    }
+    pub fn set_claude_connection_days(&self,days:i64)->Result<(),String>{
+        if !CLAUDE_TTL_OPTIONS.contains(&days){return Err("CLAUDE_CONNECTION_DURATION_INVALID".into());}
+        self.with_connection(|c|{c.execute("INSERT INTO claude_connection_policy(singleton,duration_days) VALUES(1,?1) ON CONFLICT(singleton) DO UPDATE SET duration_days=excluded.duration_days",[days]).map_err(db_error)?;Ok(())})
+    }
+    /// Only the explicit owner connect action uses this. Never renew a valid
+    /// connection, or infer expired authorization from a missing publisher.
+    pub fn claude_connection_needs_renewal(&self)->Result<bool,String>{
+        self.with_connection(|c|c.query_row(
+            "SELECT EXISTS(SELECT 1 FROM claude_connections WHERE revoked_at IS NULL AND expires_at<=?1)
+             AND NOT EXISTS(SELECT 1 FROM claude_connections WHERE revoked_at IS NULL AND expires_at>?1)",
+            [now()],|r|r.get(0)).map_err(db_error))
+    }
     pub fn claude_connections(&self)->Result<Vec<ConnectionSummary>,String>{
         self.with_connection(|c|{
             let mut s=c.prepare("SELECT a.id,a.expires_at,a.revoked_at IS NOT NULL,(SELECT count(*) FROM claude_sessions s WHERE s.connection_id=a.id) FROM claude_connections a ORDER BY a.expires_at DESC,a.id LIMIT 100").map_err(db_error)?;
@@ -92,8 +117,12 @@ impl RouterStore {
     /// Only an explicit native setup action creates this limited adapter credential.
     pub fn create_claude_connection(&self) -> Result<Pairing, String> {
         let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
-        let connection_id = id(); let expires_at = now() + 30 * 24 * 3600 * 1000;
-        self.with_connection(|c| { c.execute("INSERT INTO claude_connections(id,token_hash,expires_at) VALUES(?1,?2,?3)", params![connection_id,format!("{:x}",Sha256::digest(token.as_bytes())),expires_at]).map_err(db_error)?; Ok(Pairing {connection_id, token, expires_at,writes_enabled:false}) })
+        let connection_id = id();
+        self.with_connection(|c| {
+            let expires_at = now() + claude_ttl_days(c)? * 86_400_000;
+            c.execute("INSERT INTO claude_connections(id,token_hash,expires_at) VALUES(?1,?2,?3)", params![connection_id,format!("{:x}",Sha256::digest(token.as_bytes())),expires_at]).map_err(db_error)?;
+            Ok(Pairing {connection_id, token, expires_at,writes_enabled:false})
+        })
     }
     pub fn revoke_claude_connection(&self, connection: &str) -> Result<(), String> {
         self.with_connection(|c| { c.execute("UPDATE claude_connections SET revoked_at=?2 WHERE id=?1",params![connection,now()]).map_err(db_error)?; Ok(()) })

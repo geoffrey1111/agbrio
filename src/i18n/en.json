@@ -1613,6 +1613,13 @@
   "查看要发给 Claude 的检查内容": "Preview the check you will send to Claude",
   "复制名称": "Copy name",
   "Claude Code 插件": "Claude Code plugin",
+  "本机插件授权有效期": "Local plugin authorization duration",
+  "{0} 天": "{0} days",
+  "尚无本机插件授权": "No local plugin authorization yet",
+  "最近的授权已于 {0} 到期": "Latest authorization expired on {0}",
+  "最近的授权到期时间：{0}": "Latest authorization expires on {0}",
+  "更改有效期会自动保存，下次连接签发新凭据时生效。": "Changes are saved automatically and apply when a new credential is issued.",
+  "重新连接 Claude Code 插件": "Reconnect Claude Code plugin",
   "安装 Claude Code 插件": "Install Claude Code plugin",
   "MCP 负责读取和派发；本机插件负责通知和手机回复。MCP 已连好时，保留原连接，只补装插件即可。": "MCP handles reading and task dispatch; the local plugin handles notices and phone replies. Keep your working MCP connection and install only the missing plugin.",
   "打开 Claude 桌面版的 Code 管理对话": "Open your manager chat in Claude Desktop Code",
@@ -1789,6 +1796,8 @@
   "已有订阅发生变化，请刷新后重新接管。": "Subscriptions changed. Refresh before adopting them.",
   "已经打开的 Code 对话可能仍在使用旧工具列表。请在原对话通过 /mcp 重新连接；找不到入口时，保存任务后重新打开原会话，不必删除对话或重新安装插件。随后执行下方只读验证。": "An open Code conversation may retain its old tool list. Reconnect Agbrio with /mcp in that conversation. If unavailable, save your work and reopen the same conversation, then run the read-only check below. No conversation deletion or plugin reinstall is needed.",
   "当前任务继续运行。后续提问和结果将交给目标管理区，不需要手动重新订阅。": "The task keeps running. Future questions and results go to the destination area automatically.",
+  "显示 {0} 条不活跃对话": "Show inactive conversations ({0})",
+  "收起 {0} 条不活跃对话": "Hide inactive conversations ({0})",
   "执行对话": "Executor",
   "把执行对话加入这里，提问与结果交给本区管理对话。": "Add executors here to send their questions and results to this manager.",
   "按业务线分工。每条执行对话只归属一个管理区，换负责人和转移都在这里完成。": "Organize work by area. Each executor belongs to one area; change managers or transfer executors here.",
@@ -1897,5 +1906,7 @@
   "旧的共享后台还没有关闭，完成后再继续。": "The old shared backend has not stopped yet. Continue when it has.",
   "旧的共享后台未关闭": "Old shared backend still running",
   "请在 Codex 里管理目标。": "Manage Goals in Codex.",
-  "手机或管理对话发出的任务会直接出现在 Codex 里，可以打开查看并继续发消息。任务运行期间不要退出 Agbrio。": "Tasks sent from your phone or a managing conversation appear in Codex, where you can open them and keep sending messages. Keep Agbrio open while they run."
+  "手机或管理对话发出的任务会直接出现在 Codex 里，可以打开查看并继续发消息。任务运行期间不要退出 Agbrio。": "Tasks sent from your phone or a managing conversation appear in Codex, where you can open them and keep sending messages. Keep Agbrio open while they run.",
+  "删除管理区并移出全部执行对话，取消本区通知订阅。原对话和正在运行的任务保留。": "Delete this area, remove all its executors and cancel its notification subscriptions. Original conversations and running tasks remain.",
+  "将这些执行对话并入所选管理区，保留原身份和进度，不会重发任务。": "Add these executors to the selected area. Identities and progress remain; tasks are not resent."
 }

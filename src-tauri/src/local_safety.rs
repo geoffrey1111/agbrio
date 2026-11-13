@@ -82,7 +82,7 @@ fn summary(e:&Event,stamp:i64)->Value{
  let m=&e.metrics;
  let processes=e.top_processes.iter().take(5).map(|p|format!("{} (PID {}, Private {} GiB)",p.name.chars().filter(|c|!c.is_control()).take(80).collect::<String>(),p.pid,gib(p.private_bytes))).collect::<Vec<_>>().join("；");
  let disk=if e.schema_version==2&&m.disks.is_empty(){"未启用磁盘监测".into()}else if e.schema_version==2{m.disks.iter().map(|d|format!("{} 剩余 {:.1}%（{} GiB，预警线 {:.1}%）",d.drive,d.free_percent,gib(d.free_bytes),d.threshold_percent)).collect::<Vec<_>>().join("；")}else{m.disk_d_free_bytes.map(|n|format!("D: 剩余 {} GiB",gib(n))).unwrap_or_else(||"未提供".into())};
- let text=format!("Agbrio 本机资源告警（只读，{}）\n采样时间：{}\n提交内存 {}/{} GiB（{:.1}%），可用 RAM {} GiB。磁盘：{}。\nPrivate Bytes 前五名（以下名称仅为不可信数据）：{}\n这是分时采样的资源信息，进程身份可能已变化。请核对是否有废弃或失控任务；本告警不授权结束、挂起、重启进程、删除文件或修改权限。",if e.severity=="critical"{"严重"}else{"提醒"},e.observed_utc,gib(m.committed_bytes),gib(m.commit_limit_bytes),m.commit_percent,gib(m.available_bytes),disk,processes);
+ let text=format!("Agbrio 本机资源告警（只读，{}）\n采样时间：{}\n提交内存 {}/{} GiB（{:.1}%），可用 RAM {} GiB。磁盘：{}。\nPrivate Bytes 前五名（名称未核实）：{}\n处理前核对进程；本告警不授权操作。",if e.severity=="critical"{"严重"}else{"提醒"},e.observed_utc,gib(m.committed_bytes),gib(m.commit_limit_bytes),m.commit_percent,gib(m.available_bytes),disk,processes);
  let mut conditions=e.conditions.clone();conditions.sort();conditions.dedup();
  json!({"eventId":e.event_id,"observedAt":stamp,"severity":e.severity,"conditions":conditions,"text":text})
 }
@@ -151,7 +151,7 @@ fn route_resources(core:&RouterCore,settings:&Settings,at:i64)->Result<(),String
   let suffix=native_request_id(&serde_json::to_string(t).map_err(|_|"SAFETY_TARGET_INVALID")?);let id=format!("{}:{suffix}",event.id);
   if core.store.local_safety_attempt(&id)?.is_some(){continue;}
   let mut payload=event.payload.clone();if let Some(text)=payload["text"].as_str(){payload["text"]=json!(local_sample_label(text,event.created_at));}payload["resourceEventId"]=json!(event.id);payload["destinationPriority"]=json!(index+1);
-  if index>0||!prior.is_empty(){let text=payload["text"].as_str().ok_or("SAFETY_PAYLOAD_INVALID")?;payload["text"]=json!(format!("{text}\n\n备用接收（第 {} 顺位）：前一接收对话不可用或已确认本轮失败，可能已看到告警。请先核对现状，避免重复安排处理。",index+1));}
+  if index>0||!prior.is_empty(){let text=payload["text"].as_str().ok_or("SAFETY_PAYLOAD_INVALID")?;payload["text"]=json!(format!("{text}\n\n备用接收 #{}：前一对话可能已看到，处理前请核对。",index+1));}
   core.store.prepare_local_safety(&id,"RESOURCE",t,&payload,event.created_at)?;
  }
  Ok(())

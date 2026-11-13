@@ -16,6 +16,9 @@ pub struct Command{pub session_id:String,pub instance_id:String,pub cwd:String,p
 pub struct Question{pub request_id:String,pub turn_id:String,pub kind:String}
 #[derive(Clone,Serialize)]#[serde(rename_all="camelCase")]
 pub struct ClaimEvidence{pub delivery_channel:String,pub proof_nonce:Option<String>,pub released_at:Option<i64>}
+// Old notifications stay visible on demand, but do not wake up the receiver.
+pub(super) const NOTICE_MAX_AGE_MS:i64=10*60*1000;
+fn is_stale_notice(n:&Notice,at:i64)->bool{n.created_at<=at-NOTICE_MAX_AGE_MS}
 pub(super) fn subscription(r:&rusqlite::Row<'_>)->rusqlite::Result<Subscription>{Ok(Subscription{id:r.get(0)?,binding:Binding{receiver_sid:r.get(1)?,receiver_cwd:r.get(2)?,thread_id:r.get(3)?,generation:r.get(4)?,source_cwd:r.get(5)?,anchor_turn:r.get(6)?,mode:r.get(7)?,goal_key:r.get(8)?,expires_at:r.get(9)?},status:r.get(10)?,management_zone_id:r.get("management_zone_id")?,management_revision:r.get("management_revision")?,receiver_provider:r.get("receiver_provider")?})}
 pub(super) fn notice(r:&rusqlite::Row<'_>)->rusqlite::Result<Notice>{Ok(Notice{id:r.get(0)?,subscription_id:r.get(1)?,turn_id:r.get(2)?,kind:r.get(3)?,source_state:r.get(4)?,request_id:r.get(5)?,text:r.get(6)?,status:r.get(7)?,created_at:r.get(8)?,native_message_id:r.get(9)?,offered_at:r.get("offered_at")?,claimed_at:r.get("claimed_at")?,confirmed_at:r.get("confirmed_at")?,delivered_via:r.get("delivered_via")?})}
 fn identifier(parts:&[&str])->String{let bytes:Vec<_>=parts.iter().map(|s|s.as_bytes()).collect();length_prefixed_hash(&bytes)}
@@ -39,8 +42,19 @@ fn notice_binding(c:&Connection,s:&Subscription,n:&Notice)->Result<(),String>{
  let root:String=c.query_row("SELECT cwd FROM claude_sessions WHERE session_id=?1",[&s.binding.receiver_sid],|r|r.get(0)).map_err(db_error)?;
  if !crate::claude_code::same_root(&root,&s.binding.receiver_cwd){return Err("CLAUDE_ROOT_CHANGED".into());}Ok(())
 }
-fn text(s:&Subscription,id:&str,turn:&str,kind:&str,state:&str,request:Option<&str>)->String{let turn=if turn.is_empty(){"unconfirmed; use the exact requestId, never infer the latest turn"}else{turn};let mut body=format!("Agbrio {} task notice (metadata only)\nnoticeId: {id}\nthreadId: {}\nturnId: {turn}\ngeneration: {}\nkind: {kind}\nstate: {state}\nrequestId: {}\ngoalKey: {}\nRead this exact conversation and turn through the authorized Agbrio MCP. A question needs attention; a blocked Goal is not completed. This may be historical: never apply it to a newer Goal. This notice contains no result body, approval, or permission to send, resume, stop or change a task. Follow the owner's existing delegation; ask the owner for missing decisions.",if s.binding.thread_id.starts_with("pi:"){"Pi"}else if s.binding.thread_id.starts_with("claude_code:"){"Claude Code"}else{"Codex"},s.binding.thread_id,s.binding.generation,request.unwrap_or("none"),s.binding.goal_key.as_deref().unwrap_or("none"));
- if let Some(zone)=&s.management_zone_id{let manager=if s.receiver_provider=="CLAUDE_CODE"{format!("claude_code:{}",s.binding.receiver_sid)}else{s.binding.receiver_sid.clone()};body.push_str(&format!("\nmanagementZoneId: {zone}\nassignedManagerId: {manager}\nRead agbrio_read_app.management to verify current responsibility before dispatch. An owner assignment is not MCP caller attestation and does not enlarge any grant."));}
+fn text(s:&Subscription,id:&str,turn:&str,kind:&str,state:&str,request:Option<&str>)->String{
+ let provider=if s.binding.thread_id.starts_with("pi:"){"Pi"}else if s.binding.thread_id.starts_with("claude_code:"){"Claude Code"}else{"Codex"};
+ let mut body=format!("Agbrio {provider} task notice (metadata only)\nnoticeId: {id}\nkind: {kind} · state: {state}\nthreadId: {} · generation: {}",s.binding.thread_id,s.binding.generation);
+ if !turn.is_empty(){body.push_str(&format!("\nturnId: {turn}"));}
+ if let Some(request)=request{body.push_str(&format!("\nrequestId: {request}"));}
+ if let Some(goal)=&s.binding.goal_key{body.push_str(&format!("\ngoalKey: {goal}"));}
+ if let Some(zone)=&s.management_zone_id{
+  let manager=if s.receiver_provider=="CLAUDE_CODE"{format!("claude_code:{}",s.binding.receiver_sid)}else{s.binding.receiver_sid.clone()};
+  body.push_str(&format!("\nmanagementZoneId: {zone} · assignedManagerId: {manager}"));
+ }
+ body.push_str("\nRead the exact source in Agbrio. This notice grants no authority.");
+ if turn.is_empty(){body.push_str(" Turn unconfirmed; never infer the latest turn.");}
+ if s.management_zone_id.is_some(){body.push_str(" Verify the current assignment before acting.");}
  body
 }
 pub(super) fn enqueue(c:&Connection,s:&Subscription,turn:&str,kind:&str,state:&str,request:Option<&str>,at:i64)->Result<(),String>{
@@ -55,8 +69,26 @@ pub(super) fn enqueue(c:&Connection,s:&Subscription,turn:&str,kind:&str,state:&s
  if kind=="QUESTION"&&request.is_some(){let exists:bool=c.query_row("SELECT EXISTS(SELECT 1 FROM claude_codex_notices WHERE subscription_id=?1 AND kind='QUESTION' AND request_id=?2)",params![s.id,request],|r|r.get(0)).map_err(db_error)?;if exists{return Ok(())}}
  c.execute("INSERT OR IGNORE INTO claude_codex_notices(id,subscription_id,turn_id,kind,source_state,request_id,text,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![id,s.id,turn,kind,state,request,body,at]).map_err(db_error)?;Ok(())
 }
+fn backlog_for_receiver(c:&Connection,sid:&str,cwd:&str)->Result<(Vec<Value>,i64),String>{
+ let from="FROM claude_codex_notices n JOIN claude_codex_subscriptions s ON s.id=n.subscription_id WHERE s.receiver_provider='CLAUDE_CODE' AND s.receiver_sid=?1 AND s.receiver_cwd=?2 AND n.status='BACKLOG'";
+ let total=c.query_row(&format!("SELECT count(*) {from}"),params![sid,cwd],|r|r.get(0)).map_err(db_error)?;
+ let mut q=c.prepare(&format!("SELECT n.id,s.thread_id,s.generation,n.turn_id,n.kind,n.source_state,n.request_id,n.created_at {from} ORDER BY n.created_at DESC,n.id DESC LIMIT 64")).map_err(db_error)?;
+ let rows=q.query_map(params![sid,cwd],backlog_item).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;
+ Ok((rows,total))
+}
+pub(super) fn backlog_item(r:&rusqlite::Row<'_>)->rusqlite::Result<Value>{Ok(serde_json::json!({
+ "status":"BACKLOG","noticeId":r.get::<_,String>(0)?,"threadId":r.get::<_,String>(1)?,"generation":r.get::<_,i64>(2)?,"turnId":r.get::<_,String>(3)?,
+ "kind":r.get::<_,String>(4)?,"sourceState":r.get::<_,String>(5)?,"requestId":r.get::<_,Option<String>>(6)?,"createdAt":r.get::<_,i64>(7)?
+}))}
 impl RouterStore{
- pub fn register_codex_notice(&self,b:&Binding)->Result<Subscription,String>{self.with_connection(|c|{let mut normalized=b.clone();normalized.receiver_cwd=c.query_row("SELECT cwd FROM claude_sessions WHERE session_id=?1",[&b.receiver_sid],|r|r.get(0)).map_err(db_error)?;if !crate::claude_code::same_root(&normalized.receiver_cwd,&b.receiver_cwd){return Err("CLAUDE_ROOT_CHANGED".into());}let b=&normalized;let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;require_binding(&tx,b)?;let id=identifier(&["codex-subscription-v1",&b.receiver_sid,&b.receiver_cwd,&b.thread_id,&b.generation.to_string(),&b.source_cwd,if matches!(b.mode.as_str(),"GOAL"|"TASK"|"PI"){""}else{&b.anchor_turn},&b.mode,b.goal_key.as_deref().unwrap_or("")]);
+ pub fn register_codex_notice(&self,b:&Binding)->Result<Subscription,String>{self.with_connection(|c|{let mut normalized=b.clone();normalized.receiver_cwd=c.query_row("SELECT cwd FROM claude_sessions WHERE session_id=?1",[&b.receiver_sid],|r|r.get(0)).map_err(db_error)?;if !crate::claude_code::same_root(&normalized.receiver_cwd,&b.receiver_cwd){return Err("CLAUDE_ROOT_CHANGED".into());}let b=&normalized;let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;require_binding(&tx,b)?;
+  // Owner-managed membership already provides the notification route. Registering
+  // the same manager must not create a second, unmanaged route beside it.
+  if super::management_zones::assigned_manager(&tx,&b.thread_id)?.is_some(){
+   let current=tx.query_row("SELECT * FROM claude_codex_subscriptions WHERE thread_id=?1 AND management_zone_id IS NOT NULL AND receiver_provider='CLAUDE_CODE' AND receiver_sid=?2 AND status='ACTIVE'",params![b.thread_id,b.receiver_sid],subscription).map_err(|_|"MANAGEMENT_ROUTE_CHANGED_REFRESH")?;
+   super::management_zones::validate_subscription(&tx,&current)?;tx.commit().map_err(db_error)?;return Ok(current);
+  }
+  let id=identifier(&["codex-subscription-v1",&b.receiver_sid,&b.receiver_cwd,&b.thread_id,&b.generation.to_string(),&b.source_cwd,if matches!(b.mode.as_str(),"GOAL"|"TASK"|"PI"){""}else{&b.anchor_turn},&b.mode,b.goal_key.as_deref().unwrap_or("")]);
   if let Some(old)=tx.query_row("SELECT * FROM claude_codex_subscriptions WHERE id=?1",[&id],subscription).optional().map_err(db_error)?{if matches!(old.status.as_str(),"ACTIVE")&&b.expires_at>old.binding.expires_at{tx.execute("UPDATE claude_codex_subscriptions SET expires_at=?2 WHERE id=?1",params![id,b.expires_at]).map_err(db_error)?;let mut renewed=old;renewed.binding.expires_at=b.expires_at;tx.commit().map_err(db_error)?;return Ok(renewed);}return Ok(old);}
   if b.mode=="TASK"{
    tx.execute("UPDATE claude_codex_notices SET status='OBSOLETE' WHERE status='READY' AND subscription_id IN(SELECT id FROM claude_codex_subscriptions WHERE receiver_sid=?1 AND receiver_cwd=?2 AND thread_id=?3 AND generation=?4 AND mode='GOAL' AND status='ACTIVE')",params![b.receiver_sid,b.receiver_cwd,b.thread_id,b.generation]).map_err(db_error)?;
@@ -129,16 +161,22 @@ impl RouterStore{
    let id=p.notice_id.as_deref().ok_or("CLAUDE_NOTICE_RECEIPT_INVALID")?;
    let n=tx.query_row("SELECT n.* FROM claude_codex_notices n JOIN claude_codex_subscriptions s ON s.id=n.subscription_id WHERE n.id=?1 AND s.receiver_sid=?2 AND s.receiver_cwd=?3",params![id,p.session_id,receiver_root],notice).map_err(db_error)?;
    let source=tx.query_row("SELECT * FROM claude_codex_subscriptions WHERE id=?1",[&n.subscription_id],subscription).map_err(db_error)?;
-   if n.status!="UNKNOWN"||n.native_message_id.is_some()||notice_binding(&tx,&source,&n).is_ok(){return Err("CLAUDE_NOTICE_RELEASE_UNAVAILABLE".into());}
+   if n.status!="UNKNOWN"||n.native_message_id.is_some()||(!is_stale_notice(&n,now())&&notice_binding(&tx,&source,&n).is_ok()){return Err("CLAUDE_NOTICE_RELEASE_UNAVAILABLE".into());}
    let matches:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM claude_codex_notice_claims WHERE notice_id=?1 AND claim_id=?2 AND proof_nonce IS ?3 AND released_at IS NULL)",params![id,p.claim_id,p.proof_nonce],|r|r.get(0)).map_err(db_error)?;
    if !matches{return Err("CLAUDE_NOTICE_RELEASE_UNAVAILABLE".into());}
    tx.execute("UPDATE claude_codex_notice_claims SET released_at=?2 WHERE notice_id=?1",params![id,now()]).map_err(db_error)?;
-   tx.execute("UPDATE claude_codex_notices SET status='READY' WHERE id=?1 AND status='UNKNOWN'",[id]).map_err(db_error)?;
+   tx.execute("UPDATE claude_codex_notices SET status=?2 WHERE id=?1 AND status='UNKNOWN'",params![id,if is_stale_notice(&n,now()){"BACKLOG"}else{"READY"}]).map_err(db_error)?;
    tx.commit().map_err(db_error)?;return Ok(serde_json::json!({"accepted":true,"disposition":"NO_NATIVE_ATTEMPT_OLD_ROUTE"}));
+  }
+  if matches!(p.action.as_str(),"STATUS"|"OFFER"|"SYNC"){
+   tx.execute("UPDATE claude_codex_notices SET status='BACKLOG' WHERE status='READY' AND created_at<=?3 AND subscription_id IN (SELECT id FROM claude_codex_subscriptions WHERE receiver_provider='CLAUDE_CODE' AND receiver_sid=?1 AND receiver_cwd=?2)",params![p.session_id,receiver_root,now()-NOTICE_MAX_AGE_MS]).map_err(db_error)?;
   }
   if p.action=="CLAIM"{
    let id=p.notice_id.as_deref().ok_or("CLAUDE_NOTICE_RECEIPT_INVALID")?;let claim=p.claim_id.as_deref().filter(|s|crate::claude_code::native_id(s)).ok_or("CLAUDE_NOTICE_CLAIM_INVALID")?;
    let n=tx.query_row("SELECT n.* FROM claude_codex_notices n JOIN claude_codex_subscriptions s ON s.id=n.subscription_id WHERE n.id=?1 AND s.receiver_sid=?2 AND s.receiver_cwd=?3 AND n.status IN ('READY','UNKNOWN')",params![id,p.session_id,receiver_root],notice).optional().map_err(db_error)?.ok_or("CLAUDE_NOTICE_CLAIM_UNAVAILABLE")?;
+   // An old prepared retry is also fenced. Keep UNKNOWN untouched so a
+   // native receipt can still reconcile an attempt that already took place.
+   if is_stale_notice(&n,now()){return Err("CLAUDE_NOTICE_CLAIM_UNAVAILABLE".into());}
    let source=tx.query_row("SELECT * FROM claude_codex_subscriptions WHERE id=?1",[&n.subscription_id],subscription).map_err(db_error)?;notice_binding(&tx,&source,&n)?;
    let channel=p.delivery_channel.as_deref().unwrap_or("PROMPT");if !matches!(channel,"PROMPT"|"INLINE_OR_PROMPT")||channel=="INLINE_OR_PROMPT"&&!p.proof_nonce.as_deref().is_some_and(crate::claude_code::native_id){return Err("CLAUDE_NOTICE_CLAIM_INVALID".into());}
    let old_claim:Option<(String,String,Option<String>,Option<i64>)>=tx.query_row("SELECT claim_id,delivery_channel,proof_nonce,released_at FROM claude_codex_notice_claims WHERE notice_id=?1",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional().map_err(db_error)?;
@@ -151,13 +189,17 @@ impl RouterStore{
    tx.execute("UPDATE claude_codex_notices SET status='DELIVERED',native_message_id=?2,confirmed_at=COALESCE(confirmed_at,?3),delivered_via=?4 WHERE id=?1",params![id,message,now(),via]).map_err(db_error)?;tx.commit().map_err(db_error)?;return Ok(serde_json::json!({"accepted":true}));}
   if !matches!(p.action.as_str(),"SYNC"|"STATUS"|"OFFER"){return Err("CLAUDE_NOTICE_ACTION_INVALID".into());}
   let mut q=tx.prepare("SELECT * FROM claude_codex_subscriptions WHERE receiver_sid=?1 AND receiver_cwd=?2 AND (expires_at>?3 OR status!='ACTIVE') ORDER BY created_at DESC LIMIT 128").map_err(db_error)?;let sources=q.query_map(params![p.session_id,receiver_root,now()],subscription).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;drop(q);
-  let mut q=tx.prepare("SELECT n.id,n.native_message_id FROM claude_codex_notices n JOIN claude_codex_subscriptions s ON s.id=n.subscription_id WHERE s.receiver_sid=?1 AND s.receiver_cwd=?2 AND n.status='DELIVERED' ORDER BY n.created_at DESC LIMIT 128").map_err(db_error)?;let settled=q.query_map(params![p.session_id,receiver_root],|r|Ok(serde_json::json!({"id":r.get::<_,String>(0)?,"messageId":r.get::<_,Option<String>>(1)?}))).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;drop(q);
-  if p.action=="STATUS"{tx.commit().map_err(db_error)?;return Ok(serde_json::json!({"subscriptions":sources,"notice":null,"settled":settled}));}
+  let mut q=tx.prepare("SELECT n.id,n.native_message_id FROM claude_codex_notices n JOIN claude_codex_subscriptions s ON s.id=n.subscription_id WHERE s.receiver_sid=?1 AND s.receiver_cwd=?2 AND n.status IN ('DELIVERED','OBSOLETE','BACKLOG') ORDER BY n.created_at DESC LIMIT 128").map_err(db_error)?;let settled=q.query_map(params![p.session_id,receiver_root],|r|Ok(serde_json::json!({"id":r.get::<_,String>(0)?,"messageId":r.get::<_,Option<String>>(1)?}))).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;drop(q);
+  if p.action=="STATUS"{
+   let (backlog,total)=backlog_for_receiver(&tx,&p.session_id,&receiver_root)?;
+   tx.commit().map_err(db_error)?;
+   return Ok(serde_json::json!({"subscriptions":sources,"notice":null,"settled":settled,"backlog":backlog,"backlogTotal":total}));
+  }
   let mut selected=None;
   let mut q=tx.prepare("SELECT n.* FROM claude_codex_notices n JOIN claude_codex_subscriptions s ON s.id=n.subscription_id WHERE s.receiver_sid=?1 AND s.receiver_cwd=?2 AND (s.expires_at>?3 OR n.kind='SOURCE_CHANGED') AND n.status='READY' AND NOT EXISTS(SELECT 1 FROM json_each(?5) WHERE value=n.id) AND (?4='OFFER' OR s.mode IN ('GOAL','TURN')) ORDER BY CASE n.kind WHEN 'QUESTION' THEN 0 WHEN 'PI_QUESTION' THEN 0 ELSE 1 END,n.created_at LIMIT 32").map_err(db_error)?;let rows=q.query_map(params![p.session_id,receiver_root,now(),p.action,excluded],notice).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;drop(q);
   for mut n in rows{let source=tx.query_row("SELECT * FROM claude_codex_subscriptions WHERE id=?1",[&n.subscription_id],subscription).optional().map_err(db_error)?;let Some(s)=source.as_ref()else{continue};if notice_binding(&tx,s,&n).is_err(){continue;}if p.action=="OFFER"{tx.execute("UPDATE claude_codex_notices SET offered_at=COALESCE(offered_at,?2) WHERE id=?1",params![n.id,now()]).map_err(db_error)?;selected=Some(n);break;}if tx.execute("UPDATE claude_codex_notices SET status='UNKNOWN' WHERE id=?1 AND status='READY'",[&n.id]).map_err(db_error)?==1{n.status="UNKNOWN".into();selected=Some(n);break;}}
-  let invalidated={let mut query=tx.prepare("SELECT n.id FROM claude_codex_notices n JOIN claude_codex_subscriptions s ON s.id=n.subscription_id WHERE s.receiver_sid=?1 AND s.receiver_cwd=?2 AND n.status='UNKNOWN' AND s.status IN ('CANCELLED','REBOUND','REPLACED','EXPIRED') ORDER BY n.created_at LIMIT 128").map_err(db_error)?;
-  let rows=query.query_map(params![p.session_id,receiver_root],|r|r.get::<_,String>(0)).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;rows};
+  let invalidated={let mut query=tx.prepare("SELECT n.id FROM claude_codex_notices n JOIN claude_codex_subscriptions s ON s.id=n.subscription_id WHERE s.receiver_sid=?1 AND s.receiver_cwd=?2 AND n.status='UNKNOWN' AND (s.status IN ('CANCELLED','REBOUND','REPLACED','EXPIRED') OR n.created_at<=?3) ORDER BY n.created_at LIMIT 128").map_err(db_error)?;
+  let rows=query.query_map(params![p.session_id,receiver_root,now()-NOTICE_MAX_AGE_MS],|r|r.get::<_,String>(0)).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;rows};
   tx.commit().map_err(db_error)?;Ok(serde_json::json!({"subscriptions":sources,"notice":selected,"settled":settled,"inlineNoticeProtocol":1,"invalidatedNoticeIds":invalidated}))
  })}
  pub fn cancel_codex_notice(&self,token:&str,p:&Command)->Result<(),String>{self.codex_notice_auth(token,p)?;let receiver_root=self.claude_session(&p.session_id)?.cwd;self.with_connection(|c|{c.execute("UPDATE claude_codex_subscriptions SET status='CANCELLED' WHERE receiver_sid=?1 AND receiver_cwd=?2 AND ((?5 IS NOT NULL AND id=?5) OR (?5 IS NULL AND thread_id=?3 AND anchor_turn=?4))",params![p.session_id,receiver_root,p.thread_id,p.turn_id,p.subscription_id]).map_err(db_error)?;Ok(())})}
@@ -180,6 +222,32 @@ impl RouterStore{
   let settled=s.with_connection(|c|c.query_row("SELECT * FROM claude_codex_notices WHERE id=?1",[&notice],notice_row).map_err(db_error));
   fn notice_row(r:&rusqlite::Row<'_>)->rusqlite::Result<(String,Option<i64>,Option<i64>)>{Ok((r.get("delivered_via")?,r.get("claimed_at")?,r.get("confirmed_at")?))}
   let(via,claimed,confirmed)=settled.unwrap();assert_eq!(via,"INLINE_TOOL_RESULT");assert!(claimed.is_some()&&confirmed>=claimed);
+ }
+ #[test]
+ fn stale_backlog_is_read_only_and_recent_notifications_are_still_offered(){
+  let(_d,s,token,mut p,mut b)=fixture();b.mode="TASK".into();b.goal_key=None;b.expires_at=253402300799000;
+  let sub=s.register_codex_notice(&b).unwrap();let at=now();
+  s.with_connection(|c|{
+   enqueue(c,&sub,"old","TURN_RESULT","completed",None,at-NOTICE_MAX_AGE_MS-1000)?;
+   enqueue(c,&sub,"old-question","QUESTION","ACTION_REQUIRED",Some("pending"),at-2*NOTICE_MAX_AGE_MS)?;
+   enqueue(c,&sub,"recent","TURN_RESULT","completed",None,at-1000)?;
+   Ok(())
+  }).unwrap();
+  p.action="CLAIM".into();p.notice_id=Some(identifier(&["codex-notice-v1",&sub.id,"old","TURN_RESULT","completed",""]));p.claim_id=Some(id());
+  assert_eq!(s.codex_notice_sync(&token,&p).unwrap_err(),"CLAUDE_NOTICE_CLAIM_UNAVAILABLE");
+  p.action="OFFER".into();
+  let result=s.codex_notice_sync(&token,&p).unwrap();
+  assert_eq!(result["notice"]["turnId"],"recent");
+  assert!(result.get("backlog").is_none());
+  p.exclude_notice_ids=Some(vec![result["notice"]["id"].as_str().unwrap().into()]);
+  assert!(s.codex_notice_sync(&token,&p).unwrap()["notice"].is_null());
+  p.action="STATUS".into();
+  let status=s.codex_notice_sync(&token,&p).unwrap();
+  assert_eq!(status["backlogTotal"],2);
+  assert_eq!(status["backlog"][0]["status"],"BACKLOG");
+  assert_eq!(status["backlog"][1]["requestId"],"pending");
+  assert!(status["notice"].is_null());
+  assert!(s.pending_codex_native_receipts().unwrap().is_empty());
  }
  fn fixture()->(tempfile::TempDir,RouterStore,String,Command,Binding){let d=tempfile::tempdir().unwrap();let s=RouterStore::open_at(d.path().join("state.db")).unwrap();let pair=s.create_claude_connection().unwrap();let sid=id();let instance=id();let cwd=d.path().to_str().unwrap().to_string();s.ingest_claude_event(&pair.token,&crate::claude_code::Event{event_id:id(),session_id:sid.clone(),instance_id:instance.clone(),sequence:1,cwd:cwd.clone(),version:"2.1.309".into(),kind:"SESSION_START".into(),turn_id:None,text:None,completed_at:None}).unwrap();s.enable_codex_watch("source-thread","source",&cwd,&codex_watch::WatchSnapshot{state:"RUNNING".into(),turn_id:Some("anchor-turn".into()),item_id:None,text:"private source body".into()}).unwrap();let w=s.registered_codex_watch("source-thread").unwrap();let p:Command=serde_json::from_value(serde_json::json!({"sessionId":sid,"instanceId":instance,"cwd":cwd,"action":"SYNC"})).unwrap();let b=Binding{receiver_sid:sid,receiver_cwd:cwd.clone(),thread_id:w.thread_id,generation:w.generation,source_cwd:cwd,anchor_turn:"anchor-turn".into(),mode:"GOAL".into(),goal_key:Some("a".repeat(64)),expires_at:now()+86400000};(d,s,pair.token,p,b)}
  #[test]fn unconfirmed_turn_task_question_notifies_once_without_inventing_or_replaying_turn(){

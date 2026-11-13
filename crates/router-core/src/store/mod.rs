@@ -101,6 +101,8 @@ const NORMAL_FEATURE_MIGRATIONS: &[(&str, &str)] = &[
     ("management-zones-v1", include_str!("../../migrations/normal/036_management_zones.sql")),
     ("inline-task-notices-v1", include_str!("../../migrations/normal/037_inline_task_notices.sql")),
     ("watch-group-removals-v1", include_str!("../../migrations/normal/039_watch_group_removals.sql")),
+    ("management-desktop-identity-v1", include_str!("../../migrations/normal/040_management_desktop_identity.sql")),
+    ("claude-connection-policy-v1", include_str!("../../migrations/normal/041_claude_connection_policy.sql")),
 ];
 
 const MIGRATIONS: &[(i64, &str)] = &[
@@ -3918,7 +3920,7 @@ mod tests {
                         "child_result_baselines", "child_result_events", "child_result_preferences",
                         "claude_bridge_commands", "claude_child_contexts",
                         "claude_codex_notice_claims", "claude_codex_notices", "claude_codex_subscriptions",
-                        "claude_connections", "claude_control_leases",
+                        "claude_connection_policy", "claude_connections", "claude_control_leases",
                         "claude_event_journal", "claude_manual_commands", "claude_owner_requests",
                         "claude_sessions",
                         "codex_feedback_drafts",
@@ -3937,6 +3939,7 @@ mod tests {
                         "local_safety_resource_events",
                         "local_safety_settings",
                         "management_changes",
+                        "management_claude_desktop",
                         "management_codex_attempts",
                         "management_members",
                         "management_zones",

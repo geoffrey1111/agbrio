@@ -1,9 +1,14 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
- [ValidateSet('Status','Capabilities','Diagnostics','Start','Stop','Restart','PublishBoard','PublishReviewBoard','RegisterCodexNotices')][string]$Command='Status',
+ [ValidateSet('Status','Capabilities','Diagnostics','Start','Stop','Restart','PublishBoard','PublishReviewBoard','RegisterCodexNotices','ReadManagementZone','ReplaceZoneManager','AddZoneExecutors')][string]$Command='Status',
  [int]$ReviewPort=47816,
  [string]$Title='互动审批看板',
  [string]$NoticeBindingFile='',
+ [string]$ZoneId='',
+ [ValidateSet('CLAUDE_CODE','CODEX')][string]$Provider='CLAUDE_CODE',
+ [string]$SessionId='',
+ [long]$ExpectedRevision=0,
+ [string]$ExecutorsJson='',
  [string]$Folder='',
  [string]$Executable=(Join-Path $PSScriptRoot '..\ai-work-router.exe'),
  [string]$ExpectedInstance='',
@@ -21,7 +26,16 @@ function Invoke-Control([string]$Operation,[string]$Expected='',[guid]$Identity=
   if($Operation -eq 'PUBLISH_REVIEW_BOARD'){$payload.folder=$Folder;$payload.reviewPort=$ReviewPort;$payload.title=$Title}
   if($Operation -eq 'PUBLISH_BOARD'){$payload.folder=$Folder}
   if($Operation -eq 'REGISTER_CODEX_NOTICES'){$payload.noticeBinding=Get-Content -LiteralPath $NoticeBindingFile -Raw|ConvertFrom-Json}
-  $bytes=[Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Compress)+"`n")
+  if($Operation -in 'READ_MANAGEMENT_ZONE','REPLACE_ZONE_MANAGER','ADD_ZONE_EXECUTORS'){$payload.zoneId=$ZoneId}
+  if($Operation -eq 'REPLACE_ZONE_MANAGER'){
+   $payload.expectedRevision=$ExpectedRevision
+   $payload.newManager=@{provider=$Provider;sessionId=$SessionId}
+  }
+  if($Operation -eq 'ADD_ZONE_EXECUTORS'){
+   $payload.expectedRevision=$ExpectedRevision
+   $payload.executors=ConvertFrom-Json -InputObject $ExecutorsJson -AsHashtable -NoEnumerate
+  }
+  $bytes=[Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Depth 8 -Compress)+"`n")
   $write=$pipe.WriteAsync($bytes,0,$bytes.Length);if(!$write.Wait(3000)){throw 'APP_CONTROL_WRITE_UNCONFIRMED'};$write.GetAwaiter().GetResult()
   $buffer=[byte[]]::new(8192);$output=[IO.MemoryStream]::new();$deadline=[DateTime]::UtcNow.AddSeconds(5)
   try {
@@ -110,6 +124,22 @@ try {
   'PublishReviewBoard' {if(!$Folder){throw 'REVIEW_BOARD_ROOT_REQUIRED'};$owner=Invoke-Control 'STATUS';Invoke-Control 'PUBLISH_REVIEW_BOARD' $owner.instanceId $RequestId}
   'PublishBoard' {if(!$Folder){throw 'PUBLISHED_BOARD_FOLDER_REQUIRED'};$owner=Invoke-Control 'STATUS';Invoke-Control 'PUBLISH_BOARD' $owner.instanceId $RequestId}
   'RegisterCodexNotices' {if(!$NoticeBindingFile){throw 'CLAUDE_NOTICE_BINDING_REQUIRED'};$owner=Invoke-Control 'STATUS';Invoke-Control 'REGISTER_CODEX_NOTICES' $owner.instanceId $RequestId}
+  'ReadManagementZone' {
+   if(!$ZoneId){throw 'MANAGEMENT_ZONE_NOT_FOUND'}
+   Invoke-Control 'READ_MANAGEMENT_ZONE' $ExpectedInstance $RequestId
+  }
+  'ReplaceZoneManager' {
+   if(!$ZoneId -or !$SessionId -or $ExpectedRevision -lt 1){throw 'MANAGEMENT_REQUEST_INVALID'}
+   $owner=Invoke-Control 'STATUS' $ExpectedInstance
+   $null=Exact-Owner $owner (Exact-Executable)
+   Invoke-Control 'REPLACE_ZONE_MANAGER' $owner.instanceId $RequestId
+  }
+  'AddZoneExecutors' {
+   if(!$ZoneId -or !$ExecutorsJson -or $ExpectedRevision -lt 1){throw 'MANAGEMENT_REQUEST_INVALID'}
+   $owner=Invoke-Control 'STATUS' $ExpectedInstance
+   $null=Exact-Owner $owner (Exact-Executable)
+   Invoke-Control 'ADD_ZONE_EXECUTORS' $owner.instanceId $RequestId
+  }
   'Start' {Start-Host (Exact-Executable)}
   'Stop' {Stop-Host (Exact-Executable)}
   'Restart' {$path=Exact-Executable;$null=Stop-Host $path;Start-Host $path}
@@ -117,7 +147,7 @@ try {
  $result | ConvertTo-Json -Depth 30 -Compress
 } catch {
  $code=$_.Exception.Message
- if($code -notmatch '^(APP_|PUBLISHED_BOARD_)[A-Z_]+$'){$code='APP_CONTROL_UNREACHABLE'}
+ if($code -notmatch '^(APP_|PUBLISHED_BOARD_|MANAGEMENT_)[A-Z_]+$'){$code='APP_CONTROL_UNREACHABLE'}
  @{errorCode=$code;state='UNCONFIRMED';automaticWriteRetry=$false} | ConvertTo-Json -Compress
  exit 1
 }

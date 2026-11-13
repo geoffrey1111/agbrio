@@ -85,3 +85,103 @@ fn reserved_unknown_requests_are_fenced_and_disk_receipts_have_a_fixed_page_cach
         tokio::time::timeout(std::time::Duration::from_secs(5),server).await.unwrap().unwrap().unwrap();assert_eq!(calls.load(Ordering::SeqCst),1);
     });
 }
+
+#[test]
+fn replace_zone_manager_discovers_desktop_child_and_moves_routes_atomically() {
+    let (temp,core,host)=fixture();
+    let mut seen=ReplayStore::new().unwrap();
+    let cwd=temp.path().to_string_lossy().into_owned();
+    let old=uuid::Uuid::new_v4().to_string();
+    let child=uuid::Uuid::new_v4().to_string();
+    let alias=format!("local_{}",uuid::Uuid::new_v4());
+    let source=uuid::Uuid::new_v4().to_string();
+    for (id,label) in [(&old,"Old manager"),(&source,"Executor")] {
+        core.store.enable_codex_watch(id,label,&cwd,&router_core::store::codex_watch::WatchSnapshot{
+            state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()
+        }).unwrap();
+    }
+    let change=|input:Value|core.store.change_management_zone(&serde_json::from_value(input).unwrap());
+    let zone=change(json!({"requestId":uuid::Uuid::new_v4(),"action":"CREATE","name":"Fixture","managerId":old})).unwrap()["zoneId"].as_str().unwrap().to_owned();
+    change(json!({"requestId":uuid::Uuid::new_v4(),"action":"ADD","zoneId":zone,"revision":1,"threadId":source,"generation":1})).unwrap();
+    let roots=&crate::claude_code_desktop::TEST_ROOTS;
+    *roots.lock().unwrap()=vec![temp.path().to_owned()];
+    struct Reset;
+    impl Drop for Reset{fn drop(&mut self){crate::claude_code_desktop::TEST_ROOTS.lock().unwrap().clear();}}
+    let _reset=Reset;
+    let dir=temp.path().join("claude-code-sessions/account/project");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path=dir.join(format!("{alias}.json"));
+    std::fs::write(&path,format!("{{\"sessionId\":\"{alias}\",\"cliSessionId\":\"{child}\",\"cwd\":{},\"lastActivityAt\":123,\"title\":\"Child manager\",\"spawnedFrom\":{{\"sessionId\":\"local_parent\"}}}}",json!(cwd))).unwrap();
+    let candidate=crate::management_zones::read(&core).unwrap()["candidates"].as_array().unwrap().iter()
+        .find(|row|row["localSessionId"]==alias).cloned().expect("fresh unregistered child in picker");
+    let manager=format!("claude_code:{child}");
+    assert_eq!(candidate["threadId"],manager);
+    assert_eq!(candidate["label"],"Child manager");
+    assert_eq!(candidate["available"],false);
+    let mut input=json!({"apiVersion":1,"requestId":uuid::Uuid::new_v4(),"command":"REPLACE_ZONE_MANAGER",
+        "zoneId":zone,"expectedRevision":1,"newManager":{"provider":"CLAUDE_CODE","sessionId":alias}});
+    let mut call=|v:&Value|dispatch(&core,&host,&serde_json::to_vec(v).unwrap(),&mut seen).0;
+    assert_eq!(call(&input)["errorCode"],"APP_CONTROL_EXPECTED_INSTANCE_REQUIRED");
+    input["expectedInstance"]=json!(host.instance_id());
+    assert_eq!(call(&input)["errorCode"],"MANAGEMENT_CHANGED_REFRESH");
+    assert_eq!(core.store.management_zones().unwrap()["zones"][0]["managerId"],old);
+    input["expectedRevision"]=json!(2);
+    let receipt=call(&input);
+    assert_eq!(receipt["data"]["managerId"],manager,"{receipt}");
+    assert_eq!(receipt["data"]["revision"],3);
+    // The exact retry returns its durable receipt even if discovery later hides it.
+    std::fs::write(dir.join("archived-sessions.idx"),json!({"archived":[alias]}).to_string()).unwrap();
+    assert_eq!(call(&input),receipt);
+    input["newManager"]["sessionId"]=json!(old);
+    assert_eq!(call(&input)["errorCode"],"MANAGEMENT_REQUEST_CONFLICT");
+    let view=call(&json!({"apiVersion":1,"requestId":uuid::Uuid::new_v4(),"command":"READ_MANAGEMENT_ZONE","zoneId":zone}));
+    let row=&view["data"];
+    assert_eq!(row["managerId"],manager);
+    assert_eq!(row["revision"],3);
+    assert_eq!(row["members"][0]["threadId"],source);
+    let routes=row["members"][0]["subscriptions"].as_array().unwrap();
+    assert_eq!(routes.len(),1);
+    assert_eq!(routes[0]["receiverSid"],child);
+    assert_eq!(routes[0]["receiverProvider"],"CLAUDE_CODE");
+    assert!(core.store.claude_session(&child).is_err(),"owner selection must not register a publisher");
+}
+
+#[test]
+fn local_owner_adds_multiple_executors_and_routes_in_one_revision(){
+    let(temp,core,host)=fixture();
+    let mut seen=ReplayStore::new().unwrap();
+    let mut call=|v:&Value|dispatch(&core,&host,&serde_json::to_vec(v).unwrap(),&mut seen).0;
+    let cwd=temp.path().to_string_lossy().into_owned();
+    let manager=uuid::Uuid::new_v4().to_string();
+    let a=uuid::Uuid::new_v4().to_string();
+    let b=uuid::Uuid::new_v4().to_string();
+    for id in [&manager,&a,&b]{
+        core.store.enable_codex_watch(id,"Fixture",&cwd,&router_core::store::codex_watch::WatchSnapshot{
+            state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()
+        }).unwrap();
+    }
+    let zone=core.store.change_management_zone(&serde_json::from_value(json!({
+        "requestId":uuid::Uuid::new_v4(),"action":"CREATE","name":"Fixture","managerId":manager
+    })).unwrap()).unwrap()["zoneId"].as_str().unwrap().to_owned();
+    let mut request=json!({"apiVersion":1,"requestId":uuid::Uuid::new_v4(),"command":"ADD_ZONE_EXECUTORS",
+        "zoneId":zone,"expectedRevision":1,"executors":[{"threadId":a,"generation":1},{"threadId":b,"generation":2}]});
+    assert_eq!(call(&request)["errorCode"],"APP_CONTROL_EXPECTED_INSTANCE_REQUIRED");
+    request["expectedInstance"]=json!(host.instance_id());
+    assert_eq!(call(&request)["errorCode"],"MANAGEMENT_SOURCE_CHANGED_REFRESH");
+    assert_eq!(core.store.management_zones().unwrap()["zones"][0]["members"],json!([]));
+    request["executors"][1]["generation"]=json!(1);
+    let receipt=call(&request);
+    assert_eq!(receipt["data"]["addedThreadIds"],json!([a,b]),"{receipt}");
+    assert_eq!(receipt["data"]["revision"],2);
+    assert_eq!(call(&request),receipt);
+    request["expectedRevision"]=json!(2);
+    assert_eq!(call(&request)["errorCode"],"MANAGEMENT_REQUEST_CONFLICT");
+    request["requestId"]=json!(uuid::Uuid::new_v4());
+    assert_eq!(call(&request)["data"]["alreadyAssignedThreadIds"],json!([a,b]));
+    let view=core.store.management_zones().unwrap();
+    assert_eq!(view["zones"][0]["revision"],2);
+    for member in view["zones"][0]["members"].as_array().unwrap(){
+        assert_eq!(member["subscriptions"].as_array().unwrap().len(),1);
+        assert_eq!(member["subscriptions"][0]["receiverSid"],manager);
+    }
+}

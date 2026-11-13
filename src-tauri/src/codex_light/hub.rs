@@ -461,6 +461,7 @@ impl Hub {
         };
         reply["id"] = id.clone();
         if method == "thread/read" && reply.get("result").is_some() {
+            self.refresh_display_name(&mut reply["result"]["thread"]);
             if let Some(status) = self.overlay_status(&thread).await {
                 reply["result"]["thread"]["status"] = status;
             }
@@ -508,6 +509,14 @@ impl Hub {
         self.send(json!({"method":"turn/completed","params":{"threadId":thread,"turn":{"id":turn,"status":"interrupted"}}}));
     }
 
+    fn refresh_display_name(&self, thread: &mut Value) {
+        if let (Some(id),Some(cwd))=(thread["id"].as_str(),thread["cwd"].as_str()) {
+            if let Some(name)=router_core::codex::source_index::display_name_at(&self.config.codex_home,id,cwd) {
+                thread["name"]=json!(name);
+            }
+        }
+    }
+
     async fn catalog_read(&self, id: &Value, method: &str, params: &Value) -> Value {
         let key = format!("{method}:{params}");
         let ttl = catalog_ttl(method);
@@ -524,6 +533,11 @@ impl Hub {
             },
         };
         reply["id"] = id.clone();
+        if method == "thread/list" {
+            if let Some(rows)=reply.pointer_mut("/result/data").and_then(Value::as_array_mut) {
+                for thread in rows { self.refresh_display_name(thread); }
+            }
+        }
         reply
     }
 
@@ -637,15 +651,25 @@ impl Hub {
         tokio::spawn(async move { hub.follow_loop(thread, receiver).await });
     }
 
-    /// Keeps the Host informed about one Desktop thread. Re-following returns a full
-    /// snapshot, so this does not depend on the private patch format.
+    /// Follow once and consume the native metadata patches. Polling or ordinary
+    /// streaming changes must not ask Desktop to serialize its entire history.
     async fn follow_loop(self: Arc<Self>, thread: String, mut events: mpsc::UnboundedReceiver<StateEvent>) {
         let mut known_requests: HashMap<String, Value> = HashMap::new();
         let mut turns = TurnTracker::default();
         let mut attached: Option<(Arc<Connection>, String)> = None;
         let mut delay = Duration::ZERO;
         let mut idle_since: Option<Instant> = None;
+        let mut last_state:Option<Value>=None;
+        let mut needs_baseline=true;
+        let mut last_baseline:Option<Instant>=None;
         loop {
+            if self.sessions.contains(&thread){
+                // The backend now owns this thread and already delivers its
+                // native events directly. Never subscribe to our own owner and
+                // duplicate pending provider requests through a second route.
+                for(key,_)in known_requests.drain(){self.send(json!({"method":"serverRequest/resolved","params":{"threadId":thread,"requestId":key}}));}
+                break;
+            }
             let still_wanted = {
                 let follows = self.follows.lock().unwrap();
                 follows.get(&thread).map(|follow| follow.host_subscribed || idle_since.is_none_or(|since| since.elapsed() < UNSUBSCRIBED_FOLLOW_LIMIT))
@@ -656,10 +680,10 @@ impl Hub {
             if attached.as_ref().is_none_or(|(connection, _)| connection.is_closed()) {
                 attached = self.owner_of(&thread, true).await;
                 match &attached {
-                    Some((connection, _)) => {
+                    Some((connection, owner)) => {
                         let sender = self.follows.lock().unwrap().get(&thread).map(|follow| follow.events.clone());
                         if let Some(sender) = sender {
-                            connection.subscribe(&thread, sender);
+                            connection.subscribe(&thread, owner, sender);
                         }
                     }
                     None => {
@@ -669,10 +693,12 @@ impl Hub {
                     }
                 }
                 delay = Duration::ZERO;
+                needs_baseline=true;last_baseline=None;last_state=None;
             }
             let (connection, owner) = attached.clone().unwrap();
-            if delay.is_zero() {
+            if needs_baseline&&last_baseline.is_none_or(|at|at.elapsed()>=REFRESH_TOO_LARGE){
                 connection.set_following(&owner, &thread, true);
+                last_baseline=Some(Instant::now());needs_baseline=false;
             }
             let wait = if delay.is_zero() { REFRESH_ACTIVE } else { delay };
             match tokio::time::timeout(wait, events.recv()).await {
@@ -680,17 +706,24 @@ impl Hub {
                     let active = state.pointer("/threadRuntimeStatus/type").and_then(Value::as_str) == Some("active");
                     idle_since = if active || !state["requests"].as_array().is_none_or(Vec::is_empty) { None } else { idle_since.or(Some(Instant::now())) };
                     self.apply_snapshot(&thread, &state, &mut known_requests, &mut turns).await;
+                    last_state=Some(state);
                     delay = if turns.settling() { REFRESH_SETTLING } else if active { REFRESH_ACTIVE } else { REFRESH_IDLE };
                 }
                 Ok(Some(StateEvent::Changed)) => {
-                    // Coalesce a burst of streaming updates into one refresh.
-                    tokio::time::sleep(REFRESH_DEBOUNCE).await;
-                    while matches!(events.try_recv(), Ok(StateEvent::Changed)) {}
-                    delay = Duration::ZERO;
+                    // A local turn hint wakes only the lightweight cached projection.
+                    // Never drain a different queued event (a decision may be next).
+                    delay=REFRESH_DEBOUNCE;
                 }
+                Ok(Some(StateEvent::Resync))=>{needs_baseline=true;delay=REFRESH_SETTLING;}
                 Ok(Some(StateEvent::TooLarge)) => delay = REFRESH_TOO_LARGE,
                 Ok(Some(StateEvent::Disconnected)) | Ok(None) => attached = None,
-                Err(_) => delay = Duration::ZERO,
+                Err(_) => {
+                    if let Some(state)=&last_state{
+                        self.apply_snapshot(&thread,state,&mut known_requests,&mut turns).await;
+                        let active=state.pointer("/threadRuntimeStatus/type").and_then(Value::as_str)==Some("active");
+                        delay=if turns.settling(){REFRESH_SETTLING}else if active{REFRESH_ACTIVE}else{REFRESH_IDLE};
+                    }else{delay=REFRESH_TOO_LARGE;}
+                },
             }
         }
         if let Some((connection, owner)) = attached {

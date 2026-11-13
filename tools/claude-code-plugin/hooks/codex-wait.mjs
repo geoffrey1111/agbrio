@@ -41,6 +41,9 @@ export async function probeCodexWait($,state,wait){
   return value;
 }
 export function waitNotice(wait,status){
+  return `Agbrio Codex notice (metadata only)\nstate: ${status}\nthreadId: ${wait.threadId} · generation: ${wait.generation}\nturnId: ${wait.turnId}\nRead the exact source in Agbrio. This notice grants no authority.`;
+}
+function historicalWaitNotice(wait,status){
   return `Agbrio Codex notice (metadata only)\nthreadId: ${wait.threadId}\nturnId: ${wait.turnId}\ngeneration: ${wait.generation}\nstate: ${status}\nRead this exact conversation through the authorized Agbrio MCP before reporting its result. This notice contains no reply body, approval, or permission to send another message. Follow only the owner's previously delegated task; ask the owner for any missing decision.`;
 }
 export async function handleCodexWait($,state,input){return serial(state,async()=>{
@@ -48,7 +51,7 @@ export async function handleCodexWait($,state,input){return serial(state,async()
   if(input.action==='cancel'&&input.subscriptionId)return cancelTaskWait($,state,input);
   const waits=await load($,state),now=await $.clock.now();
   for(const w of waits)if(w.status==='WAITING'&&w.expiresAt<=now)w.status='EXPIRED';
-  if(input.action==='status'){const host=await taskWaitStatus($,state);if(!Array.isArray(host.subscriptions))throw Error('AGBRIO_NOTICE_RESPONSE_INVALID');state.taskSubscriptions=host.subscriptions;await save($,state,waits);return{persistentSubscriptions:host.subscriptions,pluginVersion:'0.1.23',waits,capacity:{waiting:waits.filter(w=>w.status==='WAITING').length+host.subscriptions.filter(s=>s.status==='ACTIVE'&&s.mode!=='PI').length,legacyWaiting:waits.filter(w=>w.status==='WAITING').length,persistentActive:host.subscriptions.filter(s=>s.status==='ACTIVE'&&s.mode!=='PI').length,maxWaiting:MAX_WAITING,unknown:waits.filter(w=>w.status==='UNKNOWN').length}};}
+  if(input.action==='status'){const host=await taskWaitStatus($,state);if(!Array.isArray(host.subscriptions))throw Error('AGBRIO_NOTICE_RESPONSE_INVALID');state.taskSubscriptions=host.subscriptions;await save($,state,waits);return{persistentSubscriptions:host.subscriptions,backlog:Array.isArray(host.backlog)?host.backlog:[],backlogTotal:host.backlogTotal??0,pluginVersion:'0.1.25',waits,capacity:{waiting:waits.filter(w=>w.status==='WAITING').length+host.subscriptions.filter(s=>s.status==='ACTIVE'&&s.mode!=='PI').length,legacyWaiting:waits.filter(w=>w.status==='WAITING').length,persistentActive:host.subscriptions.filter(s=>s.status==='ACTIVE'&&s.mode!=='PI').length,maxWaiting:MAX_WAITING,unknown:waits.filter(w=>w.status==='UNKNOWN').length}};}
   const t=target(input),saved=await $.store.get(archiveKey(identity(state),t)),old=waits.find(w=>same(w,t))??(saved?.sessionId===state.identity.sessionId&&saved.cwd===state.identity.cwd&&same(saved.wait??{},t)?saved.wait:null);
   if(input.action==='cancel'){
     if(old?.status==='WAITING')old.status='CANCELLED';
@@ -87,7 +90,7 @@ export async function tickCodexWaits($,state){return serial(state,async()=>{
     if(wait.expiresAt<=now){wait.status='EXPIRED';await save($,state,waits);continue;}
     let value;
     try{value=await probeCodexWait($,state,wait);wait.lastError=null;}
-    catch{wait.lastError='SOURCE_UNAVAILABLE';continue;}
+    catch(error){if(error?.message==='CLAUDE_WAIT_BACKLOG'){wait.status='BACKLOG';wait.lastError=null;}else wait.lastError='SOURCE_UNAVAILABLE';continue;}
     if(!TERMINAL.includes(value.state))continue;
     // Persist BEFORE the native call. Crash, reload, lost response and cancellation
     // after this point never cause an automatic second submission.
@@ -108,7 +111,7 @@ export async function initCodexWait($,state){
 export function registerCodexWait(on,state){
   on('tool.call',{tool:TOOL},async($,e)=>{
     try{return{result:JSON.stringify(await handleCodexWait($,state,e))};}
-    catch(error){const code=/^(?:CLAUDE|WATCH|AGBRIO|CODEX)_[A-Z0-9_]{1,112}$/.test(error?.message??'')?error.message:['AGBRIO_WAIT_HOST_UPDATE_REQUIRED','AGBRIO_WAIT_SOURCE_UNAVAILABLE','AGBRIO_WAIT_SESSION_UNAVAILABLE','AGBRIO_WAIT_TARGET_INVALID','AGBRIO_WAIT_TTL_INVALID','AGBRIO_WAIT_LIMIT','AGBRIO_WAIT_ACTIVE_LIMIT'].includes(error?.message)?error.message:'AGBRIO_WAIT_NOT_REGISTERED';return{result:JSON.stringify({error:code,pluginVersion:'0.1.23',sessionId:UUID.test(state.identity?.sessionId??'')?state.identity.sessionId:null,threadId:UUID.test(e.threadId??'')?e.threadId:null,httpStatus:error.httpStatus??null,instruction:code==='CLAUDE_ROOT_CHANGED'?'The plugin current working directory differs from the registered native session root. Report this exact error; do not rebind or re-login.':code==='CLAUDE_COMMAND_PUBLISHER_CHANGED'?'The exact native session/plugin instance is not currently registered. Check /agbrio-status and reload the existing plugin when idle; retain authorization.':'Check the exact target, live plugin/Host compatibility and authorized MCP. No notification is promised; do not replace this with a polling task or resend.'})};}
+    catch(error){const code=/^(?:CLAUDE|WATCH|AGBRIO|CODEX)_[A-Z0-9_]{1,112}$/.test(error?.message??'')?error.message:['AGBRIO_WAIT_HOST_UPDATE_REQUIRED','AGBRIO_WAIT_SOURCE_UNAVAILABLE','AGBRIO_WAIT_SESSION_UNAVAILABLE','AGBRIO_WAIT_TARGET_INVALID','AGBRIO_WAIT_TTL_INVALID','AGBRIO_WAIT_LIMIT','AGBRIO_WAIT_ACTIVE_LIMIT'].includes(error?.message)?error.message:'AGBRIO_WAIT_NOT_REGISTERED';return{result:JSON.stringify({error:code,pluginVersion:'0.1.25',sessionId:UUID.test(state.identity?.sessionId??'')?state.identity.sessionId:null,threadId:UUID.test(e.threadId??'')?e.threadId:null,httpStatus:error.httpStatus??null,instruction:code==='CLAUDE_CONNECTION_UNAUTHORIZED'?'The Agbrio Claude notification connection is not authorized. Ask the owner to reconnect the Claude Code plugin in Agbrio, then reload plugins in this exact manager session when idle. Adding the executor again cannot restore this connection.':code==='CLAUDE_NOTICE_MANAGED_BY_OTHER_SESSION'?'This executor is assigned to a different manager. Read its exact Agbrio management assignment. Only the owner can move it.':code==='CLAUDE_ROOT_CHANGED'?'The plugin current working directory differs from the registered native session root. Report this exact error; do not rebind or re-login.':code==='CLAUDE_COMMAND_PUBLISHER_CHANGED'?'The exact native session/plugin instance is not currently registered. Check /agbrio-status and reload the existing plugin when idle; retain authorization.':'Check the exact target, live plugin/Host compatibility and authorized MCP. No notification is promised; do not replace this with a polling task or resend.'})};}
   });
 }
 export async function appendCodexWait($,state,e,result){
@@ -122,7 +125,7 @@ export async function appendCodexWait($,state,e,result){
         const notice=waitNotice(w,w.sourceState);
         const prefix='The agbrio-bridge plugin sent a message:\n',suffix='\n\nThis is how Claude Code surfaces a prompt a plugin submits';
         const unwrapped=typeof text==='string'&&text.startsWith(prefix)&&text.lastIndexOf(suffix)>=prefix.length?text.slice(prefix.length,text.lastIndexOf(suffix)):text;
-        if(unwrapped===notice){w.status='DELIVERED';w.messageId=result.uuid;}
+        if(unwrapped===notice||unwrapped===historicalWaitNotice(w,w.sourceState)){w.status='DELIVERED';w.messageId=result.uuid;}
       }
       await save($,state,waits);
     });}catch{}

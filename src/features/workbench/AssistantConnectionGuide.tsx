@@ -1,3 +1,4 @@
+import type {ClaudePolicyControl} from "./ClaudeNativeConnection";
 import {ClaudeAssistantSetup} from "./ClaudeAssistantSetup";
 import type {ClaudeConnectionResult} from "./ClaudeSessionPicker";
 import {useId,useRef,useState,type ReactNode} from "react";
@@ -13,7 +14,7 @@ import {mcpAddressDiscoveryPowerShell} from "./claudeConnectionRecovery";
 
 type ExistingGrant={id:string;scope?:string;approvalMode?:string;label:string;expiresAt:number;revokedAt:number|null};
 export type AssistantHelpPage="CHATGPT_PLUGINS"|"AUTH_DOCUMENTATION"|"CLAUDE_CONNECTORS";
-export function AssistantConnectionGuide({mcpUrl,grants,bridges=[],onAddGrant,onRouteChange,openHelp,connectClaude,onRefresh,onConfigureConnection,grantForm}:{mcpUrl:string|null;grants:ExistingGrant[];bridges?:ReportBridge[];onAddGrant:()=>void;onRouteChange:(route:AssistantRoute)=>void;openHelp:(page:AssistantHelpPage)=>Promise<void>;connectClaude?:()=>Promise<ClaudeConnectionResult>;onRefresh?:()=>Promise<void>;onConfigureConnection?:()=>void;grantForm?:ReactNode}){
+export function AssistantConnectionGuide({mcpUrl,grants,bridges=[],onAddGrant,onRouteChange,openHelp,connectClaude,claudePolicy,onRefresh,onConfigureConnection,grantForm}:{mcpUrl:string|null;grants:ExistingGrant[];bridges?:ReportBridge[];onAddGrant:()=>void;onRouteChange:(route:AssistantRoute)=>void;openHelp:(page:AssistantHelpPage)=>Promise<void>;connectClaude?:()=>Promise<ClaudeConnectionResult>;claudePolicy?:ClaudePolicyControl;onRefresh?:()=>Promise<void>;onConfigureConnection?:()=>void;grantForm?:ReactNode}){
  useLanguage();const id=useId(),heading=useRef<HTMLHeadingElement>(null);
  const[route,setRoute]=useState<AssistantRoute|null>(null),[step,setStep]=useState(0),[openError,setOpenError]=useState("");
  const active=grants.filter(g=>g.scope==="INSTANCE"&&g.approvalMode==="CONVERSATION_REVIEW"&&!g.revokedAt&&g.expiresAt>Date.now());
@@ -39,7 +40,7 @@ export function AssistantConnectionGuide({mcpUrl,grants,bridges=[],onAddGrant,on
     <button type="button" aria-pressed={route==="workbuddy"} onClick={()=>choose("workbuddy")}><span>WorkBuddy</span></button>
     <button type="button" aria-pressed={route==="generic"} onClick={()=>choose("generic")}><span>{t("其他 MCP 助手")}</span></button>
    </div></>}
-   {route==="claude"?<ClaudeAssistantSetup mcpUrl={readyUrl} hasGrant={active.length>0} onAddGrant={onAddGrant} grantForm={grantForm} onRefresh={onRefresh} onConfigureConnection={onConfigureConnection} connectClaude={connectClaude} bridges={bridges}/>:!route?<p className="assistant-route-hint">{t("选择要使用的助手。每个客户端需要分别连接并验收。")}</p>:<>
+   {route==="claude"?<ClaudeAssistantSetup mcpUrl={readyUrl} hasGrant={active.length>0} onAddGrant={onAddGrant} grantForm={grantForm} onRefresh={onRefresh} onConfigureConnection={onConfigureConnection} connectClaude={connectClaude} claudePolicy={claudePolicy} bridges={bridges}/>:!route?<p className="assistant-route-hint">{t("选择要使用的助手。每个客户端需要分别连接并验收。")}</p>:<>
     <p className="assistant-guide-notice">{t("连接后可按需操作 Bridge；持续托管和日报需分别核对事件唤醒、定时能力，不会自动开启。")}</p>
     <div className="assistant-agent-start"><CopyAction showLabel text={readyUrl?assistantSetupInstructions(readyUrl,getLanguage(),route):null} label={t("复制给 AI 助手")}/><p>{t("把指令粘贴到所选助手的对话中；它会先检查入口，再引导连接。登录和同意仍由你完成。")}</p></div>
     <section className="assistant-current-connection" aria-label={t("当前 MCP 地址")}><h3>{t("当前 MCP 地址")}</h3>{readyUrl?<><div className="assistant-guide-value"><code>{readyUrl}</code><CopyAction text={readyUrl} label={t("复制 MCP 地址")}/></div><p>{t("这是这台电脑的 MCP 地址，只用于添加连接，不含登录凭据。")}</p></>:<div role="status"><p>{t("先准备真实连接地址，暂时不能复制接入指令。")}</p><p>{t("手机已经能连接？请先点“刷新连接信息”。仍没有地址时，在这台电脑的“设置 → 设备”检查现有手机连接；无需重装通知插件。")}</p><CopyAction showLabel text={mcpAddressDiscoveryPowerShell} label={t("复制只读查址命令")}/><p>{t("也可把查址命令交给这台电脑上的助手执行，只读取当前连接地址，不修改配置。")}</p>{onConfigureConnection&&<button type="button" onClick={onConfigureConnection}>{t("打开设备连接设置")}</button>}</div>}{onRefresh&&<button type="button" onClick={()=>void onRefresh()}>{t("刷新连接信息")}</button>}{active.length>0&&<p className="assistant-grant-summary"><Check size={18}/>{t("有效授权将直接复用 · 可随时撤销")}</p>}</section>

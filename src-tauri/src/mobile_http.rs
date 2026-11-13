@@ -597,7 +597,7 @@ async fn management_zones_read(State(state):State<MobileHttpState>,headers:Heade
 }
 async fn management_zones_change(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<router_core::store::management_zones::Change>)->ApiResult<serde_json::Value>{
     authenticated(&headers,&state,true).await?;
-    Ok(Json(run_core_blocking("Management handover",move||state.core.store.change_management_zone(&input)).await?))
+    Ok(Json(run_core_blocking("Management handover",move||crate::management_zones::change(&state.core,&input)).await?))
 }
 async fn computer_identity(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<serde_json::Value>{authenticated(&headers,&state,false).await?;Ok(Json(crate::todo_projection::computer_identity()))}
 async fn assistant_settings_view(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<serde_json::Value>{

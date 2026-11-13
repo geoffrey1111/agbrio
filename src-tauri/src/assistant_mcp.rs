@@ -9,6 +9,7 @@ pub(crate) const INSTRUCTIONS:&str="Use agbrio_capabilities to discover grant-sc
 fn observed_watches(core:&RouterCore)->Result<Vec<router_core::store::codex_watch::CodexWatch>,String>{
  let mut watches=core.store.codex_watches()?;
  for watch in &mut watches{
+  crate::codex_watch::refresh_display_label(watch);
   if watch.thread_id.starts_with("pi:"){if let Ok(task)=core.store.pi_task(&watch.thread_id){if let Ok(view)=crate::pi::presentation::watch(&task){watch.runtime=view.runtime;watch.snapshot=view.snapshot;watch.error_code=view.error_code;watch.checked_at=view.checked_at;}}}
   else if let Some(sid)=watch.thread_id.strip_prefix("claude_code:"){watch.runtime=crate::native_runtime::claude(sid);}
  }

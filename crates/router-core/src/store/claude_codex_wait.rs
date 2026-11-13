@@ -120,6 +120,12 @@ impl RouterStore {
                 let retained:Option<String>=c.query_row("SELECT snapshot_json FROM codex_watch_events WHERE thread_id=?1 AND json_extract(snapshot_json,'$.turnId')=?2 AND json_extract(snapshot_json,'$.state') IN ('RESULT_READY','ACTION_REQUIRED','FAILED','INTERRUPTED') AND NOT EXISTS(SELECT 1 FROM watch_removed_items WHERE kind='EVENT' AND id=CAST(codex_watch_events.sequence AS TEXT)) ORDER BY sequence DESC LIMIT 1",params![input.thread_id,input.turn_id],|r|r.get(0)).optional().map_err(db_error)?;
                 snapshot=serde_json::from_str(&retained.ok_or("CLAUDE_WAIT_TURN_CHANGED")?).map_err(|_|"CLAUDE_WAIT_SOURCE_INVALID")?;
             }
+            if matches!(snapshot.state.as_str(),"RESULT_READY"|"ACTION_REQUIRED"|"FAILED"|"INTERRUPTED"){
+                // Legacy probes do not own a delivery journal. Use the first
+                // matching terminal observation, never a freshly polled checked_at.
+                let first:Option<i64>=c.query_row("SELECT MIN(observed_at) FROM codex_watch_events WHERE thread_id=?1 AND json_extract(snapshot_json,'$.turnId')=?2 AND json_extract(snapshot_json,'$.state')=?3",params![input.thread_id,input.turn_id,snapshot.state],|r|r.get(0)).map_err(db_error)?;
+                if first.is_none_or(|at|at<=now()-super::codex_notices::NOTICE_MAX_AGE_MS){return Err("CLAUDE_WAIT_BACKLOG".into());}
+            }
             Ok(serde_json::json!({"threadId":input.thread_id,"generation":generation,"turnId":input.turn_id,"state":snapshot.state}))
         })
     }

@@ -26,6 +26,10 @@ mod owner;
 #[cfg(windows)]
 mod owner_state;
 #[cfg(windows)]
+mod owner_stream;
+#[cfg(windows)]
+mod follower_state;
+#[cfg(windows)]
 mod legacy_cleanup;
 #[cfg(windows)]
 pub(crate) mod retirement;

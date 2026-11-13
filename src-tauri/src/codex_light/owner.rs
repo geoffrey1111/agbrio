@@ -13,12 +13,13 @@ use super::{
     hub::Hub,
     ipc::{Connection, OwnerEvent, PeerPolicy},
     owner_state::{OwnerState, SNAPSHOT_BYTE_BUDGET},
+    owner_stream::Stream,
 };
 use serde_json::{json, Value};
 use std::{
     collections::{HashMap, HashSet},
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
     time::{Duration, Instant},
@@ -26,7 +27,7 @@ use std::{
 
 const HISTORY_TURNS: u64 = 20;
 const HISTORY_PAGE: u64 = 2;
-const SEND_INTERVAL: Duration = Duration::from_millis(400);
+const SEND_INTERVAL: Duration = Duration::from_millis(750);
 /// A large state takes real work to send and to render, so it is sent less often.
 const BYTES_PER_EXTRA_SECOND: usize = 2 * 1024 * 1024;
 const RECONNECT_DELAY: Duration = Duration::from_secs(3);
@@ -40,26 +41,36 @@ pub(super) struct Session {
     is_new: bool,
     dirty: AtomicBool,
     released: AtomicBool,
-    revision: AtomicU64,
+    stream: Mutex<Stream>,
+    resync: Mutex<HashSet<String>>,
     followers: Mutex<HashSet<String>>,
     connection: Mutex<Option<Arc<Connection>>>,
+    published:tokio::sync::Notify,
+    preview_over_budget:AtomicBool,
+    preview_delivery_failed:AtomicBool,
 }
 
 #[derive(Default)]
 pub(super) struct Sessions(Mutex<HashMap<String, Arc<Session>>>);
 
 impl Session {
-    fn publish(&self, connection: &Connection, targets: Vec<String>) -> usize {
+    async fn publish(&self, connection: &Connection, targets: Vec<String>) -> usize {
         if targets.is_empty() {
             return 0;
         }
-        let revision = self.revision.fetch_add(1, Ordering::SeqCst) + 1;
         let state = self.state.lock().unwrap().snapshot();
-        connection.broadcast(
-            "thread-stream-state-changed",
-            Some(targets),
-            json!({"conversationId":self.thread,"hostId":HOST,"change":{"type":"snapshot","revision":revision,"conversationState":state}}),
-        )
+        let resync:HashSet<String> = {let mut pending=self.resync.lock().unwrap();targets.iter().filter(|client|pending.remove(*client)).cloned().collect()};
+        self.preview_over_budget.store(!super::owner_stream::fits(&state,super::owner_stream::STATE_LIMIT),Ordering::SeqCst);
+        let changes=self.stream.lock().unwrap().changes(state,&targets,&resync);
+        let mut bytes=0;let mut failed=false;
+        for(targets,change)in changes {
+            let sent=connection.broadcast_state(targets,json!({"conversationId":self.thread,"hostId":HOST,"change":change})).await;
+            if sent==0{failed=true;break;}bytes+=sent;
+        }
+        self.preview_delivery_failed.store(failed,Ordering::SeqCst);
+        if failed{self.stream.lock().unwrap().reset_clients();self.dirty.store(true,Ordering::SeqCst);}
+        self.published.notify_waiters();
+        bytes
     }
 
     fn close(&self) {
@@ -91,9 +102,13 @@ impl Sessions {
             is_new: kind == PinKind::Created,
             dirty: AtomicBool::new(false),
             released: AtomicBool::new(false),
-            revision: AtomicU64::new(0),
+            stream: Mutex::default(),
+            resync: Mutex::default(),
             followers: Mutex::default(),
             connection: Mutex::default(),
+            published:Default::default(),
+            preview_over_budget:AtomicBool::new(false),
+            preview_delivery_failed:AtomicBool::new(false),
         });
         sessions.insert(thread.to_owned(), session.clone());
         Some(session)
@@ -208,6 +223,7 @@ impl Hub {
                 return;
             }
             session.followers.lock().unwrap().clear();
+            session.stream.lock().unwrap().reset_clients();
             connection.broadcast("thread-stream-following-status-requested", None, json!({"conversationId":session.thread,"hostId":HOST}));
             let mut next_send = Instant::now();
             loop {
@@ -225,13 +241,18 @@ impl Hub {
                             if following {
                                 followers.insert(client.clone());
                                 drop(followers);
-                                session.publish(&connection, vec![client]);
+                                session.resync.lock().unwrap().insert(client);
+                                session.dirty.store(true,Ordering::SeqCst);
                             } else {
                                 followers.remove(&client);
+                                session.stream.lock().unwrap().forget(&client);
+                                session.resync.lock().unwrap().remove(&client);
                             }
                         }
                         Some(OwnerEvent::ClientGone(client)) => {
                             session.followers.lock().unwrap().remove(&client);
+                            session.stream.lock().unwrap().forget(&client);
+                            session.resync.lock().unwrap().remove(&client);
                         }
                         Some(OwnerEvent::Disconnected) | None => break,
                     },
@@ -240,10 +261,10 @@ impl Hub {
                 if session.released.load(Ordering::SeqCst) {
                     return;
                 }
-                if session.dirty.load(Ordering::SeqCst) && Instant::now() >= next_send {
+                if session.dirty.load(Ordering::SeqCst) && Instant::now() >= next_send && !connection.state_write_busy() {
                     session.dirty.store(false, Ordering::SeqCst);
                     let targets: Vec<String> = session.followers.lock().unwrap().iter().cloned().collect();
-                    let bytes = session.publish(&connection, targets);
+                    let bytes = session.publish(&connection, targets).await;
                     next_send = Instant::now() + SEND_INTERVAL + Duration::from_secs_f64(bytes as f64 / BYTES_PER_EXTRA_SECOND as f64);
                 }
                 // Desktop reads the thread itself and lists it, so no restart is needed to see it.
@@ -317,8 +338,14 @@ impl Hub {
             "thread-follower-update-thread-settings" => Ok(json!({"applied":false})),
             "thread-follower-load-complete-history" => {
                 let targets: Vec<String> = session.followers.lock().unwrap().iter().cloned().collect();
-                session.publish(connection_of(session)?.as_ref(), targets);
-                Ok(json!({"revision":session.revision.load(Ordering::SeqCst)}))
+                if targets.is_empty(){return Err("no-followers".into());}
+                let published=session.published.notified();tokio::pin!(published);published.as_mut().enable();
+                session.resync.lock().unwrap().extend(targets);
+                session.dirty.store(true,Ordering::SeqCst);
+                tokio::time::timeout(Duration::from_secs(15),published).await.map_err(|_|"request-timeout")?;
+                if session.preview_over_budget.load(Ordering::SeqCst){return Err("agbrio-preview-too-large-use-native-history-after-turn".into());}
+                if session.preview_delivery_failed.load(Ordering::SeqCst){return Err("agbrio-preview-waiting-for-desktop".into());}
+                Ok(json!({"revision":session.stream.lock().unwrap().revision()}))
             }
             "thread-follower-compact-thread" => {
                 backend().await?;
@@ -349,10 +376,6 @@ impl Hub {
             }
         });
     }
-}
-
-fn connection_of(session: &Session) -> Result<Arc<Connection>, String> {
-    session.connection.lock().unwrap().clone().ok_or_else(|| "no-client-found".to_owned())
 }
 
 #[cfg(test)]

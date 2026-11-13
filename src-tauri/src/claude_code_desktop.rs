@@ -120,8 +120,8 @@ pub(crate) fn names_at(roots: &[PathBuf], sessions: &[Session]) -> HashMap<Strin
 }
 /// A conversation the Claude desktop app lists, from any account partition.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DesktopSession { pub session_id: String, pub cwd: String, pub title: Option<String>, pub archived: bool, pub last_activity: i64 }
-fn native_uuid(v: &str) -> bool { v.len() == 36 && uuid::Uuid::parse_str(v).is_ok() }
+pub(crate) struct DesktopSession { pub local_id: Option<String>, pub session_id: String, pub cwd: String, pub title: Option<String>, pub archived: bool, pub last_activity: i64 }
+pub(crate) fn native_uuid(v: &str) -> bool { v.len() == 36 && uuid::Uuid::parse_str(v).is_ok() }
 /// One entry per native session id: the copy with the latest activity wins, so a
 /// stale copy in another partition never hides or resurrects a conversation.
 pub(crate) fn sessions_at(roots: &[PathBuf]) -> Vec<DesktopSession> {
@@ -131,7 +131,7 @@ pub(crate) fn sessions_at(roots: &[PathBuf]) -> Vec<DesktopSession> {
         let (Some(id), Some(cwd)) = (p.id, p.cwd) else { continue; };
         if !native_uuid(&id) || cwd.trim().is_empty() { continue; }
         let archived = p.archived || p.local_id.as_ref().is_some_and(|l| archived_index.contains(l));
-        let next = DesktopSession { session_id: id.clone(), cwd, title: p.title, archived, last_activity: p.last_activity };
+        let next = DesktopSession { local_id: p.local_id, session_id: id.clone(), cwd, title: p.title, archived, last_activity: p.last_activity };
         match by_id.get(&id) { Some(old) if old.last_activity >= next.last_activity => {}, _ => { by_id.insert(id, next); } }
     }
     let mut list: Vec<_> = by_id.into_values().collect();
@@ -140,6 +140,36 @@ pub(crate) fn sessions_at(roots: &[PathBuf]) -> Vec<DesktopSession> {
 }
 #[cfg(test)]
 pub(crate) static TEST_ROOTS: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+fn session_roots() -> Vec<PathBuf> {
+    #[cfg(test)] { TEST_ROOTS.lock().map(|r|r.clone()).unwrap_or_default() }
+    #[cfg(not(test))] { data_roots() }
+}
+
+pub(crate) fn fresh_sessions() -> Vec<DesktopSession> {
+    sessions_at(&session_roots())
+}
+
+pub(crate) fn resolve_local(local:&str)->Result<String,String>{
+    let filename=format!("{local}.json");
+    let mut matched=None::<(String,String,i64,bool)>;
+    for (path,archive) in session_files(&session_roots()) {
+        if path.file_name().and_then(|s|s.to_str())!=Some(filename.as_str()){continue;}
+        let p=read_prefix(&path);
+        if p.local_id.as_deref()!=Some(local){continue;}
+        let (Some(id),Some(cwd))=(p.id,p.cwd)else{continue;};
+        if !native_uuid(&id){continue;}
+        if matched.as_ref().is_some_and(|(old,root,_,_)|old!=&id||!router_core::claude_code::same_root(root,&cwd)){
+            return Err("MANAGEMENT_CONVERSATION_AMBIGUOUS".into());
+        }
+        let archived=p.archived||archive.contains(local);
+        if matched.as_ref().is_none_or(|(_,_,at,_)|p.last_activity>=*at) {
+            let archived=archived||matched.as_ref().is_some_and(|(_,_,at,old)|*at==p.last_activity&&*old);
+            matched=Some((id,cwd,p.last_activity,archived));
+        }
+    }
+    matched.filter(|(_,_,_,archived)|!*archived).map(|(id,_,_,_)|id).ok_or_else(||"MANAGEMENT_CONVERSATION_UNAVAILABLE".into())
+}
+
 pub(crate) fn sessions() -> Vec<DesktopSession> {
     // Tests never read the real desktop app's files.
     #[cfg(test)] { return sessions_at(&TEST_ROOTS.lock().map(|r| r.clone()).unwrap_or_default()); }

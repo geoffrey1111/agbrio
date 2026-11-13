@@ -17,10 +17,19 @@ pub struct Change {
     pub manager_id:Option<String>,pub thread_id:Option<String>,
     pub generation:Option<i64>,pub from_revision:Option<i64>,pub from_zone_id:Option<String>,pub thread_ids:Option<Vec<String>>,
 }
+#[derive(Clone,PartialEq,Eq,Deserialize,Serialize)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+pub struct ExecutorTarget {pub thread_id:String,pub generation:i64}
 fn conversation(c:&Connection,id:&str)->Result<Conversation,String>{
     if let Some(sid)=id.strip_prefix("claude_code:"){
         if !crate::claude_code::native_id(sid){return Err("MANAGEMENT_CONVERSATION_INVALID".into());}
-        return c.query_row("SELECT s.cwd,s.state,s.checked_at,s.lease_until,COALESCE(w.generation,1),COALESCE(w.label,''),COALESCE(w.enabled,0) FROM claude_sessions s LEFT JOIN codex_watches w ON w.thread_id=?1 WHERE s.session_id=?2",params![id,sid],|r|{
+        return c.query_row("SELECT s.cwd,s.state,s.checked_at,s.lease_until,COALESCE(w.generation,1),COALESCE(w.label,''),COALESCE(w.enabled,0)
+            FROM (
+                SELECT cwd,state,checked_at,lease_until FROM claude_sessions WHERE session_id=?2
+                UNION ALL
+                SELECT cwd,'DESKTOP',checked_at,0 FROM management_claude_desktop d
+                    WHERE d.session_id=?2 AND NOT EXISTS(SELECT 1 FROM claude_sessions WHERE session_id=d.session_id)
+            ) s LEFT JOIN codex_watches w ON w.thread_id=?1",params![id,sid],|r|{
             let label:String=r.get(5)?;
             Ok(Conversation{thread_id:id.into(),label:if label.is_empty(){format!("Claude Code · {}",&sid[..8])}else{label},provider:"CLAUDE_CODE".into(),cwd:r.get(0)?,state:r.get(1)?,checked_at:r.get(2)?,available:r.get::<_,i64>(3)?>now(),generation:r.get(4)?,watch_enabled:r.get(6)?})
         }).map_err(|_|"MANAGEMENT_CONVERSATION_UNAVAILABLE".into());
@@ -33,6 +42,11 @@ fn conversation(c:&Connection,id:&str)->Result<Conversation,String>{
 fn revision(c:&Connection,id:&str,expected:Option<i64>)->Result<i64,String>{
     let actual=c.query_row("SELECT revision FROM management_zones WHERE id=?1",[id],|r|r.get::<_,i64>(0)).optional().map_err(db_error)?.ok_or("MANAGEMENT_ZONE_NOT_FOUND")?;
     if Some(actual)!=expected{return Err("MANAGEMENT_CHANGED_REFRESH".into());}Ok(actual)
+}
+fn change_receipt(c:&Connection,request_id:&str,hash:&str)->Result<Option<Value>,String>{
+    let Some((old,receipt))=c.query_row("SELECT payload_hash,receipt_json FROM management_changes WHERE request_id=?1",[request_id],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?))).optional().map_err(db_error)? else{return Ok(None);};
+    if old!=hash{return Err("MANAGEMENT_REQUEST_CONFLICT".into());}
+    serde_json::from_str(&receipt).map(Some).map_err(|_|"MANAGEMENT_RECEIPT_INVALID".into())
 }
 fn name(value:Option<&str>)->Result<&str,String>{
     let name=value.map(str::trim).filter(|n|!n.is_empty()&&n.chars().count()<=80&&!n.chars().any(char::is_control)).ok_or("MANAGEMENT_NAME_INVALID")?;Ok(name)
@@ -85,7 +99,12 @@ fn sync_zone(c:&Connection,zone:&str)->Result<(),String>{
     for thread in sources{
         let Ok(source)=conversation(c,&thread)else{continue};
         let id=length_prefixed_hash(&[b"management-route-v1",zone.as_bytes(),&epoch.to_be_bytes(),thread.as_bytes(),&source.generation.to_be_bytes(),source.cwd.as_bytes(),receiver.cwd.as_bytes()]);
-        if c.query_row("SELECT EXISTS(SELECT 1 FROM claude_codex_subscriptions WHERE id=?1 AND status='ACTIVE')",[&id],|r|r.get::<_,bool>(0)).map_err(db_error)?{continue;}
+        // Even an already-current route can have legacy subscriptions created by
+        // the manager's registration path. Retire competitors before returning.
+        if c.query_row("SELECT EXISTS(SELECT 1 FROM claude_codex_subscriptions WHERE id=?1 AND status='ACTIVE')",[&id],|r|r.get::<_,bool>(0)).map_err(db_error)?{
+            c.execute("UPDATE claude_codex_subscriptions SET status='CANCELLED' WHERE thread_id=?1 AND id!=?2 AND status='ACTIVE'",params![thread,id]).map_err(db_error)?;
+            continue;
+        }
         let active:i64=c.query_row("SELECT count(*) FROM claude_codex_subscriptions WHERE receiver_sid=?1 AND receiver_provider=?2 AND status='ACTIVE' AND thread_id!=?3",params![sid,receiver.provider,thread],|r|r.get(0)).map_err(db_error)?;
         if active>=128{return Err("MANAGEMENT_MANAGER_CAPACITY".into());}
         let mut q=c.prepare("SELECT n.* FROM claude_codex_notices n JOIN claude_codex_subscriptions s ON s.id=n.subscription_id WHERE s.thread_id=?1 AND s.generation=?2 AND s.source_cwd=?3 AND s.status='ACTIVE' AND n.status='READY' ORDER BY n.created_at").map_err(db_error)?;
@@ -106,6 +125,52 @@ impl RouterStore {
         if !c.query_row("SELECT EXISTS(SELECT 1 FROM management_codex_attempts WHERE reply_id=?1)",[reply],|r|r.get::<_,bool>(0)).map_err(db_error)?{return Err("MANAGEMENT_RECEIPT_INVALID".into());}
         validate_reply_route(c,reply)
     })}
+    /// Current-user owner action: attach exact watched conversations and their
+    /// notification routes together. Never transfer membership implicitly.
+    pub fn add_management_executors(&self,request:&str,zone:&str,expected:i64,targets:&[ExecutorTarget])->Result<Value,String>{
+        if Uuid::parse_str(request).is_err()||Uuid::parse_str(zone).is_err()||expected<1||
+            targets.is_empty()||targets.len()>32||
+            targets.iter().map(|t|&t.thread_id).collect::<std::collections::HashSet<_>>().len()!=targets.len(){
+            return Err("MANAGEMENT_REQUEST_INVALID".into());
+        }
+        let identity=serde_json::to_vec(&("ADD_ZONE_EXECUTORS",zone,expected,targets)).map_err(|_|"MANAGEMENT_REQUEST_INVALID")?;
+        let hash=format!("{:x}",Sha256::digest(identity));
+        self.with_connection(|c|{
+            let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
+            if let Some(receipt)=change_receipt(&tx,request,&hash)?{return Ok(receipt);}
+            let current=revision(&tx,zone,Some(expected))?;
+            let manager_id=tx.query_row("SELECT manager_id FROM management_zones WHERE id=?1",[zone],|r|r.get::<_,Option<String>>(0)).map_err(db_error)?.ok_or("MANAGEMENT_MANAGER_REQUIRED")?;
+            manager(&tx,&manager_id)?;
+            let at=now();
+            let mut added=Vec::new();let mut already_assigned=Vec::new();
+            for target in targets{
+                let thread=&target.thread_id;
+                let source=conversation(&tx,thread)?;
+                if !source.watch_enabled{return Err("MANAGEMENT_ENABLE_WATCH_FIRST".into());}
+                if source.generation!=target.generation{return Err("MANAGEMENT_SOURCE_CHANGED_REFRESH".into());}
+                if tx.query_row("SELECT EXISTS(SELECT 1 FROM management_zones WHERE manager_id=?1)",[thread],|r|r.get::<_,bool>(0)).map_err(db_error)?{
+                    return Err("MANAGEMENT_EXECUTOR_IS_MANAGER".into());
+                }
+                let old=tx.query_row("SELECT zone_id FROM management_members WHERE thread_id=?1",[thread],|r|r.get::<_,String>(0)).optional().map_err(db_error)?;
+                if let Some(old)=old{
+                    if old!=zone{return Err("MANAGEMENT_ALREADY_ASSIGNED_USE_TRANSFER".into());}
+                    already_assigned.push(thread);
+                }else{
+                    tx.execute("INSERT INTO management_members(thread_id,zone_id,generation,joined_at) VALUES(?1,?2,?3,?4)",params![thread,zone,target.generation,at]).map_err(db_error)?;
+                    added.push(thread);
+                }
+            }
+            let next=if added.is_empty(){current}else{
+                tx.execute("UPDATE management_zones SET revision=revision+1,updated_at=?2 WHERE id=?1",params![zone,at]).map_err(db_error)?;
+                current+1
+            };
+            sync_zone(&tx,zone)?;
+            let receipt=json!({"requestId":request,"zoneId":zone,"managerId":manager_id,"revision":next,"addedThreadIds":added,"alreadyAssignedThreadIds":already_assigned,"appliedAt":at});
+            tx.execute("INSERT INTO management_changes(request_id,payload_hash,receipt_json,created_at) VALUES(?1,?2,?3,?4)",params![request,hash,receipt.to_string(),at]).map_err(db_error)?;
+            tx.commit().map_err(db_error)?;
+            Ok(receipt)
+        })
+    }
     pub fn management_active(&self)->Result<bool,String>{self.with_connection(|c|c.query_row("SELECT EXISTS(SELECT 1 FROM management_zones)",[],|r|r.get(0)).map_err(db_error))}
     pub fn management_assignment(&self,thread:&str)->Result<Option<Value>,String>{self.with_connection(|c|{
         let row:Option<(String,Option<String>,i64)>=c.query_row("SELECT z.id,z.manager_id,z.revision FROM management_members m JOIN management_zones z ON z.id=m.zone_id WHERE m.thread_id=?1",[thread],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(db_error)?;
@@ -201,40 +266,95 @@ impl RouterStore {
             }
         }Ok(())
     })}
-    pub fn management_zones(&self)->Result<Value,String>{self.with_connection(|c|{
+    pub fn management_zones(&self)->Result<Value,String>{self.with_connection(|connection|{
+        let snapshot=connection.transaction().map_err(db_error)?;
+        let c=&snapshot;
         let mut statement=c.prepare("SELECT id,name,manager_id,revision,updated_at FROM management_zones ORDER BY created_at,id").map_err(db_error)?;
         let zones=statement.query_map([],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,Option<String>>(2)?,r.get::<_,i64>(3)?,r.get::<_,i64>(4)?))).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;
         let mut result=Vec::new();
         for(id,name,manager_id,revision,updated_at)in zones{
             let mut members=c.prepare("SELECT thread_id,generation FROM management_members WHERE zone_id=?1 ORDER BY joined_at,thread_id").map_err(db_error)?;
             let members=members.query_map([&id],|r|Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?))).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;
-            let children:Vec<_>=members.into_iter().map(|(thread,generation)|match conversation(c,&thread){Ok(row)=>json!({"threadId":thread,"generation":generation,"conversation":row}),Err(_)=>json!({"threadId":thread,"generation":generation,"conversation":null})}).collect();
+            let mut routes=c.prepare("SELECT thread_id,id,receiver_sid,receiver_provider FROM claude_codex_subscriptions WHERE management_zone_id=?1 AND status='ACTIVE' AND expires_at>?2 ORDER BY thread_id,id").map_err(db_error)?;
+            let routes=routes.query_map(params![&id,now()],|r|Ok((r.get::<_,String>(0)?,json!({"id":r.get::<_,String>(1)?,"receiverSid":r.get::<_,String>(2)?,"receiverProvider":r.get::<_,String>(3)?})))).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;
+            let mut by_thread=std::collections::HashMap::<String,Vec<Value>>::new();
+            for (thread,route) in routes {by_thread.entry(thread).or_default().push(route);}
+            let children:Vec<_>=members.into_iter().map(|(thread,generation)|{
+                let row=conversation(c,&thread).ok();
+                let subscriptions=by_thread.remove(&thread).unwrap_or_default();
+                json!({"threadId":thread,"generation":generation,"conversation":row,"subscriptions":subscriptions})
+            }).collect();
             let manager=manager_id.as_deref().and_then(|id|conversation(c,id).ok());
-            result.push(json!({"id":id,"name":name,"managerId":manager_id,"manager":manager,"revision":revision,"updatedAt":updated_at,"members":children}));
+            // The authorized application read is passive, even before the
+            // manager reconnects and the delivery path marks the rows BACKLOG.
+            let backlog=if let Some(sid)=manager_id.as_deref().and_then(|v|v.strip_prefix("claude_code:")){
+                let scope="FROM claude_codex_notices n JOIN claude_codex_subscriptions s ON s.id=n.subscription_id JOIN management_members m ON m.zone_id=s.management_zone_id AND m.thread_id=s.thread_id AND m.generation=s.generation WHERE s.management_zone_id=?1 AND s.receiver_provider='CLAUDE_CODE' AND s.receiver_sid=?2 AND s.status='ACTIVE' AND (n.status='BACKLOG' OR (n.status='READY' AND n.created_at<=?3))";
+                let cutoff=now()-codex_notices::NOTICE_MAX_AGE_MS;
+                let total:i64=c.query_row(&format!("SELECT count(*) {scope}"),params![&id,sid,cutoff],|r|r.get(0)).map_err(db_error)?;
+                let mut q=c.prepare(&format!("SELECT n.id,s.thread_id,s.generation,n.turn_id,n.kind,n.source_state,n.request_id,n.created_at {scope} ORDER BY n.created_at DESC,n.id DESC LIMIT 64")).map_err(db_error)?;
+                let items=q.query_map(params![&id,sid,cutoff],codex_notices::backlog_item).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;
+                json!({"total":total,"items":items,"truncated":total>items.len() as i64})
+            }else{json!({"total":0,"items":[],"truncated":false})};
+            result.push(json!({"id":id,"name":name,"managerId":manager_id,"manager":manager,"revision":revision,"updatedAt":updated_at,"members":children,"notificationBacklog":backlog}));
         }
         let mut ids=c.prepare("SELECT thread_id FROM codex_watches WHERE enabled=1 UNION SELECT 'claude_code:'||session_id FROM claude_sessions WHERE state!='SESSION_END' ORDER BY 1 LIMIT 1024").map_err(db_error)?;
         let ids=ids.query_map([],|r|r.get::<_,String>(0)).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;
         let candidates:Vec<_>=ids.into_iter().filter_map(|id|conversation(c,&id).ok()).collect();
         // Existing subscriptions are proposals for adoption, not implicit ownership.
-        let mut legacy=c.prepare("SELECT DISTINCT receiver_sid,thread_id FROM claude_codex_subscriptions WHERE status='ACTIVE' AND expires_at>?1 AND NOT EXISTS(SELECT 1 FROM management_members m WHERE m.thread_id=claude_codex_subscriptions.thread_id) ORDER BY receiver_sid,thread_id LIMIT 1024").map_err(db_error)?;
+        let mut legacy=c.prepare("SELECT DISTINCT receiver_sid,thread_id FROM claude_codex_subscriptions WHERE status='ACTIVE' AND management_zone_id IS NULL AND expires_at>?1 AND NOT EXISTS(SELECT 1 FROM management_members m WHERE m.thread_id=claude_codex_subscriptions.thread_id) ORDER BY receiver_sid,thread_id LIMIT 1024").map_err(db_error)?;
         let legacy=legacy.query_map([now()],|r|Ok(json!({"managerId":format!("claude_code:{}",r.get::<_,String>(0)?),"threadId":r.get::<_,String>(1)?}))).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;
         Ok(json!({"zones":result,"candidates":candidates,"legacyAssignments":legacy}))
     })}
-    /// Call only after authenticating a desktop/PWA owner. Not an MCP operation.
-    pub fn change_management_zone(&self,input:&Change)->Result<Value,String>{self.with_connection(|c|{
+    /// Call only through an owner surface. Not an MCP operation.
+    pub fn change_management_zone(&self,input:&Change)->Result<Value,String>{
+        self.change_management_zone_with_desktop(input,None)
+    }
+
+    /// The Host may supply a root verified against exact, unarchived native
+    /// desktop metadata. This records observation only; it has no publisher lease.
+    pub fn change_management_zone_with_desktop(&self,input:&Change,desktop_cwd:Option<&str>)->Result<Value,String>{
+        self.change_management_zone_with_identity(input,desktop_cwd,None)
+    }
+
+    /// This identity binds the local wire request before resolving its alias.
+    pub fn management_change_receipt(&self,request_id:&str,identity:&[u8])->Result<Option<Value>,String>{
+        let hash=format!("{:x}",Sha256::digest(identity));
+        self.with_connection(|c|change_receipt(c,request_id,&hash))
+    }
+
+    pub fn change_management_zone_with_identity(&self,input:&Change,desktop_cwd:Option<&str>,identity:Option<&[u8]>)->Result<Value,String>{self.with_connection(|c|{
         if Uuid::parse_str(&input.request_id).is_err(){return Err("MANAGEMENT_REQUEST_INVALID".into());}
-        let hash=format!("{:x}",Sha256::digest(serde_json::to_vec(input).map_err(|_|"MANAGEMENT_REQUEST_INVALID")?));
+        let payload=serde_json::to_vec(input).map_err(|_|"MANAGEMENT_REQUEST_INVALID")?;
+        let hash=format!("{:x}",Sha256::digest(identity.unwrap_or(&payload)));
         let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
-        if let Some((old,receipt))=tx.query_row("SELECT payload_hash,receipt_json FROM management_changes WHERE request_id=?1",[&input.request_id],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?))).optional().map_err(db_error)?{
-            if old!=hash{return Err("MANAGEMENT_REQUEST_CONFLICT".into());}return serde_json::from_str(&receipt).map_err(|_|"MANAGEMENT_RECEIPT_INVALID".into());
-        }
+        if let Some(receipt)=change_receipt(&tx,&input.request_id,&hash)?{return Ok(receipt);}
         let at=now();let mut source_zone=None;
+        if let Some(cwd)=desktop_cwd.filter(|_|matches!(input.action.as_str(),"CREATE"|"APPOINT")) {
+            let target=input.manager_id.as_deref().ok_or("MANAGEMENT_CONVERSATION_INVALID")?;
+            let sid=target.strip_prefix("claude_code:").filter(|id|crate::claude_code::native_id(id)).ok_or("MANAGEMENT_CONVERSATION_INVALID")?;
+            crate::claude_code::root_key(cwd).ok_or("MANAGEMENT_CONVERSATION_UNAVAILABLE")?;
+            tx.execute("INSERT INTO management_claude_desktop(session_id,cwd,checked_at) VALUES(?1,?2,?3)
+                ON CONFLICT(session_id) DO UPDATE SET cwd=excluded.cwd,checked_at=excluded.checked_at",params![sid,cwd,at]).map_err(db_error)?;
+            if !conversation(&tx,target).is_ok_and(|row|crate::claude_code::same_root(&row.cwd,cwd)||crate::claude_code::spare_root(&row.cwd)){
+                return Err("MANAGEMENT_CONVERSATION_UNAVAILABLE".into());
+            }
+        }
         let id=if matches!(input.action.as_str(),"CREATE"|"ADOPT"){
-            let label=name(input.name.as_deref())?;
-            if tx.query_row("SELECT count(*) FROM management_zones",[],|r|r.get::<_,i64>(0)).map_err(db_error)?>=32{return Err("MANAGEMENT_ZONE_LIMIT".into());}
+            let existing=if input.action=="ADOPT"{input.zone_id.as_deref()}else{None};
+            let label=if existing.is_none(){Some(name(input.name.as_deref())?)}else{None};
+            if existing.is_none()&&tx.query_row("SELECT count(*) FROM management_zones",[],|r|r.get::<_,i64>(0)).map_err(db_error)?>=32{return Err("MANAGEMENT_ZONE_LIMIT".into());}
             manager(&tx,input.manager_id.as_deref().ok_or("MANAGEMENT_CONVERSATION_INVALID")?)?;
-            let id=Uuid::new_v4().to_string();
-            tx.execute("INSERT INTO management_zones(id,name,manager_id,created_at,updated_at) VALUES(?1,?2,?3,?4,?4)",params![id,label,input.manager_id,at]).map_err(db_error)?;
+            let id=if let Some(id)=existing{
+                revision(&tx,id,input.revision)?;
+                let target:Option<String>=tx.query_row("SELECT manager_id FROM management_zones WHERE id=?1",[id],|r|r.get(0)).map_err(db_error)?;
+                if target!=input.manager_id{return Err("MANAGEMENT_ADOPTION_CHANGED_REFRESH".into());}
+                tx.execute("UPDATE management_zones SET revision=revision+1,updated_at=?2 WHERE id=?1",params![id,at]).map_err(db_error)?;
+                id.to_owned()
+            }else{
+                let id=Uuid::new_v4().to_string();
+                tx.execute("INSERT INTO management_zones(id,name,manager_id,created_at,updated_at) VALUES(?1,?2,?3,?4,?4)",params![id,label,input.manager_id,at]).map_err(db_error)?;
+                id
+            };
             if input.action=="ADOPT"{
                 let manager=input.manager_id.as_deref().and_then(|id|id.strip_prefix("claude_code:")).ok_or("MANAGEMENT_ADOPTION_INVALID")?;
                 let threads=input.thread_ids.as_ref().filter(|v|!v.is_empty()&&v.len()<=128).ok_or("MANAGEMENT_ADOPTION_INVALID")?;
@@ -269,7 +389,14 @@ impl RouterStore {
                     tx.execute("INSERT INTO management_members(thread_id,zone_id,generation,joined_at) VALUES(?1,?2,?3,?4) ON CONFLICT(thread_id) DO UPDATE SET zone_id=excluded.zone_id,generation=excluded.generation,joined_at=excluded.joined_at",params![thread,id,source.generation,at]).map_err(db_error)?;
                 },
                 "REMOVE"=>{let thread=input.thread_id.as_deref().ok_or("MANAGEMENT_CONVERSATION_INVALID")?;if tx.execute("DELETE FROM management_members WHERE thread_id=?1 AND zone_id=?2",params![thread,id]).map_err(db_error)?!=1{return Err("MANAGEMENT_MEMBERSHIP_NOT_FOUND".into());}tx.execute("UPDATE claude_codex_subscriptions SET status='CANCELLED' WHERE thread_id=?1 AND management_zone_id=?2",params![thread,id]).map_err(db_error)?;tx.execute("UPDATE claude_codex_notices SET status='OBSOLETE' WHERE status='READY' AND subscription_id IN(SELECT id FROM claude_codex_subscriptions WHERE thread_id=?1 AND management_zone_id=?2)",params![thread,id]).map_err(db_error)?;},
-                "DELETE"=>{if tx.query_row("SELECT EXISTS(SELECT 1 FROM management_members WHERE zone_id=?1)",[id],|r|r.get::<_,bool>(0)).map_err(db_error)?{return Err("MANAGEMENT_ZONE_NOT_EMPTY".into());}tx.execute("DELETE FROM management_zones WHERE id=?1",[id]).map_err(db_error)?;},
+                "DELETE"=>{
+                    // Delete responsibility metadata in one transaction. Native
+                    // tasks/watches and uncertain delivery receipts stay intact.
+                    tx.execute("UPDATE claude_codex_subscriptions SET status='CANCELLED' WHERE management_zone_id=?1 OR (status='ACTIVE' AND thread_id IN(SELECT thread_id FROM management_members WHERE zone_id=?1))",[id]).map_err(db_error)?;
+                    tx.execute("UPDATE claude_codex_notices SET status='OBSOLETE' WHERE status='READY' AND subscription_id IN(SELECT id FROM claude_codex_subscriptions WHERE management_zone_id=?1 OR thread_id IN(SELECT thread_id FROM management_members WHERE zone_id=?1))",[id]).map_err(db_error)?;
+                    tx.execute("DELETE FROM management_members WHERE zone_id=?1",[id]).map_err(db_error)?;
+                    tx.execute("DELETE FROM management_zones WHERE id=?1",[id]).map_err(db_error)?;
+                },
                 _=>return Err("MANAGEMENT_ACTION_INVALID".into()),
             }
             tx.execute("UPDATE management_zones SET revision=revision+1,updated_at=?2 WHERE id=?1",params![id,at]).map_err(db_error)?;
@@ -278,7 +405,11 @@ impl RouterStore {
         };
         sync_zone(&tx,&id)?;
         if let Some(old)=&source_zone{sync_zone(&tx,old)?;}
-        let receipt=json!({"requestId":input.request_id,"zoneId":id,"sourceZoneId":source_zone,"appliedAt":at});
+        let mut receipt=json!({"requestId":input.request_id,"zoneId":id,"sourceZoneId":source_zone,"appliedAt":at});
+        if input.action=="APPOINT" {
+            receipt["managerId"]=json!(input.manager_id);
+            receipt["revision"]=json!(input.revision.map(|r|r+1));
+        }
         tx.execute("INSERT INTO management_changes(request_id,payload_hash,receipt_json,created_at) VALUES(?1,?2,?3,?4)",params![input.request_id,hash,receipt.to_string(),at]).map_err(db_error)?;
         tx.commit().map_err(db_error)?;Ok(receipt)
     })}
@@ -286,8 +417,8 @@ impl RouterStore {
 
 #[cfg(test)]mod tests{
     use super::*;
-    fn change(s:&RouterStore,value:Value)->Result<Value,String>{s.change_management_zone(&serde_json::from_value(value).unwrap())}
-    fn fixture()->(tempfile::TempDir,RouterStore,String,String,String){
+    pub(super) fn change(s:&RouterStore,value:Value)->Result<Value,String>{s.change_management_zone(&serde_json::from_value(value).unwrap())}
+    pub(super) fn fixture()->(tempfile::TempDir,RouterStore,String,String,String){
         let d=tempfile::tempdir().unwrap();let s=RouterStore::open_at(d.path().join("zones.db")).unwrap();
         let root=d.path().to_string_lossy().to_string();let pair=s.create_claude_connection().unwrap();
         let sid=Uuid::new_v4().to_string();let instance=Uuid::new_v4().to_string();
@@ -296,8 +427,8 @@ impl RouterStore {
         for(id,label)in [(&manager,"Codex manager"),(&source,"Executor")]{s.enable_codex_watch(id,label,&root,&codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:"must not enter topology".into()}).unwrap();}
         (d,s,format!("claude_code:{sid}"),manager,source)
     }
-    fn create(s:&RouterStore,label:&str,manager:&str)->String{change(s,json!({"requestId":Uuid::new_v4().to_string(),"action":"CREATE","name":label,"managerId":manager})).unwrap()["zoneId"].as_str().unwrap().into()}
-    fn add(s:&RouterStore,zone:&str,source:&str,revision:i64)->Result<Value,String>{change(s,json!({"requestId":Uuid::new_v4().to_string(),"action":"ADD","zoneId":zone,"revision":revision,"threadId":source,"generation":1}))}
+    pub(super) fn create(s:&RouterStore,label:&str,manager:&str)->String{change(s,json!({"requestId":Uuid::new_v4().to_string(),"action":"CREATE","name":label,"managerId":manager})).unwrap()["zoneId"].as_str().unwrap().into()}
+    pub(super) fn add(s:&RouterStore,zone:&str,source:&str,revision:i64)->Result<Value,String>{change(s,json!({"requestId":Uuid::new_v4().to_string(),"action":"ADD","zoneId":zone,"revision":revision,"threadId":source,"generation":1}))}
     #[test]fn ownership_is_unique_and_transfer_updates_both_zones_atomically(){
         let(_d,s,claude,codex,source)=fixture();let a=create(&s,"Art",&claude);let b=create(&s,"Engineering",&codex);
         add(&s,&a,&source,1).unwrap();assert_eq!(add(&s,&b,&source,1).unwrap_err(),"MANAGEMENT_ALREADY_ASSIGNED_USE_TRANSFER");
@@ -371,4 +502,45 @@ impl RouterStore {
         assert_eq!(s.watch_reply(&reply).unwrap().unwrap().status,"FAILED");
         let carried=s.with_connection(|c|c.query_row("SELECT count(*) FROM claude_codex_notices n JOIN claude_codex_subscriptions r ON r.id=n.subscription_id WHERE n.status='READY' AND r.status='ACTIVE' AND r.receiver_provider='CLAUDE_CODE'",[],|r|r.get::<_,i64>(0)).map_err(db_error)).unwrap();assert_eq!(carried,1);
     }
+}
+
+#[cfg(test)]mod handover_regressions{
+ use super::tests::*;
+ use super::*;
+ fn binding(s:&RouterStore,manager:&str,source:&str)->codex_notices::Binding{
+  let w=s.registered_codex_watch(source).unwrap();
+  codex_notices::Binding{receiver_sid:manager.strip_prefix("claude_code:").unwrap().into(),receiver_cwd:w.cwd.clone(),thread_id:source.into(),generation:w.generation,source_cwd:w.cwd,anchor_turn:"first".into(),mode:"TASK".into(),goal_key:None,expires_at:253402300799000}
+ }
+ #[test]fn registration_and_repair_keep_only_the_current_manager_subscription(){
+  let(_d,s,claude,codex,source)=fixture();let b=binding(&s,&claude,&source);
+  let legacy=s.register_codex_notice(&b).unwrap();let zone=create(&s,"Work",&claude);add(&s,&zone,&source,1).unwrap();
+  let current=s.register_codex_notice(&b).unwrap();assert_ne!(legacy.id,current.id);assert_eq!(current.management_zone_id.as_deref(),Some(zone.as_str()));
+  s.with_connection(|c|{c.execute("UPDATE claude_codex_subscriptions SET status='ACTIVE' WHERE id=?1",[&legacy.id]).map_err(db_error)?;Ok(())}).unwrap();
+  s.sync_management_routes().unwrap();assert_eq!(s.codex_notice_sources(Some(&source)).unwrap().len(),1);
+  change(&s,json!({"requestId":Uuid::new_v4().to_string(),"action":"APPOINT","zoneId":zone,"revision":2,"managerId":codex})).unwrap();
+  assert!(matches!(s.register_codex_notice(&b),Err(e) if e=="CLAUDE_NOTICE_MANAGED_BY_OTHER_SESSION"));
+  let active=s.codex_notice_sources(Some(&source)).unwrap();assert_eq!(active.len(),1);assert_eq!(active[0].binding.receiver_sid,codex);
+  assert!(s.management_zones().unwrap()["legacyAssignments"].as_array().unwrap().is_empty());
+ }
+}
+
+#[cfg(test)]mod area_delete_adopt_regressions{
+ use super::tests::*;use super::*;
+ #[test]fn delete_nonempty_area_is_atomic_replayable_and_preserves_native_watches(){
+  let(_d,s,claude,codex,source)=fixture();let zone=create(&s,"Delete",&claude);let other=create(&s,"Keep",&codex);add(&s,&zone,&source,1).unwrap();
+  s.publish_management_event(&source,1,"ready","TURN_RESULT","completed",None,now()).unwrap();s.publish_management_event(&source,1,"unknown","TURN_RESULT","completed",None,now()).unwrap();
+  s.with_connection(|c|{c.execute("UPDATE claude_codex_notices SET status='UNKNOWN' WHERE turn_id='unknown'",[]).map_err(db_error)?;Ok(())}).unwrap();
+  let before=s.registered_codex_watch(&source).unwrap();let mut q=json!({"requestId":Uuid::new_v4().to_string(),"action":"DELETE","zoneId":zone,"revision":1});
+  assert!(change(&s,q.clone()).is_err());assert_eq!(s.codex_notice_sources(Some(&source)).unwrap().len(),1);
+  q["revision"]=json!(2);let receipt=change(&s,q.clone()).unwrap();assert_eq!(change(&s,q).unwrap(),receipt);
+  let view=s.management_zones().unwrap();assert_eq!(view["zones"].as_array().unwrap().len(),1);assert_eq!(view["zones"][0]["id"],other);assert_eq!(view["legacyAssignments"],json!([]));assert!(s.codex_notice_sources(Some(&source)).unwrap().is_empty());
+  let after=s.registered_codex_watch(&source).unwrap();assert_eq!(before.generation,after.generation);assert_eq!(before.snapshot,after.snapshot);assert!(after.enabled);
+  s.with_connection(|c|{assert_eq!(c.query_row("SELECT status FROM claude_codex_notices WHERE turn_id='ready'",[],|r|r.get::<_,String>(0)).unwrap(),"OBSOLETE");assert_eq!(c.query_row("SELECT status FROM claude_codex_notices WHERE turn_id='unknown'",[],|r|r.get::<_,String>(0)).unwrap(),"UNKNOWN");Ok(())}).unwrap();
+ }
+ #[test]fn adopt_into_existing_area_does_not_create_another_area(){
+  let(_d,s,claude,_,source)=fixture();let w=s.registered_codex_watch(&source).unwrap();
+  let b=codex_notices::Binding{receiver_sid:claude.strip_prefix("claude_code:").unwrap().into(),receiver_cwd:w.cwd.clone(),thread_id:source.clone(),generation:w.generation,source_cwd:w.cwd,anchor_turn:"first".into(),mode:"TASK".into(),goal_key:None,expires_at:253402300799000};s.register_codex_notice(&b).unwrap();
+  let zone=create(&s,"Original",&claude);let q=json!({"requestId":Uuid::new_v4().to_string(),"action":"ADOPT","zoneId":zone,"revision":1,"managerId":claude,"threadIds":[source]});
+  change(&s,q.clone()).unwrap();change(&s,q).unwrap();let view=s.management_zones().unwrap();assert_eq!(view["zones"].as_array().unwrap().len(),1);assert_eq!(view["zones"][0]["name"],"Original");assert_eq!(view["zones"][0]["revision"],2);assert_eq!(view["zones"][0]["members"][0]["threadId"],source);assert_eq!(view["legacyAssignments"],json!([]));
+ }
 }

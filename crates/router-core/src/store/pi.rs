@@ -478,6 +478,13 @@ impl RouterStore {
         })
     }
     pub fn pi_notice_tasks(&self)->Result<Vec<Task>,String>{self.with_connection(|c|{let mut q=c.prepare("SELECT id FROM pi_tasks WHERE state IN ('RUNNING','WAITING_DECISION') OR id IN (SELECT id FROM pi_tasks ORDER BY updated_at DESC LIMIT 200) ORDER BY updated_at DESC").map_err(db_error)?;let keys=q.query_map([],|r|r.get::<_,String>(0)).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;keys.into_iter().map(|key|task(c,&key)).collect()})}
+    /// Native result time only. Polling, restore and settings edits can move updated_at.
+    pub fn pi_management_activity(&self, native: &str) -> Option<i64> {
+        self.with_connection(|c|c.query_row(
+            "SELECT COALESCE(json_extract(result_json,'$.completedAt'),CAST((julianday(json_extract(result_json,'$.lastAssistant.timestamp'))-2440587.5)*86400000 AS INTEGER)) FROM pi_tasks WHERE native_session_id=?1",
+            [native],|r|r.get::<_,Option<i64>>(0)).map_err(db_error)).ok().flatten()
+    }
+
     pub fn pi_tasks(&self) -> Result<Vec<Task>, String> {
         self.with_connection(|c| {
             let mut q = c

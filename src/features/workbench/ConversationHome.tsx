@@ -67,8 +67,7 @@ export function watchTone(w:CodexWatch):[Tone,string]{
 }
 /** A parent's own state, then the merged delegated-conversation tree. */
 function parentTone(w:CodexWatch,tree:ChildTreeModel|undefined,failureDismissed:boolean):[Tone,string]{
- const [raw,own]=watchTone({...w,taskTree:undefined});
- const tone=w.snapshot.state==="FAILED"&&failureDismissed?"done":raw;
+ const [tone,own]=failureDismissed?["done",""] as const:watchTone({...w,taskTree:undefined});
  if(tone==="wait"||!tree?.total)return[tone,own];
  const needs=tree.wait+tree.fail;
  if(needs)return["wait",tc("子对话等你 {0}",needs)];
@@ -128,9 +127,10 @@ export function ConversationHome({onOpenManagement,selectedKey,bridges,activity,
   const w=watches.filter(watch=>!delegation.nested.has(watch.threadId)).map<Row>(watch=>{
    const pi=delegation.children.get(watch.threadId)??[];
    const tree=watch.taskTree?.nodes.length||watch.taskTree?.limited||pi.length?buildChildTree({parentThreadId:watch.threadId,tree:watch.taskTree,pi,now,isDismissed,seen}):undefined;
-   const [tone,state]=parentTone(watch,tree,isDismissed(failedAttentionKey(watch)));
+   const failureDismissed=watch.snapshot.state==="FAILED"&&isDismissed(failedAttentionKey(watch));
+   const [tone,state]=parentTone(watch,tree,failureDismissed);
    const at=Math.max(messageTime(watch.lastMessageAt),...pi.map(c=>messageTime(c.lastMessageAt)));
-   return{key:`w:${watch.threadId}`,kind:"WATCH",title:watch.label,meta:`${threadProviderLabel(watch.threadId)}${watch.cwd?` · ${folder(watch.cwd)}`:""}`,source:threadProviderLabel(watch.threadId),preview:messagePreview(watch.snapshot.text),at,tone,state,unread:false,newResult:watch.unreadResult===true&&!seen(watch.threadId,watch.lastMessageAt),tree,watch};});
+   return{key:`w:${watch.threadId}`,kind:"WATCH",title:watch.label,meta:`${threadProviderLabel(watch.threadId)}${watch.cwd?` · ${folder(watch.cwd)}`:""}`,source:threadProviderLabel(watch.threadId),preview:failureDismissed?"":messagePreview(watch.snapshot.text),at,tone,state,unread:false,newResult:watch.unreadResult===true&&!seen(watch.threadId,watch.lastMessageAt),tree,watch};});
   const rank={run:0,wait:1,done:2};
   return [...b,...w].sort((x,y)=>rank[x.tone]-rank[y.tone]||y.at-x.at||(x.key<y.key?-1:x.key>y.key?1:0));
  },[bridges,activity,activityClock,watches,isDismissed,seen]);

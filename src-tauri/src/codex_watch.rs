@@ -11,6 +11,9 @@ fn id(v: &Value) -> Result<String, String> {
 pub(crate) fn source_availability(thread:&str,cwd:&str)->Result<(),String>{
  use router_core::codex::source_index::{self,Availability};match source_index::current(thread,cwd){Ok(Some(Availability::Archived))=>Err("WATCH_THREAD_ARCHIVED".into()),Ok(Some(Availability::FileMissing))=>Err("WATCH_SOURCE_FILE_MISSING".into()),Ok(Some(Availability::ProjectChanged))=>Err("WATCH_PROJECT_CHANGED".into()),_=>Ok(())}
 }
+pub(crate) fn refresh_display_label(watch:&mut CodexWatch){
+    if let Some(label)=router_core::codex::source_index::current_display_name(&watch.thread_id,&watch.cwd){watch.label=label;}
+}
 pub(crate) fn inspect(adapter: &mut crate::codex::adapter::CodexAdapter, thread_id: &str) -> Result<(String,String,WatchSnapshot),String> {
     let (label,cwd,snapshot,_,_)=inspect_live(adapter,thread_id)?;Ok((label,cwd,snapshot))
 }
@@ -184,7 +187,7 @@ pub(crate) fn candidates(core:&RouterCore)->Result<ExistingCodexThreadCatalog,St
  use super::*;
  #[test]fn archived_sessions_are_not_selectable_even_with_a_recent_plugin_lease(){
   let s=router_core::claude_code::Session{session_id:"exact".into(),instance_id:"instance".into(),cwd:std::env::temp_dir().to_string_lossy().into_owned(),version:"fixture".into(),state:"RUNNING".into(),turn_id:None,checked_at:900000,lease_until:1000000,title:Some("old".into()),latest_reply:None};
-  let mut d=crate::claude_code_desktop::DesktopSession{session_id:s.session_id.clone(),cwd:s.cwd.clone(),title:Some("current native title".into()),archived:true,last_activity:10000};
+  let mut d=crate::claude_code_desktop::DesktopSession{local_id:None,session_id:s.session_id.clone(),cwd:s.cwd.clone(),title:Some("current native title".into()),archived:true,last_activity:10000};
   assert!(claude_candidate_display(&s,&[d.clone()],900000).is_none());d.archived=false;
   assert_eq!(claude_candidate_display(&s,&[d],900000),Some(("current native title".into(),Some(10))));
   assert_eq!(claude_candidate_display(&s,&[],900000),Some(("old".into(),None)));
@@ -212,6 +215,10 @@ pub(crate) fn poll(
     epoch: u64,
 ) -> Result<bool, String> {
     if watch.thread_id.starts_with(router_core::store::claude_manual::PREFIX)||watch.thread_id.starts_with("pi:"){return Ok(false);}
+    // A failed history/status read must not freeze independently readable names.
+    if let Some(label)=router_core::codex::source_index::current_display_name(&watch.thread_id,&watch.cwd){
+        store.refresh_codex_watch_label(&watch.thread_id,watch.generation,&watch.cwd,&label)?;
+    }
     let outcome = (|| {
         source_availability(&watch.thread_id,&watch.cwd)?;
         let mut s = session.lock().map_err(|_| "Router session unavailable")?;
@@ -232,6 +239,7 @@ pub(crate) fn poll(
         if cwd != watch.cwd {
             return Err("WATCH_PROJECT_CHANGED".into());
         }
+        let label=router_core::codex::source_index::current_display_name(&watch.thread_id,&cwd).unwrap_or(label);
         store.refresh_codex_watch_label(&watch.thread_id,watch.generation,&cwd,&label)?;
         if let Some(a)=s.adapter.as_ref(){crate::conversation_message_time::codex(store,a,&watch.thread_id,&cwd);}
         store.record_codex_watch(&watch.thread_id, watch.generation, &snapshot)

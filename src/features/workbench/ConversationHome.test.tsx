@@ -4,6 +4,7 @@ import {ConversationHome} from './ConversationHome';
 import {TodoPage} from './TodoPage';
 import type {CodexWatch,NotificationApi} from './CodexNotifications';
 import {QUIET_WATCH_AGE} from './watchPresentation';
+import {readModels} from './readModelCache';
 afterEach(cleanup);
 const messageEpoch=Date.now()-60000;
 const watch=(id:string,at:number,state='RESULT_READY'):CodexWatch=>({threadId:id,label:id,cwd:'C:/fixture',lastMessageAt:at?messageEpoch+at:0,checkedAt:Date.now(),enabled:true,generation:1,errorCode:null,snapshot:{state,turnId:'turn',itemId:'message',text:'fixture'}});
@@ -22,6 +23,31 @@ it('allows an independent legacy Pi row to stop being watched',async()=>{
  fireEvent.click(await screen.findByRole('button',{name:'删除 pi:independent'}));await waitFor(()=>expect(a.api.remove).toHaveBeenCalledWith('WATCH',row.threadId,true));expect(screen.queryByText(row.label)).toBeNull();
 });
 const order=()=>[...document.querySelectorAll('.v6-list .v6-row strong')].map(n=>n.textContent);
+it('keeps an acknowledged Claude failure out of both surfaces after metadata refresh and remount',async()=>{
+ const old={...watch('claude_code:failed-limit',4,'FAILED'),changedAt:10};
+ old.snapshot.text="You've hit your weekly limit";
+ const a=fixture([old]);const props={bridges:[],activity:{},activityClock:Date.now(),watchApi:a.api,onOpenBridge:vi.fn(),onOpenWatch:vi.fn()};
+ const view=render(<><TodoPage {...props}/><ConversationHome {...props} addRequest={0}/></>);
+ await screen.findByRole('button',{name:'知道了'});
+ expect(screen.getAllByText(old.snapshot.text)).toHaveLength(2);
+ fireEvent.click(screen.getByRole('button',{name:'知道了'}));
+ const refreshed={...old,lastMessageAt:messageEpoch+25,changedAt:30};
+ act(()=>a.push([refreshed]));
+ expect(screen.queryByText(old.snapshot.text)).toBeNull();
+ expect(order()).toContain(old.label);
+ view.unmount();
+ // A receipt from the installed version must also survive that refresh.
+ const key=`agbrio.dismissed-attention.v1:${readModels.presentationScope()}`;
+ const saved=localStorage.getItem(key);
+ localStorage.setItem(key,JSON.stringify([JSON.stringify(['failure',old.threadId,old.generation,'FAILED',old.snapshot.turnId,old.snapshot.itemId,old.lastMessageAt,old.changedAt])]));
+ try{
+  render(<><TodoPage {...props}/><ConversationHome {...props} addRequest={0}/></>);
+  expect(screen.queryByText(old.snapshot.text)).toBeNull();
+  act(()=>a.push([{...refreshed,snapshot:{...old.snapshot,itemId:'new-error'}}]));
+  expect(await screen.findByRole('button',{name:'知道了'})).toBeVisible();
+  expect(screen.getAllByText(old.snapshot.text)).toHaveLength(2);
+ }finally{if(saved===null)localStorage.removeItem(key);else localStorage.setItem(key,saved);}
+});
 it('folds Pi into its native manager tree, promotes child activity and finds a child by search',async()=>{
  const parent=watch('claude_code:manager',1);
  const child={...watch('pi:child',3,'RUNNING'),piParent:{provider:'CLAUDE_CODE',externalId:'manager',cwd:parent.cwd}};

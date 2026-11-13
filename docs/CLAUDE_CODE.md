@@ -5,6 +5,11 @@ The Claude assistant guide keeps MCP read/dispatch and native notification/owner
 
 The Codex command now documents reviewed CREATE_CHAT and AUTO follow-ups. It adds no new native Claude hooks or Claude MCP write/create capability. Current owner replies do not silently queue while busy/offline; Queue is explicit. Claude Bridge sends require idle/ready. Native decision/permission and UNKNOWN/no-replay protections remain. Refresh MCP discovery after updating Host to see CREATE_CHAT/current action input. The native prompt.submit contract waits for idle; this release does not simulate guidance with abort/asUser/hidden peer messages.
 
+## Local Claude plugin authorization
+On Windows, Settings → AI Assistant → Claude Code shows the last local plugin authorization's expiration. Choose 30, 90, 180, 365 (default), or 730 days. The saved duration applies to new credentials, including explicit reconnection after expiration. It does not change an already-issued credential or the separate assistant MCP grant.
+
+Only Claude task notices less than 10 minutes old may be pushed automatically. Older unclaimed notices are marked BACKLOG, including old questions. The manager can inspect them in `agbrio_read_app` → `management.zones[].notificationBacklog`; nothing is sent for reading the backlog. Results stay in the original conversations. Delivery with uncertain native receipts is never retried as a new notice.
+
 ## Codex result reminders
 
 Update both Agbrio and its Claude plugin (0.1.9), then reload the plugin when the current task is idle. Ask Claude to notify this conversation when a selected Codex turn finishes. The native `codex_wait` tool registers one exact turn; it also supports checking and cancelling the reminder. Keep the requesting session open. The default expiry is one hour, with an explicit maximum of 24 hours. Result, attention or failure ends the one-shot wait. Cancelling does not stop Codex.
