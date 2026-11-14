@@ -167,7 +167,7 @@ html .r2-router .v7-detail-empty p{margin:0;font-size:var(--v7-fs-2);color:var(-
 html .r2-router.v3-surface-workspace .v7-detail-pane .r2-header{height:64px;min-height:64px}
 html .r2-router.v3-surface-workspace .v7-detail-pane .r2-header h1{font-size:var(--v7-fs-reader);line-height:24px}
 /* the list is beside the conversation, so the reader needs no back button */
-html .r2-router .v7-detail-pane .v4-chat-back{display:none}
+html .r2-router.v3-surface-bridges .v7-detail-pane .v4-chat-back{display:none}
 
 /* ---------- conversation reader header: title / source \00b7 model chip \00b7 folder \00b7 computer, status top-right ---------- */
 html .v4-watch-chat.v6-chat .v4-chat-header{display:flex;align-items:center;gap:10px;min-height:64px;padding:10px 20px;background:var(--v7-surface);border-bottom:1px solid var(--v7-line)}
@@ -210,10 +210,12 @@ html .r2-router .r2-settings .v4-shared-codex :is(h2,h3){font-size:var(--v7-fs-r
 @media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1100px){
   html .r2-router .r2-header h1{font-size:var(--v7-fs-title-phone);line-height:36px;font-weight:700;letter-spacing:-.02em}
   html .r2-router[data-detail=true] .r2-header h1{font-size:var(--v7-fs-reader);line-height:24px;font-weight:600}
-  html .r2-router .r2-header .r2-icon.r2-accent{width:36px;height:36px;min-height:36px;border-radius:50%}
-  html .r2-router .v6-search{min-height:40px}
+  html .r2-router .r2-header .r2-icon.r2-accent{width:44px;height:44px;min-height:44px;border-radius:var(--v7-r-ctl)}
+  html .r2-router .v6-search{min-height:44px}
   html .r2-router .v6-search input{font-size:16px}
-  html .r2-router .v6-chips button{min-height:32px;height:32px;padding:0 12px;border-radius:16px;font-size:var(--v7-fs-2)}
+  html :is(.r2-router,.v6-sheet) .v6-chips button{min-height:44px;height:44px;padding:0 12px;border-radius:var(--v7-r-ctl);font-size:var(--v7-fs-2)}
+  html .r2-router .v6-chips{padding-inline:3px}
+  html .r2-router .v6-chips button:focus-visible{outline-offset:-3px}
   html .r2-router .v6-row{padding:10px 8px}
   html .r2-router .v6-avatar{width:44px;height:44px}
   html .r2-router .v6-row-top strong{font-size:16px}
@@ -225,7 +227,7 @@ html .r2-router .r2-settings .v4-shared-codex :is(h2,h3){font-size:var(--v7-fs-r
   html .r2-router .v6-pi-child-toggle{margin-left:64px;font-size:var(--v7-fs-2)}
   html .r2-router .v6-pi-child-list{margin-left:30px}
   html .r2-router .v6-pi-child-list .v6-avatar{width:32px;height:32px}
-  html .r2-router .r2-tabbar button{color:var(--v7-faint)}
+  html .r2-router .r2-tabbar button{color:var(--v7-muted)}
   html .r2-router .r2-tabbar button[aria-current=page]{color:var(--v7-ink)}
   html .r2-router .r2-tabbar button>span:not(.r2-nav-selection){font-size:12px}
   html .r2-router .r2-tabbar .r2-nav-badge{font-size:12px}

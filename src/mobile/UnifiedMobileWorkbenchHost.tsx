@@ -68,6 +68,9 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
   const [pushSetup, setPushSetup] = useState<PushSetupState | "CHECKING">("CHECKING");
   const [routerSubscriptionCount, setRouterSubscriptionCount] = useState<number | null>(null);
   const [pushBusy, setPushBusy] = useState(false);
+  const [pushAction,setPushAction]=useState<'test'|'reply'|'refresh'|null>(null);
+  const [pushFeedback,setPushFeedback]=useState<{message:string;error?:boolean}|null>(null);
+  const pushActionLock=useRef(false);
   const [pushPanelExpanded, setPushPanelExpanded] = useState(false);
   const [error, setErrorState] = useState<string | null>(null);
   const setError=useCallback((value:string|null)=>{if(value!==null&&isSupersededRead(value))return;setErrorState(value);},[]);
@@ -108,14 +111,15 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
   }, [refreshPushSetup]);
 
   const enablePhoneNotifications = async () => {
-    if (pushBusy) return;
+    if (pushBusy||pushActionLock.current) return;
     setPushBusy(true);
+    setPushFeedback(null);
     try {
       await enableWebPush();
       await refreshPushSetup();
-      setError(null);
+      setPushFeedback({message:uiText("手机通知设置已更新。")});
     } catch (cause) {
-      setError(`手机通知未开启：${String(cause)}`);
+      setPushFeedback({message:uiText("手机通知未开启：{0}",String(cause)),error:true});
       await refreshPushSetup().catch(() => setPushSetup("CHECKING"));
     } finally {
       setPushBusy(false);
@@ -123,17 +127,31 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
   };
 
   const disablePhoneNotifications = async () => {
-    if (pushBusy) return;
+    if (pushBusy||pushActionLock.current) return;
     setPushBusy(true);
+    setPushFeedback(null);
     try {
       await disableWebPush();
       await refreshPushSetup();
-      setError(null);
+      setPushFeedback({message:uiText("手机通知设置已更新。")});
     } catch (cause) {
-      setError(`手机通知未关闭：${String(cause)}`);
+      setPushFeedback({message:uiText("手机通知未关闭：{0}",String(cause)),error:true});
     } finally {
       setPushBusy(false);
     }
+  };
+
+  const runPushAction=async(action:'test'|'reply'|'refresh')=>{
+    if(pushBusy||pushActionLock.current)return;
+    pushActionLock.current=true;setPushAction(action);setPushFeedback(null);
+    try{
+      if(action==='test')await mobileApi.testPush();
+      else if(action==='reply')await mobileApi.testReplyPush();
+      else await refreshPushSetup();
+      setPushFeedback({message:uiText(action==='refresh'?'手机通知状态已刷新。':'已提交测试通知，请检查手机的通知中心。')});
+    }catch{
+      setPushFeedback({message:uiText(action==='refresh'?'手机通知状态未刷新，请重试。':'测试通知未确认，请检查手机通知后再试。'),error:true});
+    }finally{pushActionLock.current=false;setPushAction(null);}
   };
 
   const refreshIndex = useCallback(async () => {
@@ -242,18 +260,18 @@ export function UnifiedMobileWorkbenchHost({initialSurface="BRIDGES"}:{initialSu
   const phonePushPanel = <section className={`v3-mobile-push-card${phonePushReady ? " is-ready" : ""}`} aria-label={uiText("手机通知")}>
     <div><span>{uiText("手机通知")}</span><h2>{phonePushReady ? uiText("未来回复会通知你") : uiText("开启未来回复通知")}</h2><p>{uiText(phonePushStatus)}</p></div>
     <div className="v3-mobile-push-actions">
-      {!phonePushReady && <button type="button" className="v3-primary" disabled={pushBusy || pushSetup === "CHECKING" || pushSetup === "UNSUPPORTED" || pushSetup === "DENIED" || pushSetup === "UPDATING"} onClick={() => void enablePhoneNotifications()}>{pushSetup === "UPDATING" ? uiText("正在更新通知组件…") : pushBusy ? uiText("正在开启…") : uiText("开启本机通知")}</button>}
-      {phonePushReady && <><button type="button" disabled={pushBusy} onClick={() => void mobileApi.testPush().catch((cause) => setError(uiText("测试通知没有送达：{0}", String(cause))))}>{uiText("发送测试通知")}</button><button type="button" disabled={pushBusy} onClick={() => void mobileApi.testReplyPush().catch((cause) => setError(uiText("真实回复通知测试没有送达：{0}", String(cause))))}>{uiText("测试真实回复通知")}</button><button type="button" disabled={pushBusy} onClick={() => void disablePhoneNotifications()}>{pushBusy ? uiText("正在关闭…") : uiText("关闭本机通知")}</button></>}
-      <button type="button" disabled={pushBusy} onClick={() => void refreshPushSetup().catch((cause) => setError(uiText("手机通知状态未刷新：{0}", String(cause))))}>{uiText("刷新状态")}</button>
-      {phonePushReady && <button type="button" onClick={() => setPushPanelExpanded(false)}>{uiText("收起通知设置")}</button>}
+      {!phonePushReady && <button type="button" className="v3-primary" disabled={pushBusy || Boolean(pushAction) || pushSetup === "CHECKING" || pushSetup === "UNSUPPORTED" || pushSetup === "DENIED" || pushSetup === "UPDATING"} onClick={() => void enablePhoneNotifications()}>{pushSetup === "UPDATING" ? uiText("正在更新通知组件…") : pushBusy ? uiText("正在开启…") : uiText("开启本机通知")}</button>}
+      {phonePushReady && <><button type="button" disabled={pushBusy||Boolean(pushAction)} onClick={()=>void runPushAction('test')}>{uiText(pushAction==='test'?'正在提交测试…':'发送测试通知')}</button><button type="button" disabled={pushBusy||Boolean(pushAction)} onClick={()=>void runPushAction('reply')}>{uiText(pushAction==='reply'?'正在提交测试…':'测试真实回复通知')}</button><button type="button" disabled={pushBusy||Boolean(pushAction)} onClick={()=>void disablePhoneNotifications()}>{pushBusy ? uiText("正在关闭…") : uiText("关闭本机通知")}</button></>}
+      <button type="button" disabled={pushBusy||Boolean(pushAction)} onClick={()=>void runPushAction('refresh')}>{uiText(pushAction==='refresh'?'正在读取…':'刷新状态')}</button>
     </div>
+    {pushFeedback&&<p role={pushFeedback.error?"alert":"status"}>{pushFeedback.message}</p>}
   </section>;
 
   // Notification setup is explicit. A transient capability check must never
   // consume the first phone viewport or push a focused exact reply below the
   // fixed Reader dock; the workspace menu remains the single clear entry.
   const showPhonePushPanel = pushPanelExpanded;
-  return <>{error && <p role="alert" className="v3-mobile-error">{uiText(error)}</p>}<UnifiedWorkbench computerIdentity={computerIdentity} onRefreshConversationDirectory={async()=>{const ticket=++indexLoadGeneration.current;const next=await mobileApi.refreshWorkstreams();if(ticket===indexLoadGeneration.current)setIndex(next);}} assistantPanel={<AssistantSettings api={mobileAssistantSettingsApi}/>} quotaPanel={<><CodexQuota api={mobileQuotaApi} active={surface==="SETTINGS"}/><CodexQuota provider="Claude Code" api={mobileClaudeQuotaApi} active={surface==="SETTINGS"}/></>} notificationDetail={notificationDetail}  watchApi={webNotificationApi} notificationSettings={<><div data-expanded={showPhonePushPanel}>{phonePushPanel}</div>{webNotificationApi.delivery&&<NotificationDeliveryPanel api={webNotificationApi.delivery}/>}<NotificationAssistantSettings api={webNotificationApi}/></>} devicePanel={<WebSessionLogout/>} onRenameBridge={async(id,name)=>{await mobileApi.renameBridge(id,name);await refreshIndex();}} onManageBindings={requestBinding} onCreateBridge={async name=>{const id=await mobileApi.createBridge(name);await refreshIndex();await load(id);flushSync(()=>setSurface("WORKSPACE"));setBindingRequest(v=>v+1);}}
+  return <>{error && <p role="alert" className="v3-mobile-error">{uiText(error)}</p>}<UnifiedWorkbench computerIdentity={computerIdentity} onRefreshConversationDirectory={async()=>{const ticket=++indexLoadGeneration.current;const next=await mobileApi.refreshWorkstreams();if(ticket===indexLoadGeneration.current)setIndex(next);}} assistantPanel={<AssistantSettings api={mobileAssistantSettingsApi}/>} quotaPanel={<><CodexQuota api={mobileQuotaApi} active={surface==="SETTINGS"}/><CodexQuota provider="Claude Code" api={mobileClaudeQuotaApi} active={surface==="SETTINGS"}/></>} notificationDetail={notificationDetail}  watchApi={webNotificationApi} notificationSettings={<><div data-expanded={showPhonePushPanel}>{phonePushPanel}</div>{webNotificationApi.delivery&&<NotificationDeliveryPanel api={webNotificationApi.delivery} hideBrowserControls/>}<NotificationAssistantSettings api={webNotificationApi}/></>} devicePanel={<WebSessionLogout/>} onRenameBridge={async(id,name)=>{await mobileApi.renameBridge(id,name);await refreshIndex();}} onManageBindings={requestBinding} onCreateBridge={async name=>{const id=await mobileApi.createBridge(name);await refreshIndex();await load(id);flushSync(()=>setSurface("WORKSPACE"));setBindingRequest(v=>v+1);}}
     bridgeActivityApi={webBridgeActivity} items={items} selectedWorkstreamId={selectedId} 
     
     globalActions={<CodexNotifications onDetailChange={setNotificationDetail} api={webNotificationApi} workbenchPage={{active:surface==="NOTIFICATION_LOG",open:()=>setSurface("NOTIFICATION_LOG")}}/>}

@@ -40,6 +40,19 @@ it("keeps the single-column flow on phones",()=>{
  expect(document.querySelector(".r2-workspace>.r2-header")).toBeTruthy();
 });
 
+it("returns from a to-do conversation to the same to-do page",async()=>{
+ const failed:CodexWatch={...pi,threadId:"fixture-failed",label:"交付检查",snapshot:{...pi.snapshot,state:"FAILED"}};
+ const localApi:NotificationApi={...watchApi,cachedWatches:()=>[failed],watches:async()=>[failed],chat:{...chat,state:async()=>({...state,watch:failed,provider:"CODEX",piTask:undefined})}};
+ const navigate=vi.fn();
+ render(<UnifiedWorkbench {...base} watchApi={localApi} surface="NOTIFICATIONS" onSurfaceChange={navigate}/>);
+ fireEvent.click(await screen.findByRole("button",{name:"查看：交付检查"}));
+ expect(await screen.findByRole("heading",{name:"交付检查"})).toBeVisible();
+ expect(screen.queryByRole("button",{name:"查看：交付检查"})).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole("button",{name:"‹ 待办"}));
+ expect(screen.getByRole("button",{name:"查看：交付检查"})).toBeVisible();
+ expect(navigate).not.toHaveBeenCalled();
+});
+
 it("shows model unknown on rows whose runtime is not projected yet",()=>{
  render(<UnifiedWorkbench {...base} surface="BRIDGES"/>);
  const row=screen.getByRole("button",{name:/界面重设计/});

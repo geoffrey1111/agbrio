@@ -1,6 +1,6 @@
 import {readModels} from "../features/workbench/readModelCache";
 import {CodexQuota,desktopQuotaApi,desktopClaudeQuotaApi} from "../features/workbench/CodexQuota";
-import {DesktopUpdateSettings} from "../features/workbench/DesktopUpdateSettings";
+import {DesktopUpdateSettings,useDesktopUpdateBadge} from "../features/workbench/DesktopUpdateSettings";
 import {desktopBridgeActivity} from "../features/workbench/bridgeActivity";
 import {flushSync} from "react-dom";
 import {NotificationDeliveryPanel} from "../features/workbench/NotificationDeliveryPanel";
@@ -37,6 +37,7 @@ function lifecycleOf(workstream: WorkspaceSnapshot["workstreams"][number]): Work
  * persisted Endpoint identity back to the Core.
  */
 export function UnifiedWorkbenchHost({initialSurface="BRIDGES"}:{initialSurface?:WorkbenchSurface}={}) {
+  const updateAvailable=useDesktopUpdateBadge();
   const [notificationDetail,setNotificationDetail]=useState(false);
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(()=>readModels.peek<WorkspaceSnapshot>("workspace:desktop")??null);
   // The workspace snapshot carries only the selected Workstream's active
@@ -254,7 +255,7 @@ export function UnifiedWorkbenchHost({initialSurface="BRIDGES"}:{initialSurface?
     onRenameBridge={async(id,name)=>{await codexApi.renameBridge(id,name);await refreshIndex();}}
     onManageBindings={requestBinding}
     onCreateBridge={async name=>{const id=await codexApi.createBridge(name);const exact=await codexApi.workstreamSnapshot(id);const created=exact.workstreams.find(item=>item.id===id);if(!created)throw Error("新建 Bridge 暂时不可读取，请返回列表检查。");await codexApi.selectWorkspace(created.projectId,id);await refreshIndex();await loadSelected(id);flushSync(()=>setSurface("WORKSPACE"));setBindingRequest(v=>v+1);}}
-    quotaPanel={<><CodexQuota api={desktopQuotaApi} active={surface==="SETTINGS"}/><CodexQuota provider="Claude Code" api={desktopClaudeQuotaApi} active={surface==="SETTINGS"}/></>} updatePanel={<DesktopUpdateSettings/>} bridgeActivityApi={desktopBridgeActivity} items={items}
+    quotaPanel={<><CodexQuota api={desktopQuotaApi} active={surface==="SETTINGS"}/><CodexQuota provider="Claude Code" api={desktopClaudeQuotaApi} active={surface==="SETTINGS"}/></>} updatePanel={<DesktopUpdateSettings/>} updateAvailable={updateAvailable} bridgeActivityApi={desktopBridgeActivity} items={items}
     selectedWorkstreamId={selectedWorkstreamId}
     assistantPanel={<AssistantSettings/>} piSettingsPanel={<PiSettings/>} codexConnectionPanel={<CodexConnection/>} runtimeProtectionPanel={<LocalSafetySettings/>} overviewApi={desktopOverviewApi} onOpenWebAccess={()=>setWebAccessRequest(v=>v+1)} watchApi={desktopNotificationApi} globalActions={<><CodexNotifications onDetailChange={setNotificationDetail} api={desktopNotificationApi} workbenchPage={{active:surface==="NOTIFICATION_LOG",open:()=>setSurface("NOTIFICATION_LOG")}}/><DesktopWebAccess openRequest={webAccessRequest}/></>}
     bridgePanel={<>{!roleMode && selected ? statusFor : null} {selectedWorkstreamId && <RoleBridgePanel key={selectedWorkstreamId} workstreamId={selectedWorkstreamId} workstreamName={items.find(item => item.id === selectedWorkstreamId)?.name} api={desktopRoleBridgeApi} readerActive={surface==="WORKSPACE"} onOpenConnection={()=>setSurface("RUNTIME")} bindingRequest={bindingRequest} externalBindingEntry={Boolean(selected)} onModeChange={setRoleMode} onBindingsChanged={() => { void refreshIndex(); }} />}</>}

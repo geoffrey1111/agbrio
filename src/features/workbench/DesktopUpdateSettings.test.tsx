@@ -30,3 +30,21 @@ it("requires a second confirmation for the same verified candidate",async()=>{
 });
 
 it("rejects a changed candidate while a force confirmation is open",async()=>{const a=api();let emit!:(value:UpdateView)=>void;a.subscribe=async cb=>{emit=cb;return()=>{}};vi.mocked(a.status).mockResolvedValue({...next,state:"READY"});vi.mocked(a.install).mockRejectedValue(Error("UPDATE_TASK_RUNNING"));render(<DesktopUpdateSettings updateApi={a}/>);fireEvent.click(await screen.findByRole("button",{name:"安装并重启 Agbrio"}));await screen.findByRole("dialog");const {act}=await import('@testing-library/react');act(()=>emit({...next,state:"READY",version:"0.1.2"}));expect(screen.getByRole("button",{name:"确认强制更新"})).toBeDisabled();expect(a.install).toHaveBeenCalledTimes(1);});
+it("renders background download events and only changes silent install after user opt-in",async()=>{
+ const a=api();let emit!:(value:UpdateView)=>void;
+ a.subscribe=async cb=>{emit=cb;return()=>{};};
+ a.setAutoInstall=vi.fn().mockResolvedValue({...next,state:"READY",autoInstall:true});
+ render(<DesktopUpdateSettings updateApi={a}/>);
+ const option=await screen.findByRole("checkbox",{name:"空闲时自动安装更新"});
+ const {act}=await import("@testing-library/react");
+ await act(async()=>emit({...next,state:"DOWNLOADING",downloaded:3,total:6}));
+ expect(screen.getByRole("progressbar")).toHaveValue(3);
+ expect(option).toBeDisabled();
+ expect(a.download).not.toHaveBeenCalled();
+ await act(async()=>emit({...next,state:"READY"}));
+ expect(option).not.toBeChecked();
+ fireEvent.click(option);
+ expect(await screen.findByText("已下载，将在窗口关闭且任务空闲时安装")).toBeVisible();
+ expect(a.setAutoInstall).toHaveBeenCalledExactlyOnceWith(true);
+ expect(a.install).not.toHaveBeenCalled();
+});

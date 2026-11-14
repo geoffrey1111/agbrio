@@ -1,6 +1,6 @@
 import {PublishedBoardSettings} from './PublishedBoardSettings';
 import {invoke,isTauri} from '@tauri-apps/api/core';
-import {useEffect,useState} from 'react';
+import {useCallback,useEffect,useState} from 'react';
 import {ExternalLink,FolderOpen,Globe} from 'lucide-react';
 import {liveRequest} from '../../mobile/api';
 import {t as uiText,useLanguage} from '../../i18n';
@@ -19,20 +19,24 @@ let current:BoardSource|null|undefined=undefined;const listeners=new Set<(s:Boar
 function publish(next:BoardSource|null){current=next;for(const fn of listeners)fn(next);}
 function useBoardSource(enabled=true){
  const[source,setSource]=useState<BoardSource|null|undefined>(current);
- useEffect(()=>{listeners.add(setSource);if(enabled&&current===undefined)void boardSourceApi.read().then(publish).catch(()=>undefined);return()=>{listeners.delete(setSource);};},[enabled]);
- return source;
+ const[failed,setFailed]=useState(false);
+ const retry=useCallback(()=>{setFailed(false);void boardSourceApi.read().then(publish).catch(()=>setFailed(true));},[]);
+ useEffect(()=>{listeners.add(setSource);if(enabled&&current===undefined)retry();return()=>{listeners.delete(setSource);};},[enabled,retry]);
+ return {source,failed:source===undefined&&failed,retry};
 }
 
 /** A web board is embedded as-is; a local folder uses the existing isolated projection. */
 export function BoardView({active}:{active:boolean}){
- useLanguage();const source=useBoardSource(active);
+ useLanguage();const {source,failed,retry}=useBoardSource(active);
  const src=source?.kind==='URL'?(isTauri()&&source.desktopUrl?source.desktopUrl:source.url):null;
  const legacy=src?<UrlBoardFrame key={src} src={src} active={active}/>:source?.kind==='LOCAL'?<CharacterBoard active={active}/>:null;
- return <BoardHub active={active} legacy={legacy} legacyAvailable={Boolean(source)} sourceLoading={source===undefined}/>;
+ return <BoardHub active={active} legacy={legacy} legacyAvailable={Boolean(source)} sourceLoading={source===undefined&&!failed} retrySource={failed?retry:undefined}/>;
 }
 
+function BoardReadError({retry}:{retry:()=>void}){return <div className="board-source-muted"><p role="alert">{uiText('暂时无法读取看板，请确认电脑和 Agbrio 在线。')}</p><button type="button" className="board-example-back" onClick={retry}>{uiText('重试')}</button></div>;}
+
 function LegacyBoardSourceSettings(){
- useLanguage();const source=useBoardSource();const editable=isTauri();
+ useLanguage();const {source,failed,retry}=useBoardSource();const editable=isTauri();
  const[kind,setKind]=useState<'LOCAL'|'URL'>('LOCAL'),[value,setValue]=useState(''),[desktopValue,setDesktopValue]=useState(''),[extraValue,setExtraValue]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false);
  useEffect(()=>{if(!source)return;setKind(source.kind);setValue(source.kind==='URL'?source.url:source.root);setDesktopValue(source.kind==='URL'?source.desktopUrl??'':'');setExtraValue(source.kind==='LOCAL'?(source.extraRoots??[]).join('\n'):'');},[source]);
  async function save(){
@@ -41,7 +45,7 @@ function LegacyBoardSourceSettings(){
   catch(e){setError(String(e).includes('BOARD_URL_INVALID')?uiText('请填写 https 开头的网址。'):String(e).includes('BOARD_DESKTOP_URL_INVALID')?uiText('电脑地址只能是 https，或本机的 http://127.0.0.1 / localhost。'):String(e).includes('BOARD_EXTRA_FOLDER_INVALID')?uiText('额外图片文件夹需要是已存在的完整路径，最多 16 个。'):String(e).includes('BOARD_FOLDER_INVALID')?uiText('文件夹里需要有 index.html。请填写完整路径。'):uiText('没有保存成功，请重试。'));}
   finally{setBusy(false);}
  }
- if(source===undefined)return <p className="board-source-muted" role="status">{uiText('正在读取…')}</p>;
+ if(source===undefined)return failed?<BoardReadError retry={retry}/>:<p className="board-source-muted" role="status">{uiText('正在读取…')}</p>;
  return <form className="board-source" onSubmit={e=>{e.preventDefault();if(editable)void save();}}>
   <div className="board-source-seg" role="radiogroup" aria-label={uiText('看板来源')}>
    {(['LOCAL','URL'] as const).map(k=><button key={k} type="button" role="radio" aria-checked={kind===k} disabled={!editable||busy} onClick={()=>{setKind(k);setValue(source?.kind===k?(k==='URL'?(source as {url:string}).url:(source as {root:string}).root):'');setSaved(false);}}>{k==='LOCAL'?<FolderOpen size={16}/>:<Globe size={16}/>}{k==='LOCAL'?uiText('本地文件夹'):uiText('网页地址')}</button>)}
@@ -56,4 +60,4 @@ function LegacyBoardSourceSettings(){
 }
 
 /** Default publication stays inside this Agbrio; existing interactive links remain intact. */
-export function BoardSourceSettings({onOpen}:{onOpen?:()=>void}={}){const source=useBoardSource();return <><PublishedBoardSettings onOpen={onOpen} legacyAvailable={Boolean(source)}/>{source&&<details className="board-source-legacy"><summary>{uiText('现有看板连接')}</summary><p>{uiText('现有连接保留，不影响审批和日常使用。')}</p><LegacyBoardSourceSettings/></details>}</>;}
+export function BoardSourceSettings({onOpen}:{onOpen?:()=>void}={}){const {source,failed,retry}=useBoardSource();return <><PublishedBoardSettings onOpen={onOpen} legacyAvailable={Boolean(source)}/>{failed&&<BoardReadError retry={retry}/ >}{source&&<details className="board-source-legacy"><summary>{uiText('现有看板连接')}</summary><p>{uiText('现有连接保留，不影响审批和日常使用。')}</p><LegacyBoardSourceSettings/></details>}</>;}

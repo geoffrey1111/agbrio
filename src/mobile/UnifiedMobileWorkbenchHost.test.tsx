@@ -21,7 +21,7 @@ const push = vi.hoisted(() => ({
   enableWebPush: vi.fn(),
   pushSetupState: vi.fn(),
 }));
-vi.mock("./api",()=>({mobileApi:api,request:vi.fn(async(path:string)=>{
+vi.mock("./api",()=>({mobileApi:api,liveRequest:vi.fn(async(path:string)=>path==='/boards'?[]:path==='/app/capabilities'?{boards:{cliPath:null}}:null),request:vi.fn(async(path:string)=>{
  if(path.includes("/delivery"))return {account:"",recipient:"",hasSecret:false,windowsStatus:"UNAVAILABLE",channels:[],history:[]};
  if(path.includes("/events"))return {events:[],nextCursor:0,hasMore:false};
  if(path==="/codex-watches")return [];
@@ -108,7 +108,7 @@ it("opens the active phone notification controls through Native R2 Settings", as
   api.workstream.mockResolvedValue(activeChatGptSnapshot("work-a"));
   push.pushSetupState.mockResolvedValue("SUBSCRIBED");api.pushStatus.mockResolvedValue({activeSubscriptionCount:1});
   render(<UnifiedMobileWorkbenchHost initialSurface="SETTINGS"/>);
-  fireEvent.click(await screen.findByRole("button",{name:/^通知提醒渠道/}));
+  fireEvent.click(await screen.findByRole("link",{name:"通知"}));
   expect(await screen.findByRole("button",{name:"发送测试通知"})).toBeVisible();
   fireEvent.click(screen.getByRole("button",{name:"测试真实回复通知"}));await waitFor(()=>expect(api.testReplyPush).toHaveBeenCalledTimes(1));
 });

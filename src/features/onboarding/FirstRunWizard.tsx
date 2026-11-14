@@ -39,7 +39,8 @@ export function FirstRunWizard({api,initial={},preference,storage=setupStorage,o
  function go(target:SetupStep){if(!mounted.current)return;setError('');setCopyFailed('');setReviewRequired(false);setStep(target);}
  function next(snapshot=latest.current){go(nextSetupStep(plan,step,snapshot));}
  useEffect(()=>{mounted.current=true;const ticket=++readRevision.current;void api.snapshot(agents).then(s=>{if(mounted.current&&ticket===readRevision.current)accept(s);}).catch(()=>{});return()=>{mounted.current=false;};},[api]);
- useEffect(()=>{writeSetupPreference(storage,{version:1,disposition:'PENDING',agents,step,...(busy||reviewRequired?{needsCheck:step}:{})});title.current?.focus({preventScroll:true});},[agents,step,busy,reviewRequired,storage]);
+ useEffect(()=>{writeSetupPreference(storage,{version:1,disposition:'PENDING',agents,step,...(busy||reviewRequired?{needsCheck:step}:{})});},[agents,step,busy,reviewRequired,storage]);
+ useEffect(()=>{title.current?.focus({preventScroll:true});},[step]);
  useEffect(()=>{if(mode==='TRIAL'&&data.hosted&&(!data.hosted.available||data.hosted.trialAvailable===false||data.hosted.origin))setMode(data.hosted.available?'CODE':'EXISTING');},[data.hosted,mode]);
  // Observable facts advance the screen without asking the owner to prove them.
  useEffect(()=>{if(step!=='PHONE'&&step!=='CLAUDE'&&step!=='CODEX')return;let live=true,reading=false;const clock=setInterval(()=>setNow(Date.now()),1000);const poll=setInterval(()=>{if(document.hidden||pending.current||reading)return;reading=true;const ticket=readRevision.current;const read=step==='PHONE'&&api.devices?api.devices().then(devices=>({devices})):api.snapshot(agents);void read.then(s=>{if(live&&mounted.current&&ticket===readRevision.current)accept(s);}).catch(()=>{}).finally(()=>{reading=false;});},step==='PHONE'?3000:4000);return()=>{live=false;clearInterval(clock);clearInterval(poll);};},[step,api]);

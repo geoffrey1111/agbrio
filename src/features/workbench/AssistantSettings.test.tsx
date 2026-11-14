@@ -16,7 +16,7 @@ it("keeps the assistant name after failure and uses English chrome",async()=>{
 });
 it("identifies old grants without elevating them and allows explicit revocation in Traditional Chinese",async()=>{
  setLanguagePreference("zh-TW");const a=api();vi.mocked(a.view).mockResolvedValue({mcpUrl:null,bridges:[],grants:[{id:"old",scope:"BRIDGE",workstreamId:"old-bridge",sourceRole:"DECISION",label:"Old client",rules:[],expiresAt:Date.now()+86400000,revokedAt:null}]});render(<AssistantSettings api={a}/>);
- expect(await screen.findByText(/舊版單 Bridge/)).toBeVisible();fireEvent.click(screen.getByRole('button',{name:'撤銷 Old client 的授權'}));await waitFor(()=>expect(a.revoke).toHaveBeenCalledExactlyOnceWith('old'));
+ expect(await screen.findByText(/舊版單 Bridge/)).toBeVisible();fireEvent.click(screen.getByRole('button',{name:'撤銷 Old client 的授權'}));expect(a.revoke).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:'確認撤銷授權'}));await waitFor(()=>expect(a.revoke).toHaveBeenCalledExactlyOnceWith('old'));
  fireEvent.click(screen.getByRole('button',{name:'新增助手'}));expect(screen.getByText('整個 Agbrio · 包含以後新建的 Bridge')).toBeVisible();fireEvent.change(screen.getByLabelText('助手名稱'),{target:{value:' '}});expect(screen.getByRole('button',{name:'連接助手'})).toBeDisabled();
 });
 

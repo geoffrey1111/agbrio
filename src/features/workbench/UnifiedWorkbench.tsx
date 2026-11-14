@@ -10,6 +10,7 @@ export interface UnifiedWorkbenchProps {
   onManageBindings?:()=>void;
   onRenameBridge?:(id:string,name:string)=>Promise<void>;
   notificationSettings?:ReactNode;
+  managementApi?:import("./managementZoneApi").ManagementApi;
   /** Watched-conversation projection shown in the unified conversation list. */
   watchApi?:import("./CodexNotifications").NotificationApi;
   notificationDetail?:boolean;
@@ -18,6 +19,7 @@ export interface UnifiedWorkbenchProps {
   piSettingsPanel?:ReactNode;
   quotaPanel?:ReactNode;
   updatePanel?:ReactNode;
+  updateAvailable?:boolean;
   /** Settings › 连接 › Codex 连接 (desktop). Falls back to runtimeAddon. */
   codexConnectionPanel?:ReactNode;
   /** Settings › 运行保护 (desktop). */

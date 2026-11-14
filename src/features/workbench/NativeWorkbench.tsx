@@ -1,3 +1,4 @@
+import {SettingsIndexGroup,SettingsIndexItem,SettingsJumpNav,useSettingsIndex,type SettingsGroup} from "./SettingsIndex";
 import {ManagementZones} from "./ManagementZones";
 import {CacheSettings,useCacheMaintenance} from './CacheSettings';
 import {PwaInstallGuide} from "./ConnectionGuides";
@@ -16,7 +17,7 @@ import {useWorkbenchHistory,useBackLayer} from "./navigationHistory";
 import {useEffect, useLayoutEffect, useMemo, useRef, useState} from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {MotionConfig, motion, useReducedMotion} from "motion/react";
-import {Bell, Bot, LayoutGrid, ListChecks, MessageSquare, ChevronLeft, ChevronRight, CircleCheck, Download, Copy, Ellipsis, Gauge, History, Info, Languages, Link2, Monitor, Pencil, Plus, Search, Settings, Shield, SlidersHorizontal, Smartphone, Trash2, Undo2, X} from "lucide-react";
+import {LayoutGrid, ListChecks, MessageSquare, ChevronLeft, ChevronRight, CircleCheck, Download, Copy, Ellipsis, History, Link2, Pencil, Plus, Settings, Smartphone, Trash2, Undo2, X} from "lucide-react";
 import {version} from "../../../package.json";
 const productVersion=(import.meta as ImportMeta & {env?:{VITE_AGBRIO_APP_VERSION?:string}}).env?.VITE_AGBRIO_APP_VERSION||version;
 import type {UnifiedWorkbenchProps, WorkbenchSurface} from "./UnifiedWorkbench";
@@ -52,11 +53,6 @@ function useSplitLayout(){
 }
 
 const destinations = [{id:"BRIDGES", get label(){return uiText("对话");}, Icon:MessageSquare}, {id:"BOARD", get label(){return uiText("看板");}, Icon:LayoutGrid}, {id:"NOTIFICATIONS", get label(){return uiText("待办");}, Icon:ListChecks}, {id:"SETTINGS", get label(){return uiText("设置");}, Icon:Settings}] as const;
-type SettingsSection="OVERVIEW"|"CONNECTIONS"|"DEVICES"|"NOTIFY"|"PROTECTION"|"GENERAL";
-type SettingsDetail="INSTALL"|"DEVICES"|"NOTIFICATIONS"|"ABOUT"|"ASSISTANT"|"UPDATE"|"BOARD_SOURCE"|"PI_SETTINGS"|"PROTECTION";
-const sections=[{id:"OVERVIEW",get label(){return uiText("\u6982\u89c8");},Icon:Gauge},{id:"CONNECTIONS",get label(){return uiText("\u8fde\u63a5");},Icon:Monitor},{id:"DEVICES",get label(){return uiText("\u624b\u673a\u4e0e\u8bbe\u5907");},Icon:Smartphone},{id:"NOTIFY",get label(){return uiText("\u901a\u77e5");},Icon:Bell},{id:"PROTECTION",get label(){return uiText("\u8fd0\u884c\u4fdd\u62a4");},Icon:Shield},{id:"GENERAL",get label(){return uiText("\u901a\u7528");},Icon:SlidersHorizontal}] as const;
-const sectionLede:Record<SettingsSection,string>={get OVERVIEW(){return uiText("常用状态和一步操作都在这里；详细设置在左侧分类里。");},get CONNECTIONS(){return uiText("Codex 连接、Pi 子任务和 AI 助手。");},get DEVICES(){return uiText("配对手机、管理已登录设备，把 Agbrio 添加到主屏幕。");},get NOTIFY(){return uiText("提醒渠道和通知记录。通知记录不计入待办。");},get PROTECTION(){return uiText("模型故障自动恢复和资源预警。");},get GENERAL(){return uiText("语言、看板来源、已删除的 Bridge 和关于。");}};
-const detailSection:Record<SettingsDetail,SettingsSection>={PI_SETTINGS:"CONNECTIONS",ASSISTANT:"CONNECTIONS",INSTALL:"DEVICES",DEVICES:"DEVICES",NOTIFICATIONS:"NOTIFY",PROTECTION:"PROTECTION",ABOUT:"GENERAL",BOARD_SOURCE:"GENERAL",UPDATE:"OVERVIEW"};
 const date = (value?:number|null) => value ? new Intl.DateTimeFormat(getLanguage(), {month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}).format(value) : "";
 
 /** Native R2 composition. Hosts remain the sole routing and mutation authority. */
@@ -74,17 +70,15 @@ export function NativeWorkbench(props:UnifiedWorkbenchProps) {
   const [addRequest,setAddRequest] = useState(0);
   const [openWatch,setOpenWatch] = useState<CodexWatch|null>(null);
   const [openTarget,setOpenTarget] = useState<WatchOpenTarget|undefined>(undefined);
-  const [section,setSection] = useState<SettingsSection>("OVERVIEW");
   const [menu,setMenu] = useState(false);
   const [copyText,setCopyText]=useState<string|null>(null);
   const [renaming,setRenaming]=useState<WorkbenchItem|null>(null),[renameValue,setRenameValue]=useState("");
   const [width,setWidth] = useState(()=>{try{return Math.min(390,Math.max(240,Number(localStorage.getItem("aiwr.r2.master-width"))||290));}catch{return 290;}});
-  const [detail,setDetail] = useState<SettingsDetail|null>(null);
   const [displayReport,setDisplayReport]=useState("");
   const [displayCopied,setDisplayCopied]=useState(false);
   const [actionBusy,setActionBusy]=useState(false),[actionError,setActionError]=useState("");
+  const [restoreNotice,setRestoreNotice]=useState('');
   const pendingAction=useRef(false);
-  useBackLayer(Boolean(detail),()=>setDetail(null));
   useBackLayer(menu,()=>setMenu(false));
   useBackLayer(Boolean(renaming),()=>setRenaming(null));
   useBackLayer(Boolean(openWatch),()=>setOpenWatch(null));
@@ -93,7 +87,7 @@ export function NativeWorkbench(props:UnifiedWorkbenchProps) {
   const scrolls = useRef<Record<string,number>>({});
   const [online,setOnline] = useState(()=>navigator.onLine);
   const active = surface === "BOARD" ? "BOARD" : surface === "NOTIFICATIONS" ? "NOTIFICATIONS" : ["SETTINGS","RUNTIME","RECYCLE","INSTALL","NOTIFICATION_LOG"].includes(surface) ? "SETTINGS" : "BRIDGES";
-  const removal=useUndoRemoval<WorkbenchItem>(item=>item.id,async(item,removed)=>{await props.onLifecycleChange?.(item.id,removed?"TRASHED":"ACTIVE");},setActionError);
+  const removal=useUndoRemoval<WorkbenchItem>(item=>item.id,async(item,removed)=>{await props.onLifecycleChange?.(item.id,removed?"TRASHED":"ACTIVE");if(!removed&&surface==="RECYCLE")setRestoreNotice(uiText("已恢复 {0}",item.name));},setActionError);
   const projected=removal.project(props.items.filter(item=>item.lifecycle==="ACTIVE"));
   function removeBridge(item:WorkbenchItem){removal.remove(item);if(inReader)navigate("BRIDGES");}
   const selected = props.items.find(item=>item.id===props.selectedWorkstreamId);
@@ -101,15 +95,16 @@ export function NativeWorkbench(props:UnifiedWorkbenchProps) {
   useEffect(()=>{if(inReader&&selected?.lifecycle!=="ACTIVE")navigate("BRIDGES");},[inReader,selected?.lifecycle,navigate]);
   const items = useMemo(()=>projected.sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))||(b.updatedAt??0)-(a.updatedAt??0)),[props.items,projected]);
   const visible = items.filter(item=>`${item.name} ${item.projectName??""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
-  const watchChat = surface==="BRIDGES"&&openWatch&&props.watchApi?.chat ? props.watchApi.chat : null;
-  useEffect(()=>{if(surface!=="BRIDGES")setOpenWatch(null);},[surface]);
+  const watchChat = openWatch&&props.watchApi?.chat ? props.watchApi.chat : null;
   const split=useSplitLayout();
   const listPane=split&&(surface==="BRIDGES"||inReader);
   const listScroll=useRef<HTMLElement>(null);
-  const openFromList=(watch:CodexWatch,target?:WatchOpenTarget)=>{if(surface!=="BRIDGES")navigate("BRIDGES");setOpenTarget(target);setOpenWatch(watch);};
+  const watchOpener=useRef<HTMLElement|null>(null);
+  const openFromList=(watch:CodexWatch,target?:WatchOpenTarget)=>{watchOpener.current=document.activeElement instanceof HTMLElement?document.activeElement:null;setOpenTarget(target);setOpenWatch(watch);};
+  useLayoutEffect(()=>{if(watchChat||!watchOpener.current)return;const opener=watchOpener.current;watchOpener.current=null;if(opener.isConnected&&opener.getClientRects().length)opener.focus({preventScroll:true});},[watchChat]);
   const selectedKey=watchChat&&openWatch?`w:${openWatch.threadId}`:inReader&&selected?`b:${selected.id}`:undefined;
   const trash = props.items.filter(item=>item.lifecycle==="TRASHED"||removal.isRemoved(item));
-  const scrollKey = `${surface}:${inReader?props.selectedWorkstreamId??"":""}`;
+  const scrollKey = `${surface}:${inReader?props.selectedWorkstreamId??"":""}${watchChat?`:watch:${openWatch?.threadId}`:""}`;
   useLayoutEffect(()=>{
     const element=content.current;if(!element)return;
     element.scrollTop=scrolls.current[scrollKey]??0;
@@ -122,8 +117,8 @@ export function NativeWorkbench(props:UnifiedWorkbenchProps) {
     window.addEventListener("online",up);window.addEventListener("offline",down);
     return()=>{window.removeEventListener("online",up);window.removeEventListener("offline",down);};
   },[]);
-  useEffect(()=>{setMenu(false);setDetail(null);},[surface,props.selectedWorkstreamId]);
-  const nav = (phone:boolean) => <nav className={phone?"r2-tabbar":"r2-destinations"} aria-label={phone?uiText("主导航"):uiText("桌面导航")}>{destinations.map(({id,label,Icon})=><button key={id} type="button" aria-current={active===id?"page":undefined} onClick={()=>{setDetail(null);navigate(id);}}>{active===id&&<motion.span className="r2-nav-selection" layoutId={phone?"phone-destination":"desktop-destination"} transition={reduced||keyboardMotion?{duration:0}:{type:"spring",stiffness:560,damping:42}}/>}<Icon size={phone?23:20} aria-hidden/><span>{uiText(label)}</span>{id==="NOTIFICATIONS"&&todoCount>0&&<b className="r2-nav-badge" aria-label={tc("{0} 件待办", todoCount)}>{todoCount>99?"99+":todoCount}</b>}</button>)}</nav>;
+  useEffect(()=>{setMenu(false);setOpenWatch(null);},[surface,props.selectedWorkstreamId]);
+  const nav = (phone:boolean) => <nav className={phone?"r2-tabbar":"r2-destinations"} aria-label={phone?uiText("主导航"):uiText("桌面导航")}>{destinations.map(({id,label,Icon})=><button key={id} type="button" aria-current={active===id?"page":undefined} onClick={()=>{setOpenWatch(null);navigate(id);}}>{active===id&&<motion.span className="r2-nav-selection" layoutId={phone?"phone-destination":"desktop-destination"} transition={reduced||keyboardMotion?{duration:0}:{type:"spring",stiffness:560,damping:42}}/>}<Icon size={phone?23:20} aria-hidden/><span>{uiText(label)}</span>{id==="SETTINGS"&&props.updateAvailable&&<span className="agbrio-update-dot" role="img" aria-label={uiText("有新版本")} title={uiText("有新版本")}/ >}{id==="NOTIFICATIONS"&&todoCount>0&&<b className="r2-nav-badge" aria-label={tc("{0} 件待办", todoCount)}>{todoCount>99?"99+":todoCount}</b>}</button>)}</nav>;
   const listed=visible.slice(0,limit);
   const activity=useBridgeActivity(items.slice(0,40).map(i=>i.id),props.bridgeActivityApi,surface==="BRIDGES"||surface==="NOTIFICATIONS"||inReader);
   const bridgeUnread=(item:WorkbenchItem)=>bridgeReviewAttention(activity.rows[item.id]?.row,activity.rows[item.id]?Math.max(0,Date.now()-activity.rows[item.id].receivedAt):Infinity);
@@ -137,55 +132,41 @@ export function NativeWorkbench(props:UnifiedWorkbenchProps) {
     </div></SwipeDeleteRow>)}
   </div>;
   async function changeLifecycle(item:WorkbenchItem,lifecycle:"ACTIVE"|"TRASHED"){
-    if(lifecycle==="TRASHED")removeBridge(item);else removal.restore(item);
+    if(lifecycle==="TRASHED")removeBridge(item);else {setActionError("");setRestoreNotice("");removal.restore(item);}
   }
-  // ---- Settings: desktop two-pane (sections) / phone list → detail ----
   const codexPanel=props.codexConnectionPanel??props.runtimeAddon;
   const desktopSettings=Boolean(props.overviewApi||props.onOpenWebAccess||codexPanel||props.piSettingsPanel);
-  const settingsSplit=split&&active==="SETTINGS";
-  const currentSection:SettingsSection=detail?detailSection[detail]:surface==="RUNTIME"?"CONNECTIONS":surface==="RECYCLE"?"GENERAL":surface==="NOTIFICATION_LOG"?"NOTIFY":section;
-  const visibleSections=sections.filter(s=>s.id!=="PROTECTION"||props.runtimeProtectionPanel);
-  const openSection=(id:SettingsSection)=>{setDetail(null);setSection(id);if(surface!=="SETTINGS")navigate("SETTINGS");};
-  const goSettings=(target:SettingsDetail|"RUNTIME"|"RECYCLE"|"NOTIFICATION_LOG")=>{if(target==="RUNTIME"||target==="RECYCLE"||target==="NOTIFICATION_LOG"){setSection(target==="RUNTIME"?"CONNECTIONS":target==="RECYCLE"?"GENERAL":"NOTIFY");navigate(target);}else{setSection(detailSection[target]);if(surface!=="SETTINGS")navigate("SETTINGS");setDetail(target);}};
+  const inSettings=surface==="SETTINGS";
+  const settingsSplit=split&&inSettings;
+  const {current:settingsCurrent,jump:jumpSettings}=useSettingsIndex(inSettings,content);
+  const settingsGroups:SettingsGroup[]=["OVERVIEW",...(codexPanel||props.piSettingsPanel||props.assistantPanel?["CONNECTIONS" as const]:[]),"DEVICES","NOTIFY",...(props.runtimeProtectionPanel?["PROTECTION" as const]:[]),"WORKSPACE","GENERAL"];
+  const jumpTo=(id:SettingsGroup,target?:string)=>{jumpSettings(id,target);if(!inSettings)navigate("SETTINGS");};
+  const settingsTask=(target:"RUNTIME"|"RECYCLE"|"NOTIFICATION_LOG")=>navigate(target);
   const go=(icon:React.ReactNode,label:string,onClick:()=>void,sub?:React.ReactNode)=><button type="button" onClick={onClick}>{icon}<span className="v7-row-text"><span>{label}</span>{sub?<small>{sub}</small>:null}</span><ChevronRight size={18}/></button>;
-  const group=(cap:string,children:React.ReactNode)=><><small>{cap}</small><div className="r2-settings-group">{children}</div></>;
-  const hasConnections=Boolean(codexPanel||props.piSettingsPanel||props.assistantPanel);
-  const connectionRows=<>{codexPanel&&go(<Monitor size={20}/>,uiText("Codex 连接"),()=>goSettings("RUNTIME"),uiText("连接状态"))}{props.piSettingsPanel&&go(<Bot size={20}/>,uiText("Pi 子任务"),()=>goSettings("PI_SETTINGS"),uiText("管理员后台、工作范围"))}{props.assistantPanel&&go(<Bot size={20}/>,uiText("AI 助手"),()=>goSettings("ASSISTANT"),uiText("管理助手的连接"))}</>;
-  const pairRow=props.onOpenWebAccess?go(<Smartphone size={20}/>,uiText("手机配对与已登录设备"),props.onOpenWebAccess):desktopSettings&&props.devicePanel?go(<Smartphone size={20}/>,uiText("手机配对与已登录设备"),()=>goSettings("DEVICES")):null;
-  const deviceRows=<>{pairRow}{go(<Smartphone size={20}/>,uiText("添加到手机主屏幕"),()=>goSettings("INSTALL"))}</>;
-  const notifyRow=go(<Bell size={20}/>,uiText("通知"),()=>goSettings("NOTIFICATIONS"),uiText("提醒渠道、通知记录"));
-  const notifyPage=<>{props.notificationSettings??<p className="r2-settings-empty">{uiText("这台设备上没有可设置的通知。")}</p>}{group(uiText("记录"),go(<History size={20}/>,uiText("通知记录"),()=>goSettings("NOTIFICATION_LOG"),uiText("最近 20 条结果和状态变化，不计入待办")))}</>;
-  const generalRows=<><LanguagePicker/>{go(<LayoutGrid size={20}/>,uiText("看板管理"),()=>goSettings("BOARD_SOURCE"))}{go(<Trash2 size={20}/>,uiText("已删除的 Bridge"),()=>goSettings("RECYCLE"))}{props.updatePanel&&!props.overviewApi&&go(<Download size={20}/>,uiText("检查更新"),()=>goSettings("UPDATE"))}{go(<Info size={20}/>,uiText("关于"),()=>goSettings("ABOUT"),uiText("版本 {0}",productVersion))}</>;
-  const overview=props.overviewApi?<DesktopOverview api={props.overviewApi} onPair={props.onOpenWebAccess} onNavigate={(target:OverviewTarget)=>target==="CODEX"?goSettings("RUNTIME"):target==="DEVICES"?(props.onOpenWebAccess?props.onOpenWebAccess():goSettings("DEVICES")):goSettings(target)}/>:<ComputerStatusCard runtime={props.runtime} identity={props.computerIdentity} onOpen={()=>goSettings("RUNTIME")}/>;
-  // The quota reading stays mounted (hidden) so returning to Settings never re-reads it.
-  const showHead=surface==="SETTINGS"&&!detail&&(!settingsSplit||currentSection==="OVERVIEW");
-  const settingsHome=()=><>
-   {desktopSettings&&hasConnections&&group(uiText("连接"),connectionRows)}
-   {group(desktopSettings?uiText("手机与设备"):uiText("这台手机"),desktopSettings?<>{deviceRows}{notifyRow}</>:<>{notifyRow}{deviceRows}</>)}
-   {!desktopSettings&&hasConnections&&group(uiText("连接"),connectionRows)}
-   {props.runtimeProtectionPanel&&group(uiText("运行保护"),go(<Shield size={20}/>,uiText("运行保护"),()=>goSettings("PROTECTION"),uiText("模型故障自动恢复、资源预警")))}
-   {group(uiText("通用"),generalRows)}
-   {!desktopSettings&&props.devicePanel&&<div className="v7-device-exit">{props.devicePanel}</div>}
-   {!desktopSettings&&<p className="v7-settings-note">{uiText("Codex 连接、Pi 子任务和应用更新在电脑上设置。")}</p>}</>;
-  const sectionPage=(id:SettingsSection)=>id==="OVERVIEW"?null:id==="CONNECTIONS"?(hasConnections?group(uiText("连接"),connectionRows):<p className="r2-settings-empty">{uiText("这台设备上没有可设置的连接。")}</p>):id==="DEVICES"?<>{group(uiText("手机与设备"),deviceRows)}{!props.onOpenWebAccess&&!desktopSettings&&props.devicePanel}</>:id==="NOTIFY"?notifyPage:id==="PROTECTION"?props.runtimeProtectionPanel:group(uiText("通用"),generalRows);
-  const about=<><h2>Agbrio</h2><p>{uiText("Agent Bridge · 连接你的 Agent 对话")}</p><p className="r2-about-version">{uiText("版本")} {productVersion} {uiText("· 界面")} {PHONE_LAYOUT_REVISION}</p>{location.pathname.startsWith("/mobile")&&<PwaUpdateSettings/>}<CacheSettings/><button type="button" className="r2-diagnostic-copy" onClick={()=>{const report=displayDiagnostics();void (async()=>{try{await navigator.clipboard.writeText(report);setDisplayCopied(true);setDisplayReport("");}catch{setDisplayReport(report);setDisplayCopied(false);}})();}}><Copy size={18}/>{displayCopied?uiText("已复制显示诊断"):uiText("复制显示诊断")}</button>{displayReport&&<textarea aria-label={uiText("显示诊断")} readOnly value={displayReport} rows={6} onFocus={event=>event.currentTarget.select()}/>}<p className="r2-about-credit">{uiText("头像来自 DiceBear Sprouts 与 Critters（CC0 1.0）。")}</p><a href="mailto:geoffreyzjx@qq.com">{uiText("联系作者")}</a></>;
-  const detailPage=(d:SettingsDetail)=>d==="INSTALL"?<PwaInstallGuide expanded/>:d==="ABOUT"?about:d==="BOARD_SOURCE"?<BoardSourceSettings onOpen={()=>{setDetail(null);navigate("BOARD");}}/>:d==="UPDATE"?props.updatePanel:d==="PI_SETTINGS"?props.piSettingsPanel:d==="ASSISTANT"?props.assistantPanel:d==="NOTIFICATIONS"?notifyPage:d==="PROTECTION"?props.runtimeProtectionPanel:props.devicePanel;
-  const sectionLabel=sections.find(s=>s.id===currentSection)?.label??uiText("设置");
-  const title = surface==="MANAGEMENT"?uiText("管理区"):detail==="PI_SETTINGS"?uiText("Pi 子任务"):detail==="INSTALL"?uiText("添加到手机主屏幕"):detail==="BOARD_SOURCE"?uiText("看板管理"):detail==="UPDATE"?uiText("检查更新"):detail==="ASSISTANT"?uiText("AI 助手"):detail==="ABOUT"?uiText("关于"):detail==="DEVICES"?uiText("手机与设备"):detail==="NOTIFICATIONS"?uiText("通知"):detail==="PROTECTION"?uiText("运行保护") : surface==="BOARD" ? uiText("看板") : surface==="BRIDGES" ? uiText("对话") : surface==="NEW_BRIDGE" ? uiText("新建 Bridge") : surface==="NOTIFICATIONS" ? uiText("待办") : surface==="SETTINGS" ? (settingsSplit?sectionLabel:uiText("设置")) : surface==="RUNTIME" ? (codexPanel?uiText("Codex 连接"):uiText("电脑连接")) : surface==="NOTIFICATION_LOG" ? uiText("通知记录") : surface==="RECYCLE" ? uiText("已删除的 Bridge") : selected?.name??"Bridge";
-  const topLevel = ["BOARD","BRIDGES","NOTIFICATIONS","SETTINGS"].includes(surface)&&!detail&&!watchChat;
-  useSurfaceTransition(content,`${scrollKey}:${detail??""}:${Boolean(props.notificationDetail)}:${openWatch?.threadId??""}`,!topLevel,keyboardMotion);
-  const back = ()=>{if(detail)setDetail(null);else navigate(inReader?"BRIDGES":surface==="RECYCLE"||surface==="RUNTIME"||surface==="NOTIFICATION_LOG"?"SETTINGS":"BRIDGES");};
-  return <ConnectionSettingsNavigation.Provider value={()=>goSettings("DEVICES")}><NativeSurfaceContext.Provider value><NativeCopyProvider register={setCopyText}><MediaPreviewProvider><MotionConfig reducedMotion={keyboardMotion?"always":"user"}><main className={`unified-workbench r2-router v3-surface-${surface.toLowerCase()}`} data-detail={!topLevel} aria-label={uiText("Agbrio 统一工作台")} style={{"--r2-master-width":`${width}px`} as React.CSSProperties}>
+  const group=(children:React.ReactNode)=><div className="r2-settings-group">{children}</div>;
+  const checks=props.runtime?.checks.filter(check=>["codex","browser-runtime","mobile-listener","router-host","router-core"].includes(check.id))??[];
+  const runtimeChecks=<>{props.runtime?.notice&&<p role="status">{uiText(props.runtime.notice)}</p>}{!checks.length&&<p className="r2-settings-empty">{props.runtime?uiText("没有需要显示的连接。"):uiText("正在读取连接状态…")}</p>}{checks.length>0&&<div className="r2-settings-group">{checks.map(check=><div className="r2-connection-row settings-runtime-row" key={check.id}>
+    <div><strong>{uiText(check.label)}</strong><p>{uiText(check.detail)}</p></div><span>{check.state==="READY"?uiText("可用"):check.state==="CHECKING"?uiText("检查中"):uiText("待处理")}</span>
+    {check.action&&<button type="button" disabled={check.state==="CHECKING"} onClick={check.action}>{uiText(check.actionLabel??"检查状态")}</button>}
+    {check.secondaryAction&&<button type="button" disabled={check.state==="CHECKING"} onClick={check.secondaryAction}>{uiText(check.secondaryActionLabel??"检查状态")}</button>}
+  </div>)}</div>}</>;
+  const overview=props.overviewApi?<DesktopOverview api={props.overviewApi} onPair={props.onOpenWebAccess} onNavigate={(target:OverviewTarget)=>target==="CODEX"?jumpTo("CONNECTIONS","settings-codex"):target==="PI_SETTINGS"?jumpTo("CONNECTIONS","settings-pi"):target==="DEVICES"?jumpTo("DEVICES"):jumpTo("GENERAL","settings-update")}/>:<ComputerStatusCard runtime={props.runtime} identity={props.computerIdentity} onOpen={()=>settingsTask("RUNTIME")}/>;
+  const title = surface==="MANAGEMENT"?uiText("管理区"):surface==="BOARD"?uiText("看板"):surface==="BRIDGES"?uiText("对话"):surface==="NEW_BRIDGE"?uiText("新建 Bridge"):surface==="NOTIFICATIONS"?uiText("待办"):inSettings?uiText("设置"):surface==="RUNTIME"?uiText(codexPanel?"Codex 连接":"电脑连接"):surface==="NOTIFICATION_LOG"?uiText("通知记录"):surface==="RECYCLE"?uiText("已删除的 Bridge"):selected?.name??"Bridge";
+  const topLevel = ["BOARD","BRIDGES","NOTIFICATIONS","SETTINGS"].includes(surface)&&!watchChat;
+  useSurfaceTransition(content,`${scrollKey}:${Boolean(props.notificationDetail)}:${openWatch?.threadId??""}`,!topLevel,keyboardMotion);
+  const back=()=>{const parent=history.state?.aiwrParentSurface;if((surface==="NOTIFICATION_LOG"&&parent==="NOTIFICATIONS")||(["RECYCLE","RUNTIME","NOTIFICATION_LOG"].includes(surface)&&parent==="SETTINGS"))history.back();else navigate(["RECYCLE","RUNTIME","NOTIFICATION_LOG"].includes(surface)?"SETTINGS":"BRIDGES");};
+  return <ConnectionSettingsNavigation.Provider value={()=>jumpTo("DEVICES")}><NativeSurfaceContext.Provider value><NativeCopyProvider register={setCopyText}><MediaPreviewProvider><MotionConfig reducedMotion={keyboardMotion?"always":"user"}><main className={`unified-workbench r2-router v3-surface-${surface.toLowerCase()}`} data-detail={!topLevel} aria-label={uiText("Agbrio 统一工作台")} style={{"--r2-master-width":`${width}px`} as React.CSSProperties}>
     <aside className="r2-rail"><div className="r2-brand"><BrandMark/>Agbrio</div>{nav(false)}<small className="r2-rail-caption">Bridge</small><div className="r2-rail-bridges">{items.map(item=><button key={item.id} type="button" aria-current={inReader&&item.id===selected?.id?"page":undefined} onClick={()=>{props.onSelectWorkstream(item.id);navigate("WORKSPACE");}}>{item.name}{bridgeUnread(item)>0&&<i className="r2-rail-reply-dot" aria-label={uiText("有新回复待审阅")}/>}</button>)}</div></aside>
     <section className="r2-workspace" data-split={split||undefined}>{split&&<aside className="v7-list-pane" hidden={!listPane} aria-label={uiText("对话")}>
       <header className="v7-list-head"><h1>{uiText("对话")}</h1><button type="button" className="r2-icon r2-accent" aria-label={uiText("监听对话或新建 Bridge")} onClick={()=>setAddRequest(v=>v+1)}><Plus size={20}/></button></header>
       <section ref={listScroll} className="r2-directory v7-list-scroll"><ConversationHome onOpenManagement={()=>navigate("MANAGEMENT")} scrollContainer={listScroll} selectedKey={selectedKey} onRefreshList={listPane&&props.onRefreshConversationDirectory?async()=>{const results=await Promise.allSettled([props.onRefreshConversationDirectory!(),activity.refresh()]);if(results.some(r=>r.status==="rejected"))throw Error("LIST_REFRESH_INCOMPLETE");}:undefined} bridges={items} activity={activity.rows} activityClock={activity.clock} watchApi={props.watchApi} addRequest={addRequest} onOpenBridge={id=>{props.onSelectWorkstream(id);navigate("WORKSPACE");}} onOpenWatch={openFromList} onCreateBridge={props.onCreateBridge} onDeleteBridge={props.onLifecycleChange?removeBridge:undefined}/></section>
-    </aside>}{settingsSplit&&<nav className="v7-settings-nav" aria-label={uiText("设置分类")}><h1>{uiText("设置")}</h1>{visibleSections.map(({id,label,Icon})=><button key={id} type="button" aria-current={currentSection===id?"page":undefined} onClick={()=>openSection(id)}><Icon size={18} aria-hidden/><span>{label}</span></button>)}</nav>}{(node=>split?<div className="v7-detail-pane">{node}</div>:node)(<><header className="r2-header" hidden={surface==="NOTIFICATION_LOG"&&props.notificationDetail||Boolean(watchChat)||(listPane&&surface==="BRIDGES")}>
+    </aside>}{settingsSplit&&<SettingsJumpNav groups={settingsGroups} current={settingsCurrent} jump={jumpSettings}/>}{(node=>split?<div className="v7-detail-pane">{node}</div>:node)(<><header className="r2-header" hidden={surface==="NOTIFICATION_LOG"&&props.notificationDetail||Boolean(watchChat)||(listPane&&surface==="BRIDGES")}>
       {!topLevel&&!listPane&&<button type="button" className="r2-icon" aria-label={uiText("返回")} title={uiText("返回")} onClick={back}><ChevronLeft size={20}/></button>}<h1>{title}</h1>{surface==="NOTIFICATIONS"&&todoCount>0&&<span className="v7-head-count" role="status">{uiText("{0} 件事等你处理",todoCount)}</span>}
       {surface==="BRIDGES"&&!listPane&&<button type="button" className="r2-icon r2-accent" aria-label={uiText("监听对话或新建 Bridge")} onClick={()=>setAddRequest(v=>v+1)}><Plus size={20}/></button>}
       {inReader&&copyText&&<CopyAction text={copyText} onError={()=>setActionError(uiText("复制未成功，可选择正文复制。"))}/>}
       {inReader&&<Dialog.Root open={menu} onOpenChange={setMenu}><Dialog.Trigger asChild><button type="button" className="r2-icon" aria-label={uiText("Bridge 操作")}><Ellipsis size={20}/></button></Dialog.Trigger><Dialog.Portal><Dialog.Overlay className="r2-menu-overlay"/><Dialog.Content className="r2-menu" aria-describedby={undefined}><Dialog.Title className="r2-sr-only">{uiText("Bridge 操作")}</Dialog.Title><button type="button" onClick={()=>{setMenu(false);props.onManageBindings?.();}}><Link2 size={18}/>{uiText("更换两端")}</button>{props.onRenameBridge&&selected&&<button type="button" onClick={()=>{setMenu(false);setRenameValue(selected.name);setRenaming(selected);setActionError("");}}><Pencil size={18}/>{uiText("重命名")}</button>}{props.onPinChange&&selected&&<button type="button" onClick={()=>{props.onPinChange?.(selected.id,!selected.pinned);setMenu(false);}}><CircleCheck size={18}/>{selected.pinned?uiText("取消置顶"):uiText("置顶")}</button>}{props.onLifecycleChange&&selected&&<button type="button" className="r2-danger" onClick={()=>{setMenu(false);removeBridge(selected);}}><Trash2 size={18}/>{uiText("删除 Bridge")}</button>}<Dialog.Close asChild><button type="button"><X size={18}/>{uiText("关闭")}</button></Dialog.Close></Dialog.Content></Dialog.Portal></Dialog.Root>}
     </header>
+    {inSettings&&!settingsSplit&&<SettingsJumpNav groups={settingsGroups} current={settingsCurrent} jump={jumpSettings} compact/>}
     {!online&&<p className="r2-offline" role="status">{uiText("连接中断 · 等待恢复")}</p>}
     <div className={`r2-stage${inReader?" r2-split":""}`}>
       {/* The sidebar already lists every Bridge; the reader uses the full width. */}
@@ -193,20 +174,57 @@ export function NativeWorkbench(props:UnifiedWorkbenchProps) {
         {props.criticalNotice}{actionError&&<p role="alert">{uiText(actionError)}</p>}
         <section hidden={surface!=="BOARD"} className="character-board-mount"><BoardView active={surface==="BOARD"}/></section>
         <div hidden={!inReader} className="r2-reader-mount">{props.bridgePanel}</div>
-        {watchChat&&openWatch&&<section className="r2-watch-mount"><WatchChat key={`${openWatch.threadId}:${openTarget?.childId??""}`} original={openWatch} api={watchChat} initialChildId={openTarget?.childId} parentLabel={openTarget?.parentLabel} onBack={()=>setOpenWatch(null)} backLabel={uiText("对话")} controls={props.watchApi?{enabled:openWatch.enabled,toggle:async()=>{const api=props.watchApi!;if(openWatch.enabled)await api.pause(openWatch.threadId);else await api.enable(openWatch.threadId);setOpenWatch(w=>w&&{...w,enabled:!w.enabled});await (api.refreshWatches?.()??api.watches());},remove:async()=>{const api=props.watchApi!;if(!api.remove)throw Error("WATCH_REMOVAL_UNAVAILABLE");await api.remove("WATCH",openWatch.threadId,true);await (api.refreshWatches?.()??api.watches());setOpenWatch(null);}}:undefined}/></section>}
-        {surface==="MANAGEMENT"&&<ManagementZones watchApi={props.watchApi} onOpenWatch={openFromList}/>}
-        {surface==="NOTIFICATIONS"&&<section className="r2-directory r2-todo"><TodoPage watchApi={props.watchApi} bridges={items} activity={activity.rows} activityClock={activity.clock} onOpenBridge={id=>{props.onSelectWorkstream(id);navigate("WORKSPACE");}} onOpenWatch={openFromList} onOpenBoard={()=>navigate("BOARD")} onOpenLog={()=>goSettings("NOTIFICATION_LOG")} countInHeader/></section>}
+        {watchChat&&openWatch&&<section className="r2-watch-mount"><WatchChat key={`${openWatch.threadId}:${openTarget?.childId??""}`} original={openWatch} api={watchChat} initialChildId={openTarget?.childId} parentLabel={openTarget?.parentLabel} onBack={()=>setOpenWatch(null)} backLabel={uiText(surface==="MANAGEMENT"?"管理区":surface==="NOTIFICATIONS"?"待办":"对话")} controls={props.watchApi?{enabled:openWatch.enabled,toggle:async()=>{const api=props.watchApi!;if(openWatch.enabled)await api.pause(openWatch.threadId);else await api.enable(openWatch.threadId);setOpenWatch(w=>w&&{...w,enabled:!w.enabled});await (api.refreshWatches?.()??api.watches());},remove:async()=>{const api=props.watchApi!;if(!api.remove)throw Error("WATCH_REMOVAL_UNAVAILABLE");await api.remove("WATCH",openWatch.threadId,true);await (api.refreshWatches?.()??api.watches());setOpenWatch(null);}}:undefined}/></section>}
+        {surface==="MANAGEMENT"&&<div hidden={Boolean(watchChat)}><ManagementZones api={props.managementApi} watchApi={props.watchApi} onOpenWatch={openFromList}/></div>}
+        {surface==="NOTIFICATIONS"&&<section hidden={Boolean(watchChat)} className="r2-directory r2-todo"><TodoPage watchApi={props.watchApi} bridges={items} activity={activity.rows} activityClock={activity.clock} onOpenBridge={id=>{props.onSelectWorkstream(id);navigate("WORKSPACE");}} onOpenWatch={openFromList} onOpenBoard={()=>navigate("BOARD")} onOpenLog={()=>settingsTask("NOTIFICATION_LOG")} countInHeader/></section>}
         {listPane&&surface==="BRIDGES"&&!watchChat&&<div className="v7-detail-empty" role="status"><MessageSquare size={28} aria-hidden/><p>{uiText("选择左侧对话查看详情")}</p></div>}
         {!split&&<section hidden={surface!=="BRIDGES"||Boolean(watchChat)} className="r2-directory"><ConversationHome onOpenManagement={()=>navigate("MANAGEMENT")} scrollContainer={content} onRefreshList={surface==="BRIDGES"&&!watchChat&&props.onRefreshConversationDirectory?async()=>{const results=await Promise.allSettled([props.onRefreshConversationDirectory!(),activity.refresh()]);if(results.some(r=>r.status==="rejected"))throw Error("LIST_REFRESH_INCOMPLETE");}:undefined} bridges={items} activity={activity.rows} activityClock={activity.clock} watchApi={props.watchApi} addRequest={addRequest} onOpenBridge={id=>{props.onSelectWorkstream(id);navigate("WORKSPACE");}} onOpenWatch={openFromList} onCreateBridge={props.onCreateBridge} onDeleteBridge={props.onLifecycleChange?removeBridge:undefined}/></section>}
         {surface==="NEW_BRIDGE"&&props.onCreateBridge&&<NewBridgeForm create={props.onCreateBridge} cancel={()=>navigate("BRIDGES")}/>}
-        {settingsSplit&&surface==="SETTINGS"&&!detail&&<section className="r2-settings v7-settings v7-settings-ledewrap"><p className="v7-settings-lede">{sectionLede[currentSection]}</p></section>}
-        {showHead&&<section className="r2-settings v7-settings v7-settings-head">{overview}</section>}
-        {props.quotaPanel&&<section hidden={!showHead} className="r2-settings v7-settings r2-settings-quota" data-phone={!desktopSettings||undefined}>{desktopSettings?group(uiText("用量"),props.quotaPanel):<div className="r2-settings-group v7-card-quota">{props.quotaPanel}</div>}</section>}
-        {surface==="SETTINGS"&&!detail&&(!settingsSplit||currentSection!=="OVERVIEW")&&<section className="r2-settings v7-settings" data-section={settingsSplit?currentSection:"HOME"}>{settingsSplit?sectionPage(currentSection):settingsHome()}</section>}
-        {surface==="SETTINGS"&&detail&&<section className="r2-settings v7-settings">{detailPage(detail)}</section>}
-        {surface==="RUNTIME"&&<section className="r2-settings v7-settings">{codexPanel}<small>{uiText("连接状态")}</small>{!props.runtime?.checks.length&&<p className="r2-settings-empty">{props.runtime?uiText("没有需要显示的连接。"):uiText("正在读取连接状态…")}</p>}<div className="r2-settings-group" hidden={!props.runtime?.checks.length}>{props.runtime?.checks.filter(check=>["codex","browser-runtime","mobile-listener","router-host"].includes(check.id)).map(check=><div className="r2-connection-row" key={check.id}><strong>{uiText(check.label)}</strong><span>{check.state==="READY"?uiText("可用"):check.state==="CHECKING"?uiText("检查中"):uiText("待处理")}</span>{check.action&&<button type="button" className="r2-icon" aria-label={uiText(check.actionLabel??uiText("检查状态"))} title={uiText(check.actionLabel??uiText("检查状态"))} onClick={check.action}><ChevronRight size={18}/></button>}</div>)}</div></section>}
+        <div className="r2-settings v7-settings settings-index" hidden={!inSettings}>
+          <SettingsIndexGroup id="OVERVIEW">
+            {inSettings&&overview}
+            {props.quotaPanel&&<SettingsIndexItem label="用量">{group(props.quotaPanel)}</SettingsIndexItem>}
+          </SettingsIndexGroup>
+          {inSettings&&<>
+            {settingsGroups.includes("CONNECTIONS")&&<SettingsIndexGroup id="CONNECTIONS">
+              {codexPanel&&<SettingsIndexItem id="settings-codex" label="Codex 连接">{codexPanel}<details className="v7-help"><summary>{uiText("连接状态")}</summary>{runtimeChecks}</details></SettingsIndexItem>}
+              {props.piSettingsPanel&&<SettingsIndexItem id="settings-pi" label="Pi 子任务">{props.piSettingsPanel}</SettingsIndexItem>}
+              {props.assistantPanel&&<SettingsIndexItem label="AI 助手">{props.assistantPanel}</SettingsIndexItem>}
+            </SettingsIndexGroup>}
+            <SettingsIndexGroup id="DEVICES">
+              {props.onOpenWebAccess&&group(go(<Smartphone size={20}/>,uiText("手机配对与已登录设备"),props.onOpenWebAccess))}
+              {!desktopSettings&&props.devicePanel&&<div className="v7-device-exit">{props.devicePanel}</div>}
+              <PwaInstallGuide/>
+            </SettingsIndexGroup>
+            <SettingsIndexGroup id="NOTIFY">
+              {props.notificationSettings??<p className="r2-settings-empty">{uiText("这台设备上没有可设置的通知。")}</p>}
+              {group(go(<History size={20}/>,uiText("通知记录"),()=>settingsTask("NOTIFICATION_LOG"),uiText("最近 20 条结果和状态变化，不计入待办")))}
+            </SettingsIndexGroup>
+            {props.runtimeProtectionPanel&&<SettingsIndexGroup id="PROTECTION">{props.runtimeProtectionPanel}</SettingsIndexGroup>}
+            <SettingsIndexGroup id="WORKSPACE">
+              <SettingsIndexItem label="看板管理"><BoardSourceSettings onOpen={()=>navigate("BOARD")}/></SettingsIndexItem>
+              {group(go(<Trash2 size={20}/>,uiText("已删除的 Bridge"),()=>settingsTask("RECYCLE")))}
+            </SettingsIndexGroup>
+            <SettingsIndexGroup id="GENERAL">
+              {group(<LanguagePicker/>)}
+              <SettingsIndexItem id="settings-update" label="版本与更新">
+                {props.updateAvailable&&<p className="agbrio-update-indicator"><i className="agbrio-update-dot" aria-hidden/>{uiText("有新版本")}</p>}
+                <p className="r2-about-version">Agbrio · {uiText("版本")} {productVersion} · {uiText("界面")} {PHONE_LAYOUT_REVISION}</p>
+                {props.updatePanel}
+                {!desktopSettings&&location.pathname.startsWith("/mobile")&&<PwaUpdateSettings/>}
+              </SettingsIndexItem>
+              <CacheSettings/>
+              <SettingsIndexItem label="关于">
+                <button type="button" className="r2-diagnostic-copy" onClick={()=>{const report=displayDiagnostics();void (async()=>{try{await navigator.clipboard.writeText(report);setDisplayCopied(true);setDisplayReport("");}catch{setDisplayReport(report);setDisplayCopied(false);}})();}}><Copy size={18}/>{displayCopied?uiText("已复制显示诊断"):uiText("复制显示诊断")}</button>
+                {displayReport&&<textarea aria-label={uiText("显示诊断")} readOnly value={displayReport} rows={6} onFocus={event=>event.currentTarget.select()}/>}
+                <p className="r2-about-credit">{uiText("头像来自 DiceBear Sprouts 与 Critters（CC0 1.0）。")}</p><a href="mailto:geoffreyzjx@qq.com">{uiText("联系作者")}</a>
+              </SettingsIndexItem>
+            </SettingsIndexGroup>
+          </>}
+        </div>
+        {surface==="RUNTIME"&&<section className="r2-settings v7-settings">{codexPanel}{runtimeChecks}</section>}
         {surface==="NOTIFICATION_LOG"&&!props.notificationDetail&&<p className="v7-log-note">{uiText("最近 20 条结果和状态变化。这里只是记录，不计入待办，也不亮红点。")}</p>}
-        {surface==="RECYCLE"&&<section className="r2-directory"><div className="r2-settings-group">{trash.map(item=><div key={item.id} className="r2-connection-row"><strong title={item.name}>{item.name}</strong><button type="button" disabled={actionBusy} className="r2-icon" aria-label={uiText("恢复 {0}", item.name)} onClick={()=>void changeLifecycle(item,"ACTIVE")}><Undo2 size={18}/></button></div>)}</div>{!trash.length&&<div className="r2-empty"><Trash2 size={28}/><h2>{uiText("没有已删除的 Bridge")}</h2></div>}</section>}
+        {surface==="RECYCLE"&&<section className="r2-directory">{restoreNotice&&<p role="status">{restoreNotice}</p>}<div className="r2-settings-group">{trash.map(item=><div key={item.id} className="r2-connection-row"><strong title={item.name}>{item.name}</strong><button type="button" disabled={actionBusy} className="r2-icon" aria-label={uiText("恢复 {0}", item.name)} title={uiText("恢复 {0}", item.name)} onClick={()=>void changeLifecycle(item,"ACTIVE")}><Undo2 size={18}/></button></div>)}</div>{!trash.length&&<div className="r2-empty"><Trash2 size={28}/><h2>{uiText("没有已删除的 Bridge")}</h2></div>}</section>}
         {!topLevel&&!inReader&&!watchChat&&!["NEW_BRIDGE","RUNTIME","RECYCLE","SETTINGS","NOTIFICATIONS","NOTIFICATION_LOG","MANAGEMENT"].includes(surface)&&<p role="status">{uiText("此入口已收起。")}<button type="button" onClick={()=>navigate("BRIDGES")}>{uiText("返回 Bridge")}</button></p>}
       </section>
     </div></>)}

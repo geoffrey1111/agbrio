@@ -18,7 +18,8 @@ pub(crate) fn read(core:&RouterCore)->Result<Value,String>{
             Value::Object(object)=>{
                 if object.get("provider").and_then(Value::as_str)==Some("CODEX"){
                     if let (Some(id),Some(cwd))=(object.get("threadId").and_then(Value::as_str),object.get("cwd").and_then(Value::as_str)){
-                        if let Some(title)=router_core::codex::source_index::current_display_name(id,cwd){object.insert("label".into(),json!(title));}
+                        let current=object.get("label").and_then(Value::as_str).unwrap_or_default();
+                        if let Some(title)=router_core::codex::source_index::current_display_title(id,cwd).and_then(|title|title.for_watch(current)){object.insert("label".into(),json!(title));}
                     }
                 }
                 if object.contains_key("provider"){

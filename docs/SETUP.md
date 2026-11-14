@@ -16,6 +16,8 @@ Use the [latest Windows release](https://github.com/geoffrey1111/agbrio/releases
 
 Closing the Agbrio window normally leaves the Host in the tray; quitting there stops it. Remote access needs the computer awake and online. Settings → Language offers English, 简体中文, 繁體中文 or system default. Desktop and phone retain their own choice; messages are not translated. Japanese/Korean currently have README introductions only.
 
+Windows checks for updates shortly after startup and about every four hours. Settings shows a dot when a new version is available. Signed updates download in the background; choose **Settings → Version and updates** to install, or turn on automatic installation. With automatic installation enabled, close the dashboard and leave Agbrio in the tray. Agbrio backs up its data and restarts only after it can confirm task activity is idle. If it cannot verify the signature or confirm that it is safe to restart, it leaves the current app running.
+
 ## 2. How Agbrio connects to Codex
 
 Official Codex Desktop is your existing application. Agbrio Host provides local Bridge/API/mobile service. On Windows the Host connects by itself: open Codex as you normally do, from any entry. There is nothing to prepare, no quit-and-reopen, no special shortcut and no resident background process. Settings → Codex shows the actual state.

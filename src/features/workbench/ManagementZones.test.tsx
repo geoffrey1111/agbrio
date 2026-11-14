@@ -119,3 +119,19 @@ it('hides only settled inactive members and automatically restores a member afte
   expect(api.change).not.toHaveBeenCalled();
  }finally{vi.useRealTimers();localStorage.removeItem('agbrio.management.view');}
 });
+it('keeps open-conversation failures in the inspector and permits retry',async()=>{
+ const conversation=row('manager','管理对话');
+ const data:ManagementSnapshot={zones:[{id:'zone',name:'验收区',managerId:'manager',manager:conversation,revision:1,updatedAt:1,members:[]}],candidates:[conversation],legacyAssignments:[]};
+ const api:ManagementApi={read:async()=>data,change:vi.fn()};
+ const watch={threadId:'manager',label:'管理对话'};
+ const watchApi={watches:vi.fn().mockRejectedValueOnce(new Error('NETWORK')).mockResolvedValueOnce([watch])} as unknown as import('./CodexNotifications').NotificationApi;
+ const open=vi.fn();
+ render(<ManagementZones api={api} watchApi={watchApi} onOpenWatch={open}/>);
+ fireEvent.click(await screen.findByRole('button',{name:/管理对话.*管理对话/}));
+ const inspector=screen.getByRole('complementary',{name:'对话详情'});
+ fireEvent.click(within(inspector).getByRole('button',{name:'打开对话'}));
+ expect(await within(inspector).findByRole('alert')).toHaveTextContent('操作未完成');
+ fireEvent.click(within(inspector).getByRole('button',{name:'打开对话'}));
+ await waitFor(()=>expect(open).toHaveBeenCalledExactlyOnceWith(watch));
+ expect(within(inspector).queryByRole('alert')).toBeNull();
+});

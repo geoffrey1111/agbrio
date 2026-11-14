@@ -25,7 +25,7 @@ html .management-page .mz-zones .v6-badge{display:none}
 .mz-zone-count{font-size:var(--v7-fs-meta);color:var(--v7-muted);font-variant-numeric:tabular-nums}
 [aria-pressed=true]>.mz-zone-count{color:inherit}
 .mz-zone-alert{position:absolute;top:4px;left:28px;width:9px;height:9px;border-radius:50%;background:var(--v7-accent);border:2px solid var(--v7-surface)}
-.management-page .mz-zones>button.mz-zone-new{padding:6px 14px;background:transparent;box-shadow:inset 0 0 0 1px var(--v7-line-strong);color:var(--v7-ink-2)}
+.management-page .mz-bar>button.mz-zone-new{flex:none;padding:6px 14px;background:transparent;box-shadow:inset 0 0 0 1px var(--v7-line-strong);color:var(--v7-ink-2)}
 
 /* ---------- view toggle ---------- */
 .mz-view{flex:none;display:flex;padding:3px;border-radius:12px;background:var(--v7-bg-sunken)}
@@ -35,6 +35,9 @@ html .management-page .mz-zones .v6-badge{display:none}
 /* ---------- menu ---------- */
 .mz-menu{position:relative;flex:none}
 .mz-menu-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:20;min-width:200px;padding:6px;background:var(--v7-surface);border-radius:var(--v7-r-card);box-shadow:var(--v7-pop);display:flex;flex-direction:column}
+.management-page .mz-menu-pop>button:focus-visible{outline-offset:-2px;background:var(--v7-hover)}
+.management-page .mz-menu-pop .mz-danger{color:var(--v7-fail)}
+.management-page :is(.mz-menu button,.mz-view button,.mz-zone-new){min-inline-size:44px;touch-action:manipulation}
 .management-page .mz-menu-pop>button{justify-content:flex-start;width:100%;font-size:var(--v7-fs-row)}
 .mz-menu-pop hr{border:0;border-top:1px solid var(--v7-line);margin:4px 6px}
 
@@ -61,7 +64,7 @@ html .management-page .mz-inspector .v6-avatar{width:48px;height:48px}
 .management-page .mz-inspector-actions>button:not(.management-primary){background:var(--v7-bg-sunken)}
 .management-page .mz-inspector-actions>button.mz-quiet{background:transparent;color:var(--v7-muted)}
 .mz-inspector-note{margin:0;font-size:var(--v7-fs-meta);color:var(--v7-muted);line-height:1.55}
-.management-page button.mz-sheet-backdrop{display:none}
+.management-page .mz-sheet-backdrop{display:none}
 
 /* ---------- manager node (all layouts) ---------- */
 .management-page button.mz-manager{display:flex;align-items:center;gap:12px;text-align:start;justify-content:flex-start;padding:14px 18px 14px 14px;background:var(--v7-surface);border-radius:var(--v7-r-card);box-shadow:var(--v7-raise),0 0 0 1px var(--v7-line);max-width:340px;min-width:0}
@@ -196,14 +199,14 @@ html .management-page .management-legacy .v6-avatar{width:32px;height:32px}
 /* ---------- phone ---------- */
 @media(max-width:650px){
  .management-page{padding:8px 16px calc(28px + env(safe-area-inset-bottom,0px));font-size:16px}
- .mz-bar{margin-inline:-16px;padding-inline:16px 8px}
- .management-page .mz-zones>button.mz-zone-new>span{display:none}
- .management-page .mz-zones>button.mz-zone-new{padding:6px 12px}
+ .mz-bar{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px 8px}
+ .mz-zones{grid-column:1/-1}
+ .management-page .mz-bar>button.mz-zone-new{justify-self:start;padding:6px 12px}
  .mz-inspector{position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;z-index:41;border-radius:20px 20px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom,0px));max-height:80dvh;overflow:auto}
- .management-page button.mz-sheet-backdrop{display:block;position:fixed;inset:0;z-index:40;background:rgb(30 27 24 / 28%);border-radius:0;padding:0}
+ .management-page .mz-sheet-backdrop{display:block;position:fixed;inset:0;z-index:40;background:rgb(30 27 24 / 28%)}
  .mz-inspector-actions>button{flex:1 1 auto}
  .management-page .mz-view>button>span{display:none}
- .management-page .mz-view>button{padding:4px 10px}
+ .management-page .mz-view>button{min-height:44px;padding:4px 10px}
  .mz-map{height:460px;margin-bottom:56px}.mz-map[data-rings="2"]{height:640px}.mz-map[data-rings="3"]{height:760px}
  .mz-map-nodes>li{width:78px}
  .management-page .mz-map-nodes button.mz-member{padding:4px 2px;gap:3px}
@@ -223,3 +226,6 @@ html .management-page .management-legacy .v6-avatar{width:32px;height:32px}
  .management-editor footer>button{flex:1}
 }
 @media(prefers-reduced-motion:reduce){html .management-page .mz-member .v6-avatar{transition:none}}
+
+.mz-dialog button.mz-confirm-danger{background:var(--v7-fail);color:#fff}
+.mz-inspector .management-error{margin:0;overflow-wrap:anywhere}

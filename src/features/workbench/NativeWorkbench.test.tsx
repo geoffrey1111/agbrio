@@ -8,9 +8,9 @@ import {UnifiedWorkbench,type UnifiedWorkbenchProps,type WorkbenchSurface} from 
 
 afterEach(()=>{cleanup();localStorage.clear();});
 const base:UnifiedWorkbenchProps={items:[{id:"exact-a",name:"同名 Bridge",lifecycle:"ACTIVE"},{id:"exact-b",name:"同名 Bridge",lifecycle:"ACTIVE"}],onSelectWorkstream:()=>{}};
-it('offers interface updates in mobile About without replacing desktop installer controls',()=>{
+it('offers interface updates under mobile app maintenance',()=>{
  const previous=location.pathname;history.replaceState({},'', '/mobile');
- try{render(<UnifiedWorkbench {...base} surface='SETTINGS'/>);expect(screen.queryByRole('button',{name:'检查界面更新'})).toBeNull();fireEvent.click(screen.getByRole('button',{name:/^关于/}));expect(screen.getAllByRole('button',{name:'检查界面更新'})).toHaveLength(1);expect(screen.getByRole('button',{name:'检查界面更新'})).toBeVisible();}
+ try{render(<UnifiedWorkbench {...base} surface='SETTINGS'/>);const section=screen.getByRole('region',{name:'应用维护'});expect(within(section).getByRole('button',{name:'检查界面更新'})).toBeVisible();}
  finally{history.replaceState({},'',previous);}
 });
 it("has stable destinations including the live board and routes same-named Bridges by their own ID",()=>{
@@ -45,9 +45,11 @@ it("serializes an immediate undo after a pending deletion and preserves the exac
 });
 it("puts notification preferences and device actions inside Settings",()=>{
  function App(){const[surface,setSurface]=useState<WorkbenchSurface>("SETTINGS");return <UnifiedWorkbench {...base} surface={surface} onSurfaceChange={setSurface} notificationSettings={<div>real notification controls</div>} devicePanel={<button>退出本设备</button>}/>;}
- render(<App/>);fireEvent.click(screen.getByRole("button",{name:/^通知/}));expect(screen.getByText("real notification controls")).toBeVisible();
- // Phone settings: sign-out sits at the bottom of the settings list itself.
- fireEvent.click(screen.getByRole("button",{name:"返回"}));expect(screen.getByRole("button",{name:"退出本设备"})).toBeVisible();
+ render(<App/>);const nav=screen.getByRole('navigation',{name:'设置分类'});
+ fireEvent.click(within(nav).getByRole('link',{name:'通知'}));
+ expect(screen.getByRole('heading',{name:'通知',level:2})).toHaveFocus();
+ expect(within(screen.getByRole('region',{name:'通知'})).getByText('real notification controls')).toBeVisible();
+ expect(within(screen.getByRole('region',{name:'手机与设备'})).getByRole('button',{name:'退出本设备'})).toBeVisible();
 });
 it("renames the exact Bridge once without changing its binding or sending",async()=>{
  const rename=vi.fn().mockResolvedValue(undefined),select=vi.fn();

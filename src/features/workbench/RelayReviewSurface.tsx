@@ -1,6 +1,6 @@
 import {t as uiText,tc,useLanguage,getLanguage} from "../../i18n";
 import * as Dialog from "@radix-ui/react-dialog";
-import {useEffect,useState,type ReactNode} from "react";
+import {useEffect,useRef,useState,type ReactNode} from "react";
 import {ArrowRight,ArrowUp,Check,ChevronLeft,CircleCheck,LoaderCircle,Ellipsis,Eye,Pencil,Trash2} from "lucide-react";
 import {MarkdownMessage} from "../codex/MarkdownMessage";
 import type {MediaResolver} from "../codex/messageMedia";
@@ -18,6 +18,9 @@ export function RelayReviewSurface({review,busy,oldReview,sourceLabel,targetLabe
  useLanguage();
  const [view,setView]=useState<"BLOCKS"|"EDIT"|"PREVIEW">(review.approved?"PREVIEW":review.blocks?.length?"BLOCKS":"EDIT");
  const[menu,setMenu]=useState(false);
+ const menuButton=useRef<HTMLButtonElement>(null),menuFirst=useRef<HTMLButtonElement>(null);
+ const closeMenu=()=>{setMenu(false);menuButton.current?.focus({preventScroll:true});};
+ useEffect(()=>{if(menu)menuFirst.current?.focus();},[menu]);
  const frozen=Boolean(review.approved)||oldReview;
  const status=review.approved?.status;
  const [receiptReady,setReceiptReady]=useState(false);
@@ -31,9 +34,9 @@ export function RelayReviewSurface({review,busy,oldReview,sourceLabel,targetLabe
  const canSend=!busy&&!oldReview&&!settled&&payload.trim()&&(!review.choosing||count>0)&&(!review.selected.length||review.prepared);
  const receipt=status==="CANCELLED"?uiText("已结束"):status==="SENT"?uiText("已发送"):status==="SENDING"?uiText("发送中"):status==="UNKNOWN"?uiText("送达待确认"):status==="FAILED"?uiText("发送未完成"):null;
  return <>
-  <header className="r2-relay-header"><button type="button" className="r2-icon" aria-label={uiText("关闭审阅")} disabled={busy} onClick={close}><ChevronLeft size={20}/></button><Dialog.Title>{uiText("转发")}</Dialog.Title><CopyAction text={previewPayload} label={uiText("复制发送内容")}/><button type="button" className="r2-icon" aria-label={uiText("草稿操作")} aria-expanded={menu} disabled={busy} onClick={()=>setMenu(!menu)}><Ellipsis size={20}/></button></header>
-  {menu&&<div className="r2-draft-menu"><button type="button" onClick={()=>{setView("PREVIEW");setMenu(false);}}>{uiText("预览发送内容")}</button><button type="button" onClick={()=>{setMenu(false);discard();}}><Trash2 size={18}/>{uiText("放弃本地编辑")}</button></div>}
-  <div className="r2-relay-route"><span title={sourceLabel}>{review.role==="DECISION"?uiText("控制端"):uiText("执行端")} · {sourceLabel}</span><ArrowRight size={18}/><strong title={targetLabel}>{review.role==="DECISION"?uiText("执行端"):uiText("控制端")} · {targetLabel}</strong></div>
+  <header className="r2-relay-header"><button type="button" className="r2-icon" aria-label={uiText("关闭审阅")} disabled={busy} onClick={close}><ChevronLeft size={20}/></button><Dialog.Title>{uiText("转发")}</Dialog.Title><CopyAction text={previewPayload} label={uiText("复制发送内容")}/><button ref={menuButton} type="button" className="r2-icon" aria-label={uiText("草稿操作")} aria-expanded={menu} disabled={busy} onClick={()=>setMenu(!menu)}><Ellipsis size={20}/></button></header>
+  {menu&&<div className="r2-draft-menu" onBlur={event=>{if(event.relatedTarget!==menuButton.current&&!event.currentTarget.contains(event.relatedTarget))setMenu(false);}} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeMenu();}}}><button ref={menuFirst} type="button" disabled={busy} onClick={()=>{setView("PREVIEW");closeMenu();}}>{uiText("预览发送内容")}</button><button type="button" disabled={busy||frozen} onClick={()=>{closeMenu();discard();}}><Trash2 size={18}/>{uiText("放弃本地编辑")}</button></div>}
+  <div className="r2-relay-route"><span>{review.role==="DECISION"?uiText("控制端"):uiText("执行端")} · {sourceLabel}</span><ArrowRight size={18} aria-hidden/><strong>{review.role==="DECISION"?uiText("执行端"):uiText("控制端")} · {targetLabel}</strong></div>
   <div className="r2-relay-scroll">
     {!frozen&&onSourceChange&&<RelaySourcePicker sources={sources} selected={review.reply.id} disabled={busy} stopped={sourceStopped} onChange={onSourceChange}/>}
     {review.reply.observedAt&&<time className="r2-relay-time">{new Intl.DateTimeFormat(getLanguage(),{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}).format(review.reply.observedAt)}</time>}

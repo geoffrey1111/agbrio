@@ -5,10 +5,11 @@
 use crate::host_application::RouterCore;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
+const TITLE_SYNC_INTERVAL:Duration=Duration::from_secs(60*60);
 
 #[derive(Default)]
-pub(crate) struct Watcher { seen: HashMap<String, (u64, SystemTime)>, paths: HashMap<String, PathBuf>, cursor:Option<String> }
+pub(crate) struct Watcher { seen: HashMap<String, (u64, SystemTime)>, paths: HashMap<String, PathBuf>, cursor:Option<String>, last_title_sync:Option<Instant> }
 
 /// Sessions whose state matters: bound in an active Bridge, or watched.
 pub(crate) fn targets(core: &RouterCore) -> Result<HashMap<String, Option<String>>, String> {
@@ -29,7 +30,11 @@ pub(crate) fn targets(core: &RouterCore) -> Result<HashMap<String, Option<String
 impl Watcher {
     /// One pass. Returns how many sessions changed.
     pub(crate) fn tick(&mut self, core: &RouterCore) -> Result<usize, String> {
-        if let Err(code)=refresh_titles(core,&crate::claude_code_desktop::sessions()) {crate::claude_event_log::record("watcher","TITLE",&code);}
+        let now=Instant::now();
+        if self.last_title_sync.is_none_or(|last|now.duration_since(last)>=TITLE_SYNC_INTERVAL){
+            self.last_title_sync=Some(now);
+            if let Err(code)=sync_watch_titles(core,&crate::claude_code_desktop::sessions()) {crate::claude_event_log::record("watcher","TITLE",&code);}
+        }
         let Some(root) = crate::claude_transcript::projects_root() else { return Ok(0) };
         crate::claude_child_contexts::renew(core);
         crate::claude_owner_requests::tick(core);
@@ -57,11 +62,16 @@ impl Watcher {
 
 // Renaming changes desktop metadata, not necessarily the transcript stamp.
 // Refresh independently of message reads, using only exact identity/root facts.
-fn refresh_titles(core:&RouterCore,desktop:&[crate::claude_code_desktop::DesktopSession])->Result<(),String>{
- for watch in core.store.codex_watches()?.into_iter().filter(|w|w.enabled){
-  let Some(id)=watch.thread_id.strip_prefix(router_core::store::claude_manual::PREFIX)else{continue};
-  let names=desktop.iter().filter(|s|s.session_id==id&&router_core::claude_code::same_root(&s.cwd,&watch.cwd)).filter_map(|s|s.title.as_deref()).collect::<HashSet<_>>();
-  if names.len()==1{let title=names.into_iter().next().unwrap();if title!=watch.label{core.store.refresh_codex_watch_label(&watch.thread_id,watch.generation,&watch.cwd,title)?;}}
+fn sync_watch_titles(core:&RouterCore,desktop:&[crate::claude_code_desktop::DesktopSession])->Result<(),String>{
+ for mut watch in core.store.codex_watches()?.into_iter().filter(|w|w.enabled){
+  let old=watch.label.clone();
+  if let Some(id)=watch.thread_id.strip_prefix(router_core::store::claude_manual::PREFIX){
+   let names=desktop.iter().filter(|s|s.session_id==id&&!s.archived&&router_core::claude_code::same_root(&s.cwd,&watch.cwd)).filter_map(|s|s.title.as_deref()).collect::<HashSet<_>>();
+   if names.len()==1{watch.label=names.into_iter().next().unwrap().to_owned();}
+  }else{
+   crate::codex_watch::refresh_display_label(&mut watch);
+  }
+  if watch.label!=old{core.store.refresh_codex_watch_label(&watch.thread_id,watch.generation,&watch.cwd,&watch.label)?;}
  }
  Ok(())
 }
@@ -73,8 +83,8 @@ fn refresh_titles(core:&RouterCore,desktop:&[crate::claude_code_desktop::Desktop
   store.enable_codex_watch(key,"old title",&root,&router_core::store::codex_watch::WatchSnapshot{state:"RUNNING".into(),turn_id:Some("same-turn".into()),item_id:None,text:"same text".into()}).unwrap();let original=store.registered_codex_watch(key).unwrap();
   let core=RouterCore{store:store.clone(),session:std::sync::Arc::new(std::sync::Mutex::default()),};
   let mut source=crate::claude_code_desktop::DesktopSession{local_id:None,session_id:"display-only".into(),cwd:root,title:Some("renamed native title".into()),archived:false,last_activity:1};
-  refresh_titles(&core,&[source.clone()]).unwrap();let renamed=store.registered_codex_watch(key).unwrap();assert_eq!(renamed.label,"renamed native title");assert_eq!(renamed.generation,original.generation);assert_eq!(renamed.snapshot,original.snapshot);assert_eq!(renamed.changed_at,original.changed_at);
-  source.cwd="unrelated-project".into();source.title=Some("wrong root title".into());refresh_titles(&core,&[source]).unwrap();assert_eq!(store.registered_codex_watch(key).unwrap().label,"renamed native title");
+  sync_watch_titles(&core,&[source.clone()]).unwrap();let renamed=store.registered_codex_watch(key).unwrap();assert_eq!(renamed.label,"renamed native title");assert_eq!(renamed.generation,original.generation);assert_eq!(renamed.snapshot,original.snapshot);assert_eq!(renamed.changed_at,original.changed_at);
+  source.cwd="unrelated-project".into();source.title=Some("wrong root title".into());sync_watch_titles(&core,&[source]).unwrap();assert_eq!(store.registered_codex_watch(key).unwrap().label,"renamed native title");
  }
 }
 

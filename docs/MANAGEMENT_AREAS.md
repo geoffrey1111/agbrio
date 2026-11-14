@@ -15,4 +15,4 @@ While a Claude manager is working, fixed task notices can arrive with its next o
 
 Managers can read the current assignments through `agbrio_read_app` in its `management` field. New tool lists also support `view: "MANAGEMENT"`. Appointment and transfer remain owner actions in Agbrio.
 
-Conversation display names are refreshed from native metadata independently of history/status availability. A rename does not require reopening or watching the conversation again, and never changes its native ID or routing.
+Agbrio synchronizes watched Codex and Claude Code display names at startup and once an hour, independently of history and status checks. A native rename does not require reopening the conversation. If a Codex conversation has no name, Agbrio can display the first line of its native preview in place of “Untitled”; a preview does not replace a name already shown. This does not rename the original conversation or change its routing.

@@ -1,6 +1,14 @@
 import {afterEach,it,expect,vi} from 'vitest';
 import {render,screen,fireEvent,cleanup,waitFor} from '@testing-library/react';
 import {BoardHub} from './BoardHub';
+
+it('recovers a failed list read from the visible retry action',async()=>{
+ const a=api();a.list.mockRejectedValueOnce(Error('offline')).mockResolvedValueOnce([]);
+ render(<BoardHub active legacyAvailable={false} api={a}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'重试'}));
+ expect(await screen.findByRole('heading',{name:'把项目进展带到手机'})).toBeVisible();
+ expect(a.list).toHaveBeenCalledTimes(2);
+});
 import {publishedBoardDocument} from './publishedBoardDocument';
 import {boardInstructions} from './boardExamples';
 afterEach(cleanup);

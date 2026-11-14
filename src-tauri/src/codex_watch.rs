@@ -12,7 +12,7 @@ pub(crate) fn source_availability(thread:&str,cwd:&str)->Result<(),String>{
  use router_core::codex::source_index::{self,Availability};match source_index::current(thread,cwd){Ok(Some(Availability::Archived))=>Err("WATCH_THREAD_ARCHIVED".into()),Ok(Some(Availability::FileMissing))=>Err("WATCH_SOURCE_FILE_MISSING".into()),Ok(Some(Availability::ProjectChanged))=>Err("WATCH_PROJECT_CHANGED".into()),_=>Ok(())}
 }
 pub(crate) fn refresh_display_label(watch:&mut CodexWatch){
-    if let Some(label)=router_core::codex::source_index::current_display_name(&watch.thread_id,&watch.cwd){watch.label=label;}
+    if let Some(label)=router_core::codex::source_index::current_display_title(&watch.thread_id,&watch.cwd).and_then(|title|title.for_watch(&watch.label)){watch.label=label;}
 }
 pub(crate) fn inspect(adapter: &mut crate::codex::adapter::CodexAdapter, thread_id: &str) -> Result<(String,String,WatchSnapshot),String> {
     let (label,cwd,snapshot,_,_)=inspect_live(adapter,thread_id)?;Ok((label,cwd,snapshot))
@@ -59,12 +59,9 @@ pub(crate) fn inspect_live(
     let label = thread
         .get("name")
         .and_then(Value::as_str)
-        .or_else(|| thread.get("preview").and_then(Value::as_str))
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or("未命名 Codex 对话")
-        .chars()
-        .take(120)
-        .collect::<String>();
+        .and_then(router_core::codex::source_index::single_line_title)
+        .or_else(|| thread["preview"].as_str().and_then(router_core::codex::source_index::single_line_title))
+        .unwrap_or_else(||"未命名 Codex 对话".into());
     adapter.begin_latest_turn_observation(thread_id)?;
     let turns=match adapter.request_with_timeout("thread/turns/list",json!({"threadId":thread_id,"cursor":null,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"}),CODEX_OBSERVER_REQUEST_TIMEOUT){Ok(v)=>v,Err(e) if is_unmaterialized_empty_codex_thread(thread_id,&e)=>json!({"data":[]}),Err(e)=>return Err(e)};
     let rows = turns
@@ -215,11 +212,7 @@ pub(crate) fn poll(
     epoch: u64,
 ) -> Result<bool, String> {
     if watch.thread_id.starts_with(router_core::store::claude_manual::PREFIX)||watch.thread_id.starts_with("pi:"){return Ok(false);}
-    // A failed history/status read must not freeze independently readable names.
-    if let Some(label)=router_core::codex::source_index::current_display_name(&watch.thread_id,&watch.cwd){
-        store.refresh_codex_watch_label(&watch.thread_id,watch.generation,&watch.cwd,&label)?;
-    }
-    let outcome = (|| {
+     let outcome = (|| {
         source_availability(&watch.thread_id,&watch.cwd)?;
         let mut s = session.lock().map_err(|_| "Router session unavailable")?;
         if s.codex_observer_epoch != epoch {
@@ -231,7 +224,7 @@ pub(crate) fn poll(
             .as_mut()
             .filter(|a| !a.is_closed())
             .ok_or("Codex backend disconnected")?;
-        let (label, cwd, mut snapshot) = inspect(a, &watch.thread_id)?;
+        let (_, cwd, mut snapshot) = inspect(a, &watch.thread_id)?;
         let owned=a.active_turn_id(&watch.thread_id);
         if let Some(request)=s.pending_codex_requests.values().find(|r|r.thread_id==watch.thread_id&&!r.responded&&owned.as_deref()==Some(&r.turn_id)){
             if let Some(public)=mobile_codex_request_projection(request){snapshot.state="ACTION_REQUIRED".into();snapshot.turn_id=Some(request.turn_id.clone());snapshot.item_id=Some(request.action_id.clone());snapshot.text=if public.kind=="USER_INPUT"{"Codex 需要你的回答。请打开原对话查看当前请求。".into()}else{"Codex 需要你确认执行请求。请打开原对话查看详情。".into()};}
@@ -239,8 +232,6 @@ pub(crate) fn poll(
         if cwd != watch.cwd {
             return Err("WATCH_PROJECT_CHANGED".into());
         }
-        let label=router_core::codex::source_index::current_display_name(&watch.thread_id,&cwd).unwrap_or(label);
-        store.refresh_codex_watch_label(&watch.thread_id,watch.generation,&cwd,&label)?;
         if let Some(a)=s.adapter.as_ref(){crate::conversation_message_time::codex(store,a,&watch.thread_id,&cwd);}
         store.record_codex_watch(&watch.thread_id, watch.generation, &snapshot)
     })();

@@ -27,7 +27,7 @@ html .r2-router .v7-tree-list{margin:0 0 8px 31px;padding-left:12px;border-inlin
 html .r2-router .v6-row-top>.v7-result-dot{margin-left:-2px}
 @media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1100px){
  .v7-tree-node{height:44px;font-size:var(--v7-fs-row)}
- .v7-tree-ended{height:40px}
+ .v7-tree-ended{height:44px}
  html .r2-router .v7-tree-toggle{min-height:28px;margin-left:64px}
  html .r2-router .v7-tree-list{margin-left:34px}
 }
@@ -93,9 +93,20 @@ html .v4-watch-chat.v6-chat .v4-chat-header .v4-chat-live>button{flex:none}
 .v7-todo-empty p{margin:0;font-size:var(--v7-fs-2)}
 .v7-todo-links{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:16px}
 .v7-todo-links button{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px 0 12px;border:1px solid var(--v7-line);border-radius:var(--v7-r-ctl);background:transparent;color:var(--v7-ink-2);font:inherit;font-size:var(--v7-fs-2);cursor:pointer}
-.v7-todo-links button:hover{background:var(--v7-hover)}
+@media(hover:hover) and (pointer:fine){.v7-todo-links button:hover{background:var(--v7-hover)}}
 .v7-todo-hint{margin:12px 8px 0;font-size:var(--v7-fs-meta);line-height:1.6;text-align:center;color:var(--v7-muted)}
 @media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1100px){
+ .v7-todo-links button{min-height:44px}
+ .v7-todo-card button{min-height:44px}
+ html .r2-router .v7-tree-toggle{min-height:44px;margin-top:0}
+ .r2-relay .r2-relay-route{display:grid;grid-template-columns:18px minmax(0,1fr);gap:4px 8px;padding:4px 20px 12px;min-height:0;max-height:30%;overflow:auto;overscroll-behavior:contain}
+ .r2-relay-route>span,.r2-relay-route>strong{grid-column:2;white-space:normal;overflow-wrap:anywhere;line-height:1.5}
+ .r2-relay-route>svg{grid-column:1;grid-row:2;transform:rotate(90deg);align-self:start}
+ .r2-relay .r2-draft-menu button{min-height:44px}
+ html .v4-watch-chat.v6-chat .v4-chat-header:has(.v4-chat-live>button){display:grid;grid-template-columns:44px auto minmax(0,1fr) 44px}
+ html .v4-watch-chat.v6-chat .v4-chat-header:has(.v4-chat-live>button)>.v4-chat-more{grid-column:4;grid-row:1}
+ html .v4-watch-chat.v6-chat .v4-chat-header .v4-chat-live:has(>button){grid-column:2/-1;max-width:none;flex-wrap:wrap;overflow:visible}
+ html .v4-watch-chat.v6-chat .v4-chat-header .v4-chat-live>button{min-height:44px!important;height:auto}
  .v7-todo-card{grid-template-columns:minmax(0,1fr);padding:12px 14px}
  .v7-todo-card>footer{grid-column:1;grid-row:auto;justify-content:flex-end}
  .v7-todo-card button{height:36px;min-height:36px}
@@ -103,11 +114,22 @@ html .v4-watch-chat.v6-chat .v4-chat-header .v4-chat-live>button{flex:none}
 
 /* ---------- settings ---------- */
 html .r2-router .v7-settings-nav{flex:0 0 232px;width:232px;display:flex;flex-direction:column;gap:2px;padding:16px 12px;border-right:1px solid var(--v7-line);background:var(--v7-bg);overflow-y:auto}
-html .r2-router .v7-settings-nav h1{margin:0;padding:4px 10px 14px;font-size:var(--v7-fs-title);font-weight:600;letter-spacing:-.01em;color:var(--v7-ink)}
-html .r2-router .v7-settings-nav button{display:flex;align-items:center;gap:10px;height:36px;min-height:36px;padding:0 10px;border:0;border-radius:var(--v7-r-ctl);background:transparent;color:var(--v7-ink-2);font:inherit;font-size:var(--v7-fs-row);text-align:start;cursor:pointer}
-html .r2-router .v7-settings-nav button:hover{background:var(--v7-hover)}
-html .r2-router .v7-settings-nav button[aria-current=page]{background:var(--v7-surface);color:var(--v7-ink);font-weight:600;box-shadow:0 0 0 1px var(--v7-line)}
-html .r2-router .v7-settings-nav button:focus-visible{outline:2px solid var(--v7-ink);outline-offset:-2px}
+html .r2-router .settings-jump-title{padding:4px 10px 14px;font-size:var(--v7-fs-title);font-weight:600;color:var(--v7-ink)}
+.r2-router :is(.settings-jump,.settings-jump-compact) a{display:flex;align-items:center;gap:8px;min-height:36px;padding:0 12px;border-radius:var(--v7-r-ctl);color:var(--v7-ink-2);font-size:var(--v7-fs-row);text-decoration:none}
+@media(hover:hover) and (pointer:fine){.r2-router :is(.settings-jump,.settings-jump-compact) a:hover{background:var(--v7-hover)}}
+.r2-router :is(.settings-jump,.settings-jump-compact) a[aria-current=location]{background:var(--v7-selected);color:var(--v7-accent-ink);font-weight:600}
+.r2-router :is(.settings-jump,.settings-jump-compact) a:focus-visible{outline-offset:-2px}
+.settings-jump-compact{display:flex;flex:none;gap:4px;overflow-x:auto;padding:4px 16px 8px;border-bottom:1px solid var(--v7-line);overscroll-behavior-inline:contain;scrollbar-width:thin}
+.r2-router .settings-jump-compact a{flex:none;min-height:44px;white-space:nowrap;touch-action:manipulation}
+.r2-router .settings-index:not([hidden]){display:block;max-width:760px;padding-block:16px 48px}
+.r2-router .settings-index[hidden]{display:none}
+.settings-index-group{min-width:0;padding-block:16px 24px}
+.settings-index-group:last-child{min-height:calc(var(--settings-visible-height, 65dvh) - 64px)}
+.settings-index-group+.settings-index-group{border-top:1px solid var(--v7-line);padding-top:24px}
+.settings-index-group>h2{margin:0 0 16px;font-size:20px;line-height:1.4;color:var(--v7-ink);font-weight:600}
+.settings-index-item{min-width:0;margin-block:0 16px;overflow-wrap:anywhere}
+.settings-index-item>h3{margin:0 0 8px;font-size:var(--v7-fs-row);font-weight:600;color:var(--v7-ink-2)}
+.settings-index :is(h2,h3)[tabindex]:focus-visible{outline-offset:4px}
 html .r2-router .r2-settings .r2-settings-group>button .v7-row-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;text-align:start}
 html .r2-router .r2-settings .r2-settings-group>button .v7-row-text>small{font-size:var(--v7-fs-meta);font-weight:400;line-height:1.4;color:var(--v7-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 html .r2-router .v7-settings-note{margin:16px 4px 0;font-size:var(--v7-fs-meta);color:var(--v7-muted)}
@@ -166,3 +188,12 @@ html .r2-router .r2-settings-group.v7-card-quota>.r2-quota-row .r2-quota-meter{g
 html .r2-router .r2-settings-group.v7-card-quota>.r2-quota-row>svg{display:none}
 @media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1100px){html .r2-router .r2-header .v7-head-count{margin-left:auto}}
 html .r2-router.v3-surface-notifications .r2-header h1{flex:0 1 auto}
+
+.r2-router .settings-runtime-row{flex-wrap:wrap}
+.settings-runtime-row>div{flex:1 1 210px;min-width:0}
+.settings-runtime-row p{margin:4px 0 0;color:var(--v7-muted);overflow-wrap:anywhere}
+
+.r2-router .agbrio-update-dot{display:inline-block;flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:var(--v7-fail);vertical-align:middle}
+.agbrio-update-indicator{display:flex;align-items:center;gap:8px;color:var(--v7-fail)}
+.r2-update-preference label{display:flex;align-items:center;gap:8px;min-height:44px}
+.r2-update-preference label input{flex:none;width:18px;height:18px;accent-color:var(--v7-accent)}

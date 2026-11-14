@@ -123,6 +123,7 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
  const [taskSheetOpen,setTaskSheetOpen]=useState(false),[selectedChild,setSelectedChild]=useState<ClaudeTaskTree['nodes'][number]|null>(null);
  const dockedTree=useDockedTree();
  useBackLayer(taskSheetOpen,()=>{if(selectedChild)setSelectedChild(null);else setTaskSheetOpen(false);});
+ useBackLayer(Boolean(childConversation),()=>setChildConversation(null));
  const initialChildHandled=useRef(false);
  useEffect(()=>{if(!childConversation&&parentScrollPosition.current!==null)requestAnimationFrame(()=>{if(reader.current&&parentScrollPosition.current!==null){reader.current.scrollTop=parentScrollPosition.current;parentScrollPosition.current=null;}});},[childConversation]);
  async function openChildConversation(node:ClaudeTaskTree['nodes'][number]){if(!state)return;await act(async()=>{const child=await command<WatchChatState>('CHILD_OPEN',{generation:state.watch.generation,childId:node.sessionId});if(child.watch.threadId!==`claude_code:${node.sessionId}`)throw Error('REPLY_TARGET_CHANGED_REFRESH');parentScrollPosition.current=reader.current?.scrollTop??0;followLatest.current=false;setTaskSheetOpen(false);setSelectedChild(null);setChildConversation(child.watch);});}

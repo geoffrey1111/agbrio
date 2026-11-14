@@ -1,10 +1,11 @@
-//! Desktop-only, owner-clicked signed updates. No PWA/MCP update authority.
+//! Desktop-only signed updates. No PWA/MCP update authority.
 use crate::{host::HostRuntime,host_application::RouterCore};
 use serde::{Deserialize,Serialize};
 use std::{sync::{Arc,Mutex,atomic::{AtomicBool,Ordering}},time::{Duration,Instant}};
 use tauri::{AppHandle,Emitter,Manager,State};
 use tauri_plugin_updater::{Update,UpdaterExt};
 const REPO:&str="geoffrey1111/agbrio";
+const UPDATE_EVENT:&str="agbrio-update-progress";
 const MAX_PACKAGE:u64=600*1024*1024;
 // Registry/product-name migrations must never redirect an in-app update to a
 // different copy. NSIS requires /D= to be the final argument, without quotes.
@@ -16,10 +17,10 @@ fn pin_install_directory(builder:tauri_plugin_updater::UpdaterBuilder)->Result<t
  Ok(builder.installer_arg(argument))
 }
 #[derive(Clone,Serialize)]#[serde(rename_all="camelCase")]
-pub(crate) struct UpdateView{pub state:String,pub current_version:String,pub version:Option<String>,pub notes:Option<String>,pub release_url:Option<String>,pub downloaded:u64,pub total:Option<u64>,pub error:Option<String>}
-impl Default for UpdateView{fn default()->Self{Self{state:"IDLE".into(),current_version:env!("CARGO_PKG_VERSION").into(),version:None,notes:None,release_url:None,downloaded:0,total:None,error:None}}}
+pub(crate) struct UpdateView{pub state:String,pub current_version:String,pub version:Option<String>,pub notes:Option<String>,pub release_url:Option<String>,pub downloaded:u64,pub total:Option<u64>,pub error:Option<String>,pub auto_install:bool}
+impl Default for UpdateView{fn default()->Self{Self{state:"IDLE".into(),current_version:env!("CARGO_PKG_VERSION").into(),version:None,notes:None,release_url:None,downloaded:0,total:None,error:None,auto_install:false}}}
 #[derive(Default)]struct Cache{view:UpdateView,candidate:Option<Update>,bytes:Option<Vec<u8>>}
-#[derive(Default)]pub(crate) struct UpdateState{busy:AtomicBool,cache:Arc<Mutex<Cache>>}
+#[derive(Default)]pub(crate) struct UpdateState{busy:AtomicBool,auto_install:AtomicBool,cache:Arc<Mutex<Cache>>}
 struct Busy<'a>(&'a AtomicBool);impl Drop for Busy<'_>{fn drop(&mut self){self.0.store(false,Ordering::Release);}}
 fn guard(s:&UpdateState)->Result<Busy<'_>,String>{s.busy.compare_exchange(false,true,Ordering::AcqRel,Ordering::Acquire).map_err(|_|"UPDATE_BUSY")?;Ok(Busy(&s.busy))}
 fn fault(s:&UpdateState,code:&str)->String{if let Ok(mut c)=s.cache.lock(){c.view.state="FAILED".into();c.view.error=Some(code.into());}code.into()}
@@ -76,11 +77,21 @@ async fn check_manifest(app:&AppHandle,state:&UpdateState,client:&reqwest::Clien
  if update.version!=published.version.to_string()||update.download_url!=published.url{return Err("UPDATE_CHANGED".into())}
  update.timeout=Some(Duration::from_secs(600));let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;c.view.state="AVAILABLE".into();c.view.total=Some(size);c.candidate=Some(update);Ok(())
 }
+fn view(app:&AppHandle,state:&UpdateState)->Result<UpdateView,String>{
+ let mut value=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?.view.clone();
+ value.current_version=app.package_info().version.to_string();
+ value.auto_install=state.auto_install.load(Ordering::Acquire);Ok(value)
+}
+fn publish(app:&AppHandle,state:&UpdateState){if let Ok(value)=view(app,state){let _=app.emit(UPDATE_EVENT,value);}}
 #[tauri::command]
-pub(crate) fn desktop_update_status(app:AppHandle,state:State<'_,UpdateState>)->Result<UpdateView,String>{let mut view=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?.view.clone();view.current_version=app.package_info().version.to_string();Ok(view)}
+pub(crate) fn desktop_update_status(app:AppHandle,state:State<'_,UpdateState>)->Result<UpdateView,String>{view(&app,&state)}
 #[tauri::command]
 pub(crate) async fn desktop_update_check(app:AppHandle,state:State<'_,UpdateState>)->Result<UpdateView,String>{
- let _busy=guard(&state)?;{let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;*c=Cache::default();c.view.state="CHECKING".into();c.view.current_version=app.package_info().version.to_string();}
+ let _busy=guard(&state)?;check(&app,&state).await
+}
+async fn check(app:&AppHandle,state:&UpdateState)->Result<UpdateView,String>{
+ {let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;if c.view.state=="READY"{drop(c);return view(app,state);}*c=Cache::default();c.view.state="CHECKING".into();c.view.current_version=app.package_info().version.to_string();}
+ publish(app,state);
  let result:Result<(),String>=async{
   let client=reqwest::Client::builder().timeout(Duration::from_secs(15)).user_agent("Agbrio-update-check").build().map_err(|_|"UPDATE_NETWORK")?;
   let rows=match discover(&client,&format!("https://api.github.com/repos/{REPO}/releases?per_page=20"),LATEST_MANIFEST).await?{
@@ -103,29 +114,49 @@ pub(crate) async fn desktop_update_check(app:AppHandle,state:State<'_,UpdateStat
   if update.version!=remote.to_string()||!release_asset_url(&r.tag_name,&update.download_url)||!asset.name.ends_with(".exe")||asset.size==0||asset.size>MAX_PACKAGE{return Err("UPDATE_PACKAGE_INVALID".into());}
   update.timeout=Some(Duration::from_secs(600));let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;c.view.state="AVAILABLE".into();c.view.total=Some(asset.size);c.candidate=Some(update);Ok(())
  }.await;
- if let Err(e)=result{return Err(fault(&state,&e));}Ok(state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?.view.clone())
+ if let Err(e)=result{let error=fault(state,&e);publish(app,state);return Err(error);}publish(app,state);view(app,state)
 }
 #[tauri::command]
 pub(crate) async fn desktop_update_download(app:AppHandle,version:String,state:State<'_,UpdateState>)->Result<UpdateView,String>{
- let _busy=guard(&state)?;let update={let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;if c.view.version.as_deref()!=Some(&version)||c.view.state!="AVAILABLE"{return Err("UPDATE_CHANGED".into());}c.view.state="DOWNLOADING".into();c.candidate.clone().ok_or("UPDATE_CHANGED")?};
- let cache=state.cache.clone();let mut emitted=Instant::now();let data=update.download(move|length,total|{if let Ok(mut c)=cache.lock(){c.view.downloaded+=length as u64;if total.is_some(){c.view.total=total;}if emitted.elapsed()>Duration::from_millis(150){let _=app.emit("agbrio-update-progress",c.view.clone());emitted=Instant::now();}}},||{}).await.map_err(|_|fault(&state,"UPDATE_DOWNLOAD_OR_SIGNATURE_FAILED"))?;
- if data.len() as u64>MAX_PACKAGE{return Err(fault(&state,"UPDATE_PACKAGE_INVALID"));}let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;c.view.state="READY".into();c.view.downloaded=data.len() as u64;c.bytes=Some(data);Ok(c.view.clone())
+ let _busy=guard(&state)?;download(&app,&state,&version).await
+}
+async fn download(app:&AppHandle,state:&UpdateState,version:&str)->Result<UpdateView,String>{
+ let update={let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;if c.view.version.as_deref()!=Some(version)||c.view.state!="AVAILABLE"{return Err("UPDATE_CHANGED".into());}let update=c.candidate.clone().ok_or("UPDATE_CHANGED")?;c.view.state="DOWNLOADING".into();c.view.downloaded=0;c.view.error=None;update};
+ publish(app,state);
+ let cache=state.cache.clone();let handle=app.clone();let mut emitted=Instant::now();
+ let data=update.download(move|length,total|{
+  let mut notify=false;
+  if let Ok(mut c)=cache.lock(){c.view.downloaded+=length as u64;if total.is_some(){c.view.total=total;}if emitted.elapsed()>Duration::from_millis(150){notify=true;emitted=Instant::now();}}
+  if notify{publish(&handle,&handle.state::<UpdateState>());}
+ },||{}).await;
+ let data=match data{
+  Ok(bytes) if (bytes.len() as u64)<=MAX_PACKAGE=>bytes,
+  result=>{let error=fault(state,if result.is_ok(){"UPDATE_PACKAGE_INVALID"}else{"UPDATE_DOWNLOAD_OR_SIGNATURE_FAILED"});publish(app,state);return Err(error);}
+ };
+ {let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;c.view.state="READY".into();c.view.downloaded=data.len() as u64;c.bytes=Some(data);}
+ publish(app,state);view(app,state)
 }
 #[tauri::command]
-pub(crate) fn desktop_update_install(version:String,confirm_restart:Option<bool>,state:State<'_,UpdateState>,core:State<'_,RouterCore>)->Result<(),String>{
- let _busy=guard(&state)?;
- let confirmed=confirm_restart.unwrap_or(false);
- if confirmed{audit_install(&version,"OWNER_CONFIRMED_FORCE_REQUEST")?;}
- audit_install(&version,"REQUESTED")?;
+pub(crate) async fn desktop_update_install(app:AppHandle,version:String,confirm_restart:Option<bool>)->Result<(),String>{
+ tauri::async_runtime::spawn_blocking(move||{
+  let state=app.state::<UpdateState>();let _busy=guard(&state)?;let core=app.state::<RouterCore>();
+  let result=install(&app,&state,&core,&version,confirm_restart.unwrap_or(false),false);publish(&app,&state);result
+ }).await.map_err(|_|"UPDATE_INSTALL_FAILED")?
+}
+fn install(app:&AppHandle,state:&UpdateState,core:&RouterCore,version:&str,confirmed:bool,automatic:bool)->Result<(),String>{
+ if confirmed{audit_install(version,"OWNER_CONFIRMED_FORCE_REQUEST")?;}
+ if automatic{audit_install(version,"AUTOMATIC_IDLE_INSTALL")?;}
+ audit_install(version,"REQUESTED")?;
  let pi=core.session.lock().map_err(|_|"UPDATE_ACTIVITY_UNAVAILABLE")?.pi.clone();
- let _pi_update=match pi.reserve_update_confirmed(&core.store,confirmed){Ok(g)=>g,Err(e)=>{audit_install(&version,"BLOCKED_ACTIVITY")?;return Err(e);}};
+ let _pi_update=match pi.reserve_update_confirmed(&core.store,confirmed){Ok(g)=>g,Err(e)=>{audit_install(version,"BLOCKED_ACTIVITY")?;return Err(e);}};
  let active=match update_tasks_active(&core){Ok(v)=>v,Err(_) if confirmed=>true,Err(e)=>return Err(e)};
- if active{audit_install(&version,if confirmed{"OWNER_CONFIRMED_ACTIVE_UPDATE"}else{"BLOCKED_TASK_RUNNING"})?;}
- let (update,data)={let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;install_gate(&version,c.view.version.as_deref(),&c.view.state,c.candidate.is_some()&&c.bytes.is_some(),active,confirmed)?;let update=c.candidate.clone().ok_or("UPDATE_CHANGED")?;let data=c.bytes.take().ok_or("UPDATE_CHANGED")?;c.view.state="INSTALLING".into();(update,data)};
+ if active{audit_install(version,if confirmed{"OWNER_CONFIRMED_ACTIVE_UPDATE"}else{"BLOCKED_TASK_RUNNING"})?;}
+ let (update,data)={let mut c=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?;install_gate(version,c.view.version.as_deref(),&c.view.state,c.candidate.is_some()&&c.bytes.is_some(),active,confirmed)?;let update=c.candidate.clone().ok_or("UPDATE_CHANGED")?;let data=c.bytes.take().ok_or("UPDATE_CHANGED")?;c.view.state="INSTALLING".into();(update,data)};
  if core.store.backup_before_application_update().is_err(){if let Ok(mut c)=state.cache.lock(){c.bytes=Some(data);c.view.state="READY".into();}return Err("UPDATE_BACKUP_FAILED".into());}
  // Recheck after the potentially slow backup; never consume a stale idle check.
  match update_tasks_active(&core){Ok(false)=>{},_ if confirmed=>{},result=>{if let Ok(mut c)=state.cache.lock(){c.bytes=Some(data);c.view.state="READY".into();}return Err(match result{Ok(true)=>"UPDATE_TASK_RUNNING".into(),Err(e)=>e,_=>unreachable!()});}}
- if let Err(e)=audit_install(&version,"INSTALLER_DISPATCH"){if let Ok(mut c)=state.cache.lock(){c.bytes=Some(data);c.view.state="READY".into();}return Err(e);}
+ if automatic&&!dashboard_hidden(app){if let Ok(mut c)=state.cache.lock(){c.bytes=Some(data);c.view.state="READY".into();}return Err("UPDATE_DEFERRED".into());}
+ if let Err(e)=audit_install(version,"INSTALLER_DISPATCH"){if let Ok(mut c)=state.cache.lock(){c.bytes=Some(data);c.view.state="READY".into();}return Err(e);}
  if update.install(&data).is_err(){if let Ok(mut c)=state.cache.lock(){c.bytes=Some(data);c.view.state="READY".into();}return Err("UPDATE_INSTALL_FAILED".into());}Ok(())
 }
 // Only a desktop owner confirmation for this verified version overrides activity guards.
@@ -145,6 +176,10 @@ fn audit_install(version:&str,phase:&str)->Result<(),String>{
  file.sync_data().map_err(|_|"UPDATE_AUDIT_FAILED".into())
 }
 fn update_tasks_active(core:&RouterCore)->Result<bool,String>{
+ let claude=core.store.claude_catalog().map_err(|_|"UPDATE_ACTIVITY_UNAVAILABLE")?;
+ if !claude.complete{return Err("UPDATE_ACTIVITY_UNAVAILABLE".into());}
+ let now=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|_|"UPDATE_ACTIVITY_UNAVAILABLE")?.as_millis() as i64;
+ if claude.sessions.iter().any(|session|session.lease_until>now&&matches!(session.state.as_str(),"RUNNING"|"THINKING")){return Ok(true);}
  if core.store.pi_tasks()?.iter().any(|p|pi_state_busy(&p.state)){return Ok(true);}
  let mut s=core.session.lock().map_err(|_|"UPDATE_ACTIVITY_UNAVAILABLE")?;
  if s.codex_adapter_borrowed||s.connecting{return Ok(true);}
@@ -167,6 +202,93 @@ fn codex_page_busy(threads:&[serde_json::Value])->Result<bool,String>{
  for thread in threads{match thread["status"]["type"].as_str(){Some("active")=>return Ok(true),Some("idle"|"notLoaded")=>{},_=>return Err("UPDATE_ACTIVITY_UNAVAILABLE".into())}}Ok(false)
 }
 
+#[cfg(windows)]
+fn preference_path(app:&AppHandle)->Result<std::path::PathBuf,String>{
+ Ok(app.path().app_local_data_dir().map_err(|_|"UPDATE_PREFERENCE_FAILED")?.join("silent-update.enabled"))
+}
+#[tauri::command]
+pub(crate) fn desktop_update_set_auto_install(app:AppHandle,enabled:bool,state:State<'_,UpdateState>)->Result<UpdateView,String>{
+ #[cfg(not(windows))]{let _=(app,enabled,state);Err("UPDATE_PLATFORM_UNSUPPORTED".into())}
+ #[cfg(windows)]{
+  let _busy=guard(&state)?;
+  let path=preference_path(&app)?;
+  if enabled{
+   std::fs::create_dir_all(path.parent().ok_or("UPDATE_PREFERENCE_FAILED")?).map_err(|_|"UPDATE_PREFERENCE_FAILED")?;
+   std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(&path).map_err(|_|"UPDATE_PREFERENCE_FAILED")?;
+  }else if let Err(error)=std::fs::remove_file(&path){if error.kind()!=std::io::ErrorKind::NotFound{return Err("UPDATE_PREFERENCE_FAILED".into());}}
+  state.auto_install.store(enabled,Ordering::Release);
+  publish(&app,&state);view(&app,&state)
+ }
+}
+fn dashboard_hidden(app:&AppHandle)->bool{app.get_webview_window("main").and_then(|w|w.is_visible().ok())==Some(false)}
+#[cfg(any(test,all(windows,not(debug_assertions))))]
+fn automatic_install_allowed(opted_in:bool,window_hidden:bool)->bool{opted_in&&window_hidden}
+#[cfg(all(windows,not(debug_assertions)))]
+pub(crate) fn start(app:AppHandle){
+ let state=app.state::<UpdateState>();
+ state.auto_install.store(preference_path(&app).is_ok_and(|path|path.is_file()),Ordering::Release);
+ tauri::async_runtime::spawn(async move{
+  tokio::time::sleep(Duration::from_secs(30)).await;
+  let mut next_check=Instant::now();
+  let mut quiet_since=None;
+  let mut failed_install=None;
+  loop{
+   let state=app.state::<UpdateState>();
+   if let Ok(_busy)=guard(&state){
+    if let Ok(current)=view(&app,&state){
+     match current.state.as_str(){
+      "READY"=>{
+       let hidden=dashboard_hidden(&app);
+       if automatic_install_allowed(current.auto_install,hidden)&&failed_install.as_ref()!=current.version.as_ref(){
+        let since=*quiet_since.get_or_insert_with(Instant::now);
+        if since.elapsed()>=Duration::from_secs(60){
+         if let Some(version)=current.version{
+          // Drop the async reservation before acquiring it in the blocking worker.
+          drop(_busy);
+          let handle=app.clone();let target=version.clone();
+          let result=tauri::async_runtime::spawn_blocking(move||{
+           let state=handle.state::<UpdateState>();let _busy=guard(&state)?;
+           let hidden=dashboard_hidden(&handle);
+           if !automatic_install_allowed(state.auto_install.load(Ordering::Acquire),hidden){return Err("UPDATE_DEFERRED".into());}
+           let core=handle.state::<RouterCore>();install(&handle,&state,&core,&target,false,true)
+          }).await;
+          if let Ok(Err(code))=result{
+           if !matches!(code.as_str(),"UPDATE_TASK_RUNNING"|"UPDATE_ACTIVITY_UNAVAILABLE"|"UPDATE_DEFERRED"|"UPDATE_BUSY"){
+            failed_install=Some(version);
+            if let Ok(mut cache)=state.cache.lock(){cache.view.error=Some(code);}
+           }
+          }
+          publish(&app,&state);
+         }
+        }
+       }else{quiet_since=None;}
+      },
+      "AVAILABLE"=>{
+       quiet_since=None;
+       if let Some(version)=current.version{if download(&app,&state,&version).await.is_err(){next_check=Instant::now()+Duration::from_secs(15*60);}}
+      },
+      _=>{
+       quiet_since=None;
+       if Instant::now()>=next_check{
+        next_check=Instant::now()+Duration::from_secs(4*60*60);
+        match check(&app,&state).await{
+         Ok(found) if found.state=="AVAILABLE"=>{
+          if let Some(version)=found.version{if download(&app,&state,&version).await.is_err(){next_check=Instant::now()+Duration::from_secs(15*60);}}
+         },
+         Err(_)=>next_check=Instant::now()+Duration::from_secs(15*60),
+         _=>{},
+        }
+       }
+      }
+     }
+    }
+   }
+   tokio::time::sleep(Duration::from_secs(60)).await;
+  }
+ });
+}
+#[cfg(not(all(windows,not(debug_assertions))))]
+pub(crate) fn start(_app:AppHandle){}
 #[tauri::command]
 pub(crate) fn desktop_update_open_release(state:State<'_,UpdateState>)->Result<(),String>{
  let url=state.cache.lock().map_err(|_|"UPDATE_STATE_UNAVAILABLE")?.view.release_url.clone().unwrap_or_else(||format!("https://github.com/{REPO}/releases"));
@@ -216,6 +338,7 @@ pub(crate) fn desktop_update_open_release(state:State<'_,UpdateState>)->Result<(
   let response=client.head(published.url).send().await.unwrap();assert!(response.status().is_success());let size=package_size(response.headers().get(reqwest::header::CONTENT_LENGTH).and_then(|h|h.to_str().ok()).and_then(|s|s.parse().ok())).unwrap();
   println!("apiFallback=true version={} packageBytes={} providerCalls=0 installs=0",published.version,size);
  }
+ #[test]fn silent_install_requires_opt_in_and_hidden_window(){for (enabled,hidden,expected) in [(false,false,false),(false,true,false),(true,false,false),(true,true,true)]{assert_eq!(automatic_install_allowed(enabled,hidden),expected);}}
  #[test]fn active_restart_requires_confirmation_for_the_exact_verified_candidate(){
   assert_eq!(install_gate("0.1.3",Some("0.1.3"),"READY",true,true,false),Err("UPDATE_TASK_RUNNING".into()));
   assert!(install_gate("0.1.3",Some("0.1.3"),"READY",true,true,true).is_ok());
