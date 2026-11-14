@@ -23,11 +23,13 @@ class AgbrioNativeQa {
  [STAThread]static int Main(string[] args){
   try{var h=new IntPtr(long.Parse(args[0]));output=Path.GetFullPath(args[1]);Directory.CreateDirectory(output);root=AutomationElement.FromHandle(h);var p=new Placement();p.Length=Marshal.SizeOf(p);if(!GetWindowPlacement(h,ref p)||p.Show!=3)throw new Exception("Native window is not maximized");
    for(int attempt=0;attempt<100;attempt++){var skip=root.FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Button)).Cast<AutomationElement>().FirstOrDefault(e=>e.Current.Name=="Skip setup");if(skip!=null){Click(skip);break;}var settings=root.FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.NameProperty,"Settings"));if(settings.Count>0)break;Thread.Sleep(100);}
-   Click(Find("Settings",ControlType.Button));Click(Find("通用",ControlType.Button));Find("Language",ControlType.ComboBox);
-   Click(Find("手机与设备",ControlType.Button));
+   Click(Find("Settings",ControlType.Button));Click(Find("App maintenance",ControlType.Hyperlink));Find("Language",ControlType.ComboBox);
+   var autoUpdate=Find("Automatically install updates when idle",ControlType.CheckBox);
+   if(((TogglePattern)autoUpdate.GetCurrentPattern(TogglePattern.Pattern)).Current.ToggleState!=ToggleState.Off)throw new Exception("Fresh installation must not opt into silent updates");
+   Click(Find("Phones and devices",ControlType.Hyperlink));
    Click(Find("Add to your phone\u2019s home screen",ControlType.Button));Find("Use Safari",ControlType.Text);
    var platform=Find("Android",ControlType.TabItem);((SelectionItemPattern)platform.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();Find("Use Chrome",ControlType.Text);Picture(h,"desktop-phone-install-guide.png");
-   Click(Find("Settings",ControlType.Button));Click(Find("手机与设备",ControlType.Button));Click(Find("手机配对与已登录设备",ControlType.Button));
+   Click(Find("Settings",ControlType.Button));Click(Find("Phones and devices",ControlType.Hyperlink));Click(Find("手机配对与已登录设备",ControlType.Button));
    if(!Find("Try free for 7 days",ControlType.Button).Current.IsEnabled)throw new Exception("Trial entry unavailable");Click(Find("I have an activation code",ControlType.Button));var code=Find("Activation code",ControlType.Edit);var activate=Find("Activate connection",ControlType.Button);if(activate.Current.IsEnabled)throw new Exception("Empty redemption code accepted");Picture(h,"desktop-hosted-code.png");Click(Find("Cancel",ControlType.Button));Click(Find("Use your own server",ControlType.Button));
    var combo=Find("Connection method",ControlType.ComboBox);var input=Find("HTTPS address",ControlType.Edit);var value=(ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern);if(value.Current.Value!="")throw new Exception("Personal origin in fresh profile");
    var pair=root.FindFirst(TreeScope.Descendants,new AndCondition(new PropertyCondition(AutomationElement.NameProperty,"Generate pairing code"),new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Button)));if(pair!=null)throw new Exception("Future pairing stage exposed before origin verification");
@@ -39,6 +41,7 @@ class AgbrioNativeQa {
    Find("QA board script loaded",ControlType.Text);Find("Parent isolated",ControlType.Text);Find("Native API isolated",ControlType.Text);Find("Published image readable",ControlType.Text);Picture(h,"desktop-published-board.png");
    Click(Find("Create board",ControlType.Button));Find("Your project, on your phone",ControlType.Text);Find("Copy instructions for your agent",ControlType.Button);Picture(h,"desktop-board-guide.png");Click(Find("Back to boards",ControlType.Button));Find("QA board script loaded",ControlType.Text);
    var proof=new Dictionary<string,object>{{"publishedBoardCLI",true},{"publishedBoardReadable",true},{"publishedBoardParentIsolated",true},{"publishedBoardNativeAPIIsolated",true},{"publishedBoardImageReadable",true},{"boardGuidePresent",true},{"existingBoardRetained",true},{"freshWindowsRunner",true},{"installedApplication",true},{"nativeAccessibility",true},{"systemLanguageEnglish",true},{"languageChooserPresent",true},{"phoneInstallTutorial",true},{"platformTutorialSwitch",true},{"setupSelector",true},{"trialEntryPresent",true},{"trialActivationAttempted",false},{"hostedCodePresent",true},{"emptyCodeBlocked",true},{"hostedRedemptionAttempted",false},{"noPersonalOrigin",true},{"invalidHttpsRejected",true},{"pairingBlockedUntilConfigured",true},{"nativeMaximized",true},{"controlsInsideWindow",true},{"providerCredentialsUsed",false},{"captureWidth",bounds.R-bounds.L},{"captureHeight",bounds.B-bounds.T}};
+   proof["silentUpdateOffByDefault"]=true;
    File.WriteAllText(Path.Combine(output,"proof.json"),new JavaScriptSerializer().Serialize(proof));Console.WriteLine("NATIVE_ACCESSIBILITY_SETUP_PASS");return 0;
   }catch(Exception e){Console.Error.WriteLine(e.Message);try{if(root!=null)Dump();}catch{}return 1;}
  }
