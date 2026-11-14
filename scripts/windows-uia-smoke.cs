@@ -18,14 +18,23 @@ class AgbrioNativeQa {
   Dump();throw new Exception("Owned accessibility control unavailable: "+name);
  }
  static void Dump(){var values=new List<string>();foreach(AutomationElement e in root.FindAll(TreeScope.Descendants,Condition.TrueCondition)){try{values.Add(e.Current.ControlType.ProgrammaticName+" | "+e.Current.Name);}catch{}if(values.Count>=2000)break;}var json=new JavaScriptSerializer().Serialize(values);File.WriteAllText(Path.Combine(output,"uia-controls.json"),json);Console.WriteLine("OWNED_QA_CONTROLS "+new JavaScriptSerializer().Serialize(values.Take(70).ToArray()));}
- static void Click(AutomationElement e){((InvokePattern)e.GetCurrentPattern(InvokePattern.Pattern)).Invoke();}
+ static void Click(AutomationElement e){
+  object pattern;
+  if(e.TryGetCurrentPattern(InvokePattern.Pattern,out pattern)){((InvokePattern)pattern).Invoke();return;}
+  if(e.Current.ControlType==ControlType.Hyperlink&&e.Current.IsKeyboardFocusable){e.SetFocus();Key(0x0d);return;}
+  throw new Exception("Cannot invoke "+e.Current.Name);
+ }
+ [DllImport("user32.dll")]static extern void keybd_event(byte key,byte scan,uint flags,UIntPtr extra);
+ static void Key(byte key){keybd_event(key,0,0,UIntPtr.Zero);keybd_event(key,0,2,UIntPtr.Zero);}
  static void Picture(IntPtr h,string filename){Rect r;if(!GetWindowRect(h,out r))throw new Exception("Native bounds unavailable");using(var b=new Bitmap(r.R-r.L,r.B-r.T)){using(var g=Graphics.FromImage(b)){var dc=g.GetHdc();try{if(!PrintWindow(h,dc,2))throw new Exception("Native capture failed");}finally{g.ReleaseHdc(dc);}}b.Save(Path.Combine(output,filename),ImageFormat.Png);}}
  [STAThread]static int Main(string[] args){
   try{var h=new IntPtr(long.Parse(args[0]));output=Path.GetFullPath(args[1]);Directory.CreateDirectory(output);root=AutomationElement.FromHandle(h);var p=new Placement();p.Length=Marshal.SizeOf(p);if(!GetWindowPlacement(h,ref p)||p.Show!=3)throw new Exception("Native window is not maximized");
    for(int attempt=0;attempt<100;attempt++){var skip=root.FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.ControlTypeProperty,ControlType.Button)).Cast<AutomationElement>().FirstOrDefault(e=>e.Current.Name=="Skip setup");if(skip!=null){Click(skip);break;}var settings=root.FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.NameProperty,"Settings"));if(settings.Count>0)break;Thread.Sleep(100);}
    Click(Find("Settings",ControlType.Button));Click(Find("App maintenance",ControlType.Hyperlink));Find("Language",ControlType.ComboBox);
    var autoUpdate=Find("Automatically install updates when idle",ControlType.CheckBox);
-   if(((TogglePattern)autoUpdate.GetCurrentPattern(TogglePattern.Pattern)).Current.ToggleState!=ToggleState.Off)throw new Exception("Fresh installation must not opt into silent updates");
+   object toggle;
+   if(!autoUpdate.TryGetCurrentPattern(TogglePattern.Pattern,out toggle))throw new Exception("Silent update checkbox does not expose its checked state");
+   if(((TogglePattern)toggle).Current.ToggleState!=ToggleState.Off)throw new Exception("Fresh installation must not opt into silent updates");
    Click(Find("Phones and devices",ControlType.Hyperlink));
    Click(Find("Add to your phone\u2019s home screen",ControlType.Button));Find("Use Safari",ControlType.Text);
    var platform=Find("Android",ControlType.TabItem);((SelectionItemPattern)platform.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();Find("Use Chrome",ControlType.Text);Picture(h,"desktop-phone-install-guide.png");
@@ -43,6 +52,6 @@ class AgbrioNativeQa {
    var proof=new Dictionary<string,object>{{"publishedBoardCLI",true},{"publishedBoardReadable",true},{"publishedBoardParentIsolated",true},{"publishedBoardNativeAPIIsolated",true},{"publishedBoardImageReadable",true},{"boardGuidePresent",true},{"existingBoardRetained",true},{"freshWindowsRunner",true},{"installedApplication",true},{"nativeAccessibility",true},{"systemLanguageEnglish",true},{"languageChooserPresent",true},{"phoneInstallTutorial",true},{"platformTutorialSwitch",true},{"setupSelector",true},{"trialEntryPresent",true},{"trialActivationAttempted",false},{"hostedCodePresent",true},{"emptyCodeBlocked",true},{"hostedRedemptionAttempted",false},{"noPersonalOrigin",true},{"invalidHttpsRejected",true},{"pairingBlockedUntilConfigured",true},{"nativeMaximized",true},{"controlsInsideWindow",true},{"providerCredentialsUsed",false},{"captureWidth",bounds.R-bounds.L},{"captureHeight",bounds.B-bounds.T}};
    proof["silentUpdateOffByDefault"]=true;
    File.WriteAllText(Path.Combine(output,"proof.json"),new JavaScriptSerializer().Serialize(proof));Console.WriteLine("NATIVE_ACCESSIBILITY_SETUP_PASS");return 0;
-  }catch(Exception e){Console.Error.WriteLine(e.Message);try{if(root!=null)Dump();}catch{}return 1;}
+  }catch(Exception e){Console.Error.WriteLine(e);try{if(root!=null)Dump();}catch{}return 1;}
  }
 }
