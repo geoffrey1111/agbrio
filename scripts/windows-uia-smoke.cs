@@ -21,7 +21,8 @@ class AgbrioNativeQa {
  static void Click(AutomationElement e){
   object pattern;
   if(e.TryGetCurrentPattern(InvokePattern.Pattern,out pattern)){((InvokePattern)pattern).Invoke();return;}
-  if(e.Current.ControlType==ControlType.Hyperlink&&e.Current.IsKeyboardFocusable){e.SetFocus();Key(0x0d);return;}
+  if(e.TryGetCurrentPattern(ExpandCollapsePattern.Pattern,out pattern)){((ExpandCollapsePattern)pattern).Expand();return;}
+  if((e.Current.ControlType==ControlType.Hyperlink||e.Current.ControlType==ControlType.Button)&&e.Current.IsKeyboardFocusable){e.SetFocus();Key(0x0d);return;}
   throw new Exception("Cannot invoke "+e.Current.Name);
  }
  [DllImport("user32.dll")]static extern void keybd_event(byte key,byte scan,uint flags,UIntPtr extra);
