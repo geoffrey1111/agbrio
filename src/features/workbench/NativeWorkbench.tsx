@@ -1,3 +1,4 @@
+import {AutomationEntry} from './AutomationEntry';
 import {SettingsIndexGroup,SettingsIndexItem,SettingsJumpNav,useSettingsIndex,type SettingsGroup} from "./SettingsIndex";
 import {ManagementZones} from "./ManagementZones";
 import {CacheSettings,useCacheMaintenance} from './CacheSettings';
@@ -156,7 +157,7 @@ export function NativeWorkbench(props:UnifiedWorkbenchProps) {
   useSurfaceTransition(content,`${scrollKey}:${Boolean(props.notificationDetail)}:${openWatch?.threadId??""}`,!topLevel,keyboardMotion);
   const back=()=>{const parent=history.state?.aiwrParentSurface;if((surface==="NOTIFICATION_LOG"&&parent==="NOTIFICATIONS")||(["RECYCLE","RUNTIME","NOTIFICATION_LOG"].includes(surface)&&parent==="SETTINGS"))history.back();else navigate(["RECYCLE","RUNTIME","NOTIFICATION_LOG"].includes(surface)?"SETTINGS":"BRIDGES");};
   return <ConnectionSettingsNavigation.Provider value={()=>jumpTo("DEVICES")}><NativeSurfaceContext.Provider value><NativeCopyProvider register={setCopyText}><MediaPreviewProvider><MotionConfig reducedMotion={keyboardMotion?"always":"user"}><main className={`unified-workbench r2-router v3-surface-${surface.toLowerCase()}`} data-detail={!topLevel} aria-label={uiText("Agbrio 统一工作台")} style={{"--r2-master-width":`${width}px`} as React.CSSProperties}>
-    <aside className="r2-rail"><div className="r2-brand"><BrandMark/>Agbrio</div>{nav(false)}<small className="r2-rail-caption">Bridge</small><div className="r2-rail-bridges">{items.map(item=><button key={item.id} type="button" aria-current={inReader&&item.id===selected?.id?"page":undefined} onClick={()=>{props.onSelectWorkstream(item.id);navigate("WORKSPACE");}}>{item.name}{bridgeUnread(item)>0&&<i className="r2-rail-reply-dot" aria-label={uiText("有新回复待审阅")}/>}</button>)}</div></aside>
+    <aside className="r2-rail"><div className="r2-brand"><BrandMark/>Agbrio</div>{nav(false)}<AutomationEntry onConfigure={props.assistantPanel?()=>jumpTo("CONNECTIONS","settings-assistant"):undefined}/><small className="r2-rail-caption">Bridge</small><div className="r2-rail-bridges">{items.map(item=><button key={item.id} type="button" aria-current={inReader&&item.id===selected?.id?"page":undefined} onClick={()=>{props.onSelectWorkstream(item.id);navigate("WORKSPACE");}}>{item.name}{bridgeUnread(item)>0&&<i className="r2-rail-reply-dot" aria-label={uiText("有新回复待审阅")}/>}</button>)}</div></aside>
     <section className="r2-workspace" data-split={split||undefined}>{split&&<aside className="v7-list-pane" hidden={!listPane} aria-label={uiText("对话")}>
       <header className="v7-list-head"><h1>{uiText("对话")}</h1><button type="button" className="r2-icon r2-accent" aria-label={uiText("监听对话或新建 Bridge")} onClick={()=>setAddRequest(v=>v+1)}><Plus size={20}/></button></header>
       <section ref={listScroll} className="r2-directory v7-list-scroll"><ConversationHome onOpenManagement={()=>navigate("MANAGEMENT")} scrollContainer={listScroll} selectedKey={selectedKey} onRefreshList={listPane&&props.onRefreshConversationDirectory?async()=>{const results=await Promise.allSettled([props.onRefreshConversationDirectory!(),activity.refresh()]);if(results.some(r=>r.status==="rejected"))throw Error("LIST_REFRESH_INCOMPLETE");}:undefined} bridges={items} activity={activity.rows} activityClock={activity.clock} watchApi={props.watchApi} addRequest={addRequest} onOpenBridge={id=>{props.onSelectWorkstream(id);navigate("WORKSPACE");}} onOpenWatch={openFromList} onCreateBridge={props.onCreateBridge} onDeleteBridge={props.onLifecycleChange?removeBridge:undefined}/></section>
@@ -189,7 +190,7 @@ export function NativeWorkbench(props:UnifiedWorkbenchProps) {
             {settingsGroups.includes("CONNECTIONS")&&<SettingsIndexGroup id="CONNECTIONS">
               {codexPanel&&<SettingsIndexItem id="settings-codex" label="Codex 连接">{codexPanel}<details className="v7-help"><summary>{uiText("连接状态")}</summary>{runtimeChecks}</details></SettingsIndexItem>}
               {props.piSettingsPanel&&<SettingsIndexItem id="settings-pi" label="Pi 子任务">{props.piSettingsPanel}</SettingsIndexItem>}
-              {props.assistantPanel&&<SettingsIndexItem label="AI 助手">{props.assistantPanel}</SettingsIndexItem>}
+              {props.assistantPanel&&<SettingsIndexItem id="settings-assistant" label="AI 助手">{props.assistantPanel}</SettingsIndexItem>}
             </SettingsIndexGroup>}
             <SettingsIndexGroup id="DEVICES">
               {props.onOpenWebAccess&&group(go(<Smartphone size={20}/>,uiText("手机配对与已登录设备"),props.onOpenWebAccess))}

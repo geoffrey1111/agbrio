@@ -591,9 +591,12 @@ async fn codex_watches(State(state):State<MobileHttpState>,headers:HeaderMap)->A
     authenticated(&headers,&state,false).await?;
     Ok(Json(crate::todo_projection::watches(&state.core).map_err(|e|ApiError(StatusCode::BAD_REQUEST,e))?))
 }
-async fn management_zones_read(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<serde_json::Value>{
+#[derive(serde::Deserialize)]
+#[serde(rename_all="camelCase")]
+struct ManagementReadQuery { #[serde(default)] refresh_titles: bool }
+async fn management_zones_read(State(state):State<MobileHttpState>,headers:HeaderMap,axum::extract::Query(query):axum::extract::Query<ManagementReadQuery>)->ApiResult<serde_json::Value>{
     authenticated(&headers,&state,false).await?;
-    Ok(Json(run_core_blocking("Management zones",move||crate::management_zones::read(&state.core)).await?))
+    Ok(Json(run_core_blocking("Management zones",move||crate::management_zones::read(&state.core,query.refresh_titles)).await?))
 }
 async fn management_zones_change(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<router_core::store::management_zones::Change>)->ApiResult<serde_json::Value>{
     authenticated(&headers,&state,true).await?;

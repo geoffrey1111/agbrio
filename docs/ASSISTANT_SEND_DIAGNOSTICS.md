@@ -30,6 +30,26 @@ failure is resolved. Do not disable authentication or repeat a production send
 as a diagnostic test. No credentials, OAuth query URLs or conversation text are
 needed in a bug report.
 
+An async question can remain visible after its Codex turn ends. If
+`RESPOND_CHAT` returns `REPLY_ASYNC_IDLE_USE_SEND_CHAT_NOT_SENT`, no answer was
+submitted. If you still have permission to send the content, prepare a separate
+`SEND_CHAT` with a complete message. `REPLY_ASYNC_TURN_CHANGED_NOT_SENT` means
+Agbrio could not verify the exact active turn: refresh the conversation before
+trying to answer. These errors do not clear any older UNKNOWN receipts.
+
+For direct Codex replies with text only, an existing INSTANCE assistant can use
+`RECOVER_UNKNOWN_CHAT{threadId,replyId,generation}` without asking again. Execute
+with `ruleId=null,useOwnerAnswer=false`. The host checks that the native chat is
+idle and verifies a complete, unchanged rollout window covering the attempt,
+then acknowledges the original and claims one linked new SEND in the same
+transaction. Text comes from the original receipt; an async answer is rendered
+as a complete question/answer message. The action receipt records the policy,
+the original and replacement IDs, the verified log interval and its digest.
+A missing, rotated, incomplete, or changed log, observed input, attachment,
+or another pending writer stops recovery. An uncertain replacement remains
+uncertain and cannot be recovered recursively. This does not waive existing
+approval requirements for other operations.
+
 An UNKNOWN original-chat reply can block later Bridge sends even while the native
 conversation is idle. Read `agbrio_read_chat` and its exact `state.replies` first.
 To release future work without claiming old delivery, prepare the existing global

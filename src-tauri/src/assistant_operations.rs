@@ -21,6 +21,7 @@ pub(crate) enum Operation{
  StopChat{thread_id:String,turn_id:String},
  RespondChat{thread_id:String,request_id:String,input:crate::host_application::MobileCodexResponseInput},
  AcknowledgeUnknownChat{thread_id:String,reply_id:String,generation:i64},
+ RecoverUnknownChat{thread_id:String,reply_id:String,generation:i64},
 }
 fn codex_provider()->String{"CODEX".into()}
 fn automatic_mode()->String{"AUTO".into()}
@@ -123,6 +124,7 @@ pub(crate) fn validate(core:&RouterCore,op:&Operation)->Result<(),String>{
     match core.store.codex_watch_event(*sequence){Ok(event) if event.thread_id==*thread_id=>{},Ok(_)=>return Err(invalid()),Err(e) if e=="WATCH_EVENT_NOT_FOUND"=>return Err(invalid()),Err(e)=>return Err(e)}
    }
   },
+  Operation::RecoverUnknownChat{thread_id,reply_id,generation}=>{crate::watch_chat::recovery_original(core,thread_id,reply_id,*generation)?;},
   Operation::AcknowledgeUnknownChat{thread_id,reply_id,generation}=>{if thread_id.starts_with("pi:"){let task=core.store.pi_task(thread_id)?;if task.generation!=*generation||core.store.pi_command_receipt(&task.id,reply_id)?.status!="UNKNOWN"{return Err("PI_UNKNOWN_RECEIPT_REQUIRED".into());}return Ok(());}chat_context(core,thread_id,*generation)?;let r=core.store.watch_reply(reply_id)?.ok_or("REPLY_NOT_FOUND")?;if r.thread_id!=*thread_id||r.status!="UNKNOWN"{return Err("ASSISTANT_UNKNOWN_RECEIPT_REQUIRED".into());}},
   Operation::RemoveWatchItem{kind,id,generation,removed}=>{if kind=="WATCH"{let expected=generation.ok_or("ASSISTANT_WATCH_GENERATION_REQUIRED")?;if *removed{watch(core,id,expected)?;}else if core.store.registered_codex_watch(id)?.generation!=expected{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}}else if kind=="EVENT"{core.store.codex_watch_event(id.parse().map_err(|_|"WATCH_SEQUENCE_INVALID")?)?;}else{return Err("WATCH_REMOVAL_INVALID".into());}},
   Operation::MarkNotificationRead{sequence}=>{core.store.codex_watch_event(*sequence)?;},
@@ -168,6 +170,7 @@ pub(crate) fn execute(core:&RouterCore,aid:&str,op:Operation)->Result<Value,Stri
   Operation::ResumeGoal{target,expected_goal_fingerprint}=>{let owner=core.store.assistant_action_has_owner_answer(aid)?;let r=crate::goal_control::apply(core,aid,crate::goal_control::GoalInput{target,expected_goal_fingerprint},"RESUME_GOAL",owner)?;if r.status!="APPLIED"{return Err("GOAL_CONTROL_UNCERTAIN_CHECK_RECEIPT".into());}serde_json::to_value(r).map_err(|_|"ASSISTANT_RESPONSE_UNAVAILABLE".into())},
   Operation::StopChat{thread_id,turn_id}=>{if thread_id.starts_with("pi:"){crate::pi::application::stop(core,&thread_id,aid,&turn_id)}else{crate::watch_chat::command(core,crate::watch_chat::ChatCommand::Stop{thread_id,turn_id})}},
   Operation::RespondChat{thread_id,request_id,input}=>{let command=crate::watch_chat::assistant_response_command(core,&thread_id,&request_id,&input)?;crate::watch_chat::command(core,command)},
+  Operation::RecoverUnknownChat{thread_id,reply_id,generation}=>crate::watch_chat::recover_unknown(core,aid,&thread_id,&reply_id,generation),
   Operation::AcknowledgeUnknownChat{thread_id,reply_id,..}=>crate::watch_chat::command(core,crate::watch_chat::ChatCommand::AcknowledgeUnknown{thread_id,id:reply_id,confirmed:true}),
  }
 }

@@ -1,5 +1,7 @@
 # Agent application operations
 
+Start with MCP capability discovery for delegated work and the installed current-user CLI for owner maintenance. Desktop and PWA are human interfaces using the same application actions; missing script coverage is a product gap. See [the CLI commands](../tools/agbrio-control/README.md).
+
 Settings → AI assistant exposes the current instance MCP address, connection instructions and capability discovery. Existing authenticated instance connections can discover supported operations and read app status/diagnostics. Exact conversation/Bridge identities, scopes, owner consent and existing send fences still apply. Never route by title or UI position.
 
 Authenticated desktop/phone owner HTTP routes share application operations with the MCP boundary. An MCP bearer is not phone-owner authentication. Autonomous/MCP/cross-provider writes into Claude sessions remain disabled; existing owner-authored Claude replies and native decisions keep their supported controls. This does not prohibit an authorized Claude assistant from messaging a selected Codex thread.

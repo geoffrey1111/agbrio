@@ -9,9 +9,9 @@ use router_core::store::management_zones::{Change,Conversation};
 use serde_json::{json,Value};
 use std::collections::{HashMap,HashSet};
 
-pub(crate) fn read(core:&RouterCore)->Result<Value,String>{
+pub(crate) fn read(core:&RouterCore,refresh_titles:bool)->Result<Value,String>{
     let mut view=core.store.management_zones()?;
-    let desktop=crate::claude_code_desktop::fresh_sessions();
+    let desktop=if refresh_titles {crate::claude_code_desktop::fresh_sessions()} else {crate::claude_code_desktop::sessions()};
     let metadata:HashMap<_,_>=desktop.iter().map(|s|(format!("claude_code:{}",s.session_id),s)).collect();
     fn decorate(value:&mut Value,metadata:&HashMap<String,&crate::claude_code_desktop::DesktopSession>){
         match value{

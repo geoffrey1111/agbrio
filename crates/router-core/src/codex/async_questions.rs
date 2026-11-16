@@ -49,6 +49,65 @@ pub fn read(path:&Path,root:&Path,thread:&str)->Vec<Value>{
  for row in &mut rows{row["answerId"]=json!(answer_id(thread,row["requestId"].as_str().unwrap_or_default()));}
  if let Ok(mut cache)=CACHE.get_or_init(Default::default).lock(){if cache.len()>=64{cache.clear()}cache.insert(key,CachedQuestions{stamp,created,rows:rows.clone(),boundaries});}rows
 }
+/// Negative evidence is only valid for a complete, stable suffix of the exact
+/// native session, with a recorded terminal event for the latest native turn.
+pub(super) fn unobserved_reply(path:&Path,root:&Path,thread:&str,cwd:&str,latest:&str,created:i64,reply_id:&str,original:&str,replacement:&str)->Result<Value,String>{
+ use sha2::{Digest,Sha256};
+ const LIMIT:u64=64*1024*1024;
+ let missing=||"REPLY_RECOVERY_HISTORY_UNVERIFIED".to_string();
+ let path=path.canonicalize().map_err(|_|missing())?;
+ if !path.starts_with(root.canonicalize().map_err(|_|missing())?)||path.extension().is_none_or(|x|x!="jsonl"){return Err(missing())}
+ let mut file=File::open(&path).map_err(|_|missing())?;
+ let meta=file.metadata().map_err(|_|missing())?;
+ let stamp=meta.modified().map_err(|_|missing())?;
+ let mut first=String::new();
+ if BufReader::new((&mut file).take(4*1024*1024)).read_line(&mut first).map_err(|_|missing())?==0{return Err(missing())}
+ let header:Value=serde_json::from_str(&first).map_err(|_|missing())?;
+ if header["type"]!="session_meta"||header["payload"]["id"].as_str()!=Some(thread)||header["payload"]["cwd"].as_str().is_none_or(|p|Path::new(p)!=Path::new(cwd)){return Err(missing())}
+
+ let start=meta.len().saturating_sub(LIMIT);
+ file.seek(SeekFrom::Start(start)).map_err(|_|missing())?;
+ let mut tail=Vec::new();
+ (&mut file).take(LIMIT).read_to_end(&mut tail).map_err(|_|missing())?;
+ if tail.len()as u64!=meta.len()-start||tail.last()!=Some(&b'\n'){return Err(missing())}
+ let skip=if start==0{0}else{tail.iter().position(|b|*b==b'\n').ok_or_else(missing)?+1};
+ let bytes=&tail[skip..];
+ // Read a small margin before the local send clock so near-boundary records
+ // and native serialization timing cannot hide the original message.
+ let boundary=created.saturating_sub(5_000);
+ let mut first_at=None;
+ let mut last_event=None;
+ let mut previous_at=None;
+ let original_hash=response_hash(original);
+ for line in bytes[..bytes.len().checked_sub(1).ok_or_else(missing)?].split(|&b|b==b'\n'){
+  let row:Value=serde_json::from_slice(line).map_err(|_|missing())?;
+  let at=row["timestamp"].as_str().and_then(|v|chrono::DateTime::parse_from_rfc3339(v).ok()).ok_or_else(missing)?.timestamp_millis();
+  if previous_at.is_some_and(|previous|at<previous){return Err(missing())}
+  previous_at=Some(at);
+  first_at.get_or_insert(at);
+  let p=&row["payload"];
+  if row["type"]=="event_msg"&&matches!(p["type"].as_str(),Some("task_started"|"task_complete"|"turn_aborted")){
+   last_event=Some((p["type"].as_str().unwrap().to_owned(),p["turn_id"].as_str().ok_or_else(missing)?.to_owned(),at));
+  }
+  let matches_text=|text:&str|text.contains(original.trim())||text.contains(replacement.trim())||original_hash.as_ref().is_some_and(|h|response_hash(text).as_ref()==Some(h));
+  let native_item=&p["item"];
+  let message=if row["type"]=="response_item"&&p["type"]=="message"&&p["role"]=="user"{Some(p)}
+   else if row["type"]=="event_msg"&&p["type"]=="item_completed"&&native_item["type"]=="UserMessage"{Some(native_item)}else{None};
+  let user=if let Some(message)=message{
+   if message["client_id"].as_str()==Some(reply_id){return Err("REPLY_RECOVERY_ORIGINAL_OBSERVED".into())}
+   let items=message["content"].as_array().ok_or_else(missing)?;
+   if items.iter().any(|v|v["text"].as_str().is_some_and(matches_text)){return Err("REPLY_RECOVERY_ORIGINAL_OBSERVED".into())}
+   Some(items.iter().filter_map(|v|v["text"].as_str()).collect::<String>())
+  }else if row["type"]=="event_msg"&&p["type"]=="user_message"{Some(p["message"].as_str().ok_or_else(missing)?.to_owned())}else{None};
+  if user.as_deref().is_some_and(matches_text){return Err("REPLY_RECOVERY_ORIGINAL_OBSERVED".into())}
+ }
+ let first_at=first_at.filter(|at|*at<=boundary).ok_or_else(missing)?;
+ let(kind,turn,terminal_at)=last_event.filter(|(kind,turn,_)|matches!(kind.as_str(),"task_complete"|"turn_aborted")&&turn==latest).ok_or_else(missing)?;
+ let after=file.metadata().map_err(|_|missing())?;
+ let current=std::fs::metadata(path).map_err(|_|missing())?;
+ if [&after,&current].into_iter().any(|m|m.len()!=meta.len()||m.modified().ok()!=Some(stamp)||m.created().ok()!=meta.created().ok()){return Err(missing())}
+ Ok(json!({"kind":"NATIVE_ROLLOUT_SUFFIX","nativeTurnId":turn,"terminalEvent":kind,"terminalAt":terminal_at,"coverageStartsAt":first_at,"attemptAt":created,"startOffset":start+(skip as u64),"endOffset":meta.len(),"sha256":format!("{:x}",Sha256::digest(bytes))}))
+}
 pub(crate) fn response_hash(text:&str)->Option<String>{
  use sha2::{Digest,Sha256};
  let raw=text.trim().strip_prefix("<send_user_message_question_reply>")?.strip_suffix("</send_user_message_question_reply>")?;
@@ -86,6 +145,28 @@ fn project_seeded(bytes:&[u8],initial_turn:&str)->Vec<Value>{
 }
 #[cfg(test)]mod tests{
  use super::*;
+ #[test]fn recovery_requires_complete_exact_idle_rollout_and_rejects_existing_input(){
+  let temp=tempfile::tempdir().unwrap();
+  let path=temp.path().join("history.jsonl");
+  let cwd=temp.path().to_str().unwrap();
+  let header=json!({"type":"session_meta","timestamp":"2026-11-14T10:00:00Z","payload":{"id":"native","cwd":cwd}});
+  let terminal=json!({"type":"event_msg","timestamp":"2026-11-14T10:00:20Z","payload":{"type":"task_complete","turn_id":"terminal"}});
+  let user=json!({"type":"response_item","timestamp":"2026-11-14T10:00:15Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"answer: A"}]}});
+  let attempt=chrono::DateTime::parse_from_rfc3339("2026-11-14T10:00:10Z").unwrap().timestamp_millis();
+  let verify=|latest,at|unobserved_reply(&path,temp.path(),"native",cwd,latest,at,"receipt-id","original answer","answer: A");
+  std::fs::write(&path,format!("{header}\n{terminal}\n")).unwrap();
+  let proof=verify("terminal",attempt).unwrap();
+  assert_eq!(proof["nativeTurnId"],"terminal");assert_eq!(proof["startOffset"],0);
+  assert!(verify("another",attempt).is_err());assert!(verify("terminal",attempt-10000).is_err());
+  std::fs::write(&path,format!("{header}\n{user}\n{terminal}\n")).unwrap();
+  assert_eq!(verify("terminal",attempt).unwrap_err(),"REPLY_RECOVERY_ORIGINAL_OBSERVED");
+  let event=json!({"type":"event_msg","timestamp":"2026-11-14T10:00:16Z","payload":{"type":"item_completed","item":{"type":"UserMessage","client_id":"receipt-id","content":[{"type":"text","text":"serialized by native"}]}}});
+  std::fs::write(&path,format!("{header}\n{event}\n{terminal}\n")).unwrap();
+  assert_eq!(verify("terminal",attempt).unwrap_err(),"REPLY_RECOVERY_ORIGINAL_OBSERVED");
+  std::fs::write(&path,format!("{header}\n{terminal}")).unwrap();
+  assert_eq!(verify("terminal",attempt).unwrap_err(),"REPLY_RECOVERY_HISTORY_UNVERIFIED");
+ }
+
  #[test]fn earlier_complete_receipts_survive_later_and_partial_answers(){
   let request="same-question";let ids=[json!(["request_user_input_async",request,0]).to_string(),json!(["request_user_input_async",request,1]).to_string()];
   let q=json!({"type":"response_item","payload":{"type":"function_call","name":"request_user_input_async","call_id":request,"arguments":json!({"questions":[{"title":"One"},{"title":"Two"}]}).to_string()}}).to_string();

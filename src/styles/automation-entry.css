@@ -1,0 +1,29 @@
+.r2-rail .agbrio-automation-trigger{
+ display:flex;align-items:center;justify-content:flex-start;gap:10px;
+ align-self:stretch;min-height:38px;margin-top:4px;padding:5px 11px;
+ border:1px solid var(--v7-accent);border-radius:var(--v7-r-ctl);
+ background:transparent;color:var(--v7-accent-ink);font-size:var(--v7-fs-row);font-weight:650;
+}
+.r2-rail .agbrio-automation-trigger:hover{background:var(--v7-accent-soft)}
+.agbrio-automation-dialog{
+ position:fixed;z-index:1401;inset:50% auto auto 50%;transform:translate(-50%,-50%);
+ width:min(600px,calc(100% - 32px));max-height:calc(100dvh - 32px);overflow:auto;
+ padding:var(--v7-s5);border:1px solid var(--v7-line);border-radius:var(--v7-r-card);
+ background:var(--v7-bg);color:var(--v7-ink);box-shadow:var(--v7-pop);
+}
+.agbrio-automation-dialog header,.agbrio-automation-dialog h3{display:flex;align-items:center;gap:var(--v7-s2)}
+.agbrio-automation-dialog header{justify-content:space-between}
+.agbrio-automation-dialog h2,.agbrio-automation-dialog h3,.agbrio-automation-dialog p,.agbrio-automation-dialog pre{margin:0}
+.agbrio-automation-dialog h2{font-size:var(--v7-fs-title)}
+.agbrio-automation-dialog h3{font-size:var(--v7-fs-reader)}
+.agbrio-automation-dialog p{font-size:var(--v7-fs-body);line-height:1.55;color:var(--v7-ink-2)}
+.agbrio-automation-dialog section{display:grid;gap:var(--v7-s2);margin-top:var(--v7-s4);padding:var(--v7-s4);border:1px solid var(--v7-line);border-radius:var(--v7-r-card);background:var(--v7-surface)}
+.agbrio-automation-dialog pre{padding:var(--v7-s3);white-space:pre-wrap;overflow-wrap:anywhere;background:var(--v7-bg-sunken);border-radius:var(--v7-r-ctl);font:inherit;font-size:var(--v7-fs-2);line-height:1.55}
+.agbrio-automation-dialog .r2-copy-label{display:flex;align-items:center;justify-content:center;gap:8px;min-height:40px;border:0;border-radius:var(--v7-r-ctl);background:var(--v7-ink);color:var(--v7-surface);font-weight:600}
+.agbrio-automation-dialog .r2-action-symbol{display:inline-flex}
+.agbrio-automation-command .r2-icon{display:grid;place-items:center;min-width:36px;border:1px solid var(--v7-line);border-radius:var(--v7-r-ctl);background:var(--v7-surface);color:var(--v7-ink)}
+.agbrio-automation-dialog button{min-height:36px}
+.agbrio-automation-close{display:grid;place-items:center;min-width:36px;border:0;border-radius:var(--v7-r-ctl);background:var(--v7-bg-sunken);color:var(--v7-ink-2)}
+.agbrio-automation-command{display:grid;align-items:center;grid-template-columns:minmax(0,1fr) auto;gap:var(--v7-s2)}
+.agbrio-automation-command .r2-copy-error{grid-column:1/-1}
+.agbrio-automation-fallback button{margin-top:var(--v7-s2);color:var(--v7-accent-ink)}

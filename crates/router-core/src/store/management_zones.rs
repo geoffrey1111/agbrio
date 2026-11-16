@@ -9,7 +9,7 @@ pub struct Conversation {
     pub thread_id:String,pub label:String,pub provider:String,pub cwd:String,
     pub generation:i64,pub state:String,pub checked_at:i64,pub available:bool,pub watch_enabled:bool,
 }
-#[derive(Deserialize,Serialize)]
+#[derive(Clone,PartialEq,Eq,Deserialize,Serialize)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]
 pub struct Change {
     pub request_id:String,pub action:String,
@@ -20,6 +20,15 @@ pub struct Change {
 #[derive(Clone,PartialEq,Eq,Deserialize,Serialize)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]
 pub struct ExecutorTarget {pub thread_id:String,pub generation:i64}
+fn detach_member(tx: &rusqlite::Transaction<'_>, zone: &str, thread: &str) -> Result<bool,String> {
+    if tx.execute("DELETE FROM management_members WHERE thread_id=?1 AND zone_id=?2", params![thread,zone]).map_err(db_error)? == 0 {
+        return Ok(false);
+    }
+    tx.execute("UPDATE claude_codex_subscriptions SET status='CANCELLED' WHERE thread_id=?1 AND management_zone_id=?2", params![thread,zone]).map_err(db_error)?;
+    tx.execute("UPDATE claude_codex_notices SET status='OBSOLETE' WHERE status='READY' AND subscription_id IN(SELECT id FROM claude_codex_subscriptions WHERE thread_id=?1 AND management_zone_id=?2)", params![thread,zone]).map_err(db_error)?;
+    Ok(true)
+}
+
 fn conversation(c:&Connection,id:&str)->Result<Conversation,String>{
     if let Some(sid)=id.strip_prefix("claude_code:"){
         if !crate::claude_code::native_id(sid){return Err("MANAGEMENT_CONVERSATION_INVALID".into());}
@@ -388,7 +397,7 @@ impl RouterStore {
                     }
                     tx.execute("INSERT INTO management_members(thread_id,zone_id,generation,joined_at) VALUES(?1,?2,?3,?4) ON CONFLICT(thread_id) DO UPDATE SET zone_id=excluded.zone_id,generation=excluded.generation,joined_at=excluded.joined_at",params![thread,id,source.generation,at]).map_err(db_error)?;
                 },
-                "REMOVE"=>{let thread=input.thread_id.as_deref().ok_or("MANAGEMENT_CONVERSATION_INVALID")?;if tx.execute("DELETE FROM management_members WHERE thread_id=?1 AND zone_id=?2",params![thread,id]).map_err(db_error)?!=1{return Err("MANAGEMENT_MEMBERSHIP_NOT_FOUND".into());}tx.execute("UPDATE claude_codex_subscriptions SET status='CANCELLED' WHERE thread_id=?1 AND management_zone_id=?2",params![thread,id]).map_err(db_error)?;tx.execute("UPDATE claude_codex_notices SET status='OBSOLETE' WHERE status='READY' AND subscription_id IN(SELECT id FROM claude_codex_subscriptions WHERE thread_id=?1 AND management_zone_id=?2)",params![thread,id]).map_err(db_error)?;},
+                "REMOVE"=>{let thread=input.thread_id.as_deref().ok_or("MANAGEMENT_CONVERSATION_INVALID")?;if !detach_member(&tx,id,thread)?{return Err("MANAGEMENT_MEMBERSHIP_NOT_FOUND".into());}},
                 "DELETE"=>{
                     // Delete responsibility metadata in one transaction. Native
                     // tasks/watches and uncertain delivery receipts stay intact.

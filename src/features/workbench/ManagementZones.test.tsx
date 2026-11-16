@@ -4,10 +4,11 @@ import {ManagementZones,constellation,tierOf} from './ManagementZones';
 import type {ManagementSnapshot,ManagementApi,ManagedConversation} from './managementZoneApi';
 afterEach(()=>{cleanup();sessionStorage.clear();});
 const row=(id:string,label:string,provider:ManagedConversation['provider']='CODEX'):ManagedConversation=>({threadId:id,label,provider,cwd:'D:/project',generation:3,state:'RUNNING',checkedAt:Date.now(),available:true,watchEnabled:true});
-function fixture(){
+function fixture(beforeRender?:(data:ManagementSnapshot)=>void){
  const first=row('claude_code:old','原管理','CLAUDE_CODE'),second=row('new','新管理'),source=row('exec','执行对话');
  const data:ManagementSnapshot={zones:[{id:'a',name:'美术制作',managerId:first.threadId,manager:first,revision:7,updatedAt:1,members:[{threadId:source.threadId,generation:3,conversation:source}]},{id:'b',name:'工程开发',managerId:second.threadId,manager:second,revision:5,updatedAt:1,members:[]}],candidates:[first,second,source],legacyAssignments:[]};
  const api:ManagementApi={read:vi.fn(async()=>structuredClone(data)),change:vi.fn(async()=>({}))};
+ beforeRender?.(data);
  render(<ManagementZones api={api} onOpenWatch={vi.fn()}/>);return{api,data};
 }
 it('shows exact manager and executor hierarchy; secondary actions stay off the first screen',async()=>{
@@ -23,6 +24,22 @@ it('switches to an emphasis-sized constellation when executors grow',()=>{
  expect(placed[0].row.threadId).toBe('e7');expect(placed[0].ring).toBe(0);expect(tierOf(rows[3])).toBe('QUIET');
  expect(new Set(placed.map(p=>p.row.threadId)).size).toBe(10);
  for(const p of placed){expect(p.x).toBeGreaterThanOrEqual(0);expect(p.x).toBeLessThanOrEqual(100);}
+});
+it('reads fresh titles on manual refresh and shows the returned manager name',async()=>{
+ const {api,data}=fixture();
+ await screen.findByRole('button',{name:/管理对话.*原管理/});
+ let resolve!:(snapshot:ManagementSnapshot)=>void;
+ vi.mocked(api.read).mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));
+ fireEvent.click(screen.getByRole('button',{name:'管理区操作'}));
+ fireEvent.click(screen.getByRole('menuitem',{name:'刷新管理区'}));
+ expect(api.read).toHaveBeenLastCalledWith(true);
+ expect(screen.getByText('正在刷新对话名称…')).toBeVisible();
+ const renamed=structuredClone(data);
+ renamed.zones[0].manager!.label='管理区新标题';
+ resolve(renamed);
+ expect(await screen.findByRole('button',{name:/管理对话.*管理区新标题/})).toBeVisible();
+ expect(screen.getByText('已重新读取管理区和对话名称。')).toBeVisible();
+ expect(api.change).not.toHaveBeenCalled();
 });
 it('appoints a Codex manager with one revision-bound owner operation',async()=>{
  const{api}=fixture();fireEvent.click(await screen.findByRole('button',{name:'管理区操作'}));fireEvent.click(screen.getByRole('menuitem',{name:'更换管理对话'}));
@@ -92,30 +109,44 @@ it('refreshes on opening the manager picker and finds a new Claude child by titl
  await waitFor(()=>expect(api.change).toHaveBeenCalledWith(expect.objectContaining({managerId:'claude_code:'+native,revision:7})));
 });
 
-it('hides only settled inactive members and automatically restores a member after new activity',async()=>{
+it('shows only current executors in both views, and restores members on a new turn',async()=>{
  vi.useFakeTimers();
  try{
-  const {api,data}=fixture();
-  const day=24*60*60*1000,now=Date.now();
-  const hidden={...row('exec','停用对话'),state:'RESULT_READY',lastActivityAt:now-4*day,checkedAt:now};
-  const recent={...row('recent','刚使用对话'),state:'IDLE',lastActivityAt:now-3*day+60_000};
-  const running={...row('running','长期运行对话'),lastActivityAt:now-4*day,available:false};
-  const attention={...row('question','等待确认对话'),state:'ACTION_REQUIRED',lastActivityAt:now-4*day};
-  const unknown={...row('unknown','没有活动时间'),state:'IDLE'};
-  data.zones[0].members=[hidden,recent,running,attention,unknown].map(conversation=>({threadId:conversation.threadId,generation:3,conversation}));
-  await act(async()=>{window.dispatchEvent(new Event('focus'));});
+  localStorage.setItem('agbrio.management.view','MAP');
+  const ended={...row('ended','已结束对话'),state:'RESULT_READY',lastActivityAt:Date.now()-4*86400000};
+  const running=row('running','长期运行对话');
+  const thinking={...row('thinking','思考对话'),state:'THINKING'};
+  const inactive=[ended,{...row('unreadable','读取失败对话'),available:false},{...row('question','等待确认对话'),state:'ACTION_REQUIRED'},{...row('stopped','中断对话'),state:'INCOMPLETE'}];
+  const {api}=fixture(data=>{
+   data.zones[0].members=[running,thinking,...inactive].map(conversation=>({threadId:conversation.threadId,generation:3,conversation}));
+   data.zones[0].members.push({threadId:'missing',generation:3,conversation:null});
+   data.zones[1].members=[{threadId:'external',generation:3,conversation:row('external','其他区对话')}];
+  });
+  await act(async()=>{});
   const find=(label:string)=>screen.queryByRole('button',{name:new RegExp('执行对话.*'+label)});
-  expect(find('停用对话')).toBeNull();
-  for(const label of ['刚使用对话','长期运行对话','等待确认对话','没有活动时间'])expect(find(label)).toBeVisible();
-  fireEvent.click(screen.getByRole('button',{name:'显示 1 条不活跃对话'}));
-  expect(find('停用对话')).toBeVisible();
-  fireEvent.click(screen.getByRole('button',{name:'普通视图'}));
-  fireEvent.click(screen.getByRole('button',{name:'收起 1 条不活跃对话'}));
-  expect(find('停用对话')).toBeNull();
-  hidden.lastActivityAt=Date.now();
-  await act(async()=>{await vi.advanceTimersByTimeAsync(5000);});
-  expect(find('停用对话')).toBeVisible();
+  for(const label of ['长期运行对话','思考对话'])expect(find(label)).toBeVisible();
+  for(const label of [...inactive.map(member=>member.label),'其他区对话'])expect(find(label)).toBeNull();
   expect(screen.queryByRole('button',{name:/不活跃对话/})).toBeNull();
+  expect(within(screen.getByRole('button',{name:/美术制作/})).getByLabelText('2 条正在执行')).toBeVisible();
+  fireEvent.click(screen.getByRole('button',{name:'普通视图'}));
+  expect(find('长期运行对话')).toBeVisible();
+  fireEvent.click(find('长期运行对话')!);
+  running.state='RESULT_READY';
+  thinking.state='IDLE';
+  ended.state='RUNNING';
+  await act(async()=>{await vi.advanceTimersByTimeAsync(5000);});
+  expect(find('已结束对话')).toBeVisible();
+  expect(find('长期运行对话')).toBeNull();
+  expect(screen.queryByRole('complementary',{name:'对话详情'})).toBeNull();
+  vi.mocked(api.read).mockRejectedValueOnce(new Error('DISCONNECTED'));
+  await act(async()=>{await vi.advanceTimersByTimeAsync(5000);});
+  expect(find('已结束对话')).toBeNull();
+  expect(screen.getByText('暂时无法读取管理区，正在自动重试。')).toBeVisible();
+  await act(async()=>{await vi.advanceTimersByTimeAsync(5000);});
+  expect(find('已结束对话')).toBeVisible();
+  ended.state='IDLE';
+  await act(async()=>{await vi.advanceTimersByTimeAsync(5000);});
+  expect(screen.getByText('当前没有正在执行的对话')).toBeVisible();
   expect(api.change).not.toHaveBeenCalled();
  }finally{vi.useRealTimers();localStorage.removeItem('agbrio.management.view');}
 });

@@ -112,7 +112,7 @@ fn replace_zone_manager_discovers_desktop_child_and_moves_routes_atomically() {
     std::fs::create_dir_all(&dir).unwrap();
     let path=dir.join(format!("{alias}.json"));
     std::fs::write(&path,format!("{{\"sessionId\":\"{alias}\",\"cliSessionId\":\"{child}\",\"cwd\":{},\"lastActivityAt\":123,\"title\":\"Child manager\",\"spawnedFrom\":{{\"sessionId\":\"local_parent\"}}}}",json!(cwd))).unwrap();
-    let candidate=crate::management_zones::read(&core).unwrap()["candidates"].as_array().unwrap().iter()
+    let candidate=crate::management_zones::read(&core,true).unwrap()["candidates"].as_array().unwrap().iter()
         .find(|row|row["localSessionId"]==alias).cloned().expect("fresh unregistered child in picker");
     let manager=format!("claude_code:{child}");
     assert_eq!(candidate["threadId"],manager);
@@ -129,6 +129,10 @@ fn replace_zone_manager_discovers_desktop_child_and_moves_routes_atomically() {
     let receipt=call(&input);
     assert_eq!(receipt["data"]["managerId"],manager,"{receipt}");
     assert_eq!(receipt["data"]["revision"],3);
+    std::fs::write(&path,format!("{{\"sessionId\":\"{alias}\",\"cliSessionId\":\"{child}\",\"cwd\":{},\"pendingSystemReminder\":\"ignored\",\"lastActivityAt\":124,\"title\":\"Renamed child manager\"}}",json!(cwd))).unwrap();
+    let refreshed=crate::management_zones::read(&core,true).unwrap();
+    assert_eq!(refreshed["zones"][0]["manager"]["label"],"Renamed child manager");
+    assert_eq!(refreshed["zones"][0]["revision"],3);
     // The exact retry returns its durable receipt even if discovery later hides it.
     std::fs::write(dir.join("archived-sessions.idx"),json!({"archived":[alias]}).to_string()).unwrap();
     assert_eq!(call(&input),receipt);
@@ -184,4 +188,24 @@ fn local_owner_adds_multiple_executors_and_routes_in_one_revision(){
         assert_eq!(member["subscriptions"].as_array().unwrap().len(),1);
         assert_eq!(member["subscriptions"][0]["receiverSid"],manager);
     }
+}
+
+#[test]
+fn owner_cli_management_uses_the_shared_action_and_durable_receipt() {
+    let (_temp,core,host)=fixture();
+    let mut seen=ReplayStore::new().unwrap();
+    let manager=uuid::Uuid::new_v4().to_string();
+    core.store.enable_codex_watch(&manager,"Manager","C:/fixture",&router_core::store::codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()}).unwrap();
+    let id=uuid::Uuid::new_v4().to_string();
+    let mut wire=json!({"apiVersion":1,"requestId":id,"command":"CHANGE_MANAGEMENT_ZONE","expectedInstance":null,"managementChange":{"requestId":id,"action":"CREATE","managerId":manager,"name":"CLI fixture"}});
+    let mut send=|v:&Value|dispatch(&core,&host,&serde_json::to_vec(v).unwrap(),&mut seen).0;
+    assert_eq!(send(&wire)["errorCode"],"APP_CONTROL_EXPECTED_INSTANCE_REQUIRED");
+    wire["expectedInstance"]=json!(host.instance_id());
+    let applied=send(&wire);
+    assert!(applied["data"]["zoneId"].is_string(),"{applied}");
+    assert_eq!(send(&wire),applied);
+    wire["managementChange"]["name"]=json!("Changed");
+    assert_eq!(send(&wire)["errorCode"],"MANAGEMENT_REQUEST_CONFLICT");
+    let result=dispatch(&core,&host,&request("LIST_MANAGEMENT_ZONES",None),&mut seen).0;
+    assert_eq!(result["data"]["zones"][0]["name"],"CLI fixture");
 }

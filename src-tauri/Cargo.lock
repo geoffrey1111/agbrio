@@ -4322,6 +4322,7 @@ dependencies = [
 name = "router-core"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "hmac 0.12.1",
  "rusqlite",
  "serde",

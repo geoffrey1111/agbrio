@@ -1,6 +1,7 @@
 //! Owner-authored follow-ups, separate from cross-provider Handoffs.
 use super::*;
 use serde::Deserialize;
+use serde_json::json;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,6 +44,10 @@ pub(super) fn prepare_watch_reply_at(c:&Connection,input:&WatchReply)->Result<Wa
 }
 
 impl RouterStore {
+    pub fn reply_recovery_checkpoint(&self,id:&str)->Result<Value,String>{self.with_connection(|c|{
+        let raw:String=c.query_row("SELECT result_json FROM assistant_actions WHERE id=?1 AND operation='RECOVER_UNKNOWN_CHAT'",[id],|r|r.get(0)).map_err(db_error)?;
+        serde_json::from_str(&raw).map_err(|_|"REPLY_RECOVERY_RECEIPT_INVALID".into())
+    })}
     pub fn watch_reply(&self,id:&str)->Result<Option<WatchReply>,String>{ self.with_connection(|c| c.query_row(&format!("SELECT {COLS} FROM watch_replies WHERE id=?1"),[id],row).optional().map_err(db_error)) }
     pub fn watch_replies(&self,thread:&str)->Result<Vec<WatchReply>,String>{self.with_connection(|c|{let mut s=c.prepare(&format!("SELECT {COLS} FROM watch_replies WHERE thread_id=?1 AND removed_at IS NULL AND status!='CANCELLED' AND (status IN ('QUEUED','SENDING','UNKNOWN') OR id IN (SELECT id FROM watch_replies WHERE thread_id=?1 AND removed_at IS NULL AND status NOT IN ('QUEUED','SENDING','UNKNOWN','CANCELLED') ORDER BY created_at DESC,rowid DESC LIMIT 20)) ORDER BY created_at DESC,rowid DESC")).map_err(db_error)?;let out=s.query_map([thread],row).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;Ok(out)})}
     /// Record intent before any external mutation. Duplicate IDs must match bytes.
@@ -55,7 +60,20 @@ impl RouterStore {
         let previous:Option<String>=c.query_row("SELECT turn_id FROM watch_replies WHERE thread_id=?1 AND generation=?2 AND mode='QUEUE' AND status='SENT' AND turn_id IS NOT NULL AND expected_turn_id IS ?3 AND rowid<(SELECT rowid FROM watch_replies WHERE id=?4) ORDER BY rowid DESC LIMIT 1",params![reply.thread_id,reply.generation,reply.expected_turn_id,id],|r|r.get(0)).optional().map_err(db_error)?;
         Ok(previous.or(reply.expected_turn_id))
     })}
-    pub fn claim_watch_reply(&self,id:&str)->Result<WatchReply,String>{self.with_connection(|c|{let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;super::management_zones::validate_reply_route(&tx,id)?;let reply=tx.query_row(&format!("SELECT {COLS} FROM watch_replies WHERE id=?1"),[id],row).map_err(db_error)?;if reply.status!="QUEUED"{return Err("REPLY_ALREADY_ATTEMPTED".into());}let pending:i64=tx.query_row("SELECT COUNT(*) FROM watch_replies WHERE thread_id=?1 AND id!=?2 AND (status IN ('SENDING','UNKNOWN') OR (status='QUEUED' AND NOT ?3 AND rowid<(SELECT rowid FROM watch_replies WHERE id=?2)))",params![reply.thread_id,id,reply.mode=="STEER"&&!reply.thread_id.starts_with(super::claude_manual::PREFIX)],|r|r.get(0)).map_err(db_error)?;if pending>0{return Err("REPLY_PREVIOUS_PENDING_CHECK_FIRST".into());}
+    pub fn claim_watch_reply(&self,id:&str)->Result<WatchReply,String>{self.claim_watch_reply_with_recovery(id,None)}
+    pub fn claim_watch_reply_with_recovery(&self,id:&str,recovery:Option<(&WatchReply,&WatchReply,&Value)>)->Result<WatchReply,String>{self.with_connection(|c|{let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
+        if let Some((original,replacement,evidence))=recovery{
+            if original.text.is_empty()||original.status!="UNKNOWN"||replacement.source_sequence.is_some(){return Err("REPLY_RECOVERY_ORIGINAL_CHANGED".into());}
+            if replacement.id!=id||replacement.thread_id!=original.thread_id||replacement.cwd!=original.cwd||replacement.generation!=original.generation||replacement.mode!="SEND"||replacement.options!=original.options||evidence["kind"]!="NATIVE_ROLLOUT_SUFFIX"{return Err("REPLY_RECOVERY_TARGET_CHANGED".into());}
+
+            let valid:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM assistant_actions a WHERE id=?1 AND operation='RECOVER_UNKNOWN_CHAT' AND status='EXECUTING' AND result_json IS NULL AND json_extract(input_json,'$.replyId')=?2 AND json_extract(input_json,'$.threadId')=?3 AND json_extract(input_json,'$.generation')=?4)",params![id,original.id,original.thread_id,original.generation],|r|r.get(0)).map_err(db_error)?;
+            if !valid{return Err("REPLY_RECOVERY_NOT_AUTHORIZED".into());}
+            if tx.execute("UPDATE watch_replies SET status='ACKNOWLEDGED',error_code='RECOVERY_ORIGINAL_NOT_OBSERVED',updated_at=?6 WHERE id=?1 AND thread_id=?2 AND generation=?3 AND payload_hash=?4 AND updated_at=?5 AND status='UNKNOWN' AND removed_at IS NULL AND NOT EXISTS(SELECT 1 FROM management_codex_attempts WHERE reply_id=?1) AND NOT EXISTS(SELECT 1 FROM assistant_actions WHERE id=?1 AND operation='RECOVER_UNKNOWN_CHAT')",params![original.id,original.thread_id,original.generation,original.payload_hash,original.updated_at,now()]).map_err(db_error)?!=1{return Err("REPLY_RECOVERY_ORIGINAL_CHANGED".into());}
+            prepare_watch_reply_at(&tx,replacement)?;
+            let checkpoint=json!({"replyId":original.id,"replacementId":id,"evidence":evidence,"authorization":"INSTANCE_RECOVERY_POLICY","delivery":"UNCONFIRMED","automaticRetry":false});
+            tx.execute("UPDATE assistant_actions SET result_json=?2 WHERE id=?1",params![id,checkpoint.to_string()]).map_err(db_error)?;
+        }
+        super::management_zones::validate_reply_route(&tx,id)?;let reply=tx.query_row(&format!("SELECT {COLS} FROM watch_replies WHERE id=?1"),[id],row).map_err(db_error)?;if reply.status!="QUEUED"{return Err("REPLY_ALREADY_ATTEMPTED".into());}let pending:i64=tx.query_row("SELECT COUNT(*) FROM watch_replies WHERE thread_id=?1 AND id!=?2 AND (status IN ('SENDING','UNKNOWN') OR (status='QUEUED' AND NOT ?3 AND rowid<(SELECT rowid FROM watch_replies WHERE id=?2)))",params![reply.thread_id,id,reply.mode=="STEER"&&!reply.thread_id.starts_with(super::claude_manual::PREFIX)],|r|r.get(0)).map_err(db_error)?;if pending>0{return Err("REPLY_PREVIOUS_PENDING_CHECK_FIRST".into());}
         let current=codex_watch::chat_context(&tx,&reply.thread_id)?;
         if current.cwd!=reply.cwd||current.generation!=reply.generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}
         let busy:i64=tx.query_row("SELECT (SELECT COUNT(*) FROM provider_runs r JOIN endpoints e ON e.id=r.endpoint_id WHERE e.provider='CODEX' AND e.external_id=?1 AND r.status IN ('STARTING','RUNNING','UNKNOWN') AND NOT COALESCE(?2 AND r.status='RUNNING' AND r.external_run_id=?3,0)) + (SELECT COUNT(*) FROM handoffs h JOIN endpoints e ON e.id=h.destination_endpoint_id WHERE e.provider='CODEX' AND e.external_id=?1 AND h.status='SENDING')",params![reply.thread_id,reply.mode=="STEER",reply.expected_turn_id],|r|r.get(0)).map_err(db_error)?;if busy>0{return Err("REPLY_OTHER_WRITER_PENDING".into());}

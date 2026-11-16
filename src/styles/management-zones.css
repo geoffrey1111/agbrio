@@ -24,7 +24,6 @@ html .management-page .mz-zones .v6-badge{display:none}
 .mz-zone-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mz-zone-count{font-size:var(--v7-fs-meta);color:var(--v7-muted);font-variant-numeric:tabular-nums}
 [aria-pressed=true]>.mz-zone-count{color:inherit}
-.mz-zone-alert{position:absolute;top:4px;left:28px;width:9px;height:9px;border-radius:50%;background:var(--v7-accent);border:2px solid var(--v7-surface)}
 .management-page .mz-bar>button.mz-zone-new{flex:none;padding:6px 14px;background:transparent;box-shadow:inset 0 0 0 1px var(--v7-line-strong);color:var(--v7-ink-2)}
 
 /* ---------- view toggle ---------- */
@@ -34,11 +33,12 @@ html .management-page .mz-zones .v6-badge{display:none}
 
 /* ---------- menu ---------- */
 .mz-menu{position:relative;flex:none}
-.mz-menu-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:20;min-width:200px;padding:6px;background:var(--v7-surface);border-radius:var(--v7-r-card);box-shadow:var(--v7-pop);display:flex;flex-direction:column}
+.management-page .mz-menu-pop{position:absolute;inset-inline-end:0;top:calc(100% + 6px);z-index:20;inline-size:max-content;min-inline-size:min(200px,calc(100vw - 32px));max-inline-size:calc(100vw - 32px);padding:6px;background:var(--v7-surface);border-radius:var(--v7-r-card);box-shadow:var(--v7-pop);display:flex;flex-direction:column}
 .management-page .mz-menu-pop>button:focus-visible{outline-offset:-2px;background:var(--v7-hover)}
 .management-page .mz-menu-pop .mz-danger{color:var(--v7-fail)}
 .management-page :is(.mz-menu button,.mz-view button,.mz-zone-new){min-inline-size:44px;touch-action:manipulation}
-.management-page .mz-menu-pop>button{justify-content:flex-start;width:100%;font-size:var(--v7-fs-row)}
+.management-page .mz-menu-pop>button{justify-content:flex-start;width:100%;font-size:var(--v7-fs-row);text-align:start;overflow-wrap:anywhere}
+.management-page .mz-menu-pop>button>svg{flex:none}
 .mz-menu-pop hr{border:0;border-top:1px solid var(--v7-line);margin:4px 6px}
 
 /* ---------- shared status ---------- */
@@ -48,9 +48,6 @@ html .management-page .mz-zones .v6-badge{display:none}
 .mz-status[data-tier=ATTENTION]{color:var(--v7-accent-ink);font-weight:600}.mz-status[data-tier=ATTENTION]>i{background:var(--v7-accent)}
 
 /* ---------- stage + inspector ---------- */
-.management-page .mz-inactive-toggle{justify-content:flex-start;padding-inline:6px;margin-bottom:4px;color:var(--v7-ink-2);font-size:var(--v7-fs-row)}
-.management-page .mz-inactive-toggle:hover{background:var(--v7-bg-sunken)}
-.mz-inactive-toggle[aria-expanded=true]>svg{transform:rotate(180deg)}
 .mz-stage{position:relative;display:grid;grid-template-columns:minmax(0,1fr);gap:20px;align-items:start}
 .mz-inspector{position:absolute;right:0;top:0;z-index:5;width:300px;padding:20px;background:var(--v7-surface);border-radius:var(--v7-r-card);box-shadow:var(--v7-pop);display:flex;flex-direction:column;gap:14px}
 .mz-inspector-head{display:flex;gap:12px;align-items:flex-start}
@@ -125,13 +122,12 @@ html .management-page .mz-map-center .mz-manager .v6-avatar{width:60px;height:60
 .mz-map-nodes>li{position:absolute;transform:translate(-50%,-38%);width:150px;display:flex;justify-content:center;z-index:1}
 .mz-map-nodes .mz-member{background:color-mix(in srgb,var(--v7-bg) 82%,transparent)}
 .management-page button.mz-map-add{position:absolute;right:0;bottom:0;color:var(--v7-accent-ink);background:var(--v7-surface);box-shadow:var(--v7-raise)}
-.mz-missing{font-size:var(--v7-fs-meta);color:var(--v7-muted);text-align:center}
-.mz-map .mz-missing{position:absolute;left:0;bottom:0;margin:0}
+.mz-no-running{font-size:var(--v7-fs-meta);color:var(--v7-muted);text-align:center}
 
 /* ---------- normal list (desktop: grouped columns) ---------- */
 .management-page:not([data-narrow]) .mz-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px;align-items:start}
 .management-page:not([data-narrow]) .mz-list>.mz-manager{grid-column:1/-1;justify-self:start}
-.management-page:not([data-narrow]) .mz-list>.mz-add-row,.management-page:not([data-narrow]) .mz-list>.mz-missing{grid-column:1/-1;justify-self:start}
+.management-page:not([data-narrow]) .mz-list>.mz-add-row,.management-page:not([data-narrow]) .mz-list>.mz-no-running{grid-column:1/-1;justify-self:start}
 
 /* ---------- phone list ---------- */
 .mz-list{display:flex;flex-direction:column;gap:16px}

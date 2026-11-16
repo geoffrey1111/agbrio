@@ -8,7 +8,7 @@ use replay::ReplayStore;
 
 #[derive(Clone,PartialEq,Eq,Deserialize,Serialize)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]
-struct Request { #[serde(default)]review_port:Option<u16>,#[serde(default)]title:Option<String>,api_version:u32,request_id:String,command:String,expected_instance:Option<String>,#[serde(default)]folder:Option<String>,#[serde(default)]notice_binding:Option<router_core::store::codex_notices::Binding>,#[serde(default)]zone_id:Option<String>,#[serde(default)]expected_revision:Option<i64>,#[serde(default)]new_manager:Option<crate::management_zones::ManagerTarget>,#[serde(default)]executors:Option<Vec<router_core::store::management_zones::ExecutorTarget>> }
+struct Request { #[serde(default)]review_port:Option<u16>,#[serde(default)]title:Option<String>,api_version:u32,request_id:String,command:String,expected_instance:Option<String>,#[serde(default)]folder:Option<String>,#[serde(default)]notice_binding:Option<router_core::store::codex_notices::Binding>,#[serde(default)]zone_id:Option<String>,#[serde(default)]expected_revision:Option<i64>,#[serde(default)]new_manager:Option<crate::management_zones::ManagerTarget>,#[serde(default)]executors:Option<Vec<router_core::store::management_zones::ExecutorTarget>>,#[serde(default)]management_change:Option<router_core::store::management_zones::Change> }
 
 fn dispatch(core:&RouterCore,host:&HostRuntime,bytes:&[u8],seen:&mut ReplayStore)->(Value,bool) {
     let failure=|code:&str|(json!({"apiVersion":1,"errorCode":code}),false);
@@ -36,9 +36,15 @@ fn dispatch(core:&RouterCore,host:&HostRuntime,bytes:&[u8],seen:&mut ReplayStore
             match core.store.register_codex_notice(binding){Ok(v)=>{if binding.mode=="PI"{if let Err(code)=core.store.observe_pi_manager_notice_target(Some(&binding.thread_id)){return failure(&code);}}(json!(v),false)},Err(code)=>return failure(&code)}
         },
         "REGISTER_CODEX_NOTICES"=>return failure("APP_CONTROL_EXPECTED_INSTANCE_REQUIRED"),
+        "LIST_MANAGEMENT_ZONES"=>match crate::management_zones::read(core,false){Ok(v)=>(v,false),Err(code)=>return failure(&code)},
+        "CHANGE_MANAGEMENT_ZONE" if r.expected_instance.as_deref()==Some(host.instance_id())=>{
+            let Some(input)=r.management_change.as_ref().filter(|input|input.request_id==r.request_id) else{return failure("MANAGEMENT_REQUEST_INVALID")};
+            match crate::management_zones::change(core,input){Ok(v)=>(v,false),Err(code)=>return failure(&code)}
+        },
+        "CHANGE_MANAGEMENT_ZONE"=>return failure("APP_CONTROL_EXPECTED_INSTANCE_REQUIRED"),
         "READ_MANAGEMENT_ZONE"=>{
             let Some(zone)=r.zone_id.as_deref() else{return failure("MANAGEMENT_ZONE_NOT_FOUND")};
-            let view=match core.store.management_zones(){Ok(v)=>v,Err(code)=>return failure(&code)};
+            let view=match crate::management_zones::read(core,false){Ok(v)=>v,Err(code)=>return failure(&code)};
             let Some(row)=view["zones"].as_array().and_then(|rows|rows.iter().find(|row|row["id"]==zone)) else{return failure("MANAGEMENT_ZONE_NOT_FOUND")};
             (row.clone(),false)
         },

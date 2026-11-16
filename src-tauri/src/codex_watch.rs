@@ -91,6 +91,7 @@ pub(crate) fn inspect_live(
         Some("failed") => "FAILED",
         // The external app-server's persisted projection also uses interrupted
         // for a live turn owned by another process. It cannot prove an abort.
+        Some("interrupted") if adapter.terminal_turn_status(thread_id,&turn_id).as_deref()==Some("interrupted") => "INTERRUPTED",
         Some("interrupted") => "INCOMPLETE",
         _ => "UNKNOWN",
     }};

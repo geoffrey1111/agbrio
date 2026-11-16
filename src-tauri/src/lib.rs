@@ -6,7 +6,7 @@ mod local_safety;
 mod codex_notices;
 mod management_zones;
 #[tauri::command]
-async fn management_zones_read(state:tauri::State<'_,RouterState>)->Result<serde_json::Value,String>{let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||management_zones::read(&core)).await.map_err(|_|"MANAGEMENT_READ_UNAVAILABLE")?}
+async fn management_zones_read(state:tauri::State<'_,RouterState>,refresh_titles:Option<bool>)->Result<serde_json::Value,String>{let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||management_zones::read(&core,refresh_titles.unwrap_or(false))).await.map_err(|_|"MANAGEMENT_READ_UNAVAILABLE")?}
 #[tauri::command]
 async fn management_zones_change(state:tauri::State<'_,RouterState>,input:router_core::store::management_zones::Change)->Result<serde_json::Value,String>{let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||management_zones::change(&core,&input)).await.map_err(|_|"MANAGEMENT_CHANGE_UNCONFIRMED")?}
 mod resource_monitor;

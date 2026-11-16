@@ -40,7 +40,8 @@ pub(super) const VALIDATED_VERSIONS: [(&str, u64); 9] = [
 
 /// The rest of the table an owner relies on. Desktop checks a broadcast's version and drops a
 /// mismatch, so any difference means no thread is claimed.
-const OWNER_VERSIONS: [(&str, u64); 12] = [
+const QUEUED_FOLLOW_UP_STATE: &str = "thread-follower-set-queued-follow-ups-state";
+const OWNER_VERSIONS: [(&str, u64); 11] = [
     ("thread-stream-following-status-requested", 1),
     ("thread-unarchived", 1),
     ("thread-follower-load-complete-history", 1),
@@ -49,7 +50,6 @@ const OWNER_VERSIONS: [(&str, u64); 12] = [
     ("thread-follower-read-model-settings", 1),
     ("thread-follower-permissions-request-approval-response", 1),
     ("thread-follower-submit-mcp-server-elicitation-response", 1),
-    ("thread-follower-set-queued-follow-ups-state", 1),
     ("thread-follower-remove-queued-message", 1),
     ("thread-follower-clear-queued-messages", 1),
     ("thread-follower-edit-last-user-turn", 2),
@@ -181,11 +181,30 @@ pub(super) fn versions_match(installed: &HashMap<String, u64>) -> bool {
 }
 
 pub(super) fn owner_versions_match(installed: &HashMap<String, u64>) -> bool {
-    versions_match(installed) && OWNER_VERSIONS.iter().all(|(method, version)| installed.get(*method) == Some(version))
+    versions_match(installed)
+        && OWNER_VERSIONS.iter().all(|(method, version)| installed.get(*method) == Some(version))
+        // This is an inbound-only call. The owner rejects both versions without
+        // interpreting their params or changing the queue, so v3 can follow too.
+        && matches!(installed.get(QUEUED_FOLLOW_UP_STATE), Some(1 | 3))
 }
 
 fn version_of(method: &str) -> u64 {
     VALIDATED_VERSIONS.iter().chain(OWNER_VERSIONS.iter()).find(|(name, _)| *name == method).map_or(0, |(_, version)| *version)
+}
+
+#[test]
+fn owner_allows_known_queue_versions_without_relaxing_stream_checks() {
+    let mut installed = VALIDATED_VERSIONS.iter().chain(OWNER_VERSIONS.iter())
+        .map(|(method, version)| ((*method).to_owned(), *version)).collect::<HashMap<_, _>>();
+    for version in [1, 3] {
+        installed.insert(QUEUED_FOLLOW_UP_STATE.to_owned(), version);
+        assert!(owner_versions_match(&installed));
+    }
+    installed.insert(QUEUED_FOLLOW_UP_STATE.to_owned(), 4);
+    assert!(!owner_versions_match(&installed));
+    installed.insert(QUEUED_FOLLOW_UP_STATE.to_owned(), 3);
+    installed.insert("thread-stream-state-changed".to_owned(), u64::MAX);
+    assert!(!owner_versions_match(&installed));
 }
 
 fn encode(message: &Value) -> Vec<u8> {

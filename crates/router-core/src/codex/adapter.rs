@@ -760,6 +760,12 @@ impl CodexAdapter {
       let root=std::env::var_os("CODEX_HOME").map(std::path::PathBuf::from).or_else(||std::env::var_os("USERPROFILE").map(|p|std::path::PathBuf::from(p).join(".codex")));
       root.map(|r|super::async_questions::read(std::path::Path::new(path),&r.join("sessions"),thread)).unwrap_or_default()
     }
+    pub fn unobserved_reply_evidence(&self,thread:&str,cwd:&str,path:Option<&str>,latest:&str,created:i64,reply_id:&str,original:&str,replacement:&str)->Result<Value,String>{
+      if self.guard.is_some()||uuid::Uuid::parse_str(thread).is_err(){return Err("REPLY_RECOVERY_HISTORY_UNVERIFIED".into())}
+      let path=path.ok_or("REPLY_RECOVERY_HISTORY_UNVERIFIED")?;
+      let root=std::env::var_os("CODEX_HOME").map(std::path::PathBuf::from).or_else(||std::env::var_os("USERPROFILE").map(|p|std::path::PathBuf::from(p).join(".codex"))).ok_or("REPLY_RECOVERY_HISTORY_UNVERIFIED")?;
+      super::async_questions::unobserved_reply(std::path::Path::new(path),&root.join("sessions"),thread,cwd,latest,created,reply_id,original,replacement)
+    }
     pub fn observe_message_time(&mut self,thread:&str,cwd:&str,path:Option<&str>){
       if self.guard.is_some(){return;}let Some(path)=path else{return;};
       if let Some(at)=super::message_time::read(std::path::Path::new(path),thread,cwd){if self.message_times.len()>128{self.message_times.clear();}self.message_times.insert((thread.into(),cwd.into()),at);}

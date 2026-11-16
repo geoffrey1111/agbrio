@@ -32,7 +32,7 @@ require('readline').createInterface({input:process.stdin}).on('line',line=>{
  if(m.method==='thread/read'&&m.params.threadId==='never-written')return process.stdout.write(JSON.stringify({id:m.id,error:{code:-32603,message:'failed to read thread: rollout at x is empty'}})+'\n');
  if(m.method==='thread/read'&&m.params.threadId==='other-error')return process.stdout.write(JSON.stringify({id:m.id,error:{code:-32600,message:'no rollout found'}})+'\n');
  if(m.method==='thread/read')return reply({thread:{id:m.params.threadId,cwd,path:rollout,status:{type:'notLoaded'},read:++reads}});
- if(m.method==='thread/turns/list')return reply({data:[{id:'running-turn',status:'interrupted'}],nextCursor:null});
+ if(m.method==='thread/turns/list')return reply({data:[{id:'running-turn',status:fs.existsSync(rollout+'.active')?'inProgress':'interrupted'}],nextCursor:null});
  if(m.method==='thread/start')return reply({thread:{id:'new-thread',cwd,path:rollout}});
  if(m.method==='thread/resume'&&m.params.threadId==='gone')return process.stdout.write(JSON.stringify({id:m.id,error:{code:-32600,message:'no rollout found'}})+'\n');
  if(m.method==='thread/resume'){loaded.add(m.params.threadId);return reply({thread:{id:m.params.threadId,cwd,path:rollout}});}
@@ -501,6 +501,30 @@ async fn a_recorded_interruption_is_reported_once_and_only_with_its_own_abort_re
     assert_eq!(event["params"]["turn"], json!({"id":"running-turn","status":"interrupted"}));
     t.call("thread/turns/list", list()).await.unwrap();
     assert!(t.outgoing.try_recv().is_err(), "reported once");
+}
+
+#[tokio::test]
+async fn backend_crash_reloads_live_turn_without_a_rollout_change_or_resend() {
+    let mut t = harness(DesktopScript::default(), validated_versions()).await;
+    let list = || json!({"threadId":THREAD,"limit":1,"sortDirection":"desc","cursor":null,"itemsView":"notLoaded"});
+    write_rollout(&t.rollout, &[json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"running-turn"}})]);
+    let live = t.rollout.with_extension("jsonl.active");
+    std::fs::write(&live,"running").unwrap();
+    t.call("thread/read", READ()).await.unwrap();
+    assert_eq!(t.call("thread/turns/list",list()).await.unwrap()["result"]["data"][0]["status"],"inProgress");
+    t.call("thread/resume",json!({"threadId":THREAD})).await.unwrap();
+    assert!(t.hub.owners().contains(THREAD));
+    assert!(t.call("turn/start",json!({"threadId":"lost","input":[]})).await.is_none());
+    std::fs::remove_file(live).unwrap();
+
+    let fresh=t.call("thread/turns/list",list()).await.unwrap();
+    assert_eq!(fresh["result"]["data"][0]["status"],"interrupted");
+    assert!(!t.hub.owners().contains(THREAD),"a reader beating the reaper must release the crashed owner");
+    assert_eq!(t.next_where(|m|m["method"]=="turn/completed").await["params"]["turn"]["id"],"running-turn");
+    assert_eq!(t.backend_calls("initialize"),2);
+    assert_eq!(t.backend_calls("turn/start"),1,"a lost write is never replayed");
+    t.call("thread/turns/list",list()).await.unwrap();
+    assert!(t.outgoing.try_recv().is_err(),"the same interruption is reported once");
 }
 
 /// What a process killed outright leaves behind: a started turn and no end record.

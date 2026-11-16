@@ -73,11 +73,16 @@ export function assistantReadOnlyInstructions(route:AssistantRoute,language:Lang
  const target=route==="cloud"?"ChatGPT / dot":route==="local"?"Codex":route==="claude"?"Claude Code":route==="workbuddy"?"WorkBuddy":language==="en"?"MCP assistant":language==="zh-TW"?"MCP 助手":"MCP 助手";
  return language==="en"?`Validate this connection in the target ${target}, read-only. Report the tools actually available, then call agbrio_read_app and verify INSTANCE, CONVERSATION_REVIEW, expiresAt and revokedAt. Ask which Bridge I want checked; call agbrio_read_bridge and agbrio_read_source with its exact IDs. Report each actual result and any missing evidence. Do not create authority or send test messages. Local Codex authentication does not prove a cloud dot connection. Successful registration, an open page, a plugin ZIP or desktop ready alone is insufficient.`:language==="zh-TW"?`請在目標 ${target} 中唯讀驗收這條連接。回報實際可用工具，呼叫 agbrio_read_app 核對 INSTANCE、CONVERSATION_REVIEW、expiresAt 和 revokedAt。問我想檢查哪個 Bridge，再以精確 ID 呼叫 agbrio_read_bridge 和 agbrio_read_source。逐項回報真實結果和缺少的證據，不建立授權或發送測試訊息。Codex 本地認證不代表雲端 dot 連接成功。註冊成功、網頁開啟、插件 ZIP 或桌面 ready 都不足以單獨驗收。`:`请在目标 ${target} 中只读验收这条连接。报告实际可用工具，调用 agbrio_read_app 核对 INSTANCE、CONVERSATION_REVIEW、expiresAt 和 revokedAt。问我想检查哪个 Bridge，再以精确 ID 调用 agbrio_read_bridge 和 agbrio_read_source。逐项报告真实结果和缺少的证据，不创建授权或发送测试消息。Codex 本地认证不代表云端 dot 连接成功。注册成功、网页打开、插件 ZIP 或桌面 ready 都不足以单独验收。`;
 }
+const preferredOperations:Record<Language,string>={
+ "zh-CN":"操作 Agbrio 时，先用 agbrio_capabilities 查看 MCP 授权能力。本机所有者操作先用 app-control/control.ps1 -Command Capabilities 查命令；管理区变更走本机 CLI。缺少对应接口时说明缺口，不默认模拟点击界面。",
+ "zh-TW":"操作 Agbrio 時，先用 agbrio_capabilities 查看 MCP 授權能力。本機所有者操作先用 app-control/control.ps1 -Command Capabilities 查指令；管理區變更走本機 CLI。缺少對應介面時說明缺口，不預設模擬點擊介面。",
+ en:"For Agbrio operations, discover authorized MCP tools with agbrio_capabilities. For local owner operations, start with app-control/control.ps1 -Command Capabilities and use the local CLI for management changes. Report missing script coverage instead of defaulting to UI automation.",
+};
 export function assistantSetupInstructions(mcpUrl:string|null,language:Language=getLanguage(),route:AssistantRoute="cloud"):string{
  if(!assistantMcpConfig(mcpUrl))return missingMcpInstructions(language);
- if(route==="claude")return `${claudeManualConnectionInstructions(mcpUrl,language)}\n\n${claudeCodeSetupInstructions(mcpUrl,language)}\n\n${originalChatWorkflow(language)}`;
+ if(route==="claude")return `${preferredOperations[language]}\n\n${claudeManualConnectionInstructions(mcpUrl,language)}\n\n${claudeCodeSetupInstructions(mcpUrl,language)}\n\n${originalChatWorkflow(language)}`;
  const intro=language==="en"?"Repository: https://github.com/geoffrey1111/agbrio. Reuse existing deployment, pairing and grants. If you lack local computer tools, give me a prompt for a local agent instead of claiming you operated my computer.":language==="zh-TW"?"倉庫：https://github.com/geoffrey1111/agbrio。復用部署、配對和授權。沒有本機能力時，給我一段可轉交本機 agent 的指令，不聲稱已操作電腦。":"仓库：https://github.com/geoffrey1111/agbrio。复用部署、配对和授权。没有本机能力时，给我一段可转交本机 agent 的指令，不声称已操作电脑。";
- return `${intro}\n\n${setupInstructions(mcpUrl,language,route)}\n\n${recovery[language]}\n\n${originalChatWorkflow(language)}\n\n${dailyReportOffer(language)}`;
+ return `${preferredOperations[language]}\n\n${intro}\n\n${setupInstructions(mcpUrl,language,route)}\n\n${recovery[language]}\n\n${originalChatWorkflow(language)}\n\n${dailyReportOffer(language)}`;
 }
 function setupInstructions(mcpUrl:string|null,language:Language,route:AssistantRoute):string{
  const url=mcpUrl??"<MCP_URL_FROM_AGBRIO_SETTINGS>";

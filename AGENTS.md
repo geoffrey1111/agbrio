@@ -8,6 +8,7 @@ Owner subsequently selected fixed metadata at the next original Claude main-sess
 
 Read README.md and docs/SETUP.md before setup. Windows + Codex + PWA is the current alpha scope; Mac and other agent adapters are not accepted runtime targets yet.
 
+- Prefer a documented MCP or CLI operation in every Agbrio workflow, including product entry points, documentation, prompts sent to assistants, engineering tasks, diagnostics and acceptance. Discover MCP capabilities for delegated operations; use the current-user CLI for local owner operations. Add missing authorized script coverage through the shared application action before treating visual automation as the normal route. Keep the desktop/PWA as a human interface and preserve the existing authority, review, exact-identity and receipt boundaries on every surface.
 - Preserve user's live desktop/agent processes, data and paired devices. Never force-quit agents or install/start a second Codex Desktop.
 - Route by exact native thread/conversation IDs. Titles and screenshots are presentation, not routing authority.
 - Keep provider details inside adapters. Core remains independent of desktop/DOM/HTTP transport payloads.

@@ -31,7 +31,7 @@ pub(crate) fn engine_roots() -> Vec<PathBuf> {
 // Stop parsing at the title, or earlier at any transcript, MCP configuration or
 // approval data. Other prefix values are skipped without being kept. The sentinel
 // returns the captured prefix without requiring the rest of the JSON.
-const PAYLOAD_KEYS: &[&str] = &["remoteMcpServersConfig","enabledMcpTools","messages","transcript","completedTurns","sessionPermissionUpdates","alwaysAllowedReasons","promptAppendSnapshot","spawnSeed","pendingSystemReminder"];
+const PAYLOAD_KEYS: &[&str] = &["remoteMcpServersConfig","enabledMcpTools","messages","transcript","completedTurns","sessionPermissionUpdates","alwaysAllowedReasons","promptAppendSnapshot","spawnSeed"];
 #[derive(Default, Clone)]
 struct Prefix { local_id: Option<String>, id: Option<String>, cwd: Option<String>, title: Option<String>, archived: bool, last_activity: i64 }
 impl<'de> Visitor<'de> for &mut Prefix {
@@ -45,6 +45,9 @@ impl<'de> Visitor<'de> for &mut Prefix {
                 "cwd" => { self.cwd = map.next_value::<Option<String>>()?; }
                 "isArchived" => { self.archived = map.next_value::<Option<bool>>()?.unwrap_or(false); }
                 "lastActivityAt" => { self.last_activity = map.next_value::<Option<i64>>()?.unwrap_or(0); }
+                // Claude can place this reminder ahead of the title. Skip the
+                // value inside the bounded prefix; never retain or expose it.
+                "pendingSystemReminder" => { map.next_value::<de::IgnoredAny>()?; }
                 "title" => {
                     if self.id.is_none() || self.cwd.is_none() { return Err(de::Error::custom("METADATA_IDENTITY_FIRST")); }
                     let title: Option<String> = map.next_value()?;
@@ -145,8 +148,11 @@ fn session_roots() -> Vec<PathBuf> {
     #[cfg(not(test))] { data_roots() }
 }
 
+type SessionCache = Option<(Instant, Vec<DesktopSession>)>;
+static SESSION_CACHE: Mutex<SessionCache> = Mutex::new(None);
+
 pub(crate) fn fresh_sessions() -> Vec<DesktopSession> {
-    sessions_at(&session_roots())
+    load_sessions(true)
 }
 
 pub(crate) fn resolve_local(local:&str)->Result<String,String>{
@@ -171,13 +177,15 @@ pub(crate) fn resolve_local(local:&str)->Result<String,String>{
 }
 
 pub(crate) fn sessions() -> Vec<DesktopSession> {
-    // Tests never read the real desktop app's files.
-    #[cfg(test)] { return sessions_at(&TEST_ROOTS.lock().map(|r| r.clone()).unwrap_or_default()); }
+    load_sessions(false)
+}
+fn load_sessions(fresh: bool) -> Vec<DesktopSession> {
+    // Tests never read the real desktop app's files or share stale fixtures.
+    #[cfg(test)] { let _ = fresh; return sessions_at(&session_roots()); }
     #[allow(unreachable_code)]
-    static CACHE: OnceLock<Mutex<Option<(Instant, Vec<DesktopSession>)>>> = OnceLock::new();
-    let Ok(mut cache) = CACHE.get_or_init(|| Mutex::new(None)).lock() else { return Vec::new(); };
-    if let Some((at, list)) = cache.as_ref().filter(|(at, _)| at.elapsed() < Duration::from_secs(10)) { let _ = at; return list.clone(); }
-    let list = sessions_at(&data_roots());
+    let Ok(mut cache) = SESSION_CACHE.lock() else { return sessions_at(&session_roots()); };
+    if let Some((_, list)) = cache.as_ref().filter(|(at, _)| !fresh && at.elapsed() < Duration::from_secs(10)) { return list.clone(); }
+    let list = sessions_at(&session_roots());
     *cache = Some((Instant::now(), list.clone())); list
 }
 struct NameCache { key: Vec<(String,String)>, roots: Vec<PathBuf>, at: Instant, names: HashMap<String,String> }
@@ -295,7 +303,7 @@ mod tests {
         let cwd = serde_json::to_string(&project.to_string_lossy()).unwrap();
         let a = "10000000-0000-4000-8000-00000000000a"; let b = "10000000-0000-4000-8000-00000000000b"; let c = "10000000-0000-4000-8000-00000000000c";
         let file = |account: &str, local: &str, body: String| { let d = temp.path().join(format!("claude-code-sessions/{account}/org")); fs::create_dir_all(&d).unwrap(); fs::write(d.join(format!("local_{local}.json")), body).unwrap(); };
-        file("one", "a", format!("{{\"sessionId\":\"local_a\",\"cliSessionId\":\"{a}\",\"cwd\":{cwd},\"gitAnchorsLookupOnly\":true,\"lastActivityAt\":5,\"isArchived\":false,\"title\":\"新标题\",\"enabledMcpTools\":NOT_JSON"));
+        file("one", "a", format!("{{\"sessionId\":\"local_a\",\"cliSessionId\":\"{a}\",\"cwd\":{cwd},\"gitAnchorsLookupOnly\":true,\"pendingSystemReminder\":\"ignored reminder\",\"lastActivityAt\":5,\"isArchived\":false,\"title\":\"新标题\",\"enabledMcpTools\":NOT_JSON"));
         file("two", "b", format!("{{\"sessionId\":\"local_b\",\"cliSessionId\":\"{b}\",\"cwd\":{cwd},\"lastActivityAt\":9,\"isArchived\":false,\"title\":\"另一个账号\"}}"));
         file("two", "c", format!("{{\"sessionId\":\"local_c\",\"cliSessionId\":\"{c}\",\"cwd\":{cwd},\"lastActivityAt\":7,\"isArchived\":false,\"title\":\"已归档\"}}"));
         fs::write(temp.path().join("claude-code-sessions/two/org/archived-sessions.idx"), r#"{"v":1,"archived":["local_c"]}"#).unwrap();

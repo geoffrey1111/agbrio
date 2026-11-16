@@ -174,3 +174,43 @@ fn reviewed(h:&HandoffHistoryItem)->assistant::ApprovalInput{assistant::Approval
  let d=tempfile::tempdir().unwrap();let s=RouterStore::open_at(d.path().join("pi-create.db")).unwrap();let g=global(&s);
  for checkpoint in [false,true]{let a=s.prepare_assistant_action(&g.id,ActionInput{request_id:format!("pi-create-{checkpoint}"),operation:"CREATE_CHAT".into(),input:serde_json::json!({"provider":"PI","directory":"fixture"})}).unwrap();s.claim_assistant_action(&g.id,ActionApproval{action_id:a.id.clone(),expected_hash:a.payload_hash.clone(),rule_id:Some("routine".into()),use_owner_answer:false,assessment:"Isolated Pi creation failure proof".into()}).unwrap();if checkpoint{s.checkpoint_assistant_created_chat(&a.id,&serde_json::json!({"taskId":"checkpoint","nativeSessionId":"native-proof"})).unwrap();}s.finish_assistant_action(&a.id,Err("PI_DIRECTORY_OUT_OF_SCOPE".into())).unwrap();let receipt=s.assistant_action(&g.id,&a.id,None).unwrap();if checkpoint{assert_eq!(receipt.status,"UNKNOWN");assert_eq!(receipt.result.unwrap()["nativeSessionId"],"native-proof");}else{assert_eq!(receipt.status,"FAILED");assert_eq!(receipt.result.unwrap()["creation"],"NOT_CREATED");}assert!(s.claim_assistant_action(&g.id,ActionApproval{action_id:a.id,expected_hash:a.payload_hash,rule_id:Some("routine".into()),use_owner_answer:false,assessment:"Do not replay".into()}).is_err());}
 }
+
+#[test]
+fn recovery_binds_original_and_replacement_and_rolls_back_if_grant_revoked(){
+ use super::watch_reply::WatchReply;
+ use serde_json::json;
+ let d=tempfile::tempdir().unwrap();
+ let s=RouterStore::open_at(d.path().join("test.db")).unwrap();
+ let g=global(&s);
+ let thread="native";
+ let cwd=d.path().to_str().unwrap();
+ s.enable_codex_watch(thread,"fixture",cwd,&codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()}).unwrap();
+ let generation=s.codex_chat_context(thread).unwrap().generation;
+ let r=WatchReply{id:Uuid::new_v4().to_string(),thread_id:thread.into(),cwd:cwd.into(),generation,source_sequence:None,expected_turn_id:Some("ended".into()),mode:"SEND".into(),text:"original".into(),options:json!({}),payload_hash:String::new(),status:String::new(),turn_id:None,error_code:None,created_at:0,updated_at:0};
+ s.prepare_watch_reply(&r).unwrap();s.claim_watch_reply(&r.id).unwrap();
+ s.finish_watch_reply(&r.id,"UNKNOWN",None,Some("REPLY_ACK_UNOBSERVED")).unwrap();
+ let original=s.watch_reply(&r.id).unwrap().unwrap();
+ let prepare=|grant:&str,request:&str|{
+  let a=s.prepare_assistant_action(grant,ActionInput{request_id:request.into(),operation:"RECOVER_UNKNOWN_CHAT".into(),input:json!({"threadId":thread,"replyId":original.id,"generation":generation})}).unwrap();
+  s.claim_assistant_action(grant,ActionApproval{action_id:a.id,expected_hash:a.payload_hash,rule_id:None,use_owner_answer:false,assessment:"Same original content".into()}).unwrap()
+ };
+ let first=prepare(&g.id,"revoked");
+ let mut replacement=r.clone();replacement.id=first.id.clone();
+ let proof=json!({"kind":"NATIVE_ROLLOUT_SUFFIX","nativeTurnId":"ended","startOffset":0,"endOffset":100});
+ s.revoke_assistant_grant(&g.id).unwrap();
+ assert!(s.claim_watch_reply_with_recovery(&first.id,Some((&original,&replacement,&proof))).is_err());
+ assert_eq!(s.watch_reply(&original.id).unwrap().unwrap().status,"UNKNOWN");
+ assert!(s.watch_reply(&first.id).unwrap().is_none());
+ let g=global(&s);let second=prepare(&g.id,"allowed");replacement.id=second.id.clone();
+ assert_eq!(second.basis.as_deref(),Some("INSTANCE_RECOVERY_POLICY"));
+ assert_eq!(s.claim_watch_reply_with_recovery(&second.id,Some((&original,&replacement,&proof))).unwrap().status,"SENDING");
+ let checkpoint=s.reply_recovery_checkpoint(&second.id).unwrap();
+ assert_eq!(checkpoint["replyId"],original.id);assert_eq!(checkpoint["replacementId"],second.id);
+ assert_eq!(s.watch_reply(&original.id).unwrap().unwrap().status,"ACKNOWLEDGED");
+ let third=prepare(&g.id,"duplicate");replacement.id=third.id.clone();
+ assert!(s.claim_watch_reply_with_recovery(&third.id,Some((&original,&replacement,&proof))).is_err());
+ assert!(s.watch_reply(&third.id).unwrap().is_none());
+ s.finish_watch_reply(&second.id,"UNKNOWN",None,Some("REPLY_ACK_UNOBSERVED")).unwrap();
+ s.finish_assistant_action(&second.id,Ok(checkpoint)).unwrap();
+ assert_eq!(s.assistant_action(&g.id,&second.id,None).unwrap().status,"UNKNOWN");
+}

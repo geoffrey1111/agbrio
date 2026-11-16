@@ -215,6 +215,20 @@ fn is_thread_read(method: &str) -> bool {
     matches!(method, "thread/read" | "thread/turns/list" | "thread/items/list" | "thread/goal/get")
 }
 
+/// A running state belongs to the backend process, not to the rollout file.
+/// A crash may leave the file untouched while invalidating this observation.
+fn thread_reply_cacheable(method: &str, reply: &Value) -> bool {
+    if reply.get("result").is_none() {
+        return false;
+    }
+    let live = |status: &Value| matches!(status.as_str(), Some("active" | "inProgress" | "pending"));
+    match method {
+        "thread/read" => !live(&reply["result"]["thread"]["status"]["type"]),
+        "thread/turns/list" => !reply["result"]["data"].as_array().is_some_and(|rows| rows.iter().any(|row| live(&row["status"]))),
+        _ => true,
+    }
+}
+
 /// Host text items gain the field Desktop's turn handler reads.
 fn with_text_elements(input: &Value) -> Value {
     let Some(items) = input.as_array() else { return input.clone() };
@@ -319,9 +333,22 @@ impl Hub {
         Some(opened)
     }
 
+    /// Serialize crash cleanup with replacement: a read can beat the periodic
+    /// reaper. The old backend must stop claiming ownership before any read or
+    /// write tries to discover a new owner.
+    fn retire_dead_backend(&self, slot: &mut Option<Arc<Backend>>) -> bool {
+        if !slot.as_ref().is_some_and(|backend|backend.is_dead()) { return false; }
+        if let Some(backend)=slot.take() { backend.shut_down(); }
+        self.sessions.close_all();
+        self.owners.lock().unwrap().clear();
+        self.cache.lock().unwrap().retain(|_,entry| entry.ttl.is_some());
+        true
+    }
+
     async fn running_backend(&self) -> Result<Arc<Backend>, String> {
         let mut slot = self.backend.lock().await;
-        if let Some(existing) = slot.as_ref().filter(|backend| !backend.is_dead()) {
+        self.retire_dead_backend(&mut slot);
+        if let Some(existing) = slot.as_ref() {
             return Ok(existing.clone());
         }
         // Everything the backend says also updates what Desktop is shown.
@@ -340,7 +367,9 @@ impl Hub {
     }
 
     pub(super) async fn pinned_backend(&self, thread: &str) -> Option<Arc<Backend>> {
-        self.backend.lock().await.as_ref().filter(|backend| !backend.is_dead() && backend.is_pinned(thread)).cloned()
+        let mut slot=self.backend.lock().await;
+        self.retire_dead_backend(&mut slot);
+        slot.as_ref().filter(|backend| !backend.is_dead() && backend.is_pinned(thread)).cloned()
     }
 
     async fn owner_of(&self, thread: &str, fresh: bool) -> Option<(Arc<Connection>, String)> {
@@ -451,7 +480,7 @@ impl Hub {
             None => match self.backend_read(method, params).await {
                 Ok(reply) => {
                     self.note_rollout(&thread, &reply);
-                    if !pinned && reply.get("result").is_some() {
+                    if !pinned && thread_reply_cacheable(method, &reply) {
                         self.remember(key, self.rollout_signature(&thread), None, &reply);
                     }
                     reply
@@ -1018,13 +1047,7 @@ impl Hub {
         // Exiting frees a held thread at once, while an unsubscribed one waits out
         // app-server's own unload delay. Desktop cannot open the thread until then.
         let free_now = !released.is_empty() && !backend.has_pins();
-        if backend.is_dead() {
-            // The process and its turns are gone, so nothing is left to wait for.
-            slot.take();
-            backend.shut_down();
-            self.sessions.close_all();
-            return;
-        }
+        if self.retire_dead_backend(&mut slot) { return; }
         if free_now || backend.reapable(self.config.idle_grace) {
             slot.take();
             backend.shut_down();

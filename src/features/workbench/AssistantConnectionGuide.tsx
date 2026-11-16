@@ -30,7 +30,7 @@ export function AssistantConnectionGuide({mcpUrl,grants,bridges=[],onAddGrant,on
  return <section className="r2-assistant-tutorial" aria-labelledby={`${id}-title`}>
   <h2 id={`${id}-title`} className="r2-sr-only">{t("连接你的助手")}</h2>
   <div id={`${id}-body`}>
-   {!route&&<AssistantOverview/>}
+   {!route&&<><AssistantOverview/><p className="assistant-overview-note">{t("助手通过 MCP 操作已授权的功能。本机脚本先运行 CLI 的 Capabilities 查看可用命令。")}</p></>}
    {route==="claude"?<label className="assistant-type-select">{t("助手类型")}<select value={route} onChange={e=>choose(e.target.value as AssistantRoute)}><option value="claude">Claude Code</option><option value="cloud">ChatGPT / dot {t("云端")}</option><option value="local">Codex {t("本地")}</option><option value="workbuddy">WorkBuddy</option><option value="generic">{t("其他 MCP 助手")}</option></select></label>:<>
    <p className="assistant-route-question">{t("你要连接哪类助手？")}</p>
    <div className="assistant-route-options" role="group" aria-label={t("助手类型")}>
