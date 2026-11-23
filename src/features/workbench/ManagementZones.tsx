@@ -1,3 +1,4 @@
+import {claimsExecution,observationExpired,useObservationClock} from './observationFreshness';
 import {useCallback,useEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type ReactNode} from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import {ArrowRightLeft,Check,ExternalLink,GitBranch,LayoutList,MoreHorizontal,Orbit,Plus,RefreshCw,Search,UserRoundCog,X} from 'lucide-react';
@@ -25,7 +26,8 @@ const folder=(path:string)=>path.split(/[\\/]/).filter(Boolean).at(-1)??'';
 const ATTENTION=['ACTION_REQUIRED','WAITING_DECISION','FAILED','INTERRUPTED','INCOMPLETE','UNKNOWN','CANCELLED'];
 /** Presentation emphasis only; never routing or permission authority. */
 export const tierOf=(row:ManagedConversation):Tier=>!row.available?'QUIET':ATTENTION.includes(row.state)?'ATTENTION':['RUNNING','THINKING'].includes(row.state)?'RUNNING':'QUIET';
-const runningMembers=(zone:ManagementZone)=>zone.managerId?zone.members.filter(({conversation})=>conversation&&tierOf(conversation)==='RUNNING'):[];
+const awaitingObservation=(row:ManagedConversation|null,now:number)=>Boolean(row?.available&&claimsExecution(row.state)&&observationExpired(row.checkedAt,now));
+const runningMembers=(zone:ManagementZone,now:number)=>zone.managerId?zone.members.filter(({conversation})=>conversation&&tierOf(conversation)==='RUNNING'&&!awaitingObservation(conversation,now)):[];
 const stateLabel=(row:ManagedConversation)=>!row.available?t('暂时无法读取'):['RUNNING','THINKING'].includes(row.state)?t('执行中'):['ACTION_REQUIRED','WAITING_DECISION'].includes(row.state)?t('等你确认'):row.state==='INTERRUPTED'?t('执行中断'):['INCOMPLETE','UNKNOWN'].includes(row.state)?t('执行状态待确认'):['FAILED','CANCELLED'].includes(row.state)?t('需要处理'):['RESULT_READY','COMPLETE'].includes(row.state)?t('本轮已结束'):t('空闲');
 const errorLabel=(error:unknown,uncertain=true)=>{
  const code=String(error).match(/\bMANAGEMENT_[A-Z_]+\b/)?.[0]??'';
@@ -67,13 +69,13 @@ export function constellation(members:ManagedConversation[],compact=false){
  return {placed,rings,orbits:radii.filter((_,ring)=>counts[ring]>0)};
 }
 
-function Graph({zone,view,narrow,focus,onFocus,onAdd,disabled}:{zone:ManagementZone;view:ZoneView;narrow:boolean;focus:Focus|null;onFocus:(f:Focus)=>void;onAdd:()=>void;disabled:boolean}){
+function Graph({zone,view,narrow,focus,onFocus,onAdd,disabled,checking}:{checking:boolean;zone:ManagementZone;view:ZoneView;narrow:boolean;focus:Focus|null;onFocus:(f:Focus)=>void;onAdd:()=>void;disabled:boolean}){
  const members=zone.members.map(m=>m.conversation).filter((row):row is ManagedConversation=>Boolean(row));
  const managerButton=(compact=false)=>zone.manager?<button type="button" className="mz-manager" data-compact={compact||undefined} aria-pressed={focus?.threadId===zone.manager.threadId} title={zone.manager.label} onClick={()=>onFocus({zoneId:zone.id,threadId:zone.manager!.threadId,role:'MANAGER'})}><Avatar row={zone.manager}/><span><small>{t('管理对话')} · {provider(zone.manager)}</small><strong>{zone.manager.label}</strong><Status row={zone.manager}/></span></button>:<div className="mz-manager mz-manager-empty"><p>{t('还没有管理对话')}</p></div>;
  const memberButton=(row:ManagedConversation,style?:CSSProperties)=><button key={row.threadId} type="button" className="mz-member" data-tier={tierOf(row)} style={style} aria-pressed={focus?.threadId===row.threadId} title={`${row.label} · ${provider(row)}`} aria-label={`${t('执行对话')} · ${provider(row)} · ${row.label} · ${stateLabel(row)}`} onClick={()=>onFocus({zoneId:zone.id,threadId:row.threadId,role:'MEMBER'})}><Avatar row={row}/><strong>{row.label}</strong><Status row={row}/></button>;
  if(members.length===0||view==='NORMAL'&&(narrow||members.length>4)){
   return <div className="mz-list">{managerButton(true)}
-   {members.length>0?<section className="mz-group" data-tier="RUNNING"><h3>{t('执行中')}<span>{members.length}</span></h3><ul>{members.map(row=><li key={row.threadId}>{memberButton(row)}</li>)}</ul></section>:zone.managerId&&<p className="mz-no-running">{t('当前没有正在执行的对话')}</p>}
+   {members.length>0?<section className="mz-group" data-tier="RUNNING"><h3>{t('执行中')}<span>{members.length}</span></h3><ul>{members.map(row=><li key={row.threadId}>{memberButton(row)}</li>)}</ul></section>:zone.managerId&&!checking&&<p className="mz-no-running">{t('当前没有正在执行的对话')}</p>}
    <button type="button" className="mz-add-row" disabled={disabled} onClick={onAdd}><Plus size={17} aria-hidden/>{t('添加执行对话')}</button>
   </div>;
  }
@@ -120,15 +122,33 @@ export function ManagementZones({api=managementZoneApi,watchApi,onOpenWatch}:{ap
  const epoch=useRef(0),alive=useRef(true),narrow=useNarrow(),[view,setViewState]=useState<ZoneView>(initialView);
  const setView=(next:ZoneView)=>{setViewState(next);try{localStorage.setItem(VIEW_KEY,next);}catch{/* Keeps working for this page. */}};
  const read=useCallback(async(preferred?:string,refreshTitles=false)=>{const version=++epoch.current;try{const view=await api.read(refreshTitles);if(alive.current&&version===epoch.current){setReadFailed(false);setData(view);setSelected(old=>view.zones.some(z=>z.id===preferred)?preferred!:view.zones.some(z=>z.id===old)?old:view.zones[0]?.id??'');}}catch(error){if(alive.current&&version===epoch.current)setReadFailed(true);throw error;}finally{if(alive.current&&version===epoch.current)setLoading(false);}},[api]);
- useEffect(()=>{alive.current=true;if(savedPending())setError(errorLabel('UNCONFIRMED'));let loadingFirstRead=true;void read().catch(()=>{}).finally(()=>{loadingFirstRead=false;});let reading=false;const refresh=()=>{if(!document.hidden&&!reading&&!loadingFirstRead&&!refreshLock.current&&!changeLock.current){reading=true;void read().catch(()=>{}).finally(()=>{reading=false;});}};const timer=setInterval(refresh,5000);window.addEventListener('focus',refresh);window.addEventListener('online',refresh);document.addEventListener('visibilitychange',refresh);return()=>{alive.current=false;epoch.current++;clearInterval(timer);window.removeEventListener('focus',refresh);window.removeEventListener('online',refresh);document.removeEventListener('visibilitychange',refresh);};},[read]);
+ useEffect(()=>{
+  alive.current=true;if(savedPending())setError(errorLabel('UNCONFIRMED'));
+  let disposed=false,reading=false,refreshOnSettle=false;
+  const refresh=(wake=false)=>{
+   if(disposed||document.hidden||refreshLock.current||changeLock.current)return;
+   if(reading){refreshOnSettle ||= wake;return;}
+   reading=true;
+   void read().catch(()=>{}).finally(()=>{
+    reading=false;
+    if(refreshOnSettle){refreshOnSettle=false;refresh();}
+   });
+  };
+  const wake=()=>refresh(true);
+  refresh();const timer=setInterval(refresh,5000);
+  window.addEventListener('focus',wake);window.addEventListener('online',wake);window.addEventListener('pageshow',wake);document.addEventListener('visibilitychange',wake);
+  return()=>{disposed=true;alive.current=false;epoch.current++;clearInterval(timer);window.removeEventListener('focus',wake);window.removeEventListener('online',wake);window.removeEventListener('pageshow',wake);document.removeEventListener('visibilitychange',wake);};
+ },[read]);
  useEffect(()=>{if(!notice)return;const timer=setTimeout(()=>setNotice(''),4000);return()=>clearTimeout(timer);},[notice]);
+ const now=useObservationClock();
  const zone=data?.zones.find(z=>z.id===selected);
- const runningByZone=new Map(data?.zones.map(z=>[z.id,runningMembers(z)] as const));
- const graphZone=!readFailed&&zone&&{...zone,members:runningByZone.get(zone.id)??[]};
+ const runningByZone=new Map(data?.zones.map(z=>[z.id,runningMembers(z,now)] as const));
+ const staleCount=zone?.members.filter(({conversation})=>awaitingObservation(conversation,now)).length??0;
+ const graphZone=!readFailed&&zone?{...zone,manager:zone.manager&&awaitingObservation(zone.manager,now)?{...zone.manager,state:'UNKNOWN'}:zone.manager,members:runningByZone.get(zone.id)??[]}:undefined;
  const membership=useMemo(()=>new Map(data?.zones.flatMap(z=>z.members.map(m=>[m.threadId,z] as const))??[]),[data]);
  const managers=useMemo(()=>new Set(data?.zones.flatMap(z=>z.managerId?[z.managerId]:[])??[]),[data]);
  const focusZone=focus?data?.zones.find(z=>z.id===focus.zoneId):undefined;
- const focused=!readFailed&&focus&&focusZone?(focus.role==='MANAGER'?focusZone.manager:runningByZone.get(focusZone.id)?.find(m=>m.threadId===focus.threadId)?.conversation)??null:null;
+ const focused=!readFailed&&focus&&focusZone?(focus.role==='MANAGER'?graphZone?.manager:runningByZone.get(focusZone.id)?.find(m=>m.threadId===focus.threadId)?.conversation)??null:null;
  const zonesBar=useRef<HTMLDivElement>(null);
  const inspectorOpener=useRef<HTMLElement|null>(null),editorOpener=useRef<HTMLElement|null>(null),inspectorClose=useRef<HTMLButtonElement>(null);
  const closeInspector=()=>{setFocus(null);setOpenError('');inspectorOpener.current?.focus({preventScroll:true});};
@@ -205,12 +225,13 @@ export function ManagementZones({api=managementZoneApi,watchApi,onOpenWatch}:{ap
   {(loading||refreshing)&&<p role="status" className="mz-loading">{refreshing?t('正在刷新对话名称…'):t('正在读取分工…')}</p>}
   {error&&!editor&&<div className="management-error" role="alert"><p>{error}</p>{pending&&<button type="button" className="management-primary" disabled={busy} onClick={()=>void apply(pending)}>{t('检查并完成这次操作')}</button>}{!pending&&<button type="button" disabled={busy||refreshing} onClick={()=>void refresh()}>{t('重新读取')}</button>}</div>}
   {readFailed&&!refreshing&&<div className="management-error" role="status"><p>{t('暂时无法读取管理区，正在自动重试。')}</p><button type="button" disabled={busy} onClick={()=>void refresh()}>{t('重新读取')}</button></div>}
+  {!readFailed&&staleCount>0&&<p className="mz-observation-status" role="status">{t('{0} 条对话的执行状态待确认，正在重试。',staleCount)}</p>}
   {notice&&<p className="management-notice" role="status"><Check size={16} aria-hidden/>{notice}</p>}
 
   {legacy.size>0&&<section className="management-legacy"><div><h2>{t('已有分工可以直接接管')}</h2><p>{t('这些对话已经登记通知，不用逐条重新添加。')}</p></div>{[...legacy].map(([managerId,threadIds])=>{const row=data?.candidates.find(c=>c.threadId===managerId);return <button type="button" key={managerId} disabled={!row||locked} onClick={()=>{const target=data?.zones.find(z=>z.id===selected&&z.managerId===managerId)??data?.zones.find(z=>z.managerId===managerId);edit({kind:'ADOPT',zone:target,adopt:{managerId,threadIds}});setName(target?.name??row?.label??t('管理区'));}}>{row&&<Avatar row={row}/>}<span>{row?.label??managerId}<small>{threadIds.length} {t('条执行对话')}</small></span><span className="mz-legacy-go">{t('接管')}</span></button>;})}</section>}
 
   {zone&&graphZone&&<div className="mz-stage" data-inspecting={Boolean(focused)||undefined}>
-   <Graph zone={graphZone} view={view} narrow={narrow} focus={focus} disabled={locked} onFocus={f=>{if(focus?.threadId===f.threadId){closeInspector();return;}inspectorOpener.current=document.activeElement instanceof HTMLElement?document.activeElement:null;setOpenError('');setFocus(f);}} onAdd={()=>edit({kind:'ADD',zone})}/>
+   <Graph zone={graphZone} checking={staleCount>0} view={view} narrow={narrow} focus={focus} disabled={locked} onFocus={f=>{if(focus?.threadId===f.threadId){closeInspector();return;}inspectorOpener.current=document.activeElement instanceof HTMLElement?document.activeElement:null;setOpenError('');setFocus(f);}} onAdd={()=>edit({kind:'ADD',zone})}/>
    {focused&&focus&&focusZone&&<aside className="mz-inspector" aria-label={t('对话详情')} onKeyDown={e=>{if(e.key==='Escape'){e.stopPropagation();closeInspector();}}}>
     <div className="mz-inspector-head"><Avatar row={focused}/><div><small>{focus.role==='MANAGER'?t('管理对话'):t('执行对话')} · {provider(focused)}</small><h3>{focused.label}</h3><Status row={focused}/></div><button ref={inspectorClose} type="button" className="management-icon" aria-label={t('关闭详情')} onClick={closeInspector}><X size={18} aria-hidden/></button></div>
     {focused.cwd&&<p className="mz-inspector-meta">{t('项目')} · {folder(focused.cwd)}</p>}

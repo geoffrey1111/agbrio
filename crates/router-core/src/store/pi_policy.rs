@@ -11,9 +11,34 @@ pub struct PiWorkspacePolicy {
  pub machine_scope:bool,
 }
 
+// Owner decision 2026-11-22: existing Pi workspace ceilings are available to
+// every active INSTANCE connection. The saved list remains legacy provenance;
+// a rotated/new connection must not require editing the directory ceiling.
+// Callers still authenticate/review each action and recheck revocation.
+pub(super) fn include_active_instance_grants(c:&Connection,policy:&mut PiWorkspacePolicy)->Result<(),String>{
+ let mut q=c.prepare("SELECT id FROM assistant_grants WHERE scope='INSTANCE' AND revoked_at IS NULL AND expires_at>?1 ORDER BY id").map_err(db_error)?;
+ let grants=q.query_map([now()],|r|r.get::<_,String>(0)).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;
+ for grant in grants {if !policy.grant_ids.contains(&grant){policy.grant_ids.push(grant);}}
+ Ok(())
+}
+
 #[cfg(test)]
 mod tests {
  use super::*;
+ #[test]
+ fn rotated_instance_grant_can_create_without_changing_scope_and_revocation_still_blocks(){
+  let base=PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../runtime");let d=tempfile::tempdir_in(base).unwrap();let s=RouterStore::open_at(d.path().join("rotated.db")).unwrap();
+  let policy=PiWorkspacePolicy{roots:vec![r"D:\work".into()],writable:true,terminal:true,administrator:false,inherit_context:true,grant_ids:vec!["old-connection".into()],machine_scope:false};
+  let scope=s.pi_authorize_workspace(&policy).unwrap();
+  let grant=s.connect_assistant_instance(super::super::assistant::AssistantConnectionInput{label:"new connection".into(),expires_at:now()+86400000}).unwrap();
+  let effective=s.pi_workspace_policy(&scope.id).unwrap().unwrap();assert!(effective.grant_ids.contains(&grant.id));assert_eq!(effective.roots,policy.roots);
+  let parent=super::super::pi::Parent{provider:"CODEX".into(),external_id:"parent".into(),cwd:r"D:\work".into()};
+  assert!(s.pi_begin_create("new-connection-create",&grant.id,&scope.id,scope.generation,r"D:\work\child","task",parent.clone(),None).is_ok());
+  assert_eq!(s.pi_scope(&scope.id).unwrap().generation,scope.generation);
+  s.revoke_assistant_grant(&grant.id).unwrap();
+  assert!(!s.pi_workspace_policy(&scope.id).unwrap().unwrap().grant_ids.contains(&grant.id));
+  assert_eq!(s.pi_begin_create("revoked-create",&grant.id,&scope.id,scope.generation,r"D:\work\child","task",parent,None).unwrap_err(),"PI_SCOPE_NOT_DELEGATED_TO_ASSISTANT");
+ }
  #[test]
  fn owner_policy_revisions_and_task_access_are_fenced(){
   let base=PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../runtime");let d=tempfile::tempdir_in(base).unwrap();let s=RouterStore::open_at(d.path().join("router.db")).unwrap();let root=std::fs::canonicalize(d.path()).unwrap().to_string_lossy().into_owned();
@@ -74,7 +99,7 @@ impl RouterStore {
   self.with_connection(|c|{if c.execute("UPDATE pi_task_access SET audit_json=?2 WHERE task_id=?1",params![task,audit.to_string()]).map_err(db_error)?!=1{return Err("PI_TASK_ACCESS_UNCONFIRMED".into());}Ok(())})
  }
  pub fn pi_workspace_policy(&self,id:&str)->Result<Option<PiWorkspacePolicy>,String>{
-  self.with_connection(|c|{let raw:Option<String>=c.query_row("SELECT policy_json FROM pi_scope_policies WHERE scope_id=?1",[id],|r|r.get(0)).optional().map_err(db_error)?;raw.map(|s|serde_json::from_str(&s).map_err(|_|"PI_POLICY_INVALID".into())).transpose()})
+  self.with_connection(|c|{let raw:Option<String>=c.query_row("SELECT policy_json FROM pi_scope_policies WHERE scope_id=?1",[id],|r|r.get(0)).optional().map_err(db_error)?;raw.map(|s|{let mut policy:PiWorkspacePolicy=serde_json::from_str(&s).map_err(|_|"PI_POLICY_INVALID".to_string())?;include_active_instance_grants(c,&mut policy)?;Ok(policy)}).transpose()})
  }
  /// Only the authenticated desktop owner calls this; MCP may consume subsets.
  pub fn pi_authorize_workspace(&self,policy:&PiWorkspacePolicy)->Result<super::pi::DirectoryScope,String>{

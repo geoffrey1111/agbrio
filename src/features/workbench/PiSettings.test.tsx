@@ -4,10 +4,10 @@ import {PiSettings} from './PiSettings';
 describe('Pi owner permissions',()=>{
  afterEach(cleanup);
  it('grants an explicit assistant connection with machine workspace, write, terminal and context defaults',async()=>{
-  const initial={installed:true,version:'1.4.0',scopes:[],assistantGrants:[{id:'allowed-connection',label:'管理助手'}]};
+  const initial={installed:true,version:'1.4.0',scopes:[],assistantGrants:[{id:'allowed-connection',label:'管理助手'},{id:'submanager',label:'子管理'}]};
   const api={read:vi.fn().mockResolvedValue(initial),authorize:vi.fn(),revoke:vi.fn(),authorizeWorkspace:vi.fn().mockResolvedValue(initial)};
   render(<PiSettings api={api}/>);const submit=await screen.findByRole('button',{name:'授权工作范围'});await waitFor(()=>expect(submit).toBeEnabled());
-  fireEvent.click(submit);await waitFor(()=>expect(api.authorizeWorkspace).toHaveBeenCalledWith({roots:[],machineScope:true,writable:true,terminal:true,administrator:true,inheritContext:true,grantIds:['allowed-connection']}));
+  fireEvent.click(submit);await waitFor(()=>expect(api.authorizeWorkspace).toHaveBeenCalledWith({roots:[],machineScope:true,writable:true,terminal:true,administrator:true,inheritContext:true,grantIds:['allowed-connection','submanager']}));
   fireEvent.click(screen.getByRole('checkbox',{name:'允许读写项目文件'}));expect(screen.getByRole('checkbox',{name:'允许执行任务所需的终端命令'})).not.toBeChecked();expect(screen.getByRole('checkbox',{name:'允许执行任务所需的终端命令'})).toBeDisabled();
  });
  it('prepares administrator execution only after an explicit desktop action',async()=>{

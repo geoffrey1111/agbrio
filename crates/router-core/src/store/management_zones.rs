@@ -80,9 +80,10 @@ pub(super) fn validate_subscription(c:&Connection,s:&codex_notices::Subscription
     Ok(())
 }
 pub(super) fn validate_reply_route(c:&Connection,reply:&str)->Result<(),String>{
-    let row=c.query_row("SELECT s.*,n.text AS fixed_text,n.status AS notice_status,w.text AS attempted_text,w.mode AS reply_mode,w.options_json AS reply_options FROM management_codex_attempts a JOIN claude_codex_notices n ON n.id=a.notice_id JOIN claude_codex_subscriptions s ON s.id=n.subscription_id JOIN watch_replies w ON w.id=a.reply_id WHERE a.reply_id=?1",[reply],|r|Ok((codex_notices::subscription(r)?,r.get::<_,String>("fixed_text")?,r.get::<_,String>("notice_status")?,r.get::<_,String>("attempted_text")?,r.get::<_,String>("reply_mode")?,r.get::<_,String>("reply_options")?))).optional().map_err(db_error)?;
-    if let Some((subscription,fixed,status,attempted,mode,options))=row{
+    let row=c.query_row("SELECT s.*,n.text AS fixed_text,n.status AS notice_status,w.text AS attempted_text,w.mode AS reply_mode,w.options_json AS reply_options,n.kind AS notice_kind FROM management_codex_attempts a JOIN claude_codex_notices n ON n.id=a.notice_id JOIN claude_codex_subscriptions s ON s.id=n.subscription_id JOIN watch_replies w ON w.id=a.reply_id WHERE a.reply_id=?1",[reply],|r|Ok((codex_notices::subscription(r)?,r.get::<_,String>("fixed_text")?,r.get::<_,String>("notice_status")?,r.get::<_,String>("attempted_text")?,r.get::<_,String>("reply_mode")?,r.get::<_,String>("reply_options")?,r.get::<_,String>("notice_kind")?))).optional().map_err(db_error)?;
+    if let Some((subscription,fixed,status,attempted,mode,options,kind))=row{
         validate_subscription(c,&subscription)?;
+        super::management_reminders::validate_native_kind(&kind)?;
         let options:Value=serde_json::from_str(&options).map_err(|_|"MANAGEMENT_RECEIPT_INVALID")?;
         if subscription.receiver_provider!="CODEX"||fixed!=attempted||status!="UNKNOWN"||!matches!(mode.as_str(),"SEND"|"STEER")||options!=json!({"model":null,"effort":null,"attachments":[]}){return Err("MANAGEMENT_RECEIPT_INVALID".into());}
     }Ok(())
@@ -93,7 +94,7 @@ fn rehome_ready(c:&Connection)->Result<(),String>{
     for(old,current)in rows{
         let n=c.query_row("SELECT * FROM claude_codex_notices WHERE id=?1",[&old],codex_notices::notice).map_err(db_error)?;
         let s=c.query_row("SELECT * FROM claude_codex_subscriptions WHERE id=?1",[&current],codex_notices::subscription).map_err(db_error)?;
-        if validate_subscription(c,&s).is_err(){continue;}
+        if validate_subscription(c,&s).is_err()||n.kind=="AWAITING_MANAGER"{continue;}
         codex_notices::enqueue(c,&s,&n.turn_id,&n.kind,&n.source_state,n.request_id.as_deref(),n.created_at)?;
         let copied:bool=c.query_row("SELECT EXISTS(SELECT 1 FROM claude_codex_notices WHERE subscription_id=?1 AND turn_id=?2 AND kind=?3 AND source_state=?4 AND request_id IS ?5)",params![current,n.turn_id,n.kind,n.source_state,n.request_id],|r|r.get(0)).map_err(db_error)?;
         if copied{c.execute("UPDATE claude_codex_notices SET status='OBSOLETE' WHERE id=?1 AND status='READY'",[old]).map_err(db_error)?;}
@@ -125,7 +126,7 @@ fn sync_zone(c:&Connection,zone:&str)->Result<(),String>{
         c.execute("INSERT INTO claude_codex_subscriptions(id,receiver_sid,receiver_cwd,thread_id,generation,source_cwd,anchor_turn,mode,expires_at,created_at,management_zone_id,management_revision,receiver_provider) VALUES(?1,?2,?3,?4,?5,?6,'await-first-turn','TASK',253402300799000,?7,?8,?9,?10) ON CONFLICT(id) DO UPDATE SET status='ACTIVE'",params![id,sid,receiver.cwd,thread,source.generation,source.cwd,now(),zone,epoch,receiver.provider]).map_err(db_error)?;
         c.execute("UPDATE management_members SET generation=?2 WHERE thread_id=?1",params![thread,source.generation]).map_err(db_error)?;
         let subscription=c.query_row("SELECT * FROM claude_codex_subscriptions WHERE id=?1",[&id],codex_notices::subscription).map_err(db_error)?;
-        for n in waiting{codex_notices::enqueue(c,&subscription,&n.turn_id,&n.kind,&n.source_state,n.request_id.as_deref(),n.created_at)?;}
+        for n in waiting.into_iter().filter(|n|n.kind!="AWAITING_MANAGER"){codex_notices::enqueue(c,&subscription,&n.turn_id,&n.kind,&n.source_state,n.request_id.as_deref(),n.created_at)?;}
     }
     Ok(())
 }
@@ -195,7 +196,7 @@ impl RouterStore {
         let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
         let n=tx.query_row("SELECT * FROM claude_codex_notices WHERE id=?1",[id],codex_notices::notice).map_err(db_error)?;
         let s=tx.query_row("SELECT * FROM claude_codex_subscriptions WHERE id=?1",[&n.subscription_id],codex_notices::subscription).map_err(db_error)?;
-        if s.receiver_provider!="CODEX"||n.status!="READY"{return Ok(false);}validate_subscription(&tx,&s)?;
+        if s.receiver_provider!="CODEX"||n.status!="READY"{return Ok(false);}validate_subscription(&tx,&s)?;super::management_reminders::validate_native_kind(&n.kind)?;
         let receiver=conversation(&tx,&s.binding.receiver_sid)?;
         if !receiver.available||now()-receiver.checked_at>30000{return Ok(false);}
         if intent.thread_id!=s.binding.receiver_sid||intent.cwd!=receiver.cwd||intent.generation!=receiver.generation||intent.text!=n.text||!matches!(intent.mode.as_str(),"SEND"|"STEER")||intent.source_sequence.is_some(){return Err("MANAGEMENT_RECEIPT_INVALID".into());}
@@ -229,6 +230,11 @@ impl RouterStore {
         if row.as_deref()!=Some("QUEUED"){return Ok(None);}
         let n=tx.query_row("SELECT * FROM claude_codex_notices WHERE id=?1",[id],codex_notices::notice).map_err(db_error)?;
         let s=tx.query_row("SELECT * FROM claude_codex_subscriptions WHERE id=?1",[&n.subscription_id],codex_notices::subscription).map_err(db_error)?;
+        if super::management_reminders::validate_native_kind(&n.kind).is_err(){
+            tx.execute("UPDATE watch_replies SET status='CANCELLED',error_code='MANAGEMENT_REMINDER_NO_LONGER_DUE',updated_at=?2 WHERE id=?1 AND status='QUEUED'",params![reply,now()]).map_err(db_error)?;
+            tx.execute("UPDATE claude_codex_notices SET status='OBSOLETE' WHERE id=?1 AND status='UNKNOWN'",[id]).map_err(db_error)?;
+            tx.commit().map_err(db_error)?;return Ok(None);
+        }
         if validate_subscription(&tx,&s).is_err(){
             tx.execute("UPDATE watch_replies SET status='FAILED',error_code='MANAGEMENT_ROUTE_CHANGED',updated_at=?2 WHERE id=?1 AND status='QUEUED'",params![reply,now()]).map_err(db_error)?;
             tx.execute("UPDATE claude_codex_notices SET status='READY' WHERE id=?1 AND status='UNKNOWN'",[id]).map_err(db_error)?;
@@ -297,11 +303,13 @@ impl RouterStore {
             // The authorized application read is passive, even before the
             // manager reconnects and the delivery path marks the rows BACKLOG.
             let backlog=if let Some(sid)=manager_id.as_deref().and_then(|v|v.strip_prefix("claude_code:")){
-                let scope="FROM claude_codex_notices n JOIN claude_codex_subscriptions s ON s.id=n.subscription_id JOIN management_members m ON m.zone_id=s.management_zone_id AND m.thread_id=s.thread_id AND m.generation=s.generation WHERE s.management_zone_id=?1 AND s.receiver_provider='CLAUDE_CODE' AND s.receiver_sid=?2 AND s.status='ACTIVE' AND (n.status='BACKLOG' OR (n.status='READY' AND n.created_at<=?3))";
+                let scope="FROM claude_codex_notices n JOIN claude_codex_subscriptions s ON s.id=n.subscription_id JOIN management_members m ON m.zone_id=s.management_zone_id AND m.thread_id=s.thread_id AND m.generation=s.generation WHERE s.management_zone_id=?1 AND s.receiver_provider='CLAUDE_CODE' AND s.receiver_sid=?2 AND s.status='ACTIVE' AND (n.status='BACKLOG' OR (n.status='READY' AND n.created_at<=?3)) AND (n.kind!='AWAITING_MANAGER' OR n.id IN(SELECT notice_id FROM management_reminder_evidence WHERE verified_at>=?4))";
                 let cutoff=now()-codex_notices::NOTICE_MAX_AGE_MS;
-                let total:i64=c.query_row(&format!("SELECT count(*) {scope}"),params![&id,sid,cutoff],|r|r.get(0)).map_err(db_error)?;
+                let proof_cutoff=now()-super::management_reminders::PROOF_LIFETIME;
+                let total:i64=c.query_row(&format!("SELECT count(*) {scope}"),params![&id,sid,cutoff,proof_cutoff],|r|r.get(0)).map_err(db_error)?;
                 let mut q=c.prepare(&format!("SELECT n.id,s.thread_id,s.generation,n.turn_id,n.kind,n.source_state,n.request_id,n.created_at {scope} ORDER BY n.created_at DESC,n.id DESC LIMIT 64")).map_err(db_error)?;
-                let items=q.query_map(params![&id,sid,cutoff],codex_notices::backlog_item).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;
+                let mut items=q.query_map(params![&id,sid,cutoff,proof_cutoff],codex_notices::backlog_item).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;
+                super::management_reminders::decorate_backlog(c,&mut items)?;
                 json!({"total":total,"items":items,"truncated":total>items.len() as i64})
             }else{json!({"total":0,"items":[],"truncated":false})};
             result.push(json!({"id":id,"name":name,"managerId":manager_id,"manager":manager,"revision":revision,"updatedAt":updated_at,"members":children,"notificationBacklog":backlog}));
@@ -438,6 +446,48 @@ impl RouterStore {
     }
     pub(super) fn create(s:&RouterStore,label:&str,manager:&str)->String{change(s,json!({"requestId":Uuid::new_v4().to_string(),"action":"CREATE","name":label,"managerId":manager})).unwrap()["zoneId"].as_str().unwrap().into()}
     pub(super) fn add(s:&RouterStore,zone:&str,source:&str,revision:i64)->Result<Value,String>{change(s,json!({"requestId":Uuid::new_v4().to_string(),"action":"ADD","zoneId":zone,"revision":revision,"threadId":source,"generation":1}))}
+    #[test]
+    fn management_reminder_thresholds_dedupe_filter_and_leave_original_notice() {
+        let(d,s,claude,_,source)=fixture();let zone=create(&s,"Reminders",&claude);add(&s,&zone,&source,1).unwrap();
+        let at=now();let minute=60_000_i64;
+        s.record_codex_watch(&source,1,&codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some("turn-exact".into()),item_id:Some("final".into()),text:"private delivery body".into()}).unwrap();
+        s.publish_management_event(&source,1,"turn-exact","TURN_RESULT","completed",None,at).unwrap();
+        let question=super::super::management_reminders::PendingQuestion{turn:"turn-exact",request:"exact-question",observed_at:at};
+        let observe=|s:&RouterStore,age,qs:&[_],wait|s.observe_management_reminders(&zone,&source,1,"turn-exact","completed",qs,wait,at+age*minute).unwrap();
+        let rows=|s:&RouterStore|s.with_connection(|c|{
+            let mut q=c.prepare("SELECT kind,source_state,status,text FROM claude_codex_notices ORDER BY created_at,source_state").map_err(db_error)?;
+            let out=q.query_map([],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,String>(3)?))).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;Ok(out)
+        }).unwrap();
+        observe(&s,9,std::slice::from_ref(&question),None);assert_eq!(rows(&s).len(),1);
+        observe(&s,10,std::slice::from_ref(&question),None);assert_eq!(rows(&s)[1].2,"BACKLOG");
+        observe(&s,29,&[],None);assert_eq!(rows(&s)[1].2,"OBSOLETE");
+        observe(&s,30,&[],None);let current=rows(&s);assert_eq!(current.len(),3);assert_eq!(current[2].1,"COMPLETED_30M");assert_eq!(current[2].2,"BACKLOG");
+        assert!(current[2].3.contains("Executor")&&current[2].3.contains("waitingMinutes: 30")&&!current[2].3.contains("private delivery body"));
+        drop(s);let s=RouterStore::open_at(d.path().join("zones.db")).unwrap();
+        observe(&s,119,&[],None);assert_eq!(rows(&s).len(),3);
+        observe(&s,120,&[],None);observe(&s,180,&[],None);let current=rows(&s);assert_eq!(current.len(),4);assert_eq!(current[2].2,"OBSOLETE");assert_eq!(current[3].1,"COMPLETED_120M");assert_eq!(current[3].2,"BACKLOG");
+        observe(&s,181,&[],Some(at+1));let current=rows(&s);assert_eq!(current[3].2,"OBSOLETE");assert_eq!(current[0].0,"TURN_RESULT");assert_eq!(current[0].2,"READY");
+    }
+    #[test]
+    fn management_reminder_acknowledges_only_successful_follow_up() {
+        let (_d,s,claude,_,source)=fixture();let zone=create(&s,"Reminders",&claude);add(&s,&zone,&source,1).unwrap();
+        let at=now()-31*60_000;
+        s.record_codex_watch(&source,1,&codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some("turn-exact".into()),item_id:None,text:String::new()}).unwrap();
+        s.publish_management_event(&source,1,"turn-exact","TURN_RESULT","completed",None,at).unwrap();
+        s.with_connection(|c|{
+            c.execute("INSERT INTO assistant_grants(id,source_role,binding_revision,label,brief_json,created_at,expires_at,scope) VALUES('fixture-grant','BOTH',0,'Fixture','[]',?1,?2,'INSTANCE')",params![at,now()+60_000]).map_err(db_error)?;
+            c.execute("INSERT INTO assistant_actions(id,grant_id,request_id,payload_hash,operation,input_json,status,result_json,created_at,updated_at) VALUES('action','fixture-grant','req','hash','RESPOND_CHAT',?1,'UNKNOWN',NULL,?2,?2)",params![json!({"threadId":source}).to_string(),at+1]).map_err(db_error)?;
+            Ok(())
+        }).unwrap();
+        let observe=||s.observe_management_reminders(&zone,&source,1,"turn-exact","completed",&[],None,now()).unwrap();
+        let backlog=||s.management_zones().unwrap()["zones"][0]["notificationBacklog"]["items"].clone();
+        observe();
+        assert!(backlog().as_array().unwrap().iter().any(|item|item["kind"]=="AWAITING_MANAGER"&&item["threadLabel"]=="Executor"&&item["waitingMinutes"]==31));
+        s.with_connection(|c|{
+            c.execute("UPDATE assistant_actions SET status='APPLIED',result_json=?1 WHERE id='action'",[json!({"status":"SENT"}).to_string()]).map_err(db_error)?;Ok(())
+        }).unwrap();
+        observe();assert!(!backlog().as_array().unwrap().iter().any(|item|item["kind"]=="AWAITING_MANAGER"));
+    }
     #[test]fn ownership_is_unique_and_transfer_updates_both_zones_atomically(){
         let(_d,s,claude,codex,source)=fixture();let a=create(&s,"Art",&claude);let b=create(&s,"Engineering",&codex);
         add(&s,&a,&source,1).unwrap();assert_eq!(add(&s,&b,&source,1).unwrap_err(),"MANAGEMENT_ALREADY_ASSIGNED_USE_TRANSFER");

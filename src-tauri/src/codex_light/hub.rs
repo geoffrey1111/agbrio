@@ -82,6 +82,7 @@ pub(super) struct TurnTracker {
     started_sent: Option<String>,
     baseline: Option<Option<String>>,
     settle_attempts: u8,
+    recovered_terminal: Option<String>,
 }
 
 impl TurnTracker {
@@ -154,6 +155,12 @@ impl TurnTracker {
     }
 }
 
+/// Ignore a cached active snapshot only after the same native turn has ended.
+fn terminal_for_follow(boundary: Option<&Boundary>, active: Option<&str>, announced: Option<&str>) -> bool {
+    active.is_some_and(|turn| announced.is_none_or(|hint| hint == turn) &&
+        boundary.is_some_and(|b| b.turn_id.as_deref() == Some(turn) && matches!(b.kind, BoundaryKind::Completed | BoundaryKind::Aborted)))
+}
+
 /// How a thread can be reached right now.
 enum Route {
     Backend,
@@ -174,6 +181,7 @@ struct Follow {
     host_subscribed: bool,
     status: Option<Value>,
     announced_turn: Option<String>,
+    active_turn: Option<String>,
 }
 
 pub(super) struct Hub {
@@ -457,16 +465,28 @@ impl Hub {
         if self.pinned_backend(thread).await.is_some() {
             return None;
         }
-        if let Some(status) = self.follows.lock().unwrap().get(thread).and_then(|follow| follow.status.clone()) {
+        let observed = self.follows.lock().unwrap().get(thread).and_then(|follow| {
+            Some((follow.status.clone()?, follow.active_turn.clone(), follow.announced_turn.clone()))
+        });
+        if let Some((status, turn, hint)) = observed {
+            if status["type"] == "active" && turn.is_some() &&
+                terminal_for_follow(self.follow_boundary(thread).as_ref(), turn.as_deref(), hint.as_deref()) {
+                return Some(json!({"type":"idle"}));
+            }
             return Some(status);
         }
         self.owner_of(thread, false).await?;
-        let boundary = self.rollouts.lock().unwrap().get(thread).and_then(|path| native_files::latest_boundary(path));
+        let boundary = self.follow_boundary(thread);
         let stale = self.stale_open_turns.lock().unwrap().get(thread).cloned();
         Some(match boundary {
             Some(Boundary { kind: BoundaryKind::Started, turn_id }) if turn_id.is_none() || turn_id != stale => json!({"type":"active","activeFlags":[]}),
             _ => json!({"type":"idle"}),
         })
+    }
+
+    fn follow_boundary(&self, thread: &str) -> Option<Boundary> {
+        let path = self.rollouts.lock().unwrap().get(thread).cloned()?;
+        native_files::latest_boundary(&path)
     }
 
     async fn thread_read(&self, id: &Value, method: &str, params: &Value) -> Value {
@@ -673,7 +693,7 @@ impl Hub {
                 existing.host_subscribed |= host_subscribed;
                 return;
             }
-            follows.insert(thread.to_owned(), Follow { events, host_subscribed, status: None, announced_turn: None });
+            follows.insert(thread.to_owned(), Follow { events, host_subscribed, status: None, announced_turn: None, active_turn: None });
         }
         let hub = self.clone();
         let thread = thread.to_owned();
@@ -734,7 +754,7 @@ impl Hub {
                 Ok(Some(StateEvent::Snapshot(state))) => {
                     let active = state.pointer("/threadRuntimeStatus/type").and_then(Value::as_str) == Some("active");
                     idle_since = if active || !state["requests"].as_array().is_none_or(Vec::is_empty) { None } else { idle_since.or(Some(Instant::now())) };
-                    self.apply_snapshot(&thread, &state, &mut known_requests, &mut turns).await;
+                    needs_baseline |= self.apply_snapshot(&thread, &state, &mut known_requests, &mut turns).await;
                     last_state=Some(state);
                     delay = if turns.settling() { REFRESH_SETTLING } else if active { REFRESH_ACTIVE } else { REFRESH_IDLE };
                 }
@@ -748,10 +768,10 @@ impl Hub {
                 Ok(Some(StateEvent::Disconnected)) | Ok(None) => attached = None,
                 Err(_) => {
                     if let Some(state)=&last_state{
-                        self.apply_snapshot(&thread,state,&mut known_requests,&mut turns).await;
-                        let active=state.pointer("/threadRuntimeStatus/type").and_then(Value::as_str)==Some("active");
+                        needs_baseline |= self.apply_snapshot(&thread,state,&mut known_requests,&mut turns).await;
+                        let active=self.follows.lock().unwrap().get(&thread).and_then(|f|f.status.as_ref()).is_some_and(|v| v["type"]=="active");
                         delay=if turns.settling(){REFRESH_SETTLING}else if active{REFRESH_ACTIVE}else{REFRESH_IDLE};
-                    }else{delay=REFRESH_TOO_LARGE;}
+                    }else{needs_baseline=true;delay=REFRESH_TOO_LARGE;}
                 },
             }
         }
@@ -762,24 +782,31 @@ impl Hub {
         self.follows.lock().unwrap().remove(&thread);
     }
 
-    async fn apply_snapshot(&self, thread: &str, state: &Value, known: &mut HashMap<String, Value>, turns: &mut TurnTracker) {
+    async fn apply_snapshot(&self, thread: &str, state: &Value, known: &mut HashMap<String, Value>, turns: &mut TurnTracker) -> bool {
         if let Some(path) = state["rolloutPath"].as_str() {
             self.rollouts.lock().unwrap().insert(thread.to_owned(), PathBuf::from(path));
         }
-        let status_kind = state.pointer("/threadRuntimeStatus/type").and_then(Value::as_str).unwrap_or("idle");
+        let boundary = self.follow_boundary(thread);
+        let announced = self.follows.lock().unwrap().get_mut(thread).and_then(|follow| follow.announced_turn.take());
+        if announced.is_some() && announced.as_ref() != turns.recovered_terminal.as_ref() {
+            turns.recovered_terminal = None;
+        }
+        let claimed = state.pointer("/threadRuntimeStatus/type").and_then(Value::as_str).unwrap_or("idle");
+        let terminal = claimed == "active" && terminal_for_follow(boundary.as_ref(), turns.open.as_deref().or(turns.recovered_terminal.as_deref()), announced.as_deref());
+        let recovery = terminal && turns.recovered_terminal.as_ref() != boundary.as_ref().and_then(|b|b.turn_id.as_ref());
+        if recovery { turns.recovered_terminal = boundary.as_ref().and_then(|b|b.turn_id.clone()); }
+        let status_kind = if terminal { "idle" } else { claimed };
         let status = match status_kind {
             "active" => json!({"type":"active","activeFlags":state.pointer("/threadRuntimeStatus/activeFlags").cloned().unwrap_or(json!([]))}),
             other => json!({"type":other}),
         };
         let changed = {
             let mut follows = self.follows.lock().unwrap();
-            let Some(follow) = follows.get_mut(thread) else { return };
+            let Some(follow) = follows.get_mut(thread) else { return false };
             let changed = follow.status.as_ref() != Some(&status);
             follow.status = Some(status.clone());
             changed
         };
-        let boundary = self.rollouts.lock().unwrap().get(thread).and_then(|path| native_files::latest_boundary(path));
-        let announced = self.follows.lock().unwrap().get_mut(thread).and_then(|follow| follow.announced_turn.take());
         match turns.observe(status_kind == "active", announced, boundary.as_ref()) {
             TurnEvent::None => {}
             TurnEvent::Started(turn) => self.send(json!({"method":"turn/started","params":{"threadId":thread,"turn":{"id":turn,"status":"inProgress"}}})),
@@ -794,11 +821,14 @@ impl Hub {
                 }
             }
         }
+        if let Some(follow) = self.follows.lock().unwrap().get_mut(thread) {
+            follow.active_turn = (status_kind == "active").then(|| turns.open.clone()).flatten();
+        }
         if changed {
             self.send(json!({"method":"thread/status/changed","params":{"threadId":thread,"status":status}}));
         }
         let mut seen = HashSet::new();
-        for request in state["requests"].as_array().into_iter().flatten() {
+        for request in state["requests"].as_array().into_iter().flatten().filter(|_|!terminal) {
             let Some(method) = request["method"].as_str() else { continue };
             if approval_method(method).is_none() {
                 continue;
@@ -822,6 +852,7 @@ impl Hub {
             }
             present
         });
+        recovery
     }
 
     async fn report_turn_end(&self, thread: &str, turn: &str, boundary: Option<&Boundary>) {
@@ -842,6 +873,10 @@ impl Hub {
             if !row["error"].is_null() {
                 payload["error"] = row["error"].clone();
             }
+        }
+        if payload["status"] == "interrupted" && boundary.is_some_and(|b| b.kind == BoundaryKind::Aborted && b.turn_id.as_deref() == Some(turn)) &&
+            !self.confirmed_interruptions.lock().unwrap().insert((thread.to_owned(), turn.to_owned())) {
+            return;
         }
         self.send(json!({"method":"turn/completed","params":{"threadId":thread,"turn":payload}}));
     }

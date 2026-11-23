@@ -643,3 +643,23 @@ async fn observer_stops_following_when_this_backend_becomes_the_owner(){
  tokio::time::sleep(Duration::from_millis(5500)).await;
  let calls=t.pipe_calls("thread-stream-following-changed");assert_eq!(calls.iter().filter(|m|m["params"]["following"]==true).count(),1);assert_eq!(calls.iter().filter(|m|m["params"]["following"]==false).count(),1,"the direct backend route replaces, rather than duplicates, the old follower route");
 }
+
+
+#[tokio::test]
+async fn a_lost_terminal_snapshot_recovers_in_the_same_host_without_restarting_the_turn() {
+    let mut t = harness(DesktopScript{owns:true,state:Some(json!({"threadRuntimeStatus":{"type":"active"},"requests":[]})),..Default::default()},validated_versions()).await;
+    let started=json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"running-turn"}});
+    write_rollout(&t.rollout,&[started.clone()]);
+    t.call("thread/read",READ()).await.unwrap();
+    t.call("thread/resume",json!({"threadId":THREAD,"excludeTurns":true})).await.unwrap();
+    t.next_where(|m|m["method"]=="turn/started"&&m["params"]["turn"]["id"]=="running-turn").await;
+    assert_eq!(t.call("thread/read",READ()).await.unwrap()["result"]["thread"]["status"]["type"],"active");
+
+    // Desktop stays connected but never sends the terminal state frame.
+    write_rollout(&t.rollout,&[started,json!({"type":"event_msg","payload":{"type":"turn_aborted","turn_id":"running-turn"}})]);
+    assert_eq!(t.call("thread/read",READ()).await.unwrap()["result"]["thread"]["status"]["type"],"idle");
+    t.next_where(|m|m["method"]=="turn/completed"&&m["params"]["turn"]["id"]=="running-turn"&&m["params"]["turn"]["status"]=="interrupted").await;
+    assert_eq!(t.call("thread/read",READ()).await.unwrap()["result"]["thread"]["status"]["type"],"idle");
+    assert_eq!(t.backend_calls("initialize"),1);
+    assert!(t.pipe_log.lock().unwrap().iter().all(|m|!m["method"].as_str().unwrap_or_default().starts_with("thread-follower-")));
+}

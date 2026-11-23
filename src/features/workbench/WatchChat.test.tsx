@@ -7,10 +7,55 @@ import type { ChatMessage, WatchChatApi, WatchChatState, WatchReply } from "./wa
 const original={sequence:17,threadId:"exact-original",label:"原对话",cwd:"D:\\project-a",snapshot:{state:"RESULT_READY",turnId:"turn-a",itemId:"item-a",text:"完整原文"},observedAt:1};
 const state:WatchChatState={watch:{...original,enabled:true,generation:2,checkedAt:1,errorCode:null},host:"电脑A",ownedTurnId:null,externalBusy:false,replies:[],requests:[],goal:null};
 const response=(id:string,status:WatchReply["status"]="SENT"):WatchReply=>({id,threadId:original.threadId,sourceSequence:17,expectedTurnId:"turn-a",mode:"SEND",text:"第一条回复",status,turnId:"turn-b",errorCode:null,createdAt:1,options:{attachments:[]}});
+it('does not place cached commentary after the latest page of the same steered turn',async()=>{
+ const message=(id:string,role:'user'|'assistant',text:string):ChatMessage=>({id,turnId:'turn-a',role,text});
+ const early=message('early','assistant','较早的方案说明'),middle=message('middle','assistant','较早的确认说明'),latest=message('item-a','assistant','完整原文');
+ sessionStorage.setItem(`aiwr-watch-public-v3:${original.threadId}`,JSON.stringify([early,middle,latest].map((m,i)=>({...m,seenAt:i+1}))));
+ const command=vi.fn(async(c:Record<string,unknown>)=>c.cursor?{messages:[early,message('answer','user','先开发能力'),middle],nextCursor:null}:{messages:[message('steer','user','不需要额外权限范围'),latest],nextCursor:'older-in-same-turn'});
+ const view=render(<WatchChat original={original} api={{state:async()=>({...state,publicMessages:[latest]}),command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
+ await screen.findByText('不需要额外权限范围');
+ const rows=()=>[...view.container.querySelectorAll('.v4-chat-reader>.v4-chat-message-row>.v4-chat-message')].map(e=>e.textContent);
+ expect(rows()).toEqual([expect.stringContaining('不需要额外权限范围'),expect.stringContaining('完整原文')]);
+ fireEvent.click(screen.getByRole('button',{name:'加载更早消息'}));
+ await screen.findByText('较早的方案说明');
+ expect(rows()).toEqual(['较早的方案说明','先开发能力','较早的确认说明','不需要额外权限范围','完整原文'].map(text=>expect.stringContaining(text)));
+});
+it('pastes a screenshot through the attachment upload without sending or replacing the draft',async()=>{
+ const command=vi.fn(async(c:Record<string,unknown>)=>c.action==='UPLOAD'?{id:'pasted-image',name:c.name,size:3}:{messages:[],nextCursor:null});
+ render(<WatchChat original={original} api={{state:async()=>state,command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
+ await screen.findByRole('heading',{name:'原对话'});
+ const input=screen.getByRole('textbox');fireEvent.change(input,{target:{value:'保留我的说明'}});
+ const file=new File(['png'],'screenshot.png',{type:'image/png'});
+ fireEvent.paste(input,{clipboardData:{files:[file],items:[{kind:'file',type:'image/png',getAsFile:()=>file}],getData:()=>''}});
+ await screen.findByRole('button',{name:'移除 screenshot.png'});
+ expect(command.mock.calls.filter(([c])=>c.action==='UPLOAD')).toHaveLength(1);
+ expect(command.mock.calls.find(([c])=>c.action==='UPLOAD')?.[0]).toMatchObject({threadId:original.threadId,name:'screenshot.png',data:'cG5n'});
+ expect(input).toHaveValue('保留我的说明');
+ expect(command.mock.calls.some(([c])=>c.action==='SEND')).toBe(false);
+});
+it('preserves ordinary text paste and inserts mixed clipboard text at the current selection',async()=>{
+ const command=vi.fn(async(c:Record<string,unknown>)=>c.action==='UPLOAD'?{id:'mixed-image',name:c.name,size:3}:{messages:[],nextCursor:null});
+ render(<WatchChat original={original} api={{state:async()=>state,command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
+ const input=screen.getByRole('textbox') as HTMLTextAreaElement;
+ expect(fireEvent.paste(input,{clipboardData:{files:[],items:[],getData:()=> 'text'}})).toBe(true);
+ fireEvent.change(input,{target:{value:'甲乙丙'}});input.setSelectionRange(1,2);
+ const image=new File(['png'],'mixed.png',{type:'image/png'});
+ expect(fireEvent.paste(input,{clipboardData:{files:[],items:[{kind:'file',type:'image/png',getAsFile:()=>image}],getData:()=> '说明'}})).toBe(false);
+ await screen.findByRole('button',{name:'移除 mixed.png'});
+ expect(input).toHaveValue('甲说明丙');
+});
 it('uses the latest native title in an already open conversation',async()=>{
  const current={...state,watch:{...state.watch,label:'更新后的原生名称'}};
  render(<WatchChat original={original} api={{state:async()=>current,command:async()=>({messages:[],nextCursor:null}) as never}} onBack={()=>{}}/>);
  expect(await screen.findByRole('heading',{name:'更新后的原生名称'})).toBeVisible();expect(screen.queryByRole('heading',{name:'原对话'})).toBeNull();
+});
+it('keeps the latest positioned reply below older history after opening the reader',async()=>{
+ const live={id:'item-a',turnId:'turn-a',role:'assistant' as const,text:'完整原文',order:100};
+ const messages=[{id:'u-a',turnId:'turn-a',role:'user',text:'最新的问题'},{...live,order:undefined},{id:'older',turnId:'turn-before',role:'assistant',text:'之前的回答'}];
+ const view=render(<WatchChat original={original} api={{state:async()=>({...state,publicMessages:[live]}),command:async()=>({messages,nextCursor:null}) as never}} onBack={()=>{}}/>);
+ await screen.findByText('之前的回答');
+ const rows=[...view.container.querySelectorAll('.v4-chat-reader>.v4-chat-message-row>.v4-chat-message')].map(e=>e.textContent);
+ expect(rows).toEqual([expect.stringContaining('之前的回答'),expect.stringContaining('最新的问题'),expect.stringContaining('完整原文')]);
 });
 it('renders a native Pi image once without a contradictory unavailable attachment preview',async()=>{
  const media=vi.spyOn(mediaModule,'messageMedia').mockImplementation(()=>Object.assign(vi.fn(async()=>({filename:'input.jpg',mime:'image/jpeg',data:''})),{scopeKey:'pi-image-fixture'}));
@@ -294,9 +339,9 @@ it('the persistent child entry opens the exact child conversation and restores t
 
 it('async native Codex questions are interactive in the reader with an exact persistent answer identity',async()=>{
  const card={requestId:'call-original',answerId:'answer-original',revision:1,method:'request_user_input_async',kind:'USER_INPUT',isBlocking:false,responseSent:false,questions:[{id:'["request_user_input_async","call-original",0]',label:'Choose route',required:true,options:[{label:'A',description:'Bounded'},{label:'B',description:'Broad'}]}]};
- const command=vi.fn(async(input:Record<string,unknown>)=>input.action==='ASYNC_RESPOND'?{accepted:true}:{messages:[],nextCursor:null});
+ const command=vi.fn(async(input:Record<string,unknown>)=>input.action==='ASYNC_RESPOND'?{id:'answer-original',threadId:original.threadId,status:'SENT'}:{messages:[],nextCursor:null});
  const view=render(<WatchChat original={original} api={{state:async()=>({...state,asyncQuestions:[card]}),command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
- const radio=await screen.findByRole('radio',{name:'A Bounded'});expect(radio.closest('.v4-chat-reader')).not.toBeNull();fireEvent.click(radio);fireEvent.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(command.mock.calls.some(([c])=>c.action==='ASYNC_RESPOND'&&c.id==='answer-original'&&c.requestId==='call-original')).toBe(true));expect(view.container.querySelector('.v4-chat-dock .v4-question-card')).toBeNull();
+ const radio=await screen.findByRole('radio',{name:'A Bounded'});expect(radio.closest('.v4-chat-reader')).not.toBeNull();fireEvent.click(radio);fireEvent.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(command.mock.calls.some(([c])=>c.action==='ASYNC_RESPOND'&&c.id==='answer-original'&&c.requestId==='call-original')).toBe(true));expect(view.container.querySelector('.v4-chat-dock .v4-question-card')).toBeNull();await waitFor(()=>expect(screen.queryByRole('radio',{name:'A Bounded'})).not.toBeInTheDocument());expect(screen.queryByText(/正在核对这次答复/)).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'回答问题'})).not.toBeInTheDocument();expect(command.mock.calls.filter(([c])=>c.action==='ASYNC_RESPOND')).toHaveLength(1);
 });
 it('native Claude turn actions send the original selected message and preserve the existing composer draft',async()=>{
  const native={...original,threadId:'claude_code:10000000-0000-4000-8000-000000000001'};

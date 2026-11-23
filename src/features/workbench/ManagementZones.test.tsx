@@ -41,6 +41,24 @@ it('reads fresh titles on manual refresh and shows the returned manager name',as
  expect(screen.getByText('已重新读取管理区和对话名称。')).toBeVisible();
  expect(api.change).not.toHaveBeenCalled();
 });
+it('rechecks immediately after an interrupted read when the page has already returned',async()=>{
+ const {api,data}=fixture();
+ await screen.findByRole('button',{name:/管理对话.*原管理/});
+ let reject!:(reason:unknown)=>void;
+ vi.mocked(api.read).mockImplementationOnce(()=>new Promise((_,fail)=>{reject=fail;}));
+ act(()=>window.dispatchEvent(new Event('pageshow')));
+ expect(api.read).toHaveBeenCalledTimes(2);
+ const next=structuredClone(data);next.zones[0].manager!.label='恢复后的标题';
+ vi.mocked(api.read).mockResolvedValueOnce(next);
+ await act(async()=>{
+  window.dispatchEvent(new Event('pageshow'));
+  window.dispatchEvent(new Event('online'));
+  reject(new DOMException('ROUTER_READ_SUSPENDED','AbortError'));
+ });
+ expect(screen.getByRole('button',{name:/管理对话.*恢复后的标题/})).toBeVisible();
+ expect(api.read).toHaveBeenCalledTimes(3);
+ expect(api.change).not.toHaveBeenCalled();
+});
 it('appoints a Codex manager with one revision-bound owner operation',async()=>{
  const{api}=fixture();fireEvent.click(await screen.findByRole('button',{name:'管理区操作'}));fireEvent.click(screen.getByRole('menuitem',{name:'更换管理对话'}));
  fireEvent.click(screen.getByRole('radio',{name:/新管理/}));
@@ -165,4 +183,14 @@ it('keeps open-conversation failures in the inspector and permits retry',async()
  fireEvent.click(within(inspector).getByRole('button',{name:'打开对话'}));
  await waitFor(()=>expect(open).toHaveBeenCalledExactlyOnceWith(watch));
  expect(within(inspector).queryByRole('alert')).toBeNull();
+});
+
+it('calls an expired active observation unconfirmed until the watcher reports back',async()=>{
+ const {data}=fixture(snapshot=>{snapshot.zones[0].members[0].conversation!.checkedAt=Date.now()-91_000;});
+ expect(await screen.findByText('1 条对话的执行状态待确认，正在重试。')).toBeVisible();
+ expect(screen.queryByRole('button',{name:/执行对话.*执行对话/})).toBeNull();
+ expect(screen.queryByText('当前没有正在执行的对话')).toBeNull();
+ data.zones[0].members[0].conversation!.checkedAt=Date.now();
+ await act(async()=>{window.dispatchEvent(new Event('online'));});
+ expect(await screen.findByRole('button',{name:/执行对话.*执行对话/})).toBeVisible();
 });

@@ -1,44 +1,55 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useState} from 'react';
 import type {CodexWatch,NotificationApi} from './CodexNotifications';
+import {isSupersededRead} from './readModelCache';
 
 /** One poller per NotificationApi, shared by the conversation list and the
  * to-do count, so adding a reader never multiplies Host reads. Reads the
  * existing watch projection: cached first, then the live list. */
-type Store={rows:CodexWatch[];listeners:Set<(rows:CodexWatch[])=>void>;stop?:()=>void;poll:(force?:boolean)=>Promise<void>};
+type Snapshot={rows:CodexWatch[];failed:boolean};
+const empty:Snapshot={rows:[],failed:false};
+type Store={snapshot:Snapshot;listeners:Set<(snapshot:Snapshot)=>void>;start:()=>void;stop?:()=>void;refresh:()=>Promise<CodexWatch[]>};
 const stores=new WeakMap<NotificationApi,Store>();
 function storeFor(api:NotificationApi):Store{
  const prior=stores.get(api);if(prior)return prior;
- let inFlight=false,refreshAgain=false,timer:ReturnType<typeof setTimeout>|undefined;
- const store:Store={rows:api.cachedWatches?.()??[],listeners:new Set(),poll:async()=>{}};
- const publish=(rows:CodexWatch[])=>{store.rows=rows;for(const l of store.listeners)l(rows);};
- store.poll=async(force=false)=>{
-  if(!store.listeners.size||document.visibilityState==='hidden')return;
-  if(inFlight){refreshAgain ||= force;return;}inFlight=true;
-  try{publish(await(force&&api.refreshWatches?api.refreshWatches():api.watches()));}catch{/* keep the cached list */}
-  finally{inFlight=false;clearTimeout(timer);if(store.listeners.size){if(refreshAgain){refreshAgain=false;void store.poll(true);}else timer=setTimeout(()=>void store.poll(),5000);}}
- };
- const start=()=>{
-  const unsubscribe=api.subscribe?.(()=>{const cached=api.cachedWatches?.();if(cached)publish(cached);});
-  const wake=()=>{if(document.visibilityState!=='hidden'){clearTimeout(timer);void store.poll(true);}};
+ let inFlight:Promise<CodexWatch[]>|undefined,wokeDuringRead=false,timer:ReturnType<typeof setTimeout>|undefined;
+ const store:Store={snapshot:{rows:api.cachedWatches?.()??[],failed:false},listeners:new Set(),start,refresh};
+ const publish=(next:Snapshot)=>{store.snapshot=next;for(const l of store.listeners)l(next);};
+ function poll(){if(store.listeners.size&&document.visibilityState!=='hidden')void refresh().catch(()=>{});}
+ function refresh(){
+  if(inFlight)return inFlight;
+  clearTimeout(timer);
+  let failed=false;
+  inFlight=Promise.resolve().then(()=>api.refreshWatches?.()??api.watches()).then(rows=>{
+   if(store.listeners.size)publish({rows,failed:false});return rows;
+  }).catch(error=>{
+   failed=true;
+   if(store.listeners.size&&!isSupersededRead(error)&&!String(error).includes('ROUTER_READ_SUSPENDED'))publish({...store.snapshot,failed:true});
+   throw error;
+  }).finally(()=>{
+   inFlight=undefined;const retry=failed&&wokeDuringRead;wokeDuringRead=false;
+   if(store.listeners.size){if(retry&&document.visibilityState!=='hidden')poll();else timer=setTimeout(poll,5000);}
+  });
+  return inFlight;
+ }
+ function start(){
+  if(api.cachedWatches)publish({...store.snapshot,rows:api.cachedWatches()??[]});
+  const unsubscribe=api.subscribe?.(()=>{if(api.cachedWatches)publish({...store.snapshot,rows:api.cachedWatches()??[]});});
+  const wake=()=>{if(document.visibilityState!=='hidden'){if(inFlight)wokeDuringRead=true;else poll();}};
   document.addEventListener('visibilitychange',wake);window.addEventListener('focus',wake);window.addEventListener('pageshow',wake);window.addEventListener('online',wake);
-  store.stop=()=>{clearTimeout(timer);unsubscribe?.();document.removeEventListener('visibilitychange',wake);window.removeEventListener('focus',wake);window.removeEventListener('pageshow',wake);window.removeEventListener('online',wake);store.stop=undefined;};
-  void store.poll(true);
- };
- (store as Store&{start:()=>void}).start=start;
+  store.stop=()=>{clearTimeout(timer);unsubscribe?.();document.removeEventListener('visibilitychange',wake);window.removeEventListener('focus',wake);window.removeEventListener('pageshow',wake);window.removeEventListener('online',wake);store.stop=undefined;store.snapshot=empty;wokeDuringRead=false;};
+  poll();
+ }
  stores.set(api,store);return store;
 }
 export function useWatches(api?:NotificationApi){
- const [watches,setWatches]=useState<CodexWatch[]>(()=>api?(stores.get(api)?.rows??api.cachedWatches?.()??[]):[]);
+ const [snapshot,setSnapshot]=useState<Snapshot>(()=>api?storeFor(api).snapshot:empty);
  useEffect(()=>{
-  if(!api)return;const store=storeFor(api);
-  const listener=(rows:CodexWatch[])=>setWatches(rows);
-  const first=!store.listeners.size;store.listeners.add(listener);
-  setWatches(store.rows);
-  if(first)(store as Store&{start:()=>void}).start();else void store.poll(true);
-  return()=>{store.listeners.delete(listener);if(!store.listeners.size)store.stop?.();};
+  if(!api){setSnapshot(empty);return;}const store=storeFor(api);
+  const first=!store.listeners.size;store.listeners.add(setSnapshot);
+  setSnapshot(store.snapshot);
+  if(first)store.start();
+  return()=>{store.listeners.delete(setSnapshot);if(!store.listeners.size)store.stop?.();};
  },[api]);
- const activeApi=useRef(api);activeApi.current=api;
- const alive=useRef(true);useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
- const refresh=async()=>{if(!api)return;const rows=await(api.refreshWatches?.()??api.watches());const store=stores.get(api);if(store){store.rows=rows;for(const l of store.listeners)l(rows);}else if(alive.current&&activeApi.current===api)setWatches(rows);};
- return [watches,refresh] as const;
+ const refresh=()=>api?storeFor(api).refresh():Promise.resolve([]);
+ return [snapshot.rows,refresh,snapshot.failed] as const;
 }

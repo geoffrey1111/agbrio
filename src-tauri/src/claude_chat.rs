@@ -1,4 +1,5 @@
-//! Authenticated owner UI surface; deliberately absent from OAuth/MCP actions.
+//! Claude input surface. Owner messages and reviewed assistant messages share
+//! native safeguards but keep distinct durable provenance.
 use crate::host_application::RouterCore;
 use router_core::store::{claude_manual::{native_id,PREFIX},codex_watch::WatchSnapshot,watch_reply::WatchReply};
 use serde_json::{json,Value};
@@ -76,6 +77,13 @@ pub(crate) fn state(core:&RouterCore,key:&str)->Result<Value,String>{
     Ok(json!({"runtime":crate::native_runtime::claude(native_id(key)?),"piChildren":crate::pi::presentation::children(core,key,&watch.cwd)?,"watch":watch,"provider":"CLAUDE_CODE","inputReady":ready,"host":std::env::var("COMPUTERNAME").unwrap_or_default(),"ownedTurnId":null,"controllableTurnId":null,"externalBusy":matches!(state,"RUNNING"|"WAITING_DECISION"),"replies":replies,"requests":[],"goal":null,"publicMessages":messages,"historyRevision":history_revision,"taskTree":task_tree,"ownerRequests":core.store.claude_owner_requests(key,watch.generation,native_id(key)?)?,"childResultsEnabled":core.store.child_results_enabled(key)?,"activity":if state=="RUNNING"{Some("EXECUTING")}else{None},"checkedAt":session.as_ref().map(|s|s.checked_at).unwrap_or(watch.checked_at)}))
 }
 pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{
+    command_with_assistant(core,c,false)
+}
+pub(crate) fn assistant_send(core:&RouterCore,c:ChatCommand)->Result<Value,String>{
+    if !matches!(&c,ChatCommand::Send{..}){return Err("CLAUDE_ASSISTANT_OPERATION_UNSUPPORTED".into());}
+    command_with_assistant(core,c,true)
+}
+fn command_with_assistant(core:&RouterCore,c:ChatCommand,assistant:bool)->Result<Value,String>{
     let _cache=if matches!(&c,ChatCommand::Send{..}|ChatCommand::Upload{..}){Some(crate::attachment_cache::guard()?)}else{None};
     let encode=|r:WatchReply|serde_json::to_value(r).map_err(|_|"CLAUDE_RESPONSE_INVALID".to_string());
     match c {
@@ -95,6 +103,7 @@ pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{
             if input.expected_turn_id!=session.turn_id{return Err("REPLY_TURN_CHANGED_REFRESH".into());}
             if input.mode=="SEND"&&!matches!(session.state.as_str(),"COMPLETE"|"FAILED"|"INTERRUPTED"|"EMPTY"|"LIMITED"){return Err("REPLY_EXTERNAL_STATE_UNCONFIRMED".into());}
             if input.mode=="QUEUE"&&!matches!(session.state.as_str(),"RUNNING"|"SESSION_START"|"COMPLETE"|"EMPTY"){return Err("REPLY_TURN_CHANGED_REFRESH".into());}
+            if assistant{return encode(core.store.prepare_claude_assistant_reply(&input,&session.instance_id)?);}
             let r=core.store.prepare_watch_reply(&input)?;
             if let Err(error)=core.store.enqueue_claude_manual(&r,&session.instance_id){
                 let code=match error.as_str(){"CLAUDE_TARGET_CHANGED"=>"CLAUDE_TARGET_CHANGED",_=>"CLAUDE_PREWRITE_FAILED"};

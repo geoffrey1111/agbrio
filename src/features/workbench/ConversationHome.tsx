@@ -1,3 +1,4 @@
+import {claimsExecution,observationExpired,useObservationClock} from './observationFreshness';
 import {failedAttentionKey,useDismissedAttention} from './attentionDismissals';
 import {piDelegations} from './piDelegations';
 import {PullToRefresh} from './PullToRefresh';
@@ -45,18 +46,20 @@ const folder=(path:string)=>path.split(/[\\/]/).filter(Boolean).at(-1)??"";
 const messageTime=(value:number|null|undefined)=>typeof value==="number"&&Number.isFinite(value)&&value>0?value:0;
 export const when=(value:number)=>{if(!value)return"";const minutes=(Date.now()-value)/60000;if(minutes<1)return uiText("刚刚");if(minutes<60)return tc("{0} 分钟",Math.floor(minutes));const date=new Date(value);return minutes<1440?new Intl.DateTimeFormat(getLanguage(),{hour:"2-digit",minute:"2-digit"}).format(date):new Intl.DateTimeFormat(getLanguage(),{month:"numeric",day:"numeric"}).format(date);};
 
-export function watchTone(w:CodexWatch):[Tone,string]{
+export function watchTone(w:CodexWatch,now=Date.now()):[Tone,string]{
  if(!w.enabled&&!w.threadId.startsWith("pi:"))return["done",uiText("已暂停")];
  // A classified upstream account problem (balance, quota, auth) is the owner's to fix, not a read failure.
  if(w.threadId.startsWith("pi:")&&providerOwnerAttention(w.errorCode))return["wait",uiText("需要你处理")];
  if(w.threadId.startsWith("pi:")&&w.snapshot.state==="FAILED")return["wait",uiText("执行失败")];
  if(w.errorCode)return["done",uiText("暂时无法读取")];
+ if(claimsExecution(w.snapshot.state)&&observationExpired(w.checkedAt,now))return["done",uiText("执行状态待确认，正在重试")];
  if(w.snapshot.state==="ACTION_REQUIRED")return ["wait",uiText("等你确认")];
  if(w.snapshot.state==="FAILED")return ["wait",uiText("执行失败")];
  if(w.taskTree?.attention)return ["wait",claudeTaskSummary(w.taskTree)!];
  if(w.taskTree?.running)return ["run",claudeTaskSummary(w.taskTree)!];
  if(w.taskTree&&(w.taskTree.unknown||w.taskTree.limited)&&w.snapshot.state!=="RUNNING")return ["done",claudeTaskSummary(w.taskTree)!];
  switch(w.snapshot.state){
+  case"THINKING":
   case"RUNNING":return["run",uiText("执行中")];
   case"ACTION_REQUIRED":return["wait",uiText("等你确认")];
   case"FAILED":return["wait",uiText("执行失败")];
@@ -66,8 +69,8 @@ export function watchTone(w:CodexWatch):[Tone,string]{
  }
 }
 /** A parent's own state, then the merged delegated-conversation tree. */
-function parentTone(w:CodexWatch,tree:ChildTreeModel|undefined,failureDismissed:boolean):[Tone,string]{
- const [tone,own]=failureDismissed?["done",""] as const:watchTone({...w,taskTree:undefined});
+function parentTone(w:CodexWatch,tree:ChildTreeModel|undefined,failureDismissed:boolean,now:number):[Tone,string]{
+ const [tone,own]=failureDismissed?["done",""] as const:watchTone({...w,taskTree:undefined},now);
  if(tone==="wait"||!tree?.total)return[tone,own];
  const needs=tree.wait+tree.fail;
  if(needs)return["wait",tc("子对话等你 {0}",needs)];
@@ -102,7 +105,7 @@ export function ConversationHome({onOpenManagement,selectedKey,bridges,activity,
  const isDismissed=useDismissedAttention();
  const seen=useSeenResults();
  const [hiddenWatches,setHiddenWatches]=useState<string[]>([]);
- const [watched,refreshWatches]=useWatches(watchApi);
+ const [watched,refreshWatches,watchReadFailed]=useWatches(watchApi);
  const locallyHiddenChildren=piDelegations(watched).children;
  const hiddenIds=new Set(hiddenWatches.flatMap(id=>[id,...(locallyHiddenChildren.get(id)??[]).map(w=>w.threadId)]));
  const watches=watched.filter(w=>!hiddenIds.has(w.threadId));
@@ -117,7 +120,7 @@ export function ConversationHome({onOpenManagement,selectedKey,bridges,activity,
  const [sheet,setSheet]=useState<"CHOOSE"|"WATCH"|"BRIDGE"|null>(null);
  const seenAdd=useRef(addRequest);
  useEffect(()=>{if(addRequest!==seenAdd.current){seenAdd.current=addRequest;setSheet("CHOOSE");}},[addRequest]);
- const now=Date.now();
+ const now=useObservationClock();
 
  const rows=useMemo<Row[]>(()=>{
   const b=bridges.map<Row>(item=>{const entry=activity[item.id];const [tone,state]=bridgeTone(entry?.row,entry?Math.max(0,activityClock-entry.receivedAt):Infinity,item);
@@ -128,12 +131,12 @@ export function ConversationHome({onOpenManagement,selectedKey,bridges,activity,
    const pi=delegation.children.get(watch.threadId)??[];
    const tree=watch.taskTree?.nodes.length||watch.taskTree?.limited||pi.length?buildChildTree({parentThreadId:watch.threadId,tree:watch.taskTree,pi,now,isDismissed,seen}):undefined;
    const failureDismissed=watch.snapshot.state==="FAILED"&&isDismissed(failedAttentionKey(watch));
-   const [tone,state]=parentTone(watch,tree,failureDismissed);
+   const [tone,state]=parentTone(watch,tree,failureDismissed,now);
    const at=Math.max(messageTime(watch.lastMessageAt),...pi.map(c=>messageTime(c.lastMessageAt)));
    return{key:`w:${watch.threadId}`,kind:"WATCH",title:watch.label,meta:`${threadProviderLabel(watch.threadId)}${watch.cwd?` · ${folder(watch.cwd)}`:""}`,source:threadProviderLabel(watch.threadId),preview:failureDismissed?"":messagePreview(watch.snapshot.text),at,tone,state,unread:false,newResult:watch.unreadResult===true&&!seen(watch.threadId,watch.lastMessageAt),tree,watch};});
   const rank={run:0,wait:1,done:2};
   return [...b,...w].sort((x,y)=>rank[x.tone]-rank[y.tone]||y.at-x.at||(x.key<y.key?-1:x.key>y.key?1:0));
- },[bridges,activity,activityClock,watches,isDismissed,seen]);
+ },[bridges,activity,activityClock,watches,isDismissed,seen,now]);
  const counts={run:rows.filter(r=>r.tone==="run").length};
  const q=query.trim().toLocaleLowerCase();
  const childHit=(r:Row)=>Boolean(q&&r.tree&&[...r.tree.active,...r.tree.ended].some(e=>e.title.toLocaleLowerCase().includes(q)));
@@ -152,7 +155,7 @@ export function ConversationHome({onOpenManagement,selectedKey,bridges,activity,
  // data-bridge-id lets useBridgeActivity read status only for rows on screen.
  const item=(r:Row):ReactNode=>{const body=<motion.button type="button" whileTap={reduced?undefined:{scale:.97}} transition={spring} className="v6-row" data-tone={r.tone} data-bridge-id={r.bridge?.id} aria-current={selectedKey===r.key?"true":undefined} onClick={()=>open(r)}>
    <ConversationAvatar id={r.key} kind={r.kind==="BRIDGE"?"bridge":threadAvatarKind(r.watch!.threadId)}/>
-   <span className="v6-row-body"><span className="v6-row-top"><strong>{r.title}</strong>{r.newResult&&<i className="v7-result-dot" role="img" aria-label={uiText("有新结果")}/>}{r.at?<time>{when(r.at)}</time>:null}</span><span className="v6-row-meta"><span className="v7-meta-text" title={r.meta}>{r.source}</span>{r.watch&&<ModelBadge runtime={watchRuntime(r.watch)}/>}</span>{r.preview&&<span className="v6-row-preview">{r.preview}</span>}{r.state&&<motion.span key={r.state} className="v6-state" data-tone={r.tone} initial={reduced?false:{opacity:.5}} animate={{opacity:1}} transition={{duration:reduced?0:.12}}>{r.tone==="run"&&<i aria-hidden/>}{r.state}</motion.span>}</span>
+   <span className="v6-row-body"><span className="v6-row-top"><strong>{r.title}</strong>{r.newResult&&<i className="v7-result-dot" role="img" aria-label={uiText("有新结果")}/>}{r.at?<time title={uiText("最近一条消息：{0}",new Intl.DateTimeFormat(getLanguage(),{dateStyle:"short",timeStyle:"short"}).format(r.at))}>{when(r.at)}</time>:null}</span><span className="v6-row-meta"><span className="v7-meta-text" title={r.meta}>{r.source}</span>{r.watch&&<ModelBadge runtime={watchRuntime(r.watch)}/>}</span>{r.preview&&<span className="v6-row-preview">{r.preview}</span>}{r.state&&<motion.span key={r.state} className="v6-state" data-tone={r.tone} initial={reduced?false:{opacity:.5}} animate={{opacity:1}} transition={{duration:reduced?0:.12}}>{r.tone==="run"&&<i aria-hidden/>}{r.state}</motion.span>}</span>
    <AnimatePresence>{r.unread&&<motion.i className="v6-unread" aria-label={uiText("需要你处理")} initial={{scale:0}} animate={{scale:1}} exit={{scale:0}} transition={{type:"spring",stiffness:600,damping:14}}/>}</AnimatePresence>
   </motion.button>;
   const inner=r.bridge&&onDeleteBridge?<SwipeDeleteRow label={r.title} onDelete={()=>onDeleteBridge(r.bridge!)}>{body}</SwipeDeleteRow>:r.watch&&watchApi?.remove?<SwipeDeleteRow label={r.title} onDelete={()=>void stopWatching(r.watch!)}>{body}</SwipeDeleteRow>:body;
@@ -165,11 +168,12 @@ export function ConversationHome({onOpenManagement,selectedKey,bridges,activity,
  async function refreshList(){const results=await Promise.allSettled([refreshWatches(),onRefreshList?.()]);if(results.some(r=>r.status==="rejected"))throw Error("LIST_REFRESH_INCOMPLETE");}
  return <PullToRefresh enabled={Boolean(onRefreshList)} onRefresh={refreshList} scrollContainer={scrollContainer}><section className="v6-home" data-mode="ALL" aria-label={uiText("对话")}>
   {onOpenManagement&&<button type="button" className="v6-management-entry" onClick={onOpenManagement}><GitBranch size={17} aria-hidden/>{uiText("管理区")}<ChevronRight size={16} aria-hidden/></button>}
+ {watchReadFailed&&<p role="status" className="v4-meta">{uiText("对话状态未更新，正在自动重试。")}</p>}
   <label className="v6-search"><Search size={16} aria-hidden/><input type="search" aria-label={uiText("搜索对话、子对话或项目")} placeholder={uiText("搜索对话、子对话或项目")} value={query} onChange={e=>setQuery(e.target.value)}/>{query&&<button type="button" aria-label={uiText("清除搜索")} onClick={()=>setQuery("")}><X size={16}/></button>}</label>
   <LayoutGroup id="v6-chips"><div className="v6-chips" role="group" aria-label={uiText("筛选")}>{chips.map(([id,label,n])=><motion.button key={id} type="button" whileTap={{scale:.92}} aria-pressed={filter===id} onClick={()=>setFilter(id)}>{filter===id&&<motion.span className="v6-chip-fill" layoutId="v6-chip-fill" transition={spring}/>}<span>{label}{n?<b>{n}</b>:null}</span></motion.button>)}</div></LayoutGroup>
   {visible.length>0&&<div className="v6-list"><AnimatePresence>{[...active.map(item),...(rest.length?[<motion.small layout="position" key="section" className="v6-section">{active.length?uiText("其他"):uiText("最近")}</motion.small>]:[]),...rest.map(item)]}</AnimatePresence></div>}
   {quiet.length>0&&<details className="v6-quiet-watches"><summary>{uiText("较早的对话")} <span>{quiet.length}</span></summary><p>{uiText("三天未更新的对话收在这里，仍会继续监听。有新进展或手动移回最近后重新显示。")}</p><div className="v6-list">{quiet.map(r=><div className="v6-quiet-item" key={r.key}>{item(r)}{watchApi?.show&&<button type="button" className="v6-quiet-restore" aria-label={uiText("移回最近：{0}",r.title)} onClick={()=>void showQuiet(r.watch!)}>{uiText("移回最近")}</button>}</div>)}</div>{quietError&&<p role="alert">{quietError}</p>}</details>}
-  {!visible.length&&<div className="v6-empty">{rows.length?<p>{uiText("没有符合条件的对话")}</p>:<><MessageSquare size={30} aria-hidden/><h2>{uiText("还没有关注的对话")}</h2><p>{uiText("监听电脑上的 Codex 或 Claude Code 对话，或者把两个对话连成 Bridge。")}</p><button type="button" className="v6-primary" onClick={()=>setSheet("CHOOSE")}>{uiText("开始")}</button></>}</div>}
+  {!visible.length&&<div className="v6-empty">{rows.length?<p>{uiText("没有符合条件的对话")}</p>:<><MessageSquare size={30} aria-hidden/>{!watchReadFailed&&<h2>{uiText("还没有关注的对话")}</h2>}<p>{uiText("监听电脑上的 Codex 或 Claude Code 对话，或者把两个对话连成 Bridge。")}</p><button type="button" className="v6-primary" onClick={()=>setSheet("CHOOSE")}>{uiText("开始")}</button></>}</div>}
   <AnimatePresence>{undo&&<motion.div className="v6-toast" role="status" initial={{y:24,opacity:0}} animate={{y:0,opacity:1}} exit={{y:24,opacity:0}} transition={spring}>{uiText("已停止监听")}<button type="button" onClick={()=>void restoreWatch(undo)}>{uiText("撤销")}</button></motion.div>}</AnimatePresence>
   <AddSheet mode={sheet} setMode={setSheet} watchApi={watchApi} watched={watches} quietIds={quietIds} onCreateBridge={onCreateBridge} onWatched={w=>{setSheet(null);onOpenWatch(w);}}/>
  </section></PullToRefresh>;

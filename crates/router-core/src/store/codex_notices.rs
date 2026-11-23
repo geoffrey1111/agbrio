@@ -36,13 +36,13 @@ fn require_binding(c:&Connection,b:&Binding)->Result<(),String>{
 }
 fn notice_binding(c:&Connection,s:&Subscription,n:&Notice)->Result<(),String>{
  if s.receiver_provider!="CLAUDE_CODE"{return Err("CLAUDE_NOTICE_RECEIVER_PROVIDER_MISMATCH".into());}
- if s.management_zone_id.is_some(){return super::management_zones::validate_subscription(c,s);}
+ if s.management_zone_id.is_some(){super::management_zones::validate_subscription(c,s)?;return super::management_reminders::validate_native_kind(&n.kind);}
  if s.status=="CANCELLED"{return Err("CLAUDE_NOTICE_CLAIM_UNAVAILABLE".into());}
  if n.kind!="SOURCE_CHANGED"{if matches!(s.status.as_str(),"REBOUND"|"REPLACED"|"EXPIRED"){return Err("CLAUDE_NOTICE_CLAIM_UNAVAILABLE".into());}return require_binding(c,&s.binding);}
  let root:String=c.query_row("SELECT cwd FROM claude_sessions WHERE session_id=?1",[&s.binding.receiver_sid],|r|r.get(0)).map_err(db_error)?;
  if !crate::claude_code::same_root(&root,&s.binding.receiver_cwd){return Err("CLAUDE_ROOT_CHANGED".into());}Ok(())
 }
-fn text(s:&Subscription,id:&str,turn:&str,kind:&str,state:&str,request:Option<&str>)->String{
+pub(super) fn text(s:&Subscription,id:&str,turn:&str,kind:&str,state:&str,request:Option<&str>)->String{
  let provider=if s.binding.thread_id.starts_with("pi:"){"Pi"}else if s.binding.thread_id.starts_with("claude_code:"){"Claude Code"}else{"Codex"};
  let mut body=format!("Agbrio {provider} task notice (metadata only)\nnoticeId: {id}\nkind: {kind} · state: {state}\nthreadId: {} · generation: {}",s.binding.thread_id,s.binding.generation);
  if !turn.is_empty(){body.push_str(&format!("\nturnId: {turn}"));}
@@ -70,10 +70,12 @@ pub(super) fn enqueue(c:&Connection,s:&Subscription,turn:&str,kind:&str,state:&s
  c.execute("INSERT OR IGNORE INTO claude_codex_notices(id,subscription_id,turn_id,kind,source_state,request_id,text,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![id,s.id,turn,kind,state,request,body,at]).map_err(db_error)?;Ok(())
 }
 fn backlog_for_receiver(c:&Connection,sid:&str,cwd:&str)->Result<(Vec<Value>,i64),String>{
- let from="FROM claude_codex_notices n JOIN claude_codex_subscriptions s ON s.id=n.subscription_id WHERE s.receiver_provider='CLAUDE_CODE' AND s.receiver_sid=?1 AND s.receiver_cwd=?2 AND n.status='BACKLOG'";
- let total=c.query_row(&format!("SELECT count(*) {from}"),params![sid,cwd],|r|r.get(0)).map_err(db_error)?;
+ let from="FROM claude_codex_notices n JOIN claude_codex_subscriptions s ON s.id=n.subscription_id WHERE s.receiver_provider='CLAUDE_CODE' AND s.receiver_sid=?1 AND s.receiver_cwd=?2 AND n.status='BACKLOG' AND (n.kind!='AWAITING_MANAGER' OR (s.status='ACTIVE' AND n.id IN(SELECT notice_id FROM management_reminder_evidence WHERE verified_at>=?3)))";
+ let cutoff=now()-super::management_reminders::PROOF_LIFETIME;
+ let total=c.query_row(&format!("SELECT count(*) {from}"),params![sid,cwd,cutoff],|r|r.get(0)).map_err(db_error)?;
  let mut q=c.prepare(&format!("SELECT n.id,s.thread_id,s.generation,n.turn_id,n.kind,n.source_state,n.request_id,n.created_at {from} ORDER BY n.created_at DESC,n.id DESC LIMIT 64")).map_err(db_error)?;
- let rows=q.query_map(params![sid,cwd],backlog_item).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;
+ let mut rows=q.query_map(params![sid,cwd,cutoff],backlog_item).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;
+ super::management_reminders::decorate_backlog(c,&mut rows)?;
  Ok((rows,total))
 }
 pub(super) fn backlog_item(r:&rusqlite::Row<'_>)->rusqlite::Result<Value>{Ok(serde_json::json!({

@@ -37,6 +37,11 @@ export function mergeHistory(older:ChatMessage[],newer:ChatMessage[]){
   groups.set(turn,merged);
  }
  const pageTurns=[...incoming.keys()];
+ // A complete native page can also repair reversed turn groups in a warm cache.
+ // A partial single-turn refresh must leave all other turns in place.
+ const shared=pageTurns.filter(turn=>turnOrder.includes(turn));
+ let sharedIndex=0;
+ for(let i=0;i<turnOrder.length;i++)if(incoming.has(turnOrder[i]))turnOrder[i]=shared[sharedIndex++];
  for(let i=0;i<pageTurns.length;i++){
   const turn=pageTurns[i];if(turnOrder.includes(turn))continue;
   const anchor=pageTurns.slice(i+1).find(t=>turnOrder.includes(t));
@@ -74,6 +79,13 @@ export function chatTimeline(history:ChatMessage[],observed:ObservedMessage[],re
   if(loaded&&message!==source&&message.id.startsWith('claude_reply:'))continue;
   const twin=sameReply(message);
   if(twin){if(identity(message)===identity(source)){const group=groups.get(twin.turnId);const item=group?.find(m=>m.id===twin.id);if(item)item.source=true;}continue;}
+  // A long Codex turn spans several item pages. Cached observations from an
+  // earlier page have no position inside the loaded page, even in the same
+  // turn. Appending them would put old commentary below the latest reply.
+  // Native paging restores those rows. Even a snapshot can lag a history read;
+  // a new item waits for its native page instead of guessing which end it owns.
+  const inHistory=history.some(m=>identity(m)===identity(message));
+  if(loaded&&history.length&&nativeTurns.has(message.turnId)&&!inHistory&&message.order===undefined)continue;
   times.set(message.turnId,Math.min(times.get(message.turnId)??Infinity,message.seenAt));
   const existingItem=groups.get(message.turnId)?.find(m=>m.id===message.id);
   if(existingItem){existingItem.source=identity(message)===identity(source);}
@@ -81,7 +93,7 @@ export function chatTimeline(history:ChatMessage[],observed:ObservedMessage[],re
  }
  // The current live snapshot can advance inside the same native item. Older
  // session-cache text must never overwrite a freshly read native message.
- if(current&&!sameReply(current))add({...current,source:identity(current)===identity(source)});
+ if(current&&!sameReply(current)&&(!loaded||!nativeTurns.has(current.turnId)||current.order!==undefined||history.some(m=>identity(m)===identity(current))))add({...current,source:identity(current)===identity(source)});
  const sorted=[...replies].sort((a,b)=>a.createdAt-b.createdAt);
  for(const receipt of sorted){
   // Claude receipts can have no turn id. Their independently stored native UUID
@@ -118,8 +130,11 @@ export function chatTimeline(history:ChatMessage[],observed:ObservedMessage[],re
  // Claude's byte offsets also preserve interleaved internal events inside one
  // prompt. Turn grouping alone cannot express that native order.
  if(positioned.length===0)return rows;
- const unpositioned=rows.filter(m=>m.order===undefined);
- return [...unpositioned.filter(m=>before.includes(m.turnId)),...positioned,...unpositioned.filter(m=>!before.includes(m.turnId))];
+ // A snapshot may introduce order metadata before the matching history page
+ // refreshes. Unknown positions keep their native slots; they are not newer
+ // than every positioned message merely because they have no numeric order.
+ let position=0;
+ return rows.map(m=>m.order===undefined?m:positioned[position++]);
 }
 
 /** Native asynchronous-answer transport stays private to the protocol. */

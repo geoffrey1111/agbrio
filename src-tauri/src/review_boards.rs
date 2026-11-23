@@ -276,12 +276,12 @@ fn read_allowed(path: &str, query: Option<&str>) -> bool {
     }
     if path == "api/reviews" {
         return q.is_empty()
-            || q.len() == 1
-                && q[0].0 == "scope"
-                && matches!(
-                    q[0].1.as_str(),
-                    "illustrations" | "ui-resources" | "motions" | "motion-review"
-                );
+            || q.iter().any(|(k, _)| k == "scope")
+                && q.iter().all(|(k, v)| match k.as_str() {
+                    "scope" => matches!(v.as_str(), "illustrations" | "ui-resources" | "motions" | "motion-review"),
+                    "queue" => v == "1",
+                    _ => false,
+                });
     }
     if path.starts_with("assets/") {
         let id = &path[7..];
@@ -680,6 +680,10 @@ mod tests {
             "?scope=ui-resources",
             "?scope=motions",
             "?scope=motion-review",
+            "?scope=illustrations&queue=1",
+            "?scope=ui-resources&queue=1",
+            "?scope=motions&queue=1",
+            "?queue=1&scope=ui-resources",
         ] {
             assert!(read_allowed("api/reviews", scope.strip_prefix('?')));
         }
@@ -687,6 +691,10 @@ mod tests {
         for (path, q) in [
             ("api/reviews", Some("scope=characters")),
             ("api/reviews", Some("scope=motions&scope=illustrations")),
+            ("api/reviews", Some("scope=ui-resources&queue=0")),
+            ("api/reviews", Some("scope=ui-resources&queue=1&queue=1")),
+            ("api/reviews", Some("scope=ui-resources&queue=1&path=secrets")),
+            ("api/reviews", Some("queue=1")),
             ("api/health", None),
             ("../auth", None),
             ("data/chunks/../../secret.json", None),

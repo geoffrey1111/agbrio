@@ -1471,6 +1471,7 @@
   "正在刷新列表…": "Refreshing conversations…",
   "列表已更新": "Conversations updated",
   "刷新未完成，当前列表已保留。": "Refresh incomplete. Current conversations are kept.",
+  "对话状态未更新，正在自动重试。": "Conversation status hasn't updated. Retrying automatically.",
   "刷新对话列表": "Refresh conversations",
   "按这台电脑上的对话记录统计已用 tokens，不代表订阅额度百分比。打开 Claude 桌面 App 的「使用情况」更新额度后，可在这里刷新读取。": "Tokens counted from conversation logs on this computer are not a subscription percentage. Open Usage in the Claude desktop app, then refresh here to read its latest quota.",
   "还没有读到用量。请打开 Claude 桌面 App 的「使用情况」后刷新；只有本机取得真实额度时才显示百分比。": "No usage data yet. Open Usage in the Claude desktop app, then refresh. Percentages appear only when actual quota data is available on this computer.",
@@ -1961,5 +1962,8 @@
   "在运行 Agbrio 的 Windows 电脑上，用 PowerShell 7 执行以下命令，查看可用操作。": "On the Windows computer running Agbrio, run this in PowerShell 7 to discover available operations.",
   "复制命令": "Copy command",
   "暂时无法读取本机 CLI 路径。": "The local CLI path is unavailable.",
-  "请到运行 Agbrio 的 Windows 电脑上，打开侧边栏的 MCP & CLI 获取本机命令。": "Open MCP & CLI in the sidebar on the Windows computer running Agbrio for the local command."
+  "请到运行 Agbrio 的 Windows 电脑上，打开侧边栏的 MCP & CLI 获取本机命令。": "Open MCP & CLI in the sidebar on the Windows computer running Agbrio for the local command.",
+  "执行状态待确认，正在重试": "Checking execution status again",
+  "最近一条消息：{0}": "Latest message: {0}",
+  "{0} 条对话的执行状态待确认，正在重试。": "Checking the execution status of {0} conversations again."
 }

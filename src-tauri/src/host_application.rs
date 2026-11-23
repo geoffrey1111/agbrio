@@ -2449,10 +2449,9 @@ pub(crate) fn run_codex_existing_thread_observer(
         }
         crate::codex_notices::poll(&store,&session,observer_epoch,&mut notice_cursor);
         crate::role_bridge::refresh_resident_activity(&store,&session,observer_epoch,&mut activity_cursor);
-        let active_workstream_ids = match active_initialized_codex_observer_workstreams(&store) {
-            Ok(workstream_ids) => workstream_ids,
-            Err(_) => return,
-        };
+        // A single failed Bridge lookup must not retire Codex observation while
+        // its connection remains open. The next pass retries the read.
+        let active_workstream_ids = active_initialized_codex_observer_workstreams(&store).unwrap_or_default();
         match resident_observer_connection(&session,observer_epoch){ObserverConnection::Stopped=>return,ObserverConnection::Borrowed=>continue,ObserverConnection::Ready=>{}}
         if let Ok(watches) = store.codex_watches() {
             let now=rollover_now().unwrap_or(0)*1000;

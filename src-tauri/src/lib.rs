@@ -98,6 +98,7 @@ mod assistant_events;
 mod assistant_help;
 mod assistant_connection_endpoint;
 mod assistant_operations;
+mod assistant_claude;
 
 #[tauri::command]
 fn assistant_settings(state:tauri::State<'_,RouterState>,host:tauri::State<'_,HostRuntime>)->Result<serde_json::Value,String>{

@@ -3,6 +3,19 @@ import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {CodexRequestCard} from './CodexRequestCard';
 import type {MobileCodexRequest} from '../../mobile/api';
 beforeEach(()=>sessionStorage.clear());afterEach(cleanup);
+it('settles a submitted async card from its exact delivery receipt without another submission',async()=>{
+ const card:MobileCodexRequest={requestId:'async',revision:1,method:'request_user_input_async',kind:'USER_INPUT',isBlocking:false,responseSent:false,questions:[{id:'q',label:'Answer',required:true}]};
+ const respond=vi.fn(async()=>{});const view=render(<CodexRequestCard request={card} disabled={false} respond={respond} lockAfterSubmit deliveryStatus="SENDING"/>);
+ fireEvent.change(screen.getByLabelText('回答Answer'),{target:{value:'Already clicked Reload'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));
+ await screen.findByText('正在核对这次答复的发送回执，不会重复发送。');
+ view.rerender(<CodexRequestCard request={card} disabled={false} respond={respond} lockAfterSubmit deliveryStatus="SENT"/>);
+ expect(view.container).toBeEmptyDOMElement();expect(respond).toHaveBeenCalledTimes(1);
+});
+it('does not describe a known failed receipt as still awaiting confirmation',async()=>{
+ const card:MobileCodexRequest={requestId:'failed',revision:1,method:'request_user_input_async',kind:'USER_INPUT',isBlocking:false,responseSent:false,questions:[{id:'q',label:'Answer'}]};
+ const respond=vi.fn(async()=>{});render(<CodexRequestCard request={card} disabled={false} respond={respond} lockAfterSubmit deliveryStatus="FAILED"/>);
+ fireEvent.click(screen.getByRole('button',{name:'发送'}));await screen.findByText('这次答复未完成发送，回答已保留。请查看发送记录。');expect(respond).toHaveBeenCalledTimes(1);
+});
 const request:MobileCodexRequest={requestId:'live-exact',revision:4,method:'item/tool/requestUserInput',kind:'USER_INPUT',isBlocking:false,responseSent:false,questions:[{id:'q1',label:'Scope',placeholder:'Choose the demo scope?',required:true,isOther:true,options:[{label:'Small',description:'Keep the change bounded'},{label:'Large',description:'Expand the change'}]},{id:'q2',label:'Notes',placeholder:'What should be retained?',required:true}]};
 it('retains native choices, free text, multi-question navigation, collapse and one exact submission',async()=>{
  const respond=vi.fn(async()=>{});render(<CodexRequestCard request={request} disabled={false} respond={respond}/>);

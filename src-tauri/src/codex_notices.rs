@@ -1,6 +1,6 @@
 //! Metadata-only task observation and native recipient receipts. Never resumes a task.
 use crate::host_application::{RouterCore,Session};
-use router_core::store::{codex_notices::{Binding,Command,Question},RouterStore};
+use router_core::store::{codex_notices::{Binding,Command,Question},management_reminders::PendingQuestion,RouterStore};
 use serde_json::{json,Value};use sha2::{Digest,Sha256};
 use std::{sync::{Arc,Mutex},time::Duration};
 pub(crate) fn goal_key(thread:&str,g:&crate::host_application::MobileCodexGoal)->String{format!("{:x}",Sha256::digest(serde_json::to_vec(&json!([thread,g.objective,g.created_at,g.token_budget])).unwrap_or_default()))}
@@ -27,29 +27,90 @@ pub(crate) fn register(core:&RouterCore,token:&str,p:&Command)->Result<Value,Str
  let b=Binding{receiver_sid:p.session_id.clone(),receiver_cwd:core.store.claude_session(&p.session_id)?.cwd,thread_id:thread.into(),generation,source_cwd:w.cwd,anchor_turn:turn.into(),mode:if key.is_some(){"GOAL"}else if p.follow_task==Some(true){"TASK"}else{"TURN"}.into(),goal_key:key,expires_at:if p.follow_task==Some(true){253402300799000}else{crate::local_safety::now()+ttl*1000}};let sub=core.store.register_codex_notice(&b)?;
  Ok(json!({"subscription":sub,"wait":{"threadId":thread,"generation":generation,"turnId":if sub.binding.anchor_turn=="await-first-turn"{None}else{Some(&sub.binding.anchor_turn)},"status":if sub.status=="ACTIVE"{"WAITING"}else{sub.status.as_str()},"followGoal":b.mode=="GOAL","subscriptionId":sub.id,"expiresAt":b.expires_at}}))
 }
+struct ReminderConfig {zone:String, planban_waits:std::collections::HashMap<String,i64>, waits:Vec<ReminderWait>}
+#[derive(serde::Deserialize)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+struct ReminderSettings {zone_id:String,planban_roadmap:Option<std::path::PathBuf>,#[serde(default)] waits:Vec<ReminderWait>}
+#[derive(serde::Deserialize)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+struct ReminderWait {thread_id:String,turn_id:String,wait_on:String,wait_what:String,recorded_at:String}
+fn wait_time(value:&str)->Option<i64>{
+ let at=time::OffsetDateTime::parse(value,&time::format_description::well_known::Rfc3339).ok()?;
+ let millis=i64::try_from(at.unix_timestamp_nanos()/1_000_000).ok()?;
+ (millis>0&&millis<=crate::local_safety::now()).then_some(millis)
+}
+impl ReminderConfig{
+ fn wait_at(&self,thread:&str,turn:&str)->Option<i64>{
+  self.waits.iter().filter(|w|w.thread_id==thread&&w.turn_id==turn&&matches!(w.wait_on.as_str(),"user"|"prior")&&!w.wait_what.trim().is_empty())
+   .filter_map(|w|wait_time(&w.recorded_at)).chain(self.planban_waits.get(thread).copied()).max()
+ }
+}
+fn bounded_json(path:&std::path::Path,limit:u64)->Option<Value>{
+ use std::io::Read;
+ let file=std::fs::File::open(path).ok()?;if !file.metadata().ok()?.is_file(){return None;}
+ let mut bytes=Vec::new();file.take(limit+1).read_to_end(&mut bytes).ok()?;
+ if bytes.len() as u64>limit{return None;}
+ serde_json::from_slice(&bytes).ok()
+}
+fn reminder_config()->Option<ReminderConfig>{
+ let settings_path=crate::mobile_http::mobile_runtime_config_path().ok()?.with_file_name("management-reminders.json");
+ let settings:ReminderSettings=serde_json::from_value(bounded_json(&settings_path,4096)?).ok()?;
+ let zone=uuid::Uuid::parse_str(&settings.zone_id).ok()?.to_string();
+ let planban_waits=match settings.planban_roadmap{
+  None=>Default::default(),
+  Some(path)=>{
+   if !path.is_absolute(){return None;}
+   let data=bounded_json(&path,4_194_304)?;planban_waits(data.get("roadmapItems")?.as_array()?)
+  }
+ };
+ Some(ReminderConfig{zone,planban_waits,waits:settings.waits})
+}
+fn planban_waits(items:&[Value])->std::collections::HashMap<String,i64>{
+ let mut seen=std::collections::HashSet::new();let mut duplicates=std::collections::HashSet::new();let mut waits=std::collections::HashMap::new();
+ for item in items.iter().filter(|item|item["isGroup"]!=true&&!matches!(item["status"].as_str(),Some("archive"|"archived"|"complete"))){
+  let m=&item["metadata"];
+  let Some(thread)=m["thread"].as_str().and_then(|s|{let id=s.strip_prefix("codex://threads/").unwrap_or(s);uuid::Uuid::parse_str(id).ok().map(|v|v.to_string())})else{continue;};
+  if !seen.insert(thread.clone()){duplicates.insert(thread.clone());}
+  if !matches!(m["waitOn"].as_str(),Some("user"|"prior"))||!m["waitWhat"].as_str().is_some_and(|s|!s.trim().is_empty()){continue;}
+  // Prefer a dedicated marker timestamp. The existing Planban projection
+  // falls back to its card revision timestamp when that field is absent.
+  let value=m.get("waitUpdatedAt").unwrap_or(&item["updatedAt"]);
+  if let Some(at)=value.as_str().and_then(wait_time){waits.insert(thread,at);}
+ }
+ waits.retain(|thread,_|!duplicates.contains(thread));waits
+}
 pub(crate) fn poll(store:&Arc<RouterStore>,session:&Arc<Mutex<Session>>,epoch:u64,cursor:&mut Option<String>){
  let _=store.observe_pi_manager_notices();
+ let reminder=reminder_config();
  let Ok(sources)=store.codex_notice_sources(None)else{return};let ids=crate::observer_batch::next_ids(sources.iter().filter(|s|!s.binding.thread_id.starts_with("pi:")&&!s.binding.thread_id.starts_with("claude_code:")).map(|s|s.binding.thread_id.as_str()),cursor,crate::observer_batch::WATCH_READS_PER_PASS);
  for thread in ids{
   let Ok(w)=store.codex_chat_context(&thread)else{continue};if !w.enabled{continue;}
   let Ok(mut s)=session.try_lock()else{continue};if s.codex_observer_epoch!=epoch{return;}
   let pending:Vec<_>=s.pending_codex_requests.values().filter(|r|r.thread_id==thread&&!r.responded).map(|r|Question{request_id:r.action_id.clone(),turn_id:r.turn_id.clone(),kind:r.method.clone()}).collect();
   let Some(a)=s.adapter.as_mut().filter(|a|!a.is_closed())else{continue};
+  let mut reminder_evidence=None;
   let result:Result<(),String>=(||{
    let m=a.request_with_timeout("thread/read",json!({"threadId":thread,"includeTurns":false}),Duration::from_secs(3))?;if m.pointer("/thread/id").and_then(Value::as_str)!=Some(thread.as_str())||m.pointer("/thread/cwd").and_then(Value::as_str)!=Some(w.cwd.as_str()){return Err("CLAUDE_NOTICE_SOURCE_CHANGED".into());}
    a.begin_latest_turn_observation(&thread)?;
    let page=a.request_with_timeout("thread/turns/list",json!({"threadId":thread,"cursor":null,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"}),Duration::from_secs(3))?;
    let latest=page["data"].as_array().and_then(|r|r.first()).ok_or("CLAUDE_NOTICE_NO_TURN")?;let turn=latest["id"].as_str().ok_or("CLAUDE_NOTICE_NO_TURN")?;let status=latest["status"].as_str().unwrap_or("unknown");
    let cards=a.read_async_owner_questions(&thread,m.pointer("/thread/path").and_then(Value::as_str));store.reconcile_async_answer_replies(&thread,w.generation,&cards)?;
-   let mut questions=pending;for q in cards.into_iter().filter(|q|q["responseSent"]==false){if let(Some(id),Some(turn))=(q["requestId"].as_str(),q["turnId"].as_str()){questions.push(Question{request_id:id.into(),turn_id:turn.into(),kind:"USER_INPUT".into()});}}
+   let mut questions=pending;for q in cards.iter().filter(|q|q["responseSent"]==false){if let(Some(id),Some(turn))=(q["requestId"].as_str(),q["turnId"].as_str()){questions.push(Question{request_id:id.into(),turn_id:turn.into(),kind:"USER_INPUT".into()});}}
    // TASK/TURN question delivery must not depend on the unrelated optional Goal
    // endpoint. GOAL subscriptions retain their original exact-contract fence.
    let needs_goal=sources.iter().any(|s|s.binding.thread_id==thread&&s.binding.mode=="GOAL");
    store.observe_codex_notices(&thread,w.generation,&w.cwd,turn,status,None,None,&questions)?;
+   if let Some(config)=reminder.as_ref().filter(|r|sources.iter().any(|s|s.binding.thread_id==thread&&s.management_zone_id.as_deref()==Some(r.zone.as_str()))) {
+    reminder_evidence=Some((config,turn.to_owned(),status.to_owned(),cards));
+   }
    if !needs_goal{return Ok(())}
    let response=a.request_with_timeout("thread/goal/get",json!({"threadId":thread}),Duration::from_secs(3))?;let goal=crate::host_application::codex_goal_from_response(&thread,&response)?;let key=goal.as_ref().map(|g|goal_key(&thread,g));
    store.observe_codex_notices(&thread,w.generation,&w.cwd,turn,status,key.as_deref(),goal.as_ref().map(|g|g.status.as_str()).or(Some("missing")),&questions)
-  })();let _=result;
+  })();let _=result;drop(s);
+  if let Some((config,turn,status,cards))=reminder_evidence {
+   let pending=cards.iter().filter(|q|q["responseSent"]==false).filter_map(|q|Some(PendingQuestion{turn:q["turnId"].as_str()?,request:q["requestId"].as_str()?,observed_at:q["observedAt"].as_i64()?})).collect::<Vec<_>>();
+   let _=store.observe_management_reminders(&config.zone,&thread,w.generation,&turn,&status,&pending,config.wait_at(&thread,&turn),crate::local_safety::now());
+  }
  }
 }
 pub(crate) fn reconcile(core:&RouterCore){

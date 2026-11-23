@@ -6,6 +6,21 @@ Owner subsequently selected fixed metadata at the next original Claude main-sess
 
 # Agbrio source development
 
+Owner decision 2026-11-22: every active INSTANCE assistant connection may create
+and manage Pi conversations inside existing owner-authorized workspaces. Do not
+pin Pi access to an old Claude connection. Keep grant revocation/expiry, reviewed
+actions, task directory ceilings and UNKNOWN receipts enforced. Existing local
+profiles can receive an additive grant-list repair without changing scope/task
+generations or restarting Host; use the retained owner-only repair CLI below.
+
+## Local package updates (owner decision, 2026-11-20)
+
+Prepare the new local installer and verify its version, updater signature and exact installer/native hashes before asking the owner to run anything. For local updates, provide one ready-to-run PowerShell 7 command invoking a retained, version-pinned wrapper around `tools/agbrio-control/update-local.ps1`. The owner chooses when to execute it; do not quit, install or restart the live app while preparing the handoff. Publish only if separately requested.
+
+The command verifies the package, discovers the current Host at execution time, exits it through the current-user CLI with its exact instance ID, waits for all exact installed-image processes to exit, backs up the installation and profile, installs silently into the same directory, verifies native bytes/version, starts via the CLI's independent desktop launch and checks live readiness. A running newer version, checksum mismatch, uncertain shutdown or remaining process blocks installation. Never force-kill agents, bypass write fences or automatically replay interrupted tasks. Preserve user data, pairing and configuration. State that Host restart can interrupt tasks and that stored conversation state does not prove model execution resumes.
+
+Keep the installer, pinned command/wrapper, hashes and necessary source until the owner completes the update; clean disposable build caches. Document whether the package is merely prepared or actually installed. Future local updates use this deferred owner-run workflow by default unless the owner explicitly requests immediate installation.
+
 Read README.md and docs/SETUP.md before setup. Windows + Codex + PWA is the current alpha scope; Mac and other agent adapters are not accepted runtime targets yet.
 
 - Prefer a documented MCP or CLI operation in every Agbrio workflow, including product entry points, documentation, prompts sent to assistants, engineering tasks, diagnostics and acceptance. Discover MCP capabilities for delegated operations; use the current-user CLI for local owner operations. Add missing authorized script coverage through the shared application action before treating visual automation as the normal route. Keep the desktop/PWA as a human interface and preserve the existing authority, review, exact-identity and receipt boundaries on every surface.
@@ -18,4 +33,4 @@ Read README.md and docs/SETUP.md before setup. Windows + Codex + PWA is the curr
 - Never commit credentials, private keys, personal conversations, runtime/profile data or attachments. Test artifacts remain ignored.
 - Validate affected tests and real paths where feasible. Unit/browser/screenshot checks are not physical-device acceptance. Report unavailable platforms and account/security steps honestly.
 
-- Claude Code observation routes by native session UUID + canonical local root, fresh publisher lease and exact turn. Keep autonomous/MCP/cross-provider writes closed; authenticated owner manual text replies use a durable command and independent stored-row receipt; never submit test prompts without owner quota permission. Follow docs/CLAUDE_CODE.md.
+- Claude Code observation routes by native session UUID + canonical local root, fresh publisher lease and exact turn. Owner decision 2026-11-20 permits reviewed INSTANCE assistant text SEND_CHAT into an existing Claude session through its authenticated native plugin, with separate durable assistant provenance, revocation checked at physical offer and independent stored-row receipt. AUTO/SEND requires idle and input readiness; QUEUE is explicit. Reuse existing management areas and grants; no new per-executor scope, real business dispatch/configuration or autonomous relay loop is authorized by this development request. Other Claude adapter writes remain closed; authenticated owner manual text replies use a durable command and independent stored-row receipt; never submit test prompts without owner quota permission. Follow docs/CLAUDE_CODE.md.

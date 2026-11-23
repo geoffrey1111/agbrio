@@ -122,6 +122,7 @@ html .management-page .mz-map-center .mz-manager .v6-avatar{width:60px;height:60
 .mz-map-nodes>li{position:absolute;transform:translate(-50%,-38%);width:150px;display:flex;justify-content:center;z-index:1}
 .mz-map-nodes .mz-member{background:color-mix(in srgb,var(--v7-bg) 82%,transparent)}
 .management-page button.mz-map-add{position:absolute;right:0;bottom:0;color:var(--v7-accent-ink);background:var(--v7-surface);box-shadow:var(--v7-raise)}
+.mz-observation-status{margin:0 0 12px;color:var(--v7-ink-2);font-size:var(--v7-fs-row)}
 .mz-no-running{font-size:var(--v7-fs-meta);color:var(--v7-muted);text-align:center}
 
 /* ---------- normal list (desktop: grouped columns) ---------- */

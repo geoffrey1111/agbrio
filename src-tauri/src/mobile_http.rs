@@ -589,7 +589,7 @@ async fn character_board_asset(Path(asset_id):Path<String>,State(state):State<Mo
 struct WatchFeedQuery { #[serde(default)] after:i64, #[serde(default)] wait_seconds:u64 }
 async fn codex_watches(State(state):State<MobileHttpState>,headers:HeaderMap)->ApiResult<Vec<serde_json::Value>> {
     authenticated(&headers,&state,false).await?;
-    Ok(Json(crate::todo_projection::watches(&state.core).map_err(|e|ApiError(StatusCode::BAD_REQUEST,e))?))
+    Ok(Json(run_core_blocking("Conversation status",move||crate::todo_projection::watches(&state.core)).await?))
 }
 #[derive(serde::Deserialize)]
 #[serde(rename_all="camelCase")]

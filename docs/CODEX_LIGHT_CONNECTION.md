@@ -79,3 +79,10 @@ A regression sends 100 native-style streaming patches after one large baseline, 
 ## Backend interruption recovery
 
 Observe live thread and live turn status from the current process. A running reply must never be reused based on an unchanged rollout file: a process crash does not necessarily append an end record. After the owned backend goes away, the next read starts a new backend when needed. A native interruption for the same turn, corroborated by its abort record or the absence of a writer on that exact open turn, updates the watch and its subscribed management area. The old request is never replayed.
+
+
+### When a connected reader misses a turn ending
+
+A transport connection can stay open even though its last Desktop follow frame is out of date. If the newest original rollout boundary proves that the exact followed turn finished or was aborted, the observer stops projecting it as active, reconciles the terminal state, and asks the same Desktop owner for a fresh baseline. The recovery never resends a turn, resumes a cold conversation, or restarts a native provider. A newer turn hint takes precedence over the older terminal record. A failed Bridge lookup is retried on the next observer pass instead of stopping the whole observer.
+
+Conversation timestamps measure the latest message. The conversation list and management area use the separate successful-check time to stop claiming active execution after an observation is more than 90 seconds old. The management area shows that status is being checked again without changing assignments.

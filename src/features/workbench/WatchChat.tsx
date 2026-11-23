@@ -23,7 +23,7 @@ import {useMemo} from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {ArrowUp,ChevronLeft,Copy,Ellipsis,Plus,ShieldCheck,SlidersHorizontal,X,Square,LoaderCircle} from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
-import type {ReactNode} from "react";
+import type {ClipboardEvent,ReactNode} from "react";
 import type { CodexWatch, WatchEvent } from "./CodexNotifications";
 import type { ChatHistory, ChatMessage, ChatModel, ReplyOptions, ClaudeTaskTree, WatchChatApi, WatchChatState, WatchReply } from "./watchChatApi";
 import {CodexRequestCard as RequestCard} from "./CodexRequestCard";
@@ -79,6 +79,7 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
  initialChildId?:string;
  /** Parent conversation name shown as a breadcrumb above the title. */
  parentLabel?:string }) {
+ const [asyncReceipts,setAsyncReceipts]=useState<Record<string,WatchReply>>({});
  useLanguage();
  const ime=useImeSubmitGuard();
  const modeGroup=useId();
@@ -162,7 +163,8 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
  const claudeNotReady=claude&&state?.inputReady===false;
  const piNotReady=pi&&state?.inputReady===false;
  const queueNext=piNotReady?false:active||waitingExternal||claudeNotReady;
- const pendingRequests=[...(state?.requests??[]),...(state?.asyncQuestions??[])].filter(r=>!r.responseSent);
+ const asyncDeliveryStatus=(id:string)=>asyncReceipts[id]?.status==='SENT'?'SENT':state?.replies.find(reply=>reply.id===id&&reply.threadId===original.threadId)?.status??asyncReceipts[id]?.status;
+ const pendingRequests=[...(state?.requests??[]),...(state?.asyncQuestions??[])].filter(r=>!r.responseSent&&!('answerId' in r&&typeof r.answerId==='string'&&asyncDeliveryStatus(r.answerId)==='SENT'));
  const controlTurn=state?.controllableTurnId??state?.ownedTurnId;
  const nextMode=queueNext?followupMode:"SEND";
  const blocked=Boolean(statusUnconfirmed||pending||unconfirmed||(nextMode==="SEND"&&state?.replies.some(r=>r.status==="QUEUED"))||state?.ownerRequests?.some(r=>["PENDING","READY","OFFERED"].includes(r.status)));
@@ -247,10 +249,24 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
   await refresh();
   return request.id;
  }
- async function upload(selected: FileList | null) {
+ async function upload(selected: FileList | File[] | null) {
   if (!selected?.length) return; const list = Array.from(selected);
-  if (draft.files.length + list.length > 4 || list.some(f => f.size > 10 * 1024 * 1024) || list.reduce((n, f) => n + f.size, draft.files.reduce((n, f) => n + f.size, 0)) > 40 * 1024 * 1024) throw new Error("REPLY_ATTACHMENT_LIMIT");
+  if (draftRef.current.files.length + list.length > 4 || list.some(f => f.size > 10 * 1024 * 1024) || list.reduce((n, f) => n + f.size, draftRef.current.files.reduce((n, f) => n + f.size, 0)) > 40 * 1024 * 1024) throw new Error("REPLY_ATTACHMENT_LIMIT");
   for (const f of list) { const data = await new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onerror = () => reject(new Error(uiText("无法读取所选文件"))); r.onload = () => resolve(String(r.result).split(",")[1]); r.readAsDataURL(f); }); const ref = await command<FileRef>("UPLOAD", { name: f.name, data }); if (mounted.current) setDraft(d => ({ ...d, files: [...d.files, ref] })); }
+ }
+ function pasteImages(event:ClipboardEvent<HTMLFormElement>){
+  if(event.target!==input.current)return;
+  const data=event.clipboardData;
+  const files=Array.from(data.files??[]).filter(f=>f.type.startsWith('image/'));
+  if(!files.length)for(const item of Array.from(data.items??[])){
+   if(item.kind==='file'&&item.type.startsWith('image/')){const file=item.getAsFile();if(file)files.push(file);}
+  }
+  if(!files.length)return;
+  event.preventDefault();
+  const text=data.getData('text/plain');
+  if(text){const start=input.current!.selectionStart,end=input.current!.selectionEnd;setDraft(d=>({...d,text:(d.text.slice(0,start)+text+d.text.slice(end)).slice(0,100000),restoredFrom:undefined}));}
+  if(actionRunning.current){setNotice(uiText("正在处理…"));return;}
+  void act(()=>upload(files));
  }
  const latest = state?.watch.snapshot;
  const childNotification=claude&&original.snapshot.itemId?.startsWith("child_result:");
@@ -326,7 +342,7 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
    </article></div>;})}
    {state?.requests.filter(r=>r.kind!=="USER_INPUT").map(r => <RequestCard key={`${r.requestId}:${r.revision}`} request={r} disabled={busy} respond={extra => act(async () => { await command("RESPOND", { requestId: r.requestId, input: extra }); await refresh(); })} />)}
    {state?.requests.filter(r=>r.kind==="USER_INPUT").map(r=><RequestCard key={`${r.requestId}:${r.revision}`} request={r} disabled={busy} respond={extra=>act(async()=>{await command("RESPOND",{requestId:r.requestId,input:extra});await refresh();})}/>)}
-   {state?.asyncQuestions?.map(r=><RequestCard key={`async:${r.requestId}`} request={r} disabled={busy||blocked} allowSkip={false} lockAfterSubmit persistAnswers={false} respond={extra=>act(async()=>{const input=extra as {revision:number;answers:Record<string,string>};const id=r.answerId;currentAttemptIds.current.add(id);await command("ASYNC_RESPOND",{id,requestId:r.requestId,revision:input.revision,answers:input.answers});await refresh();})}/>)}
+   {state?.asyncQuestions?.map(r=><RequestCard key={`async:${r.requestId}`} request={r} deliveryStatus={asyncDeliveryStatus(r.answerId)} disabled={busy||blocked} allowSkip={false} lockAfterSubmit persistAnswers={false} respond={extra=>act(async()=>{const input=extra as {revision:number;answers:Record<string,string>};const id=r.answerId;currentAttemptIds.current.add(id);const reply=await command<WatchReply>("ASYNC_RESPOND",{id,requestId:r.requestId,revision:input.revision,answers:input.answers});if(reply.id!==id||reply.threadId!==original.threadId)throw Error("REPLY_TARGET_CHANGED_REFRESH");setAsyncReceipts(old=>({...old,[id]:reply}));setState(current=>current?{...current,replies:[reply,...current.replies.filter(old=>old.id!==id)]}:current);void refresh(true);})}/>)}
 
   </div>
   <div className="v4-chat-dock">
@@ -335,7 +351,7 @@ export function WatchChat({ original, api, onBack,backLabel=uiText("最近通知
    {claude&&state?.ownerRequests&&<ClaudeDecisionCards requests={state.ownerRequests} api={api} threadId={original.threadId} generation={state.watch.generation} refresh={refresh}/>}
    {state?.goal&&<CodexGoalController goal={state.goal} controls={state.goalControls} diagnostic={state.latestTurn} api={api} checkedAt={state.checkedAt} disabled={busy||blocked} refresh={refresh}/>}
 
-   <form className="v4-chat-composer" aria-busy={busy} onSubmit={e => { e.preventDefault(); void act(() => send(nextMode)); }}>
+   <form className="v4-chat-composer" aria-busy={busy} onPaste={pasteImages} onSubmit={e => { e.preventDefault(); void act(() => send(nextMode)); }}>
    <label htmlFor="watch-chat-reply">{uiText(claude?"回复这个 Claude Code 对话":"回复这个 Codex 对话")}</label><textarea id="watch-chat-reply" ref={input} placeholder={queueNext?(nextMode==="STEER"?uiText("告诉它现在要怎么调整"):uiText("写下一条，完成后自动发送")):uiText("回复 {0}", childNotification?(state?.watch.label??original.label):original.label)} value={draft.text} maxLength={100000} rows={2} onChange={e => setDraft(d => ({ ...d, text: e.target.value, restoredFrom: undefined }))} onCompositionStart={ime.onCompositionStart} onCompositionEnd={ime.onCompositionEnd} onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !ime.blocks(e.nativeEvent)) { e.preventDefault(); if (!busy) void act(() => send(nextMode)); } }} />
    {draft.files.length > 0 && <ul className="v4-chat-files">{draft.files.map(f => <li key={f.id}><AttachmentName name={f.name}/><small className="v4-file-size">{Math.ceil(f.size / 1024)} KB</small><button type="button" aria-label={uiText("移除 {0}", f.name)} disabled={busy} onClick={() => setDraft(d => ({ ...d, files: d.files.filter(v => v.id !== f.id) }))}>{uiText("移除")}</button></li>)}</ul>}
    <div className="v4-chat-composer-tools"><input ref={fileInput} type="file" accept={pi?"image/png,image/jpeg":undefined} multiple hidden onChange={e => { const fs = e.currentTarget.files; void act(() => upload(fs)); e.currentTarget.value = ""; }} /><input ref={photoInput} type="file" accept={pi?"image/png,image/jpeg":"image/png,image/jpeg,image/webp,image/gif"} multiple hidden onChange={e=>{const fs=e.currentTarget.files;void act(()=>upload(fs));e.currentTarget.value="";}}/><button type="button" className="v4-chat-icon" aria-label={uiText("＋ 附件")} disabled={busy || draft.files.length >= 4} onClick={() => {if(window.matchMedia?.("(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1100px)").matches)setAttachmentOpen(true);else fileInput.current?.click();}}><Plus size={24} aria-hidden="true"/><span className="v4-chat-desktop-label">{uiText("附件")}</span></button><button type="button" className="v4-chat-icon v4-chat-permissions" aria-label={uiText("权限与执行请求{0}", pendingRequests.length?uiText("，{0}条待处理", pendingRequests.length):"")} onClick={()=>setPermissionsOpen(true)}><ShieldCheck size={24} aria-hidden="true"/>{pendingRequests.length>0&&<span className="v4-chat-request-count" aria-hidden="true">{pendingRequests.length}</span>}</button>{queueNext&&<div className="v6-followup" data-steer={controlTurn?"ready":"unavailable"}><div className="v4-followup-toggle agbrio-segmented" role="group" aria-label={uiText("运行中跟进方式")}><button type="button" aria-pressed={followupMode==="STEER"} disabled={busy||!controlTurn} onClick={()=>setFollowupMode("STEER")}><SelectionIndicator group={modeGroup} active={followupMode==="STEER"}/>{uiText("引导")}</button><button type="button" aria-pressed={followupMode==="QUEUE"} disabled={busy} onClick={()=>setFollowupMode("QUEUE")}><SelectionIndicator group={modeGroup} active={followupMode==="QUEUE"}/>{uiText("排队")}</button></div><span>{followupMode==="QUEUE"?uiText("等这一轮结束再发"):!controlTurn?uiText(claudeNotReady?"发送连接尚未就绪，可选择排队":"当前暂不支持引导，可选择排队"):uiText("立刻插入当前这一轮")}</span></div>}<span className="v4-chat-tool-space"/><button type="button" className="v4-chat-icon" aria-label={uiText("对话选项")} aria-expanded={optionsOpen} disabled={busy} onClick={() => { setOptionsOpen(v => !v); if (!models) void act(async () => { const v = await command<{ models: ChatModel[] }>("OPTIONS"); if (mounted.current) setModels(v.models); }); }}><SlidersHorizontal size={24} aria-hidden="true"/><span className="v4-chat-desktop-label">{uiText("对话选项")}</span></button>{controlTurn&&!draft.text.trim()?<button type="button" className="v4-chat-send" aria-label={uiText("停止本次执行")} disabled={busy} onClick={()=>void act(async()=>{await command("STOP",{turnId:controlTurn});setNotice(uiText("已请求停止，等待 {0} 确认。",provider));await refresh();})}><Square size={24} aria-hidden="true"/></button>:<button type="submit" className="v3-primary v4-chat-send" aria-label={nextMode==="STEER"?uiText("调整当前任务"):queueNext?uiText("排队，完成后发送"):uiText("发送回复")} disabled={busy || !state || (!draft.text.trim()&&(!pi||!draft.files.length)) || blocked || steerUnavailable || piNotReady}>{busy?<LoaderCircle size={24} className="v4-progress-spinner" aria-hidden="true"/>:<ArrowUp size={24} aria-hidden="true"/>}<span className="v4-chat-desktop-label">{busy?uiText("正在处理…"):nextMode==="STEER"?uiText("调整当前任务"):queueNext?uiText("排队，完成后发送"):uiText("发送回复")}</span></button>}</div>

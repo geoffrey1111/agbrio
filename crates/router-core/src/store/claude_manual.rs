@@ -1,4 +1,5 @@
-//! Manual Claude input only. OAuth/MCP never creates these commands.
+//! Claude native input transport. Reviewed assistant messages have a separate
+//! durable provenance record; owner-authored messages retain their old route.
 use super::*;
 use crate::claude_code::Event;
 use super::watch_reply::WatchReply;
@@ -46,6 +47,24 @@ pub(super) fn verify_publisher(c:&Connection,token:&str,sid:&str,instance:&str,c
     if !matched {return Err("CLAUDE_COMMAND_PUBLISHER_CHANGED".into());} Ok(())
 }
 impl RouterStore {
+    /// Atomically journal a reviewed assistant send and its distinct origin.
+    /// This must precede any native offer; no caller supplies a grant identity.
+    pub fn prepare_claude_assistant_reply(&self,input:&WatchReply,instance:&str)->Result<WatchReply,String>{
+        let sid=native_id(&input.thread_id)?;
+        self.with_connection(|c|{
+            let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
+            let (gid,hash,target,generation):(String,String,String,i64)=tx.query_row("SELECT grant_id,payload_hash,json_extract(input_json,'$.threadId'),json_extract(input_json,'$.generation') FROM assistant_actions WHERE id=?1 AND operation='SEND_CHAT' AND status='EXECUTING' AND basis IS NOT NULL",[&input.id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).map_err(|_|"CLAUDE_ASSISTANT_REVIEW_REQUIRED")?;
+            if super::assistant::active(&tx,&gid)?.scope!="INSTANCE"||target!=input.thread_id||generation!=input.generation{return Err("CLAUDE_ASSISTANT_TARGET_CHANGED".into());}
+            let (text,mode,queue):(String,String,bool)=tx.query_row("SELECT json_extract(input_json,'$.text'),COALESCE(json_extract(input_json,'$.mode'),'AUTO'),COALESCE(json_extract(input_json,'$.queueRequested'),0) FROM assistant_actions WHERE id=?1",[&input.id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).map_err(db_error)?;
+            if text!=input.text||input.mode!=(if mode=="AUTO"{"SEND"}else{mode.as_str()})||queue!=(input.mode=="QUEUE")||input.options.get("attachments").and_then(Value::as_array).is_some_and(|a|!a.is_empty())||input.options.get("model").is_some_and(|v|!v.is_null())||input.options.get("effort").is_some_and(|v|!v.is_null()){return Err("CLAUDE_ASSISTANT_PAYLOAD_CHANGED".into());}
+            let cwd:Option<String>=tx.query_row("SELECT s.cwd FROM claude_sessions s JOIN claude_connections a ON a.id=s.connection_id WHERE s.session_id=?1 AND a.revoked_at IS NULL AND a.expires_at>?2",params![sid,now()],|r|r.get(0)).optional().map_err(db_error)?;
+            if !cwd.is_some_and(|cwd|crate::claude_code::same_root(&cwd,&input.cwd)){return Err("CLAUDE_TARGET_CHANGED".into());}
+            let reply=super::watch_reply::prepare_watch_reply_at(&tx,input)?;
+            tx.execute("INSERT INTO claude_manual_commands(request_id,session_id,instance_id,cwd) VALUES(?1,?2,?3,?4)",params![reply.id,sid,instance,reply.cwd]).map_err(db_error)?;
+            tx.execute("INSERT INTO claude_assistant_commands(request_id,grant_id,action_hash,created_at) VALUES(?1,?2,?3,?4)",params![reply.id,gid,hash,now()]).map_err(db_error)?;
+            tx.commit().map_err(db_error)?;Ok(reply)
+        })
+    }
     /// Only independently acknowledged native rows identify a rendered owner prompt.
     pub fn claude_manual_message_ids(&self,key:&str)->Result<std::collections::HashMap<String,String>,String>{self.with_connection(|c|{let mut q=c.prepare("SELECT r.id,m.message_id FROM claude_manual_commands m JOIN watch_replies r ON r.id=m.request_id WHERE r.thread_id=?1 AND r.status='SENT' AND m.message_id IS NOT NULL ORDER BY r.created_at DESC LIMIT 100").map_err(db_error)?;let rows=q.query_map([key],|r|Ok((r.get(0)?,r.get(1)?))).map_err(db_error)?.collect::<Result<std::collections::HashMap<_,_>,_>>().map_err(db_error)?;Ok(rows)})}
     pub fn claude_manual_ready(&self,sid:&str,instance:&str)->Result<bool,String>{self.with_connection(|c|c.query_row("SELECT EXISTS(SELECT 1 FROM claude_control_leases WHERE session_id=?1 AND instance_id=?2 AND checked_at>?3)",params![sid,instance,now()-30_000],|r|r.get(0)).map_err(db_error))}
@@ -70,8 +89,15 @@ impl RouterStore {
         verify_publisher(&tx,token,&event.session_id,&event.instance_id,&event.cwd)?;
         tx.execute("INSERT INTO claude_control_leases(session_id,instance_id,checked_at) VALUES(?1,?2,?3) ON CONFLICT(session_id) DO UPDATE SET instance_id=excluded.instance_id,checked_at=excluded.checked_at",params![event.session_id,event.instance_id,now()]).map_err(db_error)?;
         if event.kind!="HEARTBEAT" {tx.commit().map_err(db_error)?;return Ok(None);}
-        let candidate:Option<(String,String,String)>=tx.query_row("SELECT r.id,r.thread_id,r.text FROM claude_manual_commands m JOIN watch_replies r ON r.id=m.request_id WHERE m.session_id=?1 AND r.status='QUEUED' AND m.offered_at IS NULL ORDER BY r.created_at LIMIT 1",[&event.session_id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(db_error)?;
+        let candidate:Option<(String,String,String)>=tx.query_row("SELECT r.id,r.thread_id,r.text FROM claude_manual_commands m JOIN watch_replies r ON r.id=m.request_id WHERE m.session_id=?1 AND r.status='QUEUED' AND m.offered_at IS NULL ORDER BY r.created_at,r.rowid LIMIT 1",[&event.session_id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(db_error)?;
         let Some((request,key,text))=candidate else{let offer=bridge_offer(&tx,event)?;tx.commit().map_err(db_error)?;return Ok(offer)};
+        // Revocation/expiry and changed review evidence cancel an unattempted
+        // assistant command. Never touch an offered or ambiguous native write.
+        let origin:Option<(String,String)>=tx.query_row("SELECT grant_id,action_hash FROM claude_assistant_commands WHERE request_id=?1",[&request],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(db_error)?;
+        if let Some((gid,hash))=origin{
+            let valid=super::assistant::active(&tx,&gid).is_ok_and(|g|g.scope=="INSTANCE")&&tx.query_row("SELECT EXISTS(SELECT 1 FROM assistant_actions WHERE id=?1 AND grant_id=?2 AND payload_hash=?3 AND operation='SEND_CHAT' AND status IN ('EXECUTING','APPLIED') AND basis IS NOT NULL AND json_extract(input_json,'$.threadId')=?4)",params![request,gid,hash,key],|r|r.get::<_,bool>(0)).map_err(db_error)?;
+            if !valid{tx.execute("UPDATE watch_replies SET status='FAILED',error_code='CLAUDE_ASSISTANT_AUTHORITY_CHANGED',updated_at=?2 WHERE id=?1 AND status='QUEUED'",params![request,now()]).map_err(db_error)?;tx.commit().map_err(db_error)?;return Ok(None);}
+        }
         let (instance,cwd,generation,mode,expected):(String,String,i64,String,Option<String>)=tx.query_row("SELECT m.instance_id,m.cwd,r.generation,r.mode,r.expected_turn_id FROM claude_manual_commands m JOIN watch_replies r ON r.id=m.request_id WHERE r.id=?1",[&request],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).map_err(db_error)?;
         let context=codex_watch::chat_context(&tx,&key);
         // Same exact session and root; a reloaded plugin (new instance) still delivers.
@@ -95,6 +121,10 @@ impl RouterStore {
             tx.execute("UPDATE watch_replies SET status='FAILED',error_code='CLAUDE_TURN_CHANGED',updated_at=?2 WHERE id=?1",params![request,now()]).map_err(db_error)?;
             tx.commit().map_err(db_error)?;return Ok(None);
         }
+        // Multiple explicit queues are accepted, but only one native offer may
+        // be outstanding. UNKNOWN remains a fence for every later intent.
+        let outstanding:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM watch_replies WHERE thread_id=?1 AND status IN ('SENDING','UNKNOWN'))",[&key],|r|r.get(0)).map_err(db_error)?;
+        if outstanding{tx.commit().map_err(db_error)?;return Ok(None);}
         let busy:i64=tx.query_row("SELECT (SELECT count(*) FROM provider_runs r JOIN endpoints e ON e.id=r.endpoint_id WHERE e.provider='CLAUDE_CODE' AND e.external_id=?1 AND r.status IN ('STARTING','RUNNING','UNKNOWN'))+(SELECT count(*) FROM handoffs h JOIN endpoints e ON e.id=h.destination_endpoint_id WHERE e.provider='CLAUDE_CODE' AND e.external_id=?1 AND h.status IN ('SENDING','UNKNOWN','APPROVED'))",[&event.session_id],|r|r.get(0)).map_err(db_error)?;
         if busy>0{tx.commit().map_err(db_error)?;return Ok(None);}
         tx.execute("UPDATE watch_replies SET status='SENDING',updated_at=?2 WHERE id=?1 AND status='QUEUED'",params![request,now()]).map_err(db_error)?;
@@ -138,6 +168,17 @@ impl RouterStore {
         let w=store.codex_chat_context(&key).unwrap();
         WatchReply{id:id(),thread_id:key,cwd:start.cwd.clone(),generation:w.generation,source_sequence:None,expected_turn_id:Some(turn.into()),mode:"SEND".into(),text:"Approved exact text\n中文\n```code```".into(),options:serde_json::json!({"attachments":[]}),payload_hash:String::new(),status:String::new(),turn_id:None,error_code:None,created_at:0,updated_at:0}
     }
+    #[test] fn explicit_queues_are_fifo_and_unknown_blocks_every_later_offer(){
+        let temp=tempfile::tempdir().unwrap();let store=RouterStore::open_at(temp.path().join("router.db")).unwrap();let pair=store.create_claude_connection().unwrap();let start=event(temp.path(),"SESSION_START",1,None);let turn=id();
+        for e in [&start,&event(temp.path(),"RUNNING",2,Some(turn.clone())),&event(temp.path(),"COMPLETE",3,Some(turn.clone()))]{store.ingest_claude_event(&pair.token,e).unwrap();}
+        let key=format!("{PREFIX}{}",start.session_id);store.enable_codex_watch(&key,"Fixture",&start.cwd,&codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some(turn.clone()),item_id:None,text:String::new()}).unwrap();
+        let mut rows=vec![];for n in 0..3{let mut input=intent(&store,&start,&turn);input.mode="QUEUE".into();input.text=format!("Independent message {n}");let reply=store.prepare_watch_reply(&input).unwrap();store.enqueue_claude_manual(&reply,&start.instance_id).unwrap();rows.push(reply);}
+        let beat=event(temp.path(),"HEARTBEAT",4,Some(turn));store.ingest_claude_event(&pair.token,&beat).unwrap();
+        let first=store.offer_claude_manual(&pair.token,&beat).unwrap().unwrap();assert_eq!(first.request_id,rows[0].id);assert!(store.offer_claude_manual(&pair.token,&beat).unwrap().is_none());
+        store.accept_claude_manual_receipt(&pair.token,&ManualReceipt{request_id:first.request_id,session_id:start.session_id.clone(),instance_id:start.instance_id.clone(),cwd:start.cwd.clone(),status:"SENT".into(),message_id:Some(id()),text_sha256:first.text_sha256}).unwrap();
+        let second=store.offer_claude_manual(&pair.token,&beat).unwrap().unwrap();assert_eq!(second.request_id,rows[1].id);store.recover_watch_replies().unwrap();assert_eq!(store.watch_reply(&rows[1].id).unwrap().unwrap().status,"UNKNOWN");assert!(store.offer_claude_manual(&pair.token,&beat).unwrap().is_none());assert_eq!(store.watch_reply(&rows[2].id).unwrap().unwrap().status,"QUEUED");
+        let mut later=rows[2].clone();later.id=id();assert_eq!(store.prepare_watch_reply(&later).unwrap_err(),"REPLY_PREVIOUS_PENDING_CHECK_FIRST");assert_eq!(store.prepare_watch_reply(&rows[2]).unwrap().id,rows[2].id);
+    }
     #[test] fn manual_offer_receipt_restart_and_replays_are_at_most_once(){
         let temp=tempfile::tempdir().unwrap();let path=temp.path().join("router.db");let store=RouterStore::open_at(&path).unwrap();let pair=store.create_claude_connection().unwrap();let start=event(temp.path(),"SESSION_START",1,None);let turn=id();
         store.ingest_claude_event(&pair.token,&start).unwrap();let active=event(temp.path(),"RUNNING",2,Some(turn.clone()));store.ingest_claude_event(&pair.token,&active).unwrap();
@@ -151,6 +192,27 @@ impl RouterStore {
         store.accept_claude_manual_receipt(&pair.token,&receipt).unwrap();store.accept_claude_manual_receipt(&pair.token,&receipt).unwrap();assert_eq!(store.watch_reply(&r.id).unwrap().unwrap().status,"SENT");assert!(store.offer_claude_manual(&pair.token,&beat).unwrap().is_none());
         let mut conflict=r.clone();conflict.text.push('!');assert!(store.prepare_watch_reply(&conflict).is_err());
         store.revoke_claude_connection(&pair.connection_id).unwrap();assert!(store.accept_claude_manual_receipt(&pair.token,&receipt).is_err());
+    }
+    #[test] fn assistant_requires_exact_review_and_rechecks_revocation_before_native_offer(){
+        use super::super::{assistant::AssistantConnectionInput,assistant_actions::{ActionInput,ActionApproval}};
+        for revoke in [false,true]{
+            let temp=tempfile::tempdir().unwrap();let store=RouterStore::open_at(temp.path().join("router.db")).unwrap();
+            let pair=store.create_claude_connection().unwrap();let start=event(temp.path(),"SESSION_START",1,None);let turn=id();
+            for e in [&start,&event(temp.path(),"RUNNING",2,Some(turn.clone())),&event(temp.path(),"COMPLETE",3,Some(turn.clone()))]{store.ingest_claude_event(&pair.token,e).unwrap();}
+            let key=format!("{PREFIX}{}",start.session_id);
+            store.enable_codex_watch(&key,"Fixture",&start.cwd,&codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:Some(turn.clone()),item_id:None,text:String::new()}).unwrap();
+            let grant=store.connect_assistant_instance(AssistantConnectionInput{label:"Fixture".into(),expires_at:now()+600000}).unwrap();
+            let mut input=intent(&store,&start,&turn);
+            let action=store.prepare_assistant_action(&grant.id,ActionInput{request_id:id(),operation:"SEND_CHAT".into(),input:serde_json::json!({"threadId":key,"generation":input.generation,"text":input.text,"mode":"AUTO"})}).unwrap();input.id=action.id.clone();
+            assert_eq!(store.prepare_claude_assistant_reply(&input,&start.instance_id).unwrap_err(),"CLAUDE_ASSISTANT_REVIEW_REQUIRED");assert!(store.watch_reply(&input.id).unwrap().is_none());
+            store.claim_assistant_action(&grant.id,ActionApproval{action_id:action.id.clone(),expected_hash:action.payload_hash,rule_id:None,use_owner_answer:false,assessment:"Authorized exact fixture text".into()}).unwrap();
+            let mut changed=input.clone();changed.text.push('!');assert_eq!(store.prepare_claude_assistant_reply(&changed,&start.instance_id).unwrap_err(),"CLAUDE_ASSISTANT_PAYLOAD_CHANGED");assert!(store.watch_reply(&input.id).unwrap().is_none());
+            let reply=store.prepare_claude_assistant_reply(&input,&start.instance_id).unwrap();store.finish_assistant_action(&reply.id,Ok(serde_json::json!({"status":"QUEUED"}))).unwrap();
+            if revoke{store.revoke_assistant_grant(&grant.id).unwrap();}
+            let beat=event(temp.path(),"HEARTBEAT",4,Some(turn));store.ingest_claude_event(&pair.token,&beat).unwrap();let offer=store.offer_claude_manual(&pair.token,&beat).unwrap();
+            if revoke{assert!(offer.is_none());assert_eq!(store.watch_reply(&reply.id).unwrap().unwrap().error_code.as_deref(),Some("CLAUDE_ASSISTANT_AUTHORITY_CHANGED"));}
+            else{let offer=offer.unwrap();assert_eq!(offer.text,input.text);assert!(store.offer_claude_manual(&pair.token,&beat).unwrap().is_none());store.recover_watch_replies().unwrap();assert_eq!(store.watch_reply(&reply.id).unwrap().unwrap().status,"UNKNOWN");assert!(store.offer_claude_manual(&pair.token,&beat).unwrap().is_none());let native=id();store.accept_claude_manual_receipt(&pair.token,&ManualReceipt{request_id:reply.id.clone(),session_id:start.session_id,instance_id:start.instance_id,cwd:start.cwd,status:"SENT".into(),message_id:Some(native.clone()),text_sha256:offer.text_sha256}).unwrap();assert_eq!(store.claude_manual_message_ids(&key).unwrap()[&reply.id],native);}
+        }
     }
     #[test]fn pause_or_pending_native_approval_never_dispatches_a_command(){
         let temp=tempfile::tempdir().unwrap();let store=RouterStore::open_at(temp.path().join("router.db")).unwrap();let pair=store.create_claude_connection().unwrap();let start=event(temp.path(),"SESSION_START",1,None);store.ingest_claude_event(&pair.token,&start).unwrap();let turn=id();let active=event(temp.path(),"RUNNING",2,Some(turn.clone()));store.ingest_claude_event(&pair.token,&active).unwrap();let key=format!("{PREFIX}{}",start.session_id);

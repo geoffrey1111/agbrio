@@ -18,7 +18,7 @@ export function cachedNotificationApi(raw:NotificationApi):NotificationApi {
   return result;
  };
  return {...raw,cachedEvent:id=>readModels.peek(`notifications:event:${id}`),cachedWatches:()=>readModels.peek("notifications:watches"),cachedFeed:()=>readModels.peek("notifications:feed"),subscribe:fn=>{const a=readModels.subscribe("notifications:watches",fn),b=readModels.subscribe("notifications:feed",fn);return()=>{a();b();};},
-  refreshWatches:()=>readModels.refresh("notifications:watches",raw.watches,5000,{supersede:true}),
+  refreshWatches:()=>readModels.refresh("notifications:watches",raw.watches,5000),
   watches:()=>readModels.read("notifications:watches",raw.watches),feed:after=>after?raw.feed(after):readModels.read("notifications:feed",()=>raw.feed(0)),event:id=>readModels.read(`notifications:event:${id}`,()=>raw.event(id),30000),
   enable:id=>updateWatch(id,true,()=>raw.enable(id)),show:raw.show?id=>updateWatch(id,true,()=>raw.show!(id)):undefined,pause:id=>updateWatch(id,false,()=>raw.pause(id)),remove:raw.remove?(...args)=>update(()=>raw.remove!(...args)):undefined,
   markSeen:raw.markSeen?id=>update(()=>raw.markSeen!(id)):undefined,markRead:raw.markRead?id=>update(()=>raw.markRead!(id)):undefined,markThreadRead:raw.markThreadRead?(id,upTo)=>update(()=>raw.markThreadRead!(id,upTo)):undefined,

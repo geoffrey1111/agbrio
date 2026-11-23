@@ -171,7 +171,15 @@ pub(crate) fn claude_attachment_text(w:&CodexWatch,text:&str,options:&ReplyOptio
 }
 fn validate_options(a:&mut crate::codex::adapter::CodexAdapter,o:&ReplyOptions)->Result<(),String>{
  if o.model.is_none()&&o.effort.is_none(){return Ok(());}let models=a.request("model/list",json!({"limit":100,"cursor":null}))?;
- let m=models["data"].as_array().and_then(|ms|ms.iter().find(|m|o.model.as_deref()==m["id"].as_str()||o.model.as_deref()==m["model"].as_str())).ok_or("REPLY_MODEL_UNAVAILABLE")?;
+ validate_model_options(&models,o)
+}
+fn inherit_reply_model(o:&mut ReplyOptions,thread:&Value)->Result<(),String>{
+ if o.effort.is_some()&&o.model.is_none(){o.model=crate::native_runtime::codex(thread).and_then(|v|v["model"].as_str().map(str::to_owned));if o.model.is_none(){return Err("REPLY_MODEL_CONTEXT_UNAVAILABLE".into());}}
+ Ok(())
+}
+fn validate_model_options(models:&Value,o:&ReplyOptions)->Result<(),String>{
+ let model=o.model.as_deref().ok_or("REPLY_MODEL_CONTEXT_UNAVAILABLE")?;
+ let m=models["data"].as_array().and_then(|ms|ms.iter().find(|m|Some(model)==m["id"].as_str()||Some(model)==m["model"].as_str())).ok_or("REPLY_MODEL_UNAVAILABLE")?;
  if let Some(e)=&o.effort{if !m["supportedReasoningEfforts"].as_array().is_some_and(|es|es.iter().any(|v|v["reasoningEffort"].as_str()==Some(e))){return Err("REPLY_EFFORT_UNAVAILABLE".into());}}Ok(())
 }
 const ASYNC_IDLE_NOT_SENT:&str="REPLY_ASYNC_IDLE_USE_SEND_CHAT_NOT_SENT: This Codex chat is idle. No answer was sent. If authorized, send a complete message with SEND_CHAT instead.";
@@ -207,7 +215,11 @@ fn dispatch(core:&RouterCore,s:&mut Session,w:&CodexWatch,r:&WatchReply,resource
   }
   let m=metadata(s.adapter.as_mut().unwrap(),w)?;if m.pointer("/thread/status/type").and_then(Value::as_str)==Some("active"){return Err("REPLY_TARGET_ALREADY_RUNNING".into());}
  }
- let o:ReplyOptions=serde_json::from_value(r.options.clone()).map_err(|_|"REPLY_OPTIONS_INVALID")?;validate_options(s.adapter.as_mut().unwrap(),&o)?;let (mut input,extra)=files(w,&o)?;
+ let mut o:ReplyOptions=serde_json::from_value(r.options.clone()).map_err(|_|"REPLY_OPTIONS_INVALID")?;
+ // Effort-only requests inherit this exact native thread's model, never a
+ // catalog default or another conversation. Pin it for validation and start.
+ if o.effort.is_some()&&o.model.is_none(){let m=metadata(s.adapter.as_mut().unwrap(),w)?;inherit_reply_model(&mut o,&m["thread"])?;}
+ validate_options(s.adapter.as_mut().unwrap(),&o)?;let (mut input,extra)=files(w,&o)?;
  input.insert(0,json!({"type":"text","text":format!("{}{}",r.text,extra)}));
  let mut params=json!({"threadId":w.thread_id,"input":input});
  if r.mode=="STEER"{params["expectedTurnId"]=json!(r.expected_turn_id);params["clientUserMessageId"]=json!(r.id);}else{if let Some(m)=o.model{params["model"]=json!(m);}if let Some(e)=o.effort{params["effort"]=json!(e);}}
@@ -365,10 +377,19 @@ fn dispatch_queue_once(core:&RouterCore){let Ok(rs)=core.store.queued_watch_repl
  if a.is_turn_active(&w.thread_id)||m.pointer("/thread/status/type").and_then(Value::as_str)==Some("active"){continue;}
  if snap.turn_id==expected&&w.generation==r.generation&&matches!(snap.state.as_str(),"INCOMPLETE"|"UNKNOWN"|"RUNNING"|"RESULT_PENDING"){continue;}
  if snap.turn_id!=expected||w.generation!=r.generation||!matches!(snap.state.as_str(),"RESULT_READY"|"IDLE"){let _=core.store.finish_watch_reply(&r.id,"FAILED",None,Some("REPLY_QUEUE_TARGET_CHANGED"));continue;}
- if dispatch(&core,&mut s,&w,&r,None,None).is_err(){let _=core.store.finish_watch_reply(&r.id,"FAILED",None,Some("REPLY_QUEUE_PREWRITE_FAILED"));}
+ if let Err(error)=dispatch(&core,&mut s,&w,&r,None,None){let code=match error.as_str(){"REPLY_MODEL_UNAVAILABLE"=>"REPLY_MODEL_UNAVAILABLE","REPLY_EFFORT_UNAVAILABLE"=>"REPLY_EFFORT_UNAVAILABLE","REPLY_MODEL_CONTEXT_UNAVAILABLE"=>"REPLY_MODEL_CONTEXT_UNAVAILABLE",_=>"REPLY_QUEUE_PREWRITE_FAILED"};let _=core.store.finish_watch_reply(&r.id,"FAILED",None,Some(code));}
  }}
 
 #[cfg(test)]mod tests{
+ #[test]fn effort_validation_requires_exact_model_and_never_picks_catalog_default(){
+  use super::*;
+  let models=json!({"data":[{"id":"other","supportedReasoningEfforts":[{"reasoningEffort":"low"}]},{"model":"gpt-6.1-sol","supportedReasoningEfforts":[{"reasoningEffort":"xhigh"}]}]});
+  let mut options=ReplyOptions{effort:Some("xhigh".into()),..Default::default()};assert_eq!(validate_model_options(&models,&options).unwrap_err(),"REPLY_MODEL_CONTEXT_UNAVAILABLE");
+  inherit_reply_model(&mut options,&json!({"id":"exact","model":"gpt-6.1-sol"})).unwrap();assert_eq!(options.model.as_deref(),Some("gpt-6.1-sol"));assert!(validate_model_options(&models,&options).is_ok());
+  let mut missing=ReplyOptions{effort:Some("xhigh".into()),..Default::default()};assert_eq!(inherit_reply_model(&mut missing,&json!({"id":"exact"})).unwrap_err(),"REPLY_MODEL_CONTEXT_UNAVAILABLE");
+  options.model=Some("gpt-6.1-sol".into());assert!(validate_model_options(&models,&options).is_ok());options.model=Some("other".into());assert_eq!(validate_model_options(&models,&options).unwrap_err(),"REPLY_EFFORT_UNAVAILABLE");
+ }
+
  #[test]fn explicit_send_loads_a_known_cold_thread_once_but_observation_never_loads_it(){
   let d=tempfile::tempdir().unwrap();let cwd=d.path().to_str().unwrap();let log=d.path().join("calls.jsonl");
   let script=r#"const fs=require('node:fs');const cwd=process.argv[1],log=process.argv[2];let loaded=false;require('node:readline').createInterface({input:process.stdin}).on('line',line=>{const q=JSON.parse(line);if(q.id===undefined)return;fs.appendFileSync(log,q.method+'\n');let result={};if(q.method==='thread/read')result={thread:{id:'cold',cwd,status:{type:loaded?'idle':'notLoaded'}}};else if(q.method==='thread/resume'){loaded=true;result={thread:{id:'cold',cwd,status:{type:'idle'}}};}else if(q.method==='thread/turns/list')result={data:[{id:'old',status:'completed',itemsView:'notLoaded'}],nextCursor:null};else if(q.method==='thread/items/list')result={data:[{turnId:'old',item:{id:'final',type:'agentMessage',phase:'final_answer',text:'previous'}}],nextCursor:null};else if(q.method==='thread/goal/get'){if(!loaded){process.stdout.write(JSON.stringify({id:q.id,error:{code:-32600,message:'thread not found'}})+'\n');return;}result={goal:null};}else if(q.method==='turn/start')result={turn:{id:'new'}};else if(q.method!=='initialize')throw Error('unexpected '+q.method);process.stdout.write(JSON.stringify({id:q.id,result})+'\n');});"#;

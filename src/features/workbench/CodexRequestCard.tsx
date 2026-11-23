@@ -3,7 +3,7 @@ import {ChevronLeft,X,MessageCircleQuestion} from "lucide-react";
 import {t as uiText,useLanguage} from "../../i18n";
 import type {MobileCodexRequest} from "../../mobile/api";
 
-export function CodexRequestCard({request,disabled,respond,allowSkip=true,lockAfterSubmit=false,persistAnswers=true}:{request:MobileCodexRequest;disabled:boolean;allowSkip?:boolean;lockAfterSubmit?:boolean;persistAnswers?:boolean;respond:(input:object)=>Promise<void>}){
+export function CodexRequestCard({request,disabled,respond,deliveryStatus,allowSkip=true,lockAfterSubmit=false,persistAnswers=true}:{request:MobileCodexRequest;disabled:boolean;deliveryStatus?:string;allowSkip?:boolean;lockAfterSubmit?:boolean;persistAnswers?:boolean;respond:(input:object)=>Promise<void>}){
  useLanguage();const group=useId(),answerKey=`aiwr-request-answer:${request.requestId}:${request.revision}`,questions=request.questions??[],secret=questions.some(q=>q.isSecret);
  const [answers,setAnswers]=useState<Record<string,string>>(()=>{if(secret||!persistAnswers)return {};try{return JSON.parse(sessionStorage.getItem(answerKey)??"{}");}catch{return {};}});
  const [submitted,setSubmitted]=useState(false);
@@ -12,7 +12,8 @@ export function CodexRequestCard({request,disabled,respond,allowSkip=true,lockAf
  async function submit(skip=false){if(lock.current||disabled||request.responseSent)return;lock.current=true;setSending(true);try{await respond(skip?{revision:request.revision,decision:"skip"}:{revision:request.revision,answers});}finally{if(lockAfterSubmit)setSubmitted(true);lock.current=false;setSending(false);}}
  const q=questions[index],blocked=disabled||sending||submitted||request.responseSent,complete=questions.every(q=>!q.required||answers[q.id]?.trim()),selected=q?answers[q.id]??"":"";
  if(request.kind!=="USER_INPUT")return <section className="v4-chat-request"><h3>{uiText("Codex 需要你确认")}</h3>{request.reason&&<p>{request.reason}</p>}<div className="v4-chat-actions">{request.choices?.map(c=><button type="button" key={c.id} disabled={blocked} onClick={()=>{if(lock.current)return;lock.current=true;setSending(true);void respond({revision:request.revision,decision:c.id}).finally(()=>{lock.current=false;setSending(false);});}}>{uiText(c.id==="accept"?"允许这次请求":c.id==="decline"?"拒绝":c.id==="cancel"?"取消":c.label)}</button>)}</div></section>;
- if(submitted&&!request.responseSent)return <p className="v4-question-receipt" role="status">{uiText("请查看这次答复的发送状态，不会自动重发。")}</p>;
+ if(deliveryStatus==='SENT')return null;
+ if(submitted&&!request.responseSent)return <p className="v4-question-receipt" role="status">{uiText(deliveryStatus==='FAILED'||deliveryStatus==='CANCELLED'?"这次答复未完成发送，回答已保留。请查看发送记录。":"正在核对这次答复的发送回执，不会重复发送。")}</p>;
  if(request.responseSent)return null;
  if(!expanded)return <button type="button" className="v4-answer-question" onClick={()=>setExpanded(true)}><MessageCircleQuestion size={16}/>{uiText("回答问题")}</button>;
  return <section className="v4-chat-request v4-question-card" aria-label={uiText("Codex 执行请求")}>

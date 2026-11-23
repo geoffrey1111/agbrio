@@ -13,6 +13,33 @@ it('native choices survive peer turns and become unavailable only after owner in
 });
 const source={...m('t2','a2','assistant'),seenAt:200};
 const receipt=(id:string,turnId:string|null,text:string,createdAt:number,status:WatchReply['status']='SENT'):WatchReply=>({id,turnId,text,createdAt,status,threadId:'exact',sourceSequence:2,expectedTurnId:null,mode:'SEND',errorCode:null,options:{attachments:[]}});
+it('pages a long steered turn without appending earlier cached commentary below its native tail',()=>{
+ const early=m('long','early','assistant'),answer=m('long','choice','user'),middle=m('long','middle','assistant'),steer=m('long','steer','user'),latest=m('long','latest','assistant');
+ const observed=[early,middle,latest].map((m,i)=>({...m,seenAt:i+1}));
+ const live=observed[2];
+ const page=[steer,latest];
+ expect(chatTimeline(page,observed,[],live,true,latest).map(m=>m.id)).toEqual(['steer','latest']);
+ const older=mergeHistory([early,answer,middle],page);
+ expect(chatTimeline(older,observed,[],live,true,latest).map(m=>m.id)).toEqual(['early','choice','middle','steer','latest']);
+ const next=m('long','next','assistant');
+ expect(chatTimeline(older,[...observed,{...next,seenAt:4}],[],live,true,next).map(m=>m.id)).toEqual(['early','choice','middle','steer','latest']);
+ expect(chatTimeline([...older,next],observed,[],live,true,next).map(m=>m.id)).toEqual(['early','choice','middle','steer','latest','next']);
+ // A stale tapped notification in this same turn also returns via paging.
+ expect(chatTimeline(page,observed,[],observed[0],true,latest).map(m=>m.id)).toEqual(['steer','latest']);
+ expect(chatTimeline(page,observed,[],observed[0],true,early).map(m=>m.id)).toEqual(['steer','latest']);
+});
+it('a newly positioned live reply stays after history whose native positions have not refreshed yet',()=>{
+ const history=[m('t1','u1','user'),m('t1','a1','assistant'),m('t2','u2','user'),m('t2','a2','assistant')];
+ const live={...source,order:100};
+ expect(chatTimeline(history,[],[],live,true,live).map(m=>m.id)).toEqual(['u1','a1','u2','a2']);
+});
+it('native refresh repairs reversed cached turns while a one-turn update preserves older turns',()=>{
+ const old=[m('t2','u2','user'),m('t2','a2','assistant'),m('t1','u1','user'),m('t1','a1','assistant')];
+ const page=chronologicalHistoryPage(old);
+ const fixed=mergeHistory(old,page);
+ expect(fixed.map(m=>m.id)).toEqual(['u1','a1','u2','a2']);
+ expect(mergeHistory(fixed,[{...old[1],text:'live'}]).map(m=>m.id)).toEqual(['u1','a1','u2','a2']);
+});
 it('re-rendering a sent receipt never mutates cached history or duplicates the native user message',()=>{
  const prompt=Object.freeze(m('t2','u2','user','sent once'));
  const history=Object.freeze([prompt,Object.freeze({...source})]);

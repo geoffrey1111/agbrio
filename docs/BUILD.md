@@ -28,6 +28,12 @@ your tunnel credentials are never bundled.
 Ignored native provider tests require explicit fixture/account authorization;
 ordinary test suites do not write messages into your existing conversations.
 
+## Deferred local installation
+
+For local updates, prepare and verify the signed installer first, then give the owner a version-pinned PowerShell command to run at their chosen time. Use `tools/agbrio-control/update-local.ps1 -Installer <absolute-package> -InstallerSha256 <verified-sha256> -Version <exact-version> -NativeSha256 <bundled-native-sha256> -Executable <installed-ai-work-router.exe>`. A retained wrapper can pin these arguments for a single short command. `-ValidateOnly` checks the package and paths without quitting or installing.
+
+At execution the script gracefully stops the exact current Host through the CLI, waits for its transport processes to exit, backs up the installation and local profile, installs in place, checks native hashes/version and independently starts the new Host. Backups and the installation receipt stay under `%LOCALAPPDATA%/AIWorkRouter/updates/backups/`; they include private profile data and must not be uploaded. Installer failure stops with the backup path; there is no blind retry, force kill or automatic database rollback. A restart can interrupt tasks; conversation retention is not proof of execution continuation. Keep the installer and wrapper available until the owner runs them. Preparation does not authorize immediate restart or public release.
+
 ## Validation labels
 
 Unit checks, engine browser tests, clean Windows installer smoke tests and

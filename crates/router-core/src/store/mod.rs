@@ -11,6 +11,7 @@ pub mod goal_control;
 pub mod local_safety;
 pub mod codex_notices;
 pub mod management_zones;
+pub mod management_reminders;
 pub mod mcp_events;
 pub mod dispatch;
 pub mod migration;
@@ -103,6 +104,8 @@ const NORMAL_FEATURE_MIGRATIONS: &[(&str, &str)] = &[
     ("watch-group-removals-v1", include_str!("../../migrations/normal/039_watch_group_removals.sql")),
     ("management-desktop-identity-v1", include_str!("../../migrations/normal/040_management_desktop_identity.sql")),
     ("claude-connection-policy-v1", include_str!("../../migrations/normal/041_claude_connection_policy.sql")),
+    ("management-reminders-v1", include_str!("../../migrations/normal/042_management_reminders.sql")),
+    ("claude-assistant-commands-v1", include_str!("../../migrations/normal/043_claude_assistant_commands.sql")),
 ];
 
 const MIGRATIONS: &[(i64, &str)] = &[

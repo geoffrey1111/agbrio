@@ -86,7 +86,7 @@ No. Delivery, real wake, source read, dedupe and prepare/review/send/receipt nee
 
 ### Claude plugin is installed, but no session or reply control appears. Why?
 
-Saved configuration, reload, real session registration and manual-input readiness differ. Wait for the original task to finish before safe reload, without --force or test prompts. Replies need plugin 0.1.3 actually advertising protocol 1. Observation alone is not sending; autonomous/MCP Claude writes and Claude Goal controls remain unavailable. [Claude](CLAUDE_CODE.md).
+Saved configuration, reload, real session registration and manual-input readiness differ. Wait for the original task to finish before safe reload, without --force or test prompts. Replies need plugin 0.1.3 actually advertising protocol 1. Observation alone is not sending; reviewed INSTANCE text SEND_CHAT is available through the ready native plugin; Claude Goal controls remain unavailable. [Claude](CLAUDE_CODE.md).
 
 ### What belongs in a useful bug report?
 

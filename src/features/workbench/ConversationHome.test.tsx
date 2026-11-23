@@ -9,6 +9,16 @@ afterEach(cleanup);
 const messageEpoch=Date.now()-60000;
 const watch=(id:string,at:number,state='RESULT_READY'):CodexWatch=>({threadId:id,label:id,cwd:'C:/fixture',lastMessageAt:at?messageEpoch+at:0,checkedAt:Date.now(),enabled:true,generation:1,errorCode:null,snapshot:{state,turnId:'turn',itemId:'message',text:'fixture'}});
 function fixture(initial:CodexWatch[]){let rows=initial;let notify=()=>{};const api={connect:vi.fn(),threads:vi.fn(),enable:vi.fn(),pause:vi.fn(),feed:vi.fn(),event:vi.fn(),webUrl:vi.fn(),cachedWatches:()=>rows,watches:vi.fn(async()=>rows),show:vi.fn(async(id:string)=>{const shownAt=Date.now();rows=rows.map(w=>w.threadId===id?{...w,shownAt}:w);notify();return{shownAt};}),subscribe:(listener:()=>void)=>{notify=listener;return()=>{};}} as NotificationApi;return{api,push:(next:CodexWatch[])=>{rows=next;notify();}};}
+it('keeps cached rows marked stale after a failed read, then recovers by polling the live list',async()=>{
+ const old=watch('cached conversation',1,'RUNNING');const a=fixture([old]);
+ a.api.refreshWatches=vi.fn().mockRejectedValueOnce(new Error('ROUTER_READ_TIMEOUT')).mockResolvedValueOnce([{...old,label:'live conversation',snapshot:{...old.snapshot,state:'RESULT_READY'}}]);
+ render(<ConversationHome bridges={[]} activity={{}} activityClock={Date.now()} watchApi={a.api} addRequest={0} onOpenBridge={vi.fn()} onOpenWatch={vi.fn()}/>);
+ expect(await screen.findByText('对话状态未更新，正在自动重试。')).toBeVisible();
+ expect(screen.getByText('cached conversation')).toBeVisible();
+ expect(await screen.findByText('live conversation',undefined,{timeout:7000})).toBeVisible();
+ expect(screen.queryByText('对话状态未更新，正在自动重试。')).toBeNull();
+ expect(a.api.watches).not.toHaveBeenCalled();
+},9000);
 it('never promotes a child to a top-level chat after stopping its parent',async()=>{
  const parent=watch('claude_code:manager',2);const child={...watch('pi:child',3),piParent:{provider:'CLAUDE_CODE',externalId:'manager',cwd:'C:/fixture'}};
  const a=fixture([parent,child]);a.api.remove=vi.fn(async()=>{});
@@ -125,4 +135,17 @@ it('dismisses only the old failed todo without stopping its watch and shows a ne
  fireEvent.click(screen.getByRole('button',{name:'知道了'}));await waitFor(()=>expect(screen.queryByText(old.label)).toBeNull());
  view.unmount();render(<TodoPage {...props}/>);expect(screen.queryByText(old.label)).toBeNull();expect(a.api.pause).not.toHaveBeenCalled();
  act(()=>a.push([{...old,snapshot:{...old.snapshot,itemId:'a-new-error'}}]));await waitFor(()=>expect(screen.getByText(old.label)).toBeVisible());
+});
+
+it('distinguishes a quiet active turn from an expired status and recovers from a fresh result',async()=>{
+ const running={...watch('native task',1,'RUNNING'),lastMessageAt:Date.now()-49*60_000};
+ const a=fixture([running]);
+ render(<ConversationHome addRequest={0} bridges={[]} activity={{}} activityClock={Date.now()} watchApi={a.api} onOpenBridge={vi.fn()} onOpenWatch={vi.fn()}/>);
+ expect(await screen.findByText('执行中',{selector:'.v6-state'})).toBeVisible();
+ act(()=>a.push([{...running,checkedAt:Date.now()-91_000}]));
+ expect(screen.getByText('执行状态待确认，正在重试')).toBeVisible();
+ expect(screen.queryByText('执行中',{selector:'.v6-state'})).toBeNull();
+ act(()=>a.push([{...running,snapshot:{...running.snapshot,state:'RESULT_READY'},checkedAt:Date.now()}]));
+ expect(await screen.findByText('结果已到达')).toBeVisible();
+ expect(a.api.enable).not.toHaveBeenCalled();
 });
