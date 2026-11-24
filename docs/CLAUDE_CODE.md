@@ -1,3 +1,13 @@
+# Review-board status through MCP (Windows rc.161)
+
+Use `agbrio_list_boards`, then `agbrio_read_board({boardId})` for REVIEW approvals.
+Optional `group`, inclusive `since` and exclusive `until` filters accept group
+ID/text and RFC3339 or date-only bounds (Asia/Singapore). Read every `nextCursor`
+with the same filters; restart on revision change. `rows` retains item decisions,
+verbatim comments/newlines and timestamps, including archived status. This grants
+no approval or dispatch authority. Old connector schemas can omit filters and
+read all pages. The running Host must be updated before this path is available.
+
 # Reviewed assistant messages (2026-11-20)
 
 The owner now permits Codex and Claude assistants to communicate with an existing Claude session through reviewed INSTANCE `SEND_CHAT` actions. This supersedes earlier blanket MCP-write restrictions below only for this native-plugin text path. Reuse existing management areas and grants; this development does not configure clients or dispatch real work.

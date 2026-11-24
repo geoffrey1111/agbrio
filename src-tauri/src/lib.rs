@@ -25,6 +25,7 @@ async fn app_cache_cleanup(state:tauri::State<'_,RouterState>)->Result<attachmen
 mod app_control;
 mod published_boards;
 mod review_boards;
+mod review_board_status;
 #[tauri::command]
 async fn review_board_desktop_url(id:String)->Result<String,String>{review_boards::desktop_url(id).await}
 #[tauri::command]

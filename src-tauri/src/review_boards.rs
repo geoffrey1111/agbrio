@@ -672,6 +672,49 @@ pub(crate) async fn proxy(
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn status_rpc_fixture(root: PathBuf, temp: &Path) -> (crate::RouterCore, String, String) {
+        let id="a".repeat(32);
+        let store=temp.join("review-registry.json");
+        fs::write(&store,serde_json::to_vec(&vec![Registration{id:id.clone(),root,title:"Approval fixture".into(),port:47816,base_path:"/board".into(),legacy_base:None}]).unwrap()).unwrap();
+        *TEST_STORE.lock().unwrap()=Some(store);
+        *crate::published_boards::TEST_STORE.lock().unwrap()=Some(temp.join("static-registry.json"));
+        let db=std::sync::Arc::new(crate::RouterStore::open_at(temp.join("qa.db")).unwrap());
+        let core=crate::RouterCore{store:db.clone(),session:Default::default()};
+        let now=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+        let grant=db.connect_assistant_instance(router_core::store::assistant::AssistantConnectionInput{label:"Readonly approval fixture".into(),expires_at:now+600000}).unwrap();
+        (core,grant.id,id)
+    }
+    struct StatusReset;
+    impl Drop for StatusReset {fn drop(&mut self){*TEST_STORE.lock().unwrap()=None;*crate::published_boards::TEST_STORE.lock().unwrap()=None;}}
+    #[test]
+    fn review_status_mcp_cached_schema_and_filters_are_read_only() {
+        let temp=tempfile::tempdir().unwrap();let root=temp.path().join("board");fs::create_dir(&root).unwrap();
+        fs::write(root.join("board.mjs"),r#"export async function status({group,since}) {return [{group:group||'旧组',postId:'archived-id',item:'项',status:'退回',comment:'原话\n第二行',time:since||'2026-11-24T01:00:00Z',key:'ui-resource:x',fingerprint:'original',active:false,paths:['NOT_FOR_MCP']}] }"#).unwrap();
+        let (core,grant,id)=status_rpc_fixture(root.clone(),temp.path());let _reset=StatusReset;
+        let call=|args|crate::assistant_mcp::call(&core,&grant,"agbrio_read_board",args);
+        let default=call(json!({"boardId":id})).unwrap();assert_eq!(default["view"],"STATUS");assert_eq!(default["rows"][0]["active"],false);assert_eq!(default["rows"][0]["comment"],"原话\n第二行");assert!(!default.to_string().contains("NOT_FOR_MCP"));
+        let selected=call(json!({"boardId":id,"group":"指定组","since":"2026-11-24","until":"2026-11-25"})).unwrap();assert_eq!(selected["rows"][0]["group"],"指定组");assert_eq!(selected["rows"][0]["time"],"2026-11-24T00:00:00+08:00");
+        assert!(call(json!({"boardId":id,"command":"post"})).is_err());assert!(call(json!({"boardId":id,"since":"not-a-date"})).is_err());assert!(call(json!({"boardId":"b".repeat(32),"group":"x"})).is_err());
+        assert_eq!(fs::read_dir(root).unwrap().count(),1);
+        assert_eq!(core.store.assistant_actions(&grant).unwrap().len(),0);
+        core.store.revoke_assistant_grant(&grant).unwrap();
+        assert!(call(json!({"boardId":id})).unwrap_err().contains("REVOKED"));
+    }
+    #[test]
+    #[ignore="Explicit owner-selected read-only real approval status; no live grant/config writes"]
+    fn selected_review_status_mcp_read_only_acceptance() {
+        let id=std::env::var("AGBRIO_READONLY_BOARD_ID").unwrap();
+        let registry=PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap()).join("AIWorkRouter/data/review-boards.json");
+        let original=rows_at(&registry).unwrap().into_iter().find(|r|r.id==id).unwrap();
+        let ledger=original.root.join("data/approvals.json");let before=fs::read(&ledger).unwrap();
+        let scratch=PathBuf::from(std::env::var_os("AGBRIO_BOARD_QA_DIR").unwrap());let temp=tempfile::tempdir_in(scratch).unwrap();
+        let(core,grant,test_id)=status_rpc_fixture(original.root,temp.path());let _reset=StatusReset;
+        let result=crate::assistant_mcp::call(&core,&grant,"agbrio_read_board",json!({"boardId":test_id,"group":"proxy-fire-l2-e3-r1-1124","since":"2026-11-24"})).unwrap();
+        assert_eq!(result["readOnly"],true);assert!(result["rows"].as_array().unwrap().len()>0);
+        assert_eq!(fs::read(ledger).unwrap(),before);
+        assert!(result["rows"].as_array().unwrap().iter().all(|r|r["groupId"]=="proxy-fire-l2-e3-r1-1124"));
+        println!("MCP_INSTANCE_RPC=true realOriginalStatus=true rows={} approvalsUnchanged=true writes=0",result["rows"].as_array().unwrap().len());
+    }
     #[test]
     fn route_and_range_boundaries() {
         for scope in [
