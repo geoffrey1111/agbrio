@@ -61,7 +61,7 @@ fn unwrap_plugin_prompt(text: &str) -> String {
 fn local_command(text:&str)->bool {
     ["<command-", "<local-command-", "Caveat: The messages below"].iter().any(|p|text.trim_start().starts_with(p))
 }
-fn prompt_text(content: &Value) -> Option<String> {
+pub(crate) fn prompt_text(content: &Value) -> Option<String> {
     let text = match content {
         Value::String(s) => s.clone(),
         Value::Array(items) => {

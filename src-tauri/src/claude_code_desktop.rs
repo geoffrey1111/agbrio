@@ -28,8 +28,9 @@ pub(crate) fn engine_roots() -> Vec<PathBuf> {
     engine_roots_at(data_roots(), local.as_deref())
 }
 
-// Stop parsing at the title, or earlier at any transcript, MCP configuration or
-// approval data. Other prefix values are skipped without being kept. The sentinel
+// Stop at transcript, MCP configuration or approval data. Metadata fields can
+// appear in any order; retain archive/activity fields even after the title.
+// Other prefix values are skipped without being kept. The sentinel
 // returns the captured prefix without requiring the rest of the JSON.
 const PAYLOAD_KEYS: &[&str] = &["remoteMcpServersConfig","enabledMcpTools","messages","transcript","completedTurns","sessionPermissionUpdates","alwaysAllowedReasons","promptAppendSnapshot","spawnSeed"];
 #[derive(Default, Clone)]
@@ -49,10 +50,8 @@ impl<'de> Visitor<'de> for &mut Prefix {
                 // value inside the bounded prefix; never retain or expose it.
                 "pendingSystemReminder" => { map.next_value::<de::IgnoredAny>()?; }
                 "title" => {
-                    if self.id.is_none() || self.cwd.is_none() { return Err(de::Error::custom("METADATA_IDENTITY_FIRST")); }
                     let title: Option<String> = map.next_value()?;
                     self.title = title.filter(|v| !v.trim().is_empty() && v.chars().count() <= 512 && !v.chars().any(|c| c.is_control() || matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')));
-                    return Err(de::Error::custom("METADATA_COMPLETE"));
                 }
                 k if PAYLOAD_KEYS.contains(&k) => return Err(de::Error::custom("METADATA_PREFIX_ENDED")),
                 _ => { map.next_value::<de::IgnoredAny>()?; }
@@ -297,6 +296,16 @@ mod tests {
         fs::write(&file,format!("{{\"cliSessionId\":\"native\",\"cwd\":{},\"remoteMcpServersConfig\":INVALID,\"title\":\"not read\"}}",serde_json::to_string(&current.cwd).unwrap())).unwrap();
         assert!(read_name(&file,&wanted).is_none());
         fs::write(&file,format!("{{\"cliSessionId\":\"unregistered\",\"cwd\":{},\"title\":INVALID}}",serde_json::to_string(&current.cwd).unwrap())).unwrap(); assert!(read_name(&file,&wanted).is_none());
+    }
+    #[test] fn title_before_identity_is_kept_but_payload_boundary_still_applies() {
+        let temp=tempfile::tempdir().unwrap();let current=session(temp.path(),"native");
+        let wanted=HashMap::from([("native".into(),current.cwd.clone())]);
+        let file=temp.path().join("local_fixture.json");let cwd=serde_json::to_string(&current.cwd).unwrap();
+        fs::write(&file,format!("{{\"title\":\"标题在前\",\"cliSessionId\":\"native\",\"cwd\":{cwd},\"isArchived\":true,\"lastActivityAt\":42,\"sessionId\":\"local_native\",\"completedTurns\":INVALID")).unwrap();
+        assert_eq!(read_name(&file,&wanted),Some(("native".into(),"标题在前".into())));
+        let prefix=read_prefix(&file);assert!(prefix.archived);assert_eq!(prefix.last_activity,42);assert_eq!(prefix.local_id.as_deref(),Some("local_native"));
+        fs::write(&file,format!("{{\"title\":\"不得越界\",\"messages\":INVALID,\"cliSessionId\":\"native\",\"cwd\":{cwd}}}")).unwrap();
+        assert!(read_name(&file,&wanted).is_none());
     }
     #[test] fn newer_app_keys_before_title_are_skipped_and_all_partitions_are_listed() {
         let temp = tempfile::tempdir().unwrap(); let project = temp.path().join("project"); fs::create_dir(&project).unwrap();

@@ -44,6 +44,7 @@ mod local_control;
 mod codex_quota;
 mod claude_quota;
 mod claude_transcript;
+mod claude_titles;
 mod claude_task_tree;
 mod claude_owner_requests;
 mod claude_child_contexts;

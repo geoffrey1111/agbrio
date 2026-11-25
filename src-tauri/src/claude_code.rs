@@ -33,6 +33,12 @@ pub(crate) fn catalog(core:&RouterCore)->Result<router_core::store::claude_code:
         if catalog.sessions.iter().any(|s|s.session_id==d.session_id){continue;}
         catalog.sessions.push(Session{session_id:d.session_id.clone(),instance_id:String::new(),cwd:d.cwd.clone(),version:String::new(),state:"DESKTOP".into(),turn_id:None,checked_at:d.last_activity,lease_until:0,title:d.title.clone(),latest_reply:None});
     }
+    for session in &mut catalog.sessions {
+        if session.title.as_ref().is_none_or(|title|title.trim().is_empty()) {
+            session.title=desktop.iter().find(|d|d.session_id==session.session_id&&!d.archived&&router_core::claude_code::same_root(&d.cwd,&session.cwd)).and_then(|d|d.title.clone())
+                .or_else(||crate::claude_titles::title(&session.session_id,&session.cwd));
+        }
+    }
     Ok(catalog)
 }
 /// Exact native identity for binding or watching: a live registered session, or an
@@ -173,6 +179,11 @@ pub(crate) fn observed_session(core:&RouterCore,external:&str,cwd:Option<&str>)-
         session.latest_reply=status.reply.map(|text|router_core::claude_code::CompleteReply{turn_id:status.turn,text,completed_at:status.completed_at.max(1)});
     }
     if core.store.claude_owner_request_pending(external,&session.cwd).unwrap_or(false){session.state="WAITING_DECISION".into();}
+    if session.title.as_ref().is_none_or(|title|title.trim().is_empty()) {
+        // List projections already merge desktop titles. Avoid scanning every
+        // desktop partition again for each observed chat's status poll.
+        session.title=crate::claude_titles::title(external,&session.cwd);
+    }
     Ok(session)
 }
 /// The session's own transcript owns state, turn and reply once it exists.

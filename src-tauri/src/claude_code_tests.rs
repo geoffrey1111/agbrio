@@ -3,6 +3,34 @@ use crate::host_application::Session;
 use router_core::claude_code::Event;
 use router_core::store::role_bridge::RoleBindingInput;
 use std::{collections::HashMap,sync::{Arc,Mutex}};
+#[test] fn native_claude_titles_reach_phone_candidates_and_observed_chats_without_provider_writes() {
+ let temp=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
+ let core=RouterCore{session:Arc::new(Mutex::new(Session::default())),store:store.clone()};
+ let pair=store.create_claude_connection().unwrap();let sid="10000000-0000-4000-8000-000000000003";
+ ingest(&core,&pair.token,&event(temp.path(),sid,"SESSION_START",1)).unwrap();
+ let projects=temp.path().join("projects");let folder=projects.join("fixture");std::fs::create_dir_all(&folder).unwrap();
+ let path=folder.join(format!("{sid}.jsonl"));let body=serde_json::json!({"sessionId":sid,"cwd":temp.path(),"type":"user","message":{"role":"user","content":"手机监听应显示这个标题"}}).to_string();std::fs::write(&path,&body).unwrap();
+ *crate::claude_transcript::TEST_PROJECTS.lock().unwrap()=Some(projects);
+ *crate::claude_code_desktop::TEST_ROOTS.lock().unwrap()=vec![];
+ assert_eq!(catalog(&core).unwrap().sessions[0].title.as_deref(),Some("手机监听应显示这个标题"));
+ assert_eq!(observed_session(&core,sid,None).unwrap().title.as_deref(),Some("手机监听应显示这个标题"));
+ let candidates=crate::codex_watch::candidates(&core).unwrap();
+ let candidate=candidates.threads.iter().find(|t|t.id==format!("claude_code:{sid}")).unwrap();
+ assert_eq!(candidate.label,"手机监听应显示这个标题");
+ use std::io::Write;let mut out=std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+ writeln!(out,"\n{}",serde_json::json!({"type":"custom-title","sessionId":sid,"customTitle":"重命名即时刷新"})).unwrap();
+ assert_eq!(catalog(&core).unwrap().sessions[0].title.as_deref(),Some("重命名即时刷新"));
+ let key=format!("claude_code:{sid}");crate::claude_chat::enable(&core,&key).unwrap();
+ assert_eq!(crate::claude_chat::list(&core).unwrap()[0].watch.label,"重命名即时刷新");
+ let app=temp.path().join("app");let metadata=app.join("claude-code-sessions/account/org");std::fs::create_dir_all(&metadata).unwrap();
+ std::fs::write(metadata.join("local_fixture.json"),format!("{{\"title\":\"桌面标题优先\",\"cliSessionId\":\"{sid}\",\"cwd\":{}}}",serde_json::to_string(temp.path()).unwrap())).unwrap();
+ *crate::claude_code_desktop::TEST_ROOTS.lock().unwrap()=vec![app];
+ assert_eq!(catalog(&core).unwrap().sessions[0].title.as_deref(),Some("桌面标题优先"));
+ assert_eq!(crate::claude_chat::list(&core).unwrap()[0].watch.label,"桌面标题优先");
+ assert!(core.session.lock().unwrap().adapter.is_none());assert!(store.claude_session(sid).unwrap().title.is_none());
+ *crate::claude_transcript::TEST_PROJECTS.lock().unwrap()=None;
+ *crate::claude_code_desktop::TEST_ROOTS.lock().unwrap()=vec![];
+}
 fn event(root:&std::path::Path,session:&str,kind:&str,sequence:i64)->Event {
  Event{event_id:uuid::Uuid::new_v4().to_string(),session_id:session.into(),instance_id:format!("20000000-0000-4000-8000-{}",&session[24..]),sequence,cwd:root.to_string_lossy().into(),version:"2.1.286".into(),kind:kind.into(),turn_id:None,text:None,completed_at:None}
 }

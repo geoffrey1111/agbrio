@@ -73,6 +73,18 @@ Owner approved local adjustment: show the native conversation title first, direc
 
 The current Mods API does not expose a documented title getter. ClaudeCodeAdapter's Desktop leaf projects only the native session-file metadata prefix (cliSessionId, cwd, title), and only after exact registered UUID + canonical root validation. It stops before transcript/configuration/approval fields, rejects unknown prefix layouts, skips links/ambiguous names, limits discovery and caches titles for60s. Never imports private chat bodies or creates registrations from files. This is a narrowly approved display-metadata exception to older no-private-file wording; the native event stream remains the sole reply/status source.
 
+Since Windows rc.162, metadata key order may place title before identity; both must
+still appear before the payload boundary. If desktop title metadata is unavailable,
+the catalog and observed-chat display may read a bounded native transcript fallback
+for an already known exact UUID/root: native custom title first, then the first
+public user prompt's first line (80 characters). Only head/tail 128 KiB windows and
+lines up to 16 KiB are inspected; prompt fallback comes only from the head. Meta,
+tool, sidechain and local-command content is excluded. Cached display titles track
+file length/modification time. This display fallback creates no registrations,
+provider calls, model activity or transcript/store writes and is never routing
+authority. Missing or unverifiable sources stay unnamed. Desktop titles win in
+list projections; existing archive/lease filters remain in force.
+
 Desktop's explicit Connect Claude Code action discovers the bundled supported native engine and uses only official plugin administrative CLI commands. No session launch/resume, prompt, model call, force reload or interruption. Reuse a proven live publisher before any administrative command. Otherwise inspect both installed and SDK-inline configuration identities; complete saved config returns WAITING_SESSION without rotating credentials. First configuration uses stdin only, no secret argv/file/clipboard/IPC response. A refused/partial attempt revokes only its newly minted credential, retains original tasks and does not claim connected. Different Host configuration is not overwritten. Only a real fresh callback is CONNECTED. Mobile and MCP have no administrative connect surface; manual setup is hidden under connection management.
 
 560frontend/61files,229Core/2ignored,236Host/33ignored + main1 PASS;9scoped Host cases cover identity/privacy/duplicate/failed/repeated setup. Read-only actual Desktop title projection PASS with an existing registered session, no provider/model/write. Fictional desktop1280x900/phone430x932 has no horizontal overflow, visible footer, exact duplicate-title selection/keyboard routing, connect1/manual-setup0/send0. First-time app-owned real installation/configuration and complete naturally arriving Bridge reply remain unverified. Existing caller environment's blocked agent credential-write operation was not retried or moved behind this feature; new secret-writing native checks are fixtures only. Public Windows/release/install gates pending.
