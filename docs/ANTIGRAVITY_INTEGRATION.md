@@ -108,3 +108,8 @@ Changing it never restarts a running native process. The read response reports
 `defaultMode`, `runningMode` and `pendingNextLaunch`; an already-running process
 keeps its original mode until its next launch. Finish active tasks before an
 owner-chosen restart. Default changes do not resend any original task.
+
+The desktop Settings > Connections > Antigravity (AGY) panel exposes the same
+owner setting, its saved default, actual running mode and pending-next-launch
+state. Saving never restarts AGY. On an uncertain save, refresh reads the actual
+preference before another write is permitted.

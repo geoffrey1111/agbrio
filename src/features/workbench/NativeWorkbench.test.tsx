@@ -1,4 +1,4 @@
-import {act,cleanup,fireEvent,render,screen,waitFor,within} from "@testing-library/react";
+﻿import {act,cleanup,fireEvent,render,screen,waitFor,within} from "@testing-library/react";
 import {afterEach,expect,it,vi} from "vitest";
 import {useState} from "react";
 import {cachedBridgeActivity} from "./bridgeActivity";
@@ -113,3 +113,5 @@ it("keeps the real quota reading mounted in Settings across rapid main navigatio
   expect(read).toHaveBeenCalledTimes(1);
  }finally{cleanup();vi.useRealTimers();}
 });
+
+it('exposes AGY permission controls in the desktop Connections settings',()=>{render(<UnifiedWorkbench {...base} surface="SETTINGS" antigravitySettingsPanel={<div>AGY permission control fixture</div>}/>);expect(screen.getByRole('heading',{name:'Antigravity（AGY）'})).toBeVisible();expect(screen.getByText('AGY permission control fixture')).toBeVisible();});

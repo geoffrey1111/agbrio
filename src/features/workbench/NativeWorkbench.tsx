@@ -1,4 +1,4 @@
-import {AutomationEntry} from './AutomationEntry';
+﻿import {AutomationEntry} from './AutomationEntry';
 import {SettingsIndexGroup,SettingsIndexItem,SettingsJumpNav,useSettingsIndex,type SettingsGroup} from "./SettingsIndex";
 import {ManagementZones} from "./ManagementZones";
 import {CacheSettings,useCacheMaintenance} from './CacheSettings';
@@ -136,11 +136,11 @@ export function NativeWorkbench(props:UnifiedWorkbenchProps) {
     if(lifecycle==="TRASHED")removeBridge(item);else {setActionError("");setRestoreNotice("");removal.restore(item);}
   }
   const codexPanel=props.codexConnectionPanel??props.runtimeAddon;
-  const desktopSettings=Boolean(props.overviewApi||props.onOpenWebAccess||codexPanel||props.piSettingsPanel);
+  const desktopSettings=Boolean(props.overviewApi||props.onOpenWebAccess||codexPanel||props.antigravitySettingsPanel||props.piSettingsPanel);
   const inSettings=surface==="SETTINGS";
   const settingsSplit=split&&inSettings;
   const {current:settingsCurrent,jump:jumpSettings}=useSettingsIndex(inSettings,content);
-  const settingsGroups:SettingsGroup[]=["OVERVIEW",...(codexPanel||props.piSettingsPanel||props.assistantPanel?["CONNECTIONS" as const]:[]),"DEVICES","NOTIFY",...(props.runtimeProtectionPanel?["PROTECTION" as const]:[]),"WORKSPACE","GENERAL"];
+  const settingsGroups:SettingsGroup[]=["OVERVIEW",...(codexPanel||props.antigravitySettingsPanel||props.piSettingsPanel||props.assistantPanel?["CONNECTIONS" as const]:[]),"DEVICES","NOTIFY",...(props.runtimeProtectionPanel?["PROTECTION" as const]:[]),"WORKSPACE","GENERAL"];
   const jumpTo=(id:SettingsGroup,target?:string)=>{jumpSettings(id,target);if(!inSettings)navigate("SETTINGS");};
   const settingsTask=(target:"RUNTIME"|"RECYCLE"|"NOTIFICATION_LOG")=>navigate(target);
   const go=(icon:React.ReactNode,label:string,onClick:()=>void,sub?:React.ReactNode)=><button type="button" onClick={onClick}>{icon}<span className="v7-row-text"><span>{label}</span>{sub?<small>{sub}</small>:null}</span><ChevronRight size={18}/></button>;
@@ -189,6 +189,7 @@ export function NativeWorkbench(props:UnifiedWorkbenchProps) {
           {inSettings&&<>
             {settingsGroups.includes("CONNECTIONS")&&<SettingsIndexGroup id="CONNECTIONS">
               {codexPanel&&<SettingsIndexItem id="settings-codex" label="Codex 连接">{codexPanel}<details className="v7-help"><summary>{uiText("连接状态")}</summary>{runtimeChecks}</details></SettingsIndexItem>}
+              {props.antigravitySettingsPanel&&<SettingsIndexItem id="settings-antigravity" label="Antigravity（AGY）">{props.antigravitySettingsPanel}</SettingsIndexItem>}
               {props.piSettingsPanel&&<SettingsIndexItem id="settings-pi" label="Pi 子任务">{props.piSettingsPanel}</SettingsIndexItem>}
               {props.assistantPanel&&<SettingsIndexItem id="settings-assistant" label="AI 助手">{props.assistantPanel}</SettingsIndexItem>}
             </SettingsIndexGroup>}

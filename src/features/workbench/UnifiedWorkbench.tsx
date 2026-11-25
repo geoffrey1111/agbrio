@@ -1,4 +1,4 @@
-import {NativeWorkbench} from "./NativeWorkbench";
+﻿import {NativeWorkbench} from "./NativeWorkbench";
 import type {ReactNode} from "react";
 import type {RuntimePresentation, WorkbenchItem, WorkbenchLifecycle} from "./models";
 
@@ -17,6 +17,7 @@ export interface UnifiedWorkbenchProps {
   devicePanel?:ReactNode;
   assistantPanel?:ReactNode;
   piSettingsPanel?:ReactNode;
+  antigravitySettingsPanel?:ReactNode;
   quotaPanel?:ReactNode;
   updatePanel?:ReactNode;
   updateAvailable?:boolean;

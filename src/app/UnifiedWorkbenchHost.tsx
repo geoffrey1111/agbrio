@@ -1,4 +1,4 @@
-import {readModels} from "../features/workbench/readModelCache";
+﻿import {readModels} from "../features/workbench/readModelCache";
 import {CodexQuota,desktopQuotaApi,desktopClaudeQuotaApi} from "../features/workbench/CodexQuota";
 import {DesktopUpdateSettings,useDesktopUpdateBadge} from "../features/workbench/DesktopUpdateSettings";
 import {desktopBridgeActivity} from "../features/workbench/bridgeActivity";
@@ -7,6 +7,7 @@ import {NotificationDeliveryPanel} from "../features/workbench/NotificationDeliv
 import {CodexConnection} from "../features/workbench/CodexConnection";
 import {desktopOverviewApi} from "../features/workbench/SettingsHome";
 import {LocalSafetySettings} from "../features/workbench/LocalSafetySettings";
+import {AntigravitySettings} from "../features/workbench/AntigravitySettings";
 import {PiSettings} from "../features/workbench/PiSettings";
 import {DesktopWebAccess} from "../features/workbench/DesktopWebAccess";
 import {AssistantSettings} from "../features/workbench/AssistantSettings";
@@ -257,7 +258,7 @@ export function UnifiedWorkbenchHost({initialSurface="BRIDGES"}:{initialSurface?
     onCreateBridge={async name=>{const id=await codexApi.createBridge(name);const exact=await codexApi.workstreamSnapshot(id);const created=exact.workstreams.find(item=>item.id===id);if(!created)throw Error("新建 Bridge 暂时不可读取，请返回列表检查。");await codexApi.selectWorkspace(created.projectId,id);await refreshIndex();await loadSelected(id);flushSync(()=>setSurface("WORKSPACE"));setBindingRequest(v=>v+1);}}
     quotaPanel={<><CodexQuota api={desktopQuotaApi} active={surface==="SETTINGS"}/><CodexQuota provider="Claude Code" api={desktopClaudeQuotaApi} active={surface==="SETTINGS"}/></>} updatePanel={<DesktopUpdateSettings/>} updateAvailable={updateAvailable} bridgeActivityApi={desktopBridgeActivity} items={items}
     selectedWorkstreamId={selectedWorkstreamId}
-    assistantPanel={<AssistantSettings/>} piSettingsPanel={<PiSettings/>} codexConnectionPanel={<CodexConnection/>} runtimeProtectionPanel={<LocalSafetySettings/>} overviewApi={desktopOverviewApi} onOpenWebAccess={()=>setWebAccessRequest(v=>v+1)} watchApi={desktopNotificationApi} globalActions={<><CodexNotifications onDetailChange={setNotificationDetail} api={desktopNotificationApi} workbenchPage={{active:surface==="NOTIFICATION_LOG",open:()=>setSurface("NOTIFICATION_LOG")}}/><DesktopWebAccess openRequest={webAccessRequest}/></>}
+    assistantPanel={<AssistantSettings/>} piSettingsPanel={<PiSettings/>} antigravitySettingsPanel={<AntigravitySettings/>} codexConnectionPanel={<CodexConnection/>} runtimeProtectionPanel={<LocalSafetySettings/>} overviewApi={desktopOverviewApi} onOpenWebAccess={()=>setWebAccessRequest(v=>v+1)} watchApi={desktopNotificationApi} globalActions={<><CodexNotifications onDetailChange={setNotificationDetail} api={desktopNotificationApi} workbenchPage={{active:surface==="NOTIFICATION_LOG",open:()=>setSurface("NOTIFICATION_LOG")}}/><DesktopWebAccess openRequest={webAccessRequest}/></>}
     bridgePanel={<>{!roleMode && selected ? statusFor : null} {selectedWorkstreamId && <RoleBridgePanel key={selectedWorkstreamId} workstreamId={selectedWorkstreamId} workstreamName={items.find(item => item.id === selectedWorkstreamId)?.name} api={desktopRoleBridgeApi} readerActive={surface==="WORKSPACE"} onOpenConnection={()=>setSurface("RUNTIME")} bindingRequest={bindingRequest} externalBindingEntry={Boolean(selected)} onModeChange={setRoleMode} onBindingsChanged={() => { void refreshIndex(); }} />}</>}
     runtime={{ checks: [
       { id: "router-host", label: "Router 电脑程序", state: hostEnvironment?.host === "ONLINE" ? "READY" : "CHECKING", detail: hostEnvironment?.host === "ONLINE" ? (snapshot ? "Router Host 与本地工作区已读取" : "当前 Tauri Host 正在响应诊断请求") : "正在读取 Host 状态", action: refreshRuntime, actionLabel: "检查状态" },

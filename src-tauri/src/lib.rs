@@ -1,9 +1,13 @@
-mod pi;
+﻿mod pi;
 mod conversation_creation;
 mod claude_creation;
 mod antigravity;
 #[tauri::command]
 async fn owner_conversation_creation(state:tauri::State<'_,RouterState>,host:tauri::State<'_,HostRuntime>,input:conversation_creation::Command)->Result<serde_json::Value,String>{let core=state.inner().clone();let host=host.inner().clone();tauri::async_runtime::spawn_blocking(move||conversation_creation::command_with_host(&core,&host,input)).await.map_err(|_|"CONVERSATION_CREATION_UNCONFIRMED_CHECK_RECEIPT")?}
+#[tauri::command]
+async fn antigravity_permissions(state:tauri::State<'_,RouterState>)->Result<serde_json::Value,String>{let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||antigravity::permissions(&core)).await.map_err(|_|"ANTIGRAVITY_SERVICE_UNAVAILABLE")?}
+#[tauri::command]
+async fn antigravity_permissions_save(state:tauri::State<'_,RouterState>,mode:String)->Result<serde_json::Value,String>{let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||{core.store.set_antigravity_permission_mode(&mode)?;antigravity::permissions(&core)}).await.map_err(|_|"ANTIGRAVITY_SERVICE_UNAVAILABLE")?}
 mod todo_projection;
 #[cfg(test)]mod completed_empty_turn_tests;
 mod attachment_cache;
@@ -1329,7 +1333,7 @@ pub fn run() {
         list_existing_codex_threads,
         verify_existing_codex_thread,
         create_thread,
-        owner_conversation_creation,
+        owner_conversation_creation,antigravity_permissions,antigravity_permissions_save,
         start_unprojected_codex_thread,
         read_thread_history,
         resume_thread,
@@ -1394,7 +1398,7 @@ pub fn run() {
         list_existing_codex_threads,
         verify_existing_codex_thread,
         create_thread,
-        owner_conversation_creation,
+        owner_conversation_creation,antigravity_permissions,antigravity_permissions_save,
         start_unprojected_codex_thread,
         read_thread_history,
         resume_thread,
