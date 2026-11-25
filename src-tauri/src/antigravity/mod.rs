@@ -1,4 +1,4 @@
-//! Native Antigravity ACP client. One lazy process is shared by all sessions.
+﻿//! Native Antigravity ACP client. One lazy process is shared by all sessions.
 //! Native credentials, tools and permissions stay inside agy. No model proxy.
 mod rpc;
 use crate::{
@@ -46,6 +46,7 @@ struct Permission {
     attempted: bool,
 }
 struct Client {
+    permission_mode: String,
     rpc: Arc<rpc::Rpc>,
     epoch: String,
     sessions: Mutex<HashMap<String, Live>>,
@@ -214,8 +215,10 @@ fn client(core: &RouterCore) -> Result<Arc<Client>, String> {
     let target: Arc<Mutex<Weak<Client>>> = Arc::new(Mutex::new(Weak::new()));
     let weak = target.clone();
     let store = Arc::downgrade(&core.store);
+    let permission_mode = core.store.antigravity_permission_mode()?;
     let mut cmd = Command::new(executable()?);
     cmd.args(["acp", "--stdio", "--disable-telemetry"]);
+    configure_permissions(&mut cmd,&permission_mode)?;
     let rpc = rpc::Rpc::start(
         cmd,
         Arc::new(move |event| {
@@ -230,6 +233,7 @@ fn client(core: &RouterCore) -> Result<Arc<Client>, String> {
         return Err("ANTIGRAVITY_PROTOCOL_UNSUPPORTED".into());
     }
     let c = Arc::new(Client {
+        permission_mode,
         rpc,
         epoch: uuid::Uuid::new_v4().to_string(),
         sessions: Mutex::new(HashMap::new()),
@@ -1151,3 +1155,13 @@ pub(crate) fn command(core: &RouterCore, c: ChatCommand) -> Result<Value, String
 
 #[cfg(test)]
 mod tests;
+
+/// Owner setting is durable. Never terminate an old process to change permissions.
+pub(crate) fn permissions(core:&RouterCore)->Result<Value,String>{
+ let configured=core.store.antigravity_permission_mode()?;let service=service(core)?;
+ let slot=service.client.lock().map_err(|_|"ANTIGRAVITY_SERVICE_UNAVAILABLE")?;
+ let effective=slot.as_ref().filter(|c|!c.rpc.closed()).map(|c|c.permission_mode.as_str());
+ Ok(json!({"defaultMode":configured,"runningMode":effective,"pendingNextLaunch":effective.is_some_and(|m|m!=configured),"automaticRestart":false,"scope":"LOCAL_AGY_PROCESS","administrator":false}))
+}
+
+fn configure_permissions(cmd:&mut Command,mode:&str)->Result<(),String>{match mode{"ASK"=>{},"FULL_ACCESS"=>{cmd.arg("--dangerously-skip-permissions");},_=>return Err("ANTIGRAVITY_PERMISSION_SETTING_INVALID".into())}Ok(())}

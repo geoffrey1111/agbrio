@@ -92,3 +92,19 @@ native session, updated its native title and reached an ACP permission request.
 That request was not approved, so a completed model/MCP round trip is not yet
 established. Do not replay an uncertain original attempt. Independent Claude CLI
 login is not required for existing Claude Desktop plugin-based messaging.
+
+
+## Owner default permission mode
+
+The current-user owner CLI exposes `AntigravityPermissions` and
+`SetAntigravityPermissions -PermissionMode FULL_ACCESS` (or `ASK`).
+The default for installations without an explicit owner choice is ASK.
+An owner choice is persisted across Host restarts; all subsequent native ACP
+processes inherit it, so it is not a per-conversation toggle. FULL_ACCESS uses
+agy's native `--dangerously-skip-permissions`, not synthetic approval replies.
+This is local tool approval, not Windows elevation or an Agbrio MCP grant.
+Only the owner control surface changes this setting; assistant actions cannot.
+Changing it never restarts a running native process. The read response reports
+`defaultMode`, `runningMode` and `pendingNextLaunch`; an already-running process
+keeps its original mode until its next launch. Finish active tasks before an
+owner-chosen restart. Default changes do not resend any original task.

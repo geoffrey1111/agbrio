@@ -1,4 +1,4 @@
-use super::*;
+﻿use super::*;
 
 // A fictional ACP process: never executes agy or submits an inference request.
 fn fixture() -> (tempfile::TempDir, RouterCore, Arc<Client>, String) {
@@ -54,6 +54,7 @@ require('readline').createInterface({input:process.stdin}).on('line',line=>{
     rpc.request("initialize", json!({"protocolVersion":1}))
         .unwrap();
     let c = Arc::new(Client {
+        permission_mode: "ASK".into(),
         rpc,
         epoch: "fixture-epoch".into(),
         sessions: Mutex::new(HashMap::new()),
@@ -302,3 +303,7 @@ fn reviewed_mcp_send_keeps_provenance_and_revocation_blocks_queued_native_offer(
     assert_eq!(h["messages"].as_array().unwrap().len(), 2);
     assert_eq!(h["messages"][0]["text"], "slow");
 }
+
+#[test]fn owner_default_is_persisted_without_changing_the_running_native_process(){let(_d,core,c,_key)=fixture();assert_eq!(permissions(&core).unwrap()["defaultMode"],"ASK");core.store.set_antigravity_permission_mode("FULL_ACCESS").unwrap();let v=permissions(&core).unwrap();assert_eq!(v["defaultMode"],"FULL_ACCESS");assert_eq!(v["runningMode"],"ASK");assert_eq!(v["pendingNextLaunch"],true);assert!(!c.rpc.closed());assert!(core.store.set_antigravity_permission_mode("INVALID").is_err());}
+
+#[test]fn full_access_uses_the_native_flag_and_regular_mode_never_silently_adds_it(){for(mode,want)in[("ASK",false),("FULL_ACCESS",true)]{let mut cmd=Command::new("fictional-native-agent");configure_permissions(&mut cmd,mode).unwrap();assert_eq!(cmd.get_args().any(|v|v=="--dangerously-skip-permissions"),want)}assert!(configure_permissions(&mut Command::new("fixture"),"unknown").is_err());}

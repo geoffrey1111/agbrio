@@ -1,4 +1,4 @@
-//! Provider-neutral durable projection for an explicitly watched native session.
+﻿//! Provider-neutral durable projection for an explicitly watched native session.
 //! Display message IDs are adapter observation IDs, never native routing IDs.
 use super::*;
 use serde::Deserialize;
@@ -14,7 +14,8 @@ pub struct ManagedConversation {
     pub configuration: Value,
 }
 pub(super) fn migrate(c: &mut Connection) -> Result<(), String> {
-    c.execute_batch("CREATE TABLE IF NOT EXISTS managed_conversations(thread_id TEXT PRIMARY KEY,provider TEXT NOT NULL,native_id TEXT NOT NULL,cwd TEXT NOT NULL,epoch TEXT NOT NULL,configuration TEXT NOT NULL);
+    c.execute_batch("CREATE TABLE IF NOT EXISTS antigravity_owner_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1),permission_mode TEXT NOT NULL CHECK(permission_mode IN ('ASK','FULL_ACCESS')),updated_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS managed_conversations(thread_id TEXT PRIMARY KEY,provider TEXT NOT NULL,native_id TEXT NOT NULL,cwd TEXT NOT NULL,epoch TEXT NOT NULL,configuration TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS managed_public_messages(ordinal INTEGER PRIMARY KEY AUTOINCREMENT,thread_id TEXT NOT NULL,id TEXT NOT NULL,role TEXT NOT NULL,text TEXT NOT NULL,at INTEGER NOT NULL,UNIQUE(thread_id,id));
  CREATE INDEX IF NOT EXISTS managed_public_thread ON managed_public_messages(thread_id,ordinal);
  CREATE TABLE IF NOT EXISTS managed_assistant_origins(request_id TEXT PRIMARY KEY,grant_id TEXT NOT NULL,action_hash TEXT NOT NULL);
@@ -203,4 +204,10 @@ mod tests {
             .managed_append_text(&meta.thread_id, "first", "late", "assistant", "late")
             .is_err());
     }
+}
+
+impl RouterStore {
+ pub fn antigravity_permission_mode(&self)->Result<String,String>{self.with_connection(|c|{let mode=c.query_row("SELECT permission_mode FROM antigravity_owner_settings WHERE singleton=1",[],|r|r.get::<_,String>(0)).optional().map_err(db_error)?.unwrap_or_else(||"ASK".into());if !matches!(mode.as_str(),"ASK"|"FULL_ACCESS"){return Err("ANTIGRAVITY_PERMISSION_SETTING_INVALID".into())}Ok(mode)})}
+ /// Called only by the current-user owner control surface, never MCP operations.
+ pub fn set_antigravity_permission_mode(&self,mode:&str)->Result<(),String>{if !matches!(mode,"ASK"|"FULL_ACCESS"){return Err("ANTIGRAVITY_PERMISSION_SETTING_INVALID".into())}self.with_connection(|c|{c.execute("INSERT INTO antigravity_owner_settings(singleton,permission_mode,updated_at) VALUES(1,?1,?2) ON CONFLICT(singleton) DO UPDATE SET permission_mode=excluded.permission_mode,updated_at=excluded.updated_at",params![mode,now()]).map_err(db_error)?;Ok(())})}
 }

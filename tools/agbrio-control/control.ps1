@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
- [ValidateSet('Status','Capabilities','Diagnostics','Start','Stop','Restart','PublishBoard','PublishReviewBoard','RegisterCodexNotices','ReadManagementZone','ReplaceZoneManager','AddZoneExecutors','ListManagementZones','ChangeManagementZone','ConversationOptions','CreateConversation','ConversationReceipt')][string]$Command='Status',
+ [ValidateSet('Status','Capabilities','Diagnostics','Start','Stop','Restart','PublishBoard','PublishReviewBoard','RegisterCodexNotices','ReadManagementZone','ReplaceZoneManager','AddZoneExecutors','ListManagementZones','ChangeManagementZone','ConversationOptions','CreateConversation','ConversationReceipt','AntigravityPermissions','SetAntigravityPermissions')][string]$Command='Status',
  [int]$ReviewPort=47816,
  [string]$Title='互动审批看板',
  [string]$NoticeBindingFile='',
@@ -10,6 +10,7 @@ param(
  [long]$ExpectedRevision=0,
  [string]$ExecutorsJson='',
  [string]$ChangeJson='',
+ [ValidateSet('ASK','FULL_ACCESS')][string]$PermissionMode='ASK',
  [string]$CreationInputFile='',
  [string]$Folder='',
  [string]$Executable=(Join-Path $PSScriptRoot '..\ai-work-router.exe'),
@@ -38,6 +39,7 @@ function Invoke-Control([string]$Operation,[string]$Expected='',[guid]$Identity=
    $payload.executors=ConvertFrom-Json -InputObject $ExecutorsJson -AsHashtable -NoEnumerate
   }
   if($Operation -eq 'CHANGE_MANAGEMENT_ZONE'){$change=ConvertFrom-Json -InputObject $ChangeJson -AsHashtable -NoEnumerate;if(!$change -or $change -isnot [System.Collections.IDictionary]){throw 'MANAGEMENT_REQUEST_INVALID'};if($change.Contains('requestId') -and $change.requestId -ne $Identity.ToString()){throw 'MANAGEMENT_REQUEST_INVALID'};$change.requestId=$Identity.ToString();$payload.managementChange=$change}
+  if($Operation -eq 'SET_ANTIGRAVITY_PERMISSIONS'){$payload.permissionMode=$PermissionMode}
   if($Operation -eq 'CREATE_CONVERSATION'){$payload.creationInput=$creationInput}
   $bytes=[Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Depth 8 -Compress)+"`n")
   $write=$pipe.WriteAsync($bytes,0,$bytes.Length);if(!$write.Wait(3000)){throw 'APP_CONTROL_WRITE_UNCONFIRMED'};$write.GetAwaiter().GetResult()
@@ -125,6 +127,8 @@ try {
   'Status' {Invoke-Control 'STATUS' $ExpectedInstance $RequestId}
   'Capabilities' {Invoke-Control 'CAPABILITIES' $ExpectedInstance $RequestId}
   'Diagnostics' {Invoke-Control 'DIAGNOSTICS' $ExpectedInstance $RequestId}
+  'AntigravityPermissions' {Invoke-Control 'ANTIGRAVITY_PERMISSIONS' $ExpectedInstance $RequestId}
+  'SetAntigravityPermissions' {if(!$PSBoundParameters.ContainsKey('PermissionMode')){throw 'ANTIGRAVITY_PERMISSION_SETTING_INVALID'};$owner=Invoke-Control 'STATUS' $ExpectedInstance;$null=Exact-Owner $owner (Exact-Executable);Invoke-Control 'SET_ANTIGRAVITY_PERMISSIONS' $owner.instanceId $RequestId}
   'ConversationOptions' {Invoke-Control 'CONVERSATION_OPTIONS' $ExpectedInstance $RequestId}
   'ConversationReceipt' {
    if(!$PSBoundParameters.ContainsKey('RequestId')){throw 'CONVERSATION_CREATION_ORIGINAL_REQUEST_ID_REQUIRED'}
@@ -174,7 +178,7 @@ try {
  $result | ConvertTo-Json -Depth 30 -Compress
 } catch {
  $code=$_.Exception.Message
- if($code -notmatch '^(APP_|PUBLISHED_BOARD_|MANAGEMENT_|CONVERSATION_CREATION_)[A-Z_]+$'){$code='APP_CONTROL_UNREACHABLE'}
+ if($code -notmatch '^(APP_|PUBLISHED_BOARD_|MANAGEMENT_|CONVERSATION_CREATION_|ANTIGRAVITY_)[A-Z_]+$'){$code='APP_CONTROL_UNREACHABLE'}
  @{errorCode=$code;state='UNCONFIRMED';automaticWriteRetry=$false} | ConvertTo-Json -Compress
  exit 1
 }

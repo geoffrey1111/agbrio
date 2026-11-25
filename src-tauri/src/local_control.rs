@@ -8,7 +8,7 @@ use replay::ReplayStore;
 
 #[derive(Clone,PartialEq,Eq,Deserialize,Serialize)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]
-struct Request { #[serde(default)]creation_input:Option<Value>,#[serde(default)]review_port:Option<u16>,#[serde(default)]title:Option<String>,api_version:u32,request_id:String,command:String,expected_instance:Option<String>,#[serde(default)]folder:Option<String>,#[serde(default)]notice_binding:Option<router_core::store::codex_notices::Binding>,#[serde(default)]zone_id:Option<String>,#[serde(default)]expected_revision:Option<i64>,#[serde(default)]new_manager:Option<crate::management_zones::ManagerTarget>,#[serde(default)]executors:Option<Vec<router_core::store::management_zones::ExecutorTarget>>,#[serde(default)]management_change:Option<router_core::store::management_zones::Change> }
+struct Request { #[serde(default)]permission_mode:Option<String>,#[serde(default)]creation_input:Option<Value>,#[serde(default)]review_port:Option<u16>,#[serde(default)]title:Option<String>,api_version:u32,request_id:String,command:String,expected_instance:Option<String>,#[serde(default)]folder:Option<String>,#[serde(default)]notice_binding:Option<router_core::store::codex_notices::Binding>,#[serde(default)]zone_id:Option<String>,#[serde(default)]expected_revision:Option<i64>,#[serde(default)]new_manager:Option<crate::management_zones::ManagerTarget>,#[serde(default)]executors:Option<Vec<router_core::store::management_zones::ExecutorTarget>>,#[serde(default)]management_change:Option<router_core::store::management_zones::Change> }
 
 fn dispatch(core:&RouterCore,host:&HostRuntime,bytes:&[u8],seen:&mut ReplayStore)->(Value,bool) {
     let failure=|code:&str|(json!({"apiVersion":1,"errorCode":code}),false);
@@ -17,7 +17,7 @@ fn dispatch(core:&RouterCore,host:&HostRuntime,bytes:&[u8],seen:&mut ReplayStore
     if r.api_version!=1||!uuid::Uuid::parse_str(&r.request_id).is_ok_and(|id|id.to_string()==r.request_id){return failure("APP_CONTROL_REQUEST_INVALID");}
     match seen.lookup(&r){Ok(Some(reply))=>return (reply,false),Ok(None)=>{},Err(code)=>return failure(&code)}
     if r.expected_instance.as_deref().is_some_and(|s|s!=host.instance_id()){return failure("APP_CONTROL_INSTANCE_CHANGED");}
-    let write=matches!(r.command.as_str(),"SHUTDOWN"|"PUBLISH_BOARD"|"PUBLISH_REVIEW_BOARD"|"REGISTER_CODEX_NOTICES")
+    let write=matches!(r.command.as_str(),"SHUTDOWN"|"PUBLISH_BOARD"|"PUBLISH_REVIEW_BOARD"|"REGISTER_CODEX_NOTICES"|"SET_ANTIGRAVITY_PERMISSIONS")
         && r.expected_instance.as_deref()==Some(host.instance_id());
     if write {if let Err(code)=seen.reserve(&r){return failure(&code)}}
     let outcome=(||{
@@ -25,6 +25,13 @@ fn dispatch(core:&RouterCore,host:&HostRuntime,bytes:&[u8],seen:&mut ReplayStore
         "STATUS"=>(json!({"state":"RUNNING","instanceId":host.instance_id(),"pid":std::process::id(),"appVersion":app_control::version()}),false),
         "CAPABILITIES"=>(app_control::capabilities("OWNER"),false),
         "DIAGNOSTICS"=>match app_control::diagnostics(core,Some(host)){Ok(v)=>(v,false),Err(_)=>return failure("APP_DIAGNOSTICS_STORE_UNAVAILABLE")},
+        "ANTIGRAVITY_PERMISSIONS"=>match crate::antigravity::permissions(core){Ok(v)=>(v,false),Err(code)=>return failure(&code)},
+        "SET_ANTIGRAVITY_PERMISSIONS" if r.expected_instance.as_deref()==Some(host.instance_id())=>{
+          let Some(mode)=r.permission_mode.as_deref()else{return failure("ANTIGRAVITY_PERMISSION_SETTING_INVALID")};
+          if let Err(code)=core.store.set_antigravity_permission_mode(mode){return failure(&code)}
+          match crate::antigravity::permissions(core){Ok(v)=>(v,false),Err(code)=>return failure(&code)}
+        },
+        "SET_ANTIGRAVITY_PERMISSIONS"=>return failure("APP_CONTROL_EXPECTED_INSTANCE_REQUIRED"),
         "CONVERSATION_OPTIONS"=>match crate::conversation_creation::command_with_host(core,host,crate::conversation_creation::Command::Options){Ok(v)=>(v,false),Err(code)=>return failure(&code)},
         "CONVERSATION_RECEIPT"=>match crate::conversation_creation::command(core,crate::conversation_creation::Command::Receipt{request_id:r.request_id.clone()}){Ok(v)=>(v,false),Err(code)=>return failure(&code)},
         "CREATE_CONVERSATION" if r.expected_instance.as_deref()==Some(host.instance_id())=>{
