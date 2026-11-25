@@ -129,3 +129,28 @@ agbrio_list_agent_models for INSTANCE/OWNER (not legacy BRIDGE scope). If Claude
 still lacks a tool returned by that registry, refresh its MCP discovery when safe;
 this does not require an Agbrio Host restart, OAuth reset or replay of any action.
 The server cannot guarantee when a third-party client refreshes cached schemas.
+
+## Explicit reviewed management membership
+
+A shared INSTANCE grant does not attest which native manager called CREATE_CHAT,
+so Agbrio does not guess a creator zone. After creating a chat, read management
+with read_app FULL/MANAGEMENT, then prepare/review/execute ENABLE_WATCH with:
+
+```json
+{"threadId":"antigravity:<exact-native-id>","management":{"zoneId":"<exact-zone-id>","revision":53,"managerId":"claude_code:<exact-manager-id>","generation":1}}
+```
+
+Use actual revision and generation, never the example values. This reuses the
+existing operation and permissive input object for cached clients, not a new
+tool name or operation enum. Only APPLIED CREATE_CHAT results from the same
+active grant are eligible. The atomic write rechecks grant/review provenance,
+manager/revision, source generation and existing membership; no transfer, manager
+appointment, permission changes or native message submission is performed.
+Read the original action receipt after uncertainty; never repeat UNKNOWN.
+
+AGY management TURN_RESULT uses the existing passive notice pipeline and exact
+managed:acp-agent:<original-reply-id> only after that original receipt is SENT.
+The exact subscription/turn/state notice identity deduplicates repeated scans;
+old UNKNOWN notice claims stay fenced. Completed joined chats can be discovered
+once on a later scan; this is metadata notification, not business task replay.
+AGY sources are excluded from the native Codex thread poller.

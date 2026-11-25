@@ -588,3 +588,23 @@ fn agent_model_discovery_matches_capabilities_and_keeps_legacy_scope_closed() {
  let legacy=crate::assistant_mcp::rpc(&core,&old_gid,json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}));
  assert!(!legacy["result"]["tools"].as_array().unwrap().iter().any(|v|v["name"]=="agbrio_list_agent_models"));
 }
+
+#[test]
+fn reviewed_created_chat_can_join_exact_zone_without_grant_or_native_task_changes() {
+ let(_dir,core,legacy,_)=fixture();let old=core.store.assistant_grant(&legacy).unwrap();
+ let g=core.store.create_assistant_instance_grant(router_core::store::assistant::InstanceGrantInput{label:"Zone fixture".into(),rules:old.rules,expires_at:now_ms()+600000}).unwrap();
+ let call=|name:&str,input:Value|crate::assistant_mcp::call(&core,&g.id,name,input);
+ let prepared=call("agbrio_prepare_action",json!({"requestId":"new-executor","operation":"CREATE_CHAT","input":{"directory":_dir.path()}})).unwrap();
+ let approve=|a:&Value|json!({"actionId":a["id"],"expectedHash":a["payloadHash"],"ruleId":"continue","useOwnerAnswer":false,"assessment":"Owner delegated exact zone and created executor"});
+ let made=call("agbrio_execute_action",approve(&prepared)).unwrap();let thread=made["result"]["threadId"].as_str().unwrap();
+ let manager=uuid::Uuid::new_v4().to_string();core.store.enable_codex_watch(&manager,"Manager",_dir.path().to_str().unwrap(),&router_core::store::codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()}).unwrap();
+ let zone=core.store.change_management_zone(&serde_json::from_value(json!({"requestId":uuid::Uuid::new_v4().to_string(),"action":"CREATE","name":"Fixture zone","managerId":manager})).unwrap()).unwrap()["zoneId"].as_str().unwrap().to_owned();
+ let input=json!({"threadId":thread,"management":{"zoneId":zone,"revision":1,"managerId":manager,"generation":1}});
+ let join=call("agbrio_prepare_action",json!({"requestId":"join-created","operation":"ENABLE_WATCH","input":input})).unwrap();
+ let joined=call("agbrio_execute_action",approve(&join)).unwrap();assert_eq!(joined["status"],"APPLIED");assert_eq!(joined["result"]["addedThreadIds"],json!([thread]));
+ assert_eq!(call("agbrio_execute_action",approve(&join)).unwrap(),joined);
+ assert!(core.store.watch_replies(thread).unwrap().is_empty());
+ let other=core.store.create_assistant_instance_grant(router_core::store::assistant::InstanceGrantInput{label:"Other grant".into(),rules:g.rules.clone(),expires_at:now_ms()+600000}).unwrap();
+ let denied=crate::assistant_mcp::call(&core,&other.id,"agbrio_prepare_action",json!({"requestId":"cross-grant","operation":"ENABLE_WATCH","input":{"threadId":thread,"management":{"zoneId":zone,"revision":2,"managerId":manager,"generation":1}}})).unwrap();
+ let rejected=crate::assistant_mcp::call(&core,&other.id,"agbrio_execute_action",approve(&denied)).unwrap();assert_eq!(rejected["status"],"FAILED");assert_eq!(rejected["errorCode"],"MANAGEMENT_SAME_GRANT_CREATION_REQUIRED");
+}

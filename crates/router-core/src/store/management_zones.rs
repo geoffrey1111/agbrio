@@ -134,6 +134,11 @@ fn sync_zone(c:&Connection,zone:&str)->Result<(),String>{
     Ok(())
 }
 impl RouterStore {
+    /// A reviewed explicit join, never native caller attestation or a transfer.
+    /// Only conversations durably created by this same active grant are eligible.
+    pub fn add_assistant_created_management_executor(&self,action:&str,zone:&str,expected:i64,manager_id:&str,thread:&str,generation:i64)->Result<Value,String>{
+        self.add_management_executors_for(action,zone,expected,&[ExecutorTarget{thread_id:thread.into(),generation}],Some((action,manager_id)))
+    }
     pub fn require_management_intent(&self,reply:&str)->Result<(),String>{self.with_connection(|c|{
         if !c.query_row("SELECT EXISTS(SELECT 1 FROM management_codex_attempts WHERE reply_id=?1)",[reply],|r|r.get::<_,bool>(0)).map_err(db_error)?{return Err("MANAGEMENT_RECEIPT_INVALID".into());}
         validate_reply_route(c,reply)
@@ -141,6 +146,9 @@ impl RouterStore {
     /// Current-user owner action: attach exact watched conversations and their
     /// notification routes together. Never transfer membership implicitly.
     pub fn add_management_executors(&self,request:&str,zone:&str,expected:i64,targets:&[ExecutorTarget])->Result<Value,String>{
+        self.add_management_executors_for(request,zone,expected,targets,None)
+    }
+    fn add_management_executors_for(&self,request:&str,zone:&str,expected:i64,targets:&[ExecutorTarget],assistant:Option<(&str,&str)>)->Result<Value,String>{
         if Uuid::parse_str(request).is_err()||Uuid::parse_str(zone).is_err()||expected<1||
             targets.is_empty()||targets.len()>32||
             targets.iter().map(|t|&t.thread_id).collect::<std::collections::HashSet<_>>().len()!=targets.len(){
@@ -151,6 +159,16 @@ impl RouterStore {
         self.with_connection(|c|{
             let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
             if let Some(receipt)=change_receipt(&tx,request,&hash)?{return Ok(receipt);}
+            if let Some((action,manager_id))=assistant {
+            let (gid,input,basis):(String,String,Option<String>)=tx.query_row("SELECT grant_id,input_json,basis FROM assistant_actions WHERE id=?1 AND operation='ENABLE_WATCH' AND status='EXECUTING'",[action],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).map_err(|_|"MANAGEMENT_REVIEW_REQUIRED")?;
+            if super::assistant::active(&tx,&gid)?.scope!="INSTANCE"||basis.is_none(){return Err("MANAGEMENT_REVIEW_REQUIRED".into());}
+            let input:Value=serde_json::from_str(&input).map_err(|_|"MANAGEMENT_REVIEW_REQUIRED")?;
+            if input["threadId"]!=targets[0].thread_id||input["management"]!=json!({"zoneId":zone,"revision":expected,"managerId":manager_id,"generation":targets[0].generation}){return Err("MANAGEMENT_REVIEW_PAYLOAD_CHANGED".into());}
+            let actual:Option<String>=tx.query_row("SELECT manager_id FROM management_zones WHERE id=?1 AND revision=?2",params![zone,expected],|r|r.get(0)).map_err(|_|"MANAGEMENT_ZONE_CHANGED_REFRESH")?;
+            if actual.as_deref()!=Some(manager_id){return Err("MANAGEMENT_ZONE_CHANGED_REFRESH".into());}
+            let created:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM assistant_actions WHERE grant_id=?1 AND operation='CREATE_CHAT' AND status='APPLIED' AND json_extract(result_json,'$.threadId')=?2)",params![gid,targets[0].thread_id],|r|r.get(0)).map_err(db_error)?;
+            if !created{return Err("MANAGEMENT_SAME_GRANT_CREATION_REQUIRED".into());}
+            }
             let current=revision(&tx,zone,Some(expected))?;
             let manager_id=tx.query_row("SELECT manager_id FROM management_zones WHERE id=?1",[zone],|r|r.get::<_,Option<String>>(0)).map_err(db_error)?.ok_or("MANAGEMENT_MANAGER_REQUIRED")?;
             manager(&tx,&manager_id)?;
@@ -261,7 +279,7 @@ impl RouterStore {
     /// Scalar metadata only. Native Codex questions are observed by the existing
     /// adapter poll. Claude/Pi do not require an extra model or transcript read.
     pub fn observe_management_passive(&self)->Result<(),String>{self.with_connection(|c|{
-        let mut q=c.prepare("SELECT m.thread_id,m.generation,COALESCE(json_extract(w.snapshot_json,'$.state'),'UNKNOWN'),json_extract(w.snapshot_json,'$.turnId'),w.checked_at FROM management_members m JOIN codex_watches w ON w.thread_id=m.thread_id WHERE w.enabled=1 AND (m.thread_id LIKE 'claude_code:%' OR m.thread_id LIKE 'pi:%') ORDER BY m.joined_at LIMIT 512").map_err(db_error)?;
+        let mut q=c.prepare("SELECT m.thread_id,m.generation,COALESCE(json_extract(w.snapshot_json,'$.state'),'UNKNOWN'),json_extract(w.snapshot_json,'$.turnId'),w.checked_at FROM management_members m JOIN codex_watches w ON w.thread_id=m.thread_id WHERE w.enabled=1 AND (m.thread_id LIKE 'claude_code:%' OR m.thread_id LIKE 'pi:%' OR m.thread_id LIKE 'antigravity:%') ORDER BY m.joined_at LIMIT 512").map_err(db_error)?;
         let sources=q.query_map([],|r|Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?,r.get::<_,String>(2)?,r.get::<_,Option<String>>(3)?,r.get::<_,i64>(4)?))).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;drop(q);
         for(thread,generation,state,turn,at)in sources{
             let mut q=c.prepare("SELECT * FROM claude_codex_subscriptions WHERE thread_id=?1 AND generation=?2 AND management_zone_id IS NOT NULL AND status='ACTIVE'").map_err(db_error)?;
@@ -274,6 +292,14 @@ impl RouterStore {
                     let mut requests=c.prepare("SELECT q.runtime_epoch,q.request_id,q.observed_at FROM pi_owner_questions q JOIN pi_tasks t ON t.id=q.task_id WHERE t.native_session_id=?1 AND q.generation=?2 AND q.runtime_epoch=t.runtime_epoch ORDER BY q.observed_at LIMIT 32").map_err(db_error)?;
                     let requests=requests.query_map(params![native,generation],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,i64>(2)?))).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;
                     for(epoch,request,at)in requests{codex_notices::enqueue(c,&sub,&epoch,"PI_QUESTION","NATIVE_UI_UNAVAILABLE",Some(&request),at)?;}
+                }else if thread.starts_with("antigravity:") {
+                    if matches!(state.as_str(),"RESULT_READY"|"INTERRUPTED") {
+                        let latest:Option<(String,String,i64)>=c.query_row("SELECT id,status,updated_at FROM watch_replies WHERE thread_id=?1 AND generation=?2 ORDER BY updated_at DESC,rowid DESC LIMIT 1",params![thread,generation],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(db_error)?;
+                        if let Some((id,status,completed_at))=latest.filter(|(_,status,_)|status=="SENT") {
+                            let _=status;
+                            codex_notices::enqueue(c,&sub,&format!("managed:acp-agent:{id}"),"TURN_RESULT",&state,None,completed_at)?;
+                        }
+                    }
                 }else if let Some(sid)=thread.strip_prefix("claude_code:"){
                     if matches!(state.as_str(),"RESULT_READY"|"FAILED"|"INTERRUPTED"){if let Some(turn)=turn.as_deref().filter(|v|!v.is_empty()){codex_notices::enqueue(c,&sub,turn,"TURN_RESULT",&state,None,at)?;}}
                     let mut requests=c.prepare("SELECT id,tool_use_id,created_at FROM claude_owner_requests WHERE root=?1 AND generation=?2 AND status='PENDING' AND session_id IN(SELECT session_id FROM claude_sessions WHERE lease_until>?3) ORDER BY created_at LIMIT 32").map_err(db_error)?;
@@ -449,6 +475,21 @@ impl RouterStore {
     }
     pub(super) fn create(s:&RouterStore,label:&str,manager:&str)->String{change(s,json!({"requestId":Uuid::new_v4().to_string(),"action":"CREATE","name":label,"managerId":manager})).unwrap()["zoneId"].as_str().unwrap().into()}
     pub(super) fn add(s:&RouterStore,zone:&str,source:&str,revision:i64)->Result<Value,String>{change(s,json!({"requestId":Uuid::new_v4().to_string(),"action":"ADD","zoneId":zone,"revision":revision,"threadId":source,"generation":1}))}
+    #[test]
+    fn agy_passive_result_requires_original_sent_receipt_and_deduplicates() {
+        let (_d,s,claude,_,source)=fixture();let zone=create(&s,"AGY notices",&claude);
+        let native=Uuid::new_v4().to_string();let key=format!("antigravity:{native}");
+        let cwd=s.codex_chat_context(&source).unwrap().cwd;
+        s.enable_codex_watch(&key,"AGY",&cwd,&codex_watch::WatchSnapshot{state:"IDLE".into(),turn_id:None,item_id:None,text:String::new()}).unwrap();
+        s.register_managed_conversation(&super::super::managed_conversations::ManagedConversation{thread_id:key.clone(),provider:"ANTIGRAVITY".into(),native_id:native,cwd:cwd.clone(),epoch:"test".into(),configuration:json!({})}).unwrap();
+        add(&s,&zone,&key,1).unwrap();let request=Uuid::new_v4().to_string();let turn=format!("managed:acp-agent:{request}");
+        s.record_codex_watch(&key,1,&codex_watch::WatchSnapshot{state:"RESULT_READY".into(),turn_id:None,item_id:None,text:"PRIVATE_BODY".into()}).unwrap();
+        s.observe_management_passive().unwrap();
+        s.with_connection(|c|{assert_eq!(c.query_row("SELECT count(*) FROM claude_codex_notices",[],|r|r.get::<_,i64>(0)).unwrap(),0);Ok(())}).unwrap();
+        s.with_connection(|c|{c.execute("INSERT INTO watch_replies(id,thread_id,cwd,generation,mode,text,options_json,payload_hash,status,created_at,updated_at) VALUES(?1,?2,?3,1,'SEND','private','{}','fixture','SENT',?4,?4)",params![request,key,cwd,now()]).map_err(db_error)?;Ok(())}).unwrap();
+        s.publish_management_event(&key,1,&turn,"TURN_RESULT","RESULT_READY",None,now()).unwrap();s.observe_management_passive().unwrap();s.observe_management_passive().unwrap();
+        s.with_connection(|c|{let rows=c.query_row("SELECT count(*),min(kind),min(text) FROM claude_codex_notices",[],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?))).unwrap();assert_eq!(rows.0,1);assert_eq!(rows.1,"TURN_RESULT");assert!(!rows.2.contains("PRIVATE_BODY"));Ok(())}).unwrap();
+    }
     #[test]
     fn management_reminder_thresholds_dedupe_filter_and_leave_original_notice() {
         let(d,s,claude,_,source)=fixture();let zone=create(&s,"Reminders",&claude);add(&s,&zone,&source,1).unwrap();

@@ -12,7 +12,7 @@ pub(crate) enum Operation{
  BindBridge{workstream_id:String,binding_revision:i64,decision:RoleBindingInput,execution:RoleBindingInput},
  BridgeLifecycle{workstream_id:String,binding_revision:i64,lifecycle:String},
  PinBridge{workstream_id:String,binding_revision:i64,pinned:bool},
- EnableWatch{thread_id:String,pi_access:Option<crate::pi::application::AccessChange>},PauseWatch{thread_id:String,generation:i64},
+ EnableWatch{thread_id:String,pi_access:Option<crate::pi::application::AccessChange>,management:Option<ManagementJoin>},PauseWatch{thread_id:String,generation:i64},
  RemoveWatchItem{kind:String,id:String,removed:bool,generation:Option<i64>},
  MarkNotificationRead{sequence:i64},
  SendChat{thread_id:String,generation:i64,source_sequence:Option<i64>,expected_turn_id:Option<String>,#[serde(default="automatic_mode")]mode:String,#[serde(default)]queue_requested:bool,text:String,#[serde(default)]options:crate::watch_chat::ReplyOptions},
@@ -22,6 +22,17 @@ pub(crate) enum Operation{
  RespondChat{thread_id:String,request_id:String,input:crate::host_application::MobileCodexResponseInput},
  AcknowledgeUnknownChat{thread_id:String,reply_id:String,generation:i64},
  RecoverUnknownChat{thread_id:String,reply_id:String,generation:i64},
+}
+#[derive(Deserialize)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+pub(crate) struct ManagementJoin {zone_id:String,revision:i64,manager_id:String,generation:i64}
+fn validate_management_join(core:&RouterCore,thread:&str,m:&ManagementJoin)->Result<(),String>{
+ if m.revision<1||m.generation<1||uuid::Uuid::parse_str(&m.zone_id).is_err(){return Err("MANAGEMENT_REQUEST_INVALID".into());}
+ let view=core.store.management_zones()?;
+ let zone=view["zones"].as_array().and_then(|v|v.iter().find(|z|z["id"]==m.zone_id)).ok_or("MANAGEMENT_ZONE_NOT_FOUND")?;
+ if zone["revision"]!=m.revision||zone["managerId"]!=m.manager_id{return Err("MANAGEMENT_ZONE_CHANGED_REFRESH".into());}
+ let w=core.store.codex_chat_context(thread)?;
+ if !w.enabled||w.generation!=m.generation{return Err("MANAGEMENT_SOURCE_CHANGED_REFRESH".into());}Ok(())
 }
 fn codex_provider()->String{"CODEX".into()}
 fn automatic_mode()->String{"AUTO".into()}
@@ -129,7 +140,7 @@ pub(crate) fn validate(core:&RouterCore,op:&Operation)->Result<(),String>{
   Operation::RemoveWatchItem{kind,id,generation,removed}=>{if kind=="WATCH"{let expected=generation.ok_or("ASSISTANT_WATCH_GENERATION_REQUIRED")?;if *removed{watch(core,id,expected)?;}else if core.store.registered_codex_watch(id)?.generation!=expected{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}}else if kind=="EVENT"{core.store.codex_watch_event(id.parse().map_err(|_|"WATCH_SEQUENCE_INVALID")?)?;}else{return Err("WATCH_REMOVAL_INVALID".into());}},
   Operation::MarkNotificationRead{sequence}=>{core.store.codex_watch_event(*sequence)?;},
   Operation::RespondChat{thread_id,request_id,input}=>{crate::watch_chat::assistant_response_command(core,thread_id,request_id,input)?;},
-  Operation::EnableWatch{thread_id,pi_access}=>{if thread_id.trim().is_empty()||thread_id.len()>256{return Err("ASSISTANT_ARGUMENTS_INVALID".into());}if let Some(access)=pi_access{if !thread_id.starts_with("pi:"){return Err("PI_ACCESS_REQUIRES_PI_TASK".into());}crate::pi::application::validate_access_change(core,thread_id,access)?;}},
+  Operation::EnableWatch{thread_id,pi_access,management}=>{if let Some(m)=management {if pi_access.is_some(){return Err("MANAGEMENT_JOIN_ACCESS_CHANGE_UNSUPPORTED".into());}return validate_management_join(core,thread_id,m);}if thread_id.trim().is_empty()||thread_id.len()>256{return Err("ASSISTANT_ARGUMENTS_INVALID".into());}if let Some(access)=pi_access{if !thread_id.starts_with("pi:"){return Err("PI_ACCESS_REQUIRES_PI_TASK".into());}crate::pi::application::validate_access_change(core,thread_id,access)?;}},
   Operation::StopChat{thread_id,..}=>if thread_id.trim().is_empty()||thread_id.len()>256{return Err("ASSISTANT_ARGUMENTS_INVALID".into());},
  }Ok(())
 }
@@ -156,7 +167,7 @@ pub(crate) fn execute(core:&RouterCore,aid:&str,op:Operation)->Result<Value,Stri
   Operation::BindBridge{workstream_id,binding_revision,decision,execution}=>serde_json::to_value(crate::role_bridge::bind(core,&workstream_id,binding_revision,decision,execution)?).map_err(|_|"ASSISTANT_RESPONSE_UNAVAILABLE".into()),
   Operation::BridgeLifecycle{workstream_id,lifecycle,..}=>serde_json::to_value(if lifecycle=="TRASHED"{core.store.trash_workstream(&workstream_id)?}else{core.store.restore_workstream(&workstream_id)?}).map_err(|_|"ASSISTANT_RESPONSE_UNAVAILABLE".into()),
   Operation::PinBridge{workstream_id,pinned,..}=>{core.store.set_workstream_pinned(&workstream_id,pinned)?;Ok(json!({"ok":true}))},
-  Operation::EnableWatch{thread_id,pi_access}=>{if thread_id.starts_with("pi:"){return crate::pi::application::restore_managed(core,aid,&thread_id,pi_access);}if pi_access.is_some(){return Err("PI_ACCESS_REQUIRES_PI_TASK".into());}crate::codex_watch::enable(core,&thread_id)?;Ok(json!({"ok":true}))},
+  Operation::EnableWatch{thread_id,pi_access,management}=>{if let Some(m)=management {if pi_access.is_some(){return Err("MANAGEMENT_JOIN_ACCESS_CHANGE_UNSUPPORTED".into());}validate_management_join(core,&thread_id,&m)?;return core.store.add_assistant_created_management_executor(aid,&m.zone_id,m.revision,&m.manager_id,&thread_id,m.generation);}if thread_id.starts_with("pi:"){return crate::pi::application::restore_managed(core,aid,&thread_id,pi_access);}if pi_access.is_some(){return Err("PI_ACCESS_REQUIRES_PI_TASK".into());}crate::codex_watch::enable(core,&thread_id)?;Ok(json!({"ok":true}))},
   Operation::PauseWatch{thread_id,..}=>{core.store.pause_codex_watch(&thread_id)?;Ok(json!({"ok":true}))},
   Operation::RemoveWatchItem{kind,id,removed,..}=>{core.store.set_watch_item_removed(&kind,&id,removed)?;Ok(json!({"ok":true}))},
   Operation::MarkNotificationRead{sequence}=>{core.store.mark_codex_watch_event_seen(sequence)?;Ok(json!({"ok":true}))},

@@ -82,7 +82,7 @@ fn planban_waits(items:&[Value])->std::collections::HashMap<String,i64>{
 pub(crate) fn poll(store:&Arc<RouterStore>,session:&Arc<Mutex<Session>>,epoch:u64,cursor:&mut Option<String>){
  let _=store.observe_pi_manager_notices();
  let reminder=reminder_config();
- let Ok(sources)=store.codex_notice_sources(None)else{return};let ids=crate::observer_batch::next_ids(sources.iter().filter(|s|!s.binding.thread_id.starts_with("pi:")&&!s.binding.thread_id.starts_with("claude_code:")).map(|s|s.binding.thread_id.as_str()),cursor,crate::observer_batch::WATCH_READS_PER_PASS);
+ let Ok(sources)=store.codex_notice_sources(None)else{return};let ids=crate::observer_batch::next_ids(sources.iter().filter(|s|!s.binding.thread_id.starts_with("pi:")&&!s.binding.thread_id.starts_with("claude_code:")&&!s.binding.thread_id.starts_with(crate::antigravity::PREFIX)).map(|s|s.binding.thread_id.as_str()),cursor,crate::observer_batch::WATCH_READS_PER_PASS);
  for thread in ids{
   let Ok(w)=store.codex_chat_context(&thread)else{continue};if !w.enabled{continue;}
   let Ok(mut s)=session.try_lock()else{continue};if s.codex_observer_epoch!=epoch{return;}

@@ -34,3 +34,11 @@ Read README.md and docs/SETUP.md before setup. Windows + Codex + PWA is the curr
 - Validate affected tests and real paths where feasible. Unit/browser/screenshot checks are not physical-device acceptance. Report unavailable platforms and account/security steps honestly.
 
 - Claude Code observation routes by native session UUID + canonical local root, fresh publisher lease and exact turn. Owner decision 2026-11-20 permits reviewed INSTANCE assistant text SEND_CHAT into an existing Claude session through its authenticated native plugin, with separate durable assistant provenance, revocation checked at physical offer and independent stored-row receipt. AUTO/SEND requires idle and input readiness; QUEUE is explicit. Reuse existing management areas and grants; no new per-executor scope, real business dispatch/configuration or autonomous relay loop is authorized by this development request. Other Claude adapter writes remain closed; authenticated owner manual text replies use a durable command and independent stored-row receipt; never submit test prompts without owner quota permission. Follow docs/CLAUDE_CODE.md.
+
+Owner decision 2026-11-25: reviewed INSTANCE assistants may explicitly attach
+conversations created by their same active grant using ENABLE_WATCH.management
+with exact zone/revision/manager/generation. This is an explicit association,
+not native caller attestation or implicit creator-zone inference. No transfers,
+manager appointments, cross-grant creations or scope changes through that path.
+AGY terminal metadata uses existing deduplicated TURN_RESULT notice receipts;
+UNKNOWN never proves completion and never triggers a duplicate notification.

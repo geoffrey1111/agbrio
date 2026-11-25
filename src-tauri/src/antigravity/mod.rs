@@ -1014,6 +1014,7 @@ fn pump(store: Arc<RouterStore>, c: Arc<Client>, sid: String) {
             return;
         }
     };
+    let generation = r.generation;
     let id = r.id;
     let control = uuid::Uuid::new_v4().to_string();
     let user_message = format!("acp-user:{id}");
@@ -1083,6 +1084,7 @@ fn pump(store: Arc<RouterStore>, c: Arc<Client>, sid: String) {
         }
         let _ = c.snapshot(&store, &sid, outcome);
         if outcome != "UNKNOWN" {
+            let _ = store.publish_management_event(&key,generation,&format!("managed:acp-agent:{id}"),"TURN_RESULT",outcome,None,now());
             pump(store, c, sid);
         }
     });
