@@ -35,8 +35,36 @@ struct Live {
     cwd: String,
     active: Option<Active>,
     _configuration: Value,
+    progress: Progress,
     replay: Option<Vec<(String, String)>>,
     replay_error: bool,
+}
+#[derive(Default)]
+struct Progress {
+    last_native_event_at: Option<i64>,
+    last_public_text_at: Option<i64>,
+    active_tools: std::collections::HashSet<String>,
+    latest_tool_status: Option<String>,
+}
+impl Progress {
+    fn observe(&mut self, update: &Value) {
+        self.last_native_event_at = Some(now());
+        match update["sessionUpdate"].as_str() {
+            Some("agent_message_chunk" | "user_message_chunk") => self.last_public_text_at = Some(now()),
+            Some("tool_call" | "tool_call_update") => {
+                if let (Some(id), Some(status)) = (update["toolCallId"].as_str().filter(|s| s.len()<=256), update["status"].as_str().filter(|s| matches!(*s,"pending"|"in_progress"|"completed"|"failed"))) {
+                    self.latest_tool_status = Some(status.into());
+                    if matches!(status,"completed"|"failed") { self.active_tools.remove(id); }
+                    else if self.active_tools.len()<128 { self.active_tools.insert(id.into()); }
+                }
+            }
+            _ => {}
+        }
+    }
+    fn view(&self, pending: bool, connected: bool) -> Value {
+        // Never expose reasoning, tool arguments, file contents or credentials.
+        json!({"lastNativeEventAt":self.last_native_event_at,"lastPublicTextAt":self.last_public_text_at,"activeTools":self.active_tools.len(),"latestToolStatus":self.latest_tool_status,"promptPending":pending,"transportConnected":connected,"observationBasis":"ACP_CONNECTION_AND_EVENTS_NOT_TASK_SUCCESS","automaticRetry":false})
+    }
 }
 struct Permission {
     native: Value,
@@ -319,6 +347,7 @@ impl Client {
                     cwd: cwd.into(),
                     active: None,
                     _configuration: config,
+                    progress: Progress::default(),
                     replay: None,
                     replay_error: false,
                 },
@@ -502,6 +531,9 @@ impl Client {
             return;
         };
         let update = &event["params"]["update"];
+        if let Ok(mut sessions) = self.sessions.lock() {
+            if let Some(live) = sessions.get_mut(sid).filter(|l|l.active.is_some()) { live.progress.observe(update); }
+        }
         let target = self.sessions.lock().ok().and_then(|s| {
             s.get(sid).map(|v| {
                 (
@@ -721,6 +753,22 @@ pub(crate) fn enable(core: &RouterCore, key: &str) -> Result<(), String> {
         .refresh_codex_watch_label(key, w.generation, &cwd, &row.label)?;
     Ok(())
 }
+fn apply_creation_label(store: &RouterStore, key: &str, label: Option<&str>) -> Result<(), String> {
+    if let Some(label) = label {
+        if label.trim().is_empty() || label.chars().count()>120 || label.chars().any(char::is_control) { return Err("WATCH_LABEL_INVALID".into()); }
+        let w=store.codex_chat_context(key)?;
+        store.refresh_codex_watch_label(key,w.generation,&w.cwd,label)?;
+    }
+    Ok(())
+}
+pub(crate) fn progress(core: &RouterCore, key: &str) -> Option<Value> {
+    // Observe the existing process only. No launch, native read or task mutation.
+    let service=service(core).ok()?;
+    let client=service.client.lock().ok()?.clone()?;
+    let sessions=client.sessions.lock().ok()?;
+    let live=sessions.values().find(|v|v.key==key)?;
+    Some(live.progress.view(live.active.is_some(),!client.rpc.closed()))
+}
 pub(crate) fn create_empty(
     core: &RouterCore,
     request: &str,
@@ -728,7 +776,7 @@ pub(crate) fn create_empty(
     model: Option<&str>,
     effort: Option<&str>,
 ) -> Result<Value, String> {
-    create_empty_for(core, request, directory, model, effort, false)
+    create_empty_for(core, request, directory, model, effort, None, false)
 }
 pub(crate) fn create_empty_for(
     core: &RouterCore,
@@ -736,8 +784,10 @@ pub(crate) fn create_empty_for(
     directory: &str,
     model: Option<&str>,
     effort: Option<&str>,
+    label: Option<&str>,
     assistant: bool,
 ) -> Result<Value, String> {
+    if label.is_some_and(|s|s.trim().is_empty()||s.chars().count()>120||s.chars().any(char::is_control)) { return Err("WATCH_LABEL_INVALID".into()); }
     preflight(model, effort)?;
     let c = client(core)?;
     let created = c
@@ -754,6 +804,7 @@ pub(crate) fn create_empty_for(
             .checkpoint_owner_conversation_created(request, sid)?;
     }
     let key = c.register(&core.store, sid, directory, configuration(&created))?;
+    apply_creation_label(&core.store, &key, label)?;
     if let Some(model) = model {
         let selected = c.rpc.request(
             "session/set_model",
@@ -804,7 +855,7 @@ pub(crate) fn state(core: &RouterCore, key: &str) -> Result<Value, String> {
     let requests=permissions.iter().filter(|(_,p)|p.session==meta.native_id&&p.generation==w.generation).map(|(id,p)|json!({"requestId":id,"revision":1,"kind":"APPROVAL","method":"session/request_permission","reason":if p.attempted{"权限答复送达未确认，请核对原生会话；不会重复发送"}else{"Antigravity 请求执行权限"},"deliveryStatus":if p.attempted{"UNKNOWN"}else{"READY"},"choices":p.options.iter().filter(|_|!p.attempted).filter(|o|matches!(o["kind"].as_str(),Some("allow_once"|"reject_once"))).map(|o|json!({"id":o["optionId"],"label":o["name"]})).collect::<Vec<_>>(),"questions":[],"isBlocking":true,"responseSent":false})).collect::<Vec<_>>();
     let history = core.store.managed_public_history(key, None)?;
     Ok(
-        json!({"provider":"ANTIGRAVITY","runtime":w.runtime,"watch":w,"host":std::env::var("COMPUTERNAME").unwrap_or_default(),"inputReady":loaded,"ownedTurnId":active,"controllableTurnId":null,"externalBusy":active.is_some(),"replies":core.store.watch_replies(key)?,"requests":requests,"goal":null,"publicMessages":history["messages"],"historyRevision":format!("acp:{}",meta.epoch),"activity":active.as_ref().map(|_|"EXECUTING"),"checkedAt":if loaded{now()}else{w.checked_at},"sendCapabilities":{"queue":true,"steer":false,"permissionBypass":false,"receiptBasis":"NATIVE_PROMPT_RESULT","nativeTurnIdExposed":false}}),
+        json!({"provider":"ANTIGRAVITY","progress":progress(core,key),"runtime":w.runtime,"watch":w,"host":std::env::var("COMPUTERNAME").unwrap_or_default(),"inputReady":loaded,"ownedTurnId":active,"controllableTurnId":null,"externalBusy":active.is_some(),"replies":core.store.watch_replies(key)?,"requests":requests,"goal":null,"publicMessages":history["messages"],"historyRevision":format!("acp:{}",meta.epoch),"activity":active.as_ref().map(|_|"EXECUTING"),"checkedAt":if loaded{now()}else{w.checked_at},"sendCapabilities":{"queue":true,"steer":false,"permissionBypass":false,"receiptBasis":"NATIVE_PROMPT_RESULT","nativeTurnIdExposed":false}}),
     )
 }
 fn now() -> i64 {
@@ -968,6 +1019,7 @@ fn pump(store: Arc<RouterStore>, c: Arc<Client>, sid: String) {
     let user_message = format!("acp-user:{id}");
     if let Ok(mut s) = c.sessions.lock() {
         if let Some(s) = s.get_mut(&sid) {
+            s.progress = Progress::default();
             s.active = Some(Active {
                 reply: id.clone(),
                 control: control.clone(),

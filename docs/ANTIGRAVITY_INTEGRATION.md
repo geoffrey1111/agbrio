@@ -113,3 +113,19 @@ The desktop Settings > Connections > Antigravity (AGY) panel exposes the same
 owner setting, its saved default, actual running mode and pending-next-launch
 state. Saving never restarts AGY. On an uncertain save, refresh reads the actual
 preference before another write is permitted.
+
+## Titles, progress and client discovery
+
+Reviewed CREATE_CHAT label is applied to the watch before the first instruction;
+native session_info_update titles may subsequently replace that initial label.
+read_chat.state.progress reports lastNativeEventAt, lastPublicTextAt, activeTools,
+latestToolStatus, promptPending and transportConnected. No reasoning or tool
+arguments are exposed. A fresh connection observation is not model progress;
+silence never confirms failure and does not cause automatic retry or stop.
+SENDING remains pending until the exact native session/prompt result arrives.
+
+agbrio_capabilities.tools and MCP tools/list share one scoped registry, including
+agbrio_list_agent_models for INSTANCE/OWNER (not legacy BRIDGE scope). If Claude
+still lacks a tool returned by that registry, refresh its MCP discovery when safe;
+this does not require an Agbrio Host restart, OAuth reset or replay of any action.
+The server cannot guarantee when a third-party client refreshes cached schemas.

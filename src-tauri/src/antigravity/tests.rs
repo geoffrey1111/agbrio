@@ -340,3 +340,42 @@ fn pending_observation_and_snapshot_identity_survive_silent_tools_without_replay
     c.snapshot(&core.store,"fixture-native","RUNNING").unwrap();
     assert_eq!(core.store.codex_chat_context(&key).unwrap().snapshot.state,"RESULT_READY");
 }
+
+#[test]
+fn creation_label_is_visible_before_first_prompt_and_native_title_can_follow() {
+    let (_dir,core,c,key)=fixture();
+    apply_creation_label(&core.store,&key,Some("Experiment 1 - Neon")).unwrap();
+    assert_eq!(core.store.codex_chat_context(&key).unwrap().label,"Experiment 1 - Neon");
+    assert!(core.store.watch_replies(&key).unwrap().is_empty());
+    assert!(apply_creation_label(&core.store,&key,Some("bad\ntitle")).is_err());
+    c.event(&core.store,json!({"method":"session/update","params":{"sessionId":"fixture-native","update":{"sessionUpdate":"session_info_update","title":"Native title"}}}));
+    assert_eq!(core.store.codex_chat_context(&key).unwrap().label,"Native title");
+}
+#[test]
+fn progress_exposes_only_timestamps_and_tool_counts_never_reasoning_or_arguments() {
+    let mut p=Progress::default();
+    p.observe(&json!({"sessionUpdate":"agent_thought_chunk","content":{"text":"PRIVATE_REASONING"}}));
+    p.observe(&json!({"sessionUpdate":"tool_call","toolCallId":"private-id","status":"in_progress","rawInput":{"secret":"DO_NOT_EXPOSE"}}));
+    let v=p.view(true,true);
+    assert_eq!(v["activeTools"],1);assert_eq!(v["promptPending"],true);
+    assert!(v["lastPublicTextAt"].is_null());assert!(v["lastNativeEventAt"].is_i64());
+    for forbidden in ["PRIVATE_REASONING","DO_NOT_EXPOSE","private-id"] {assert!(!v.to_string().contains(forbidden));}
+    p.observe(&json!({"sessionUpdate":"tool_call_update","toolCallId":"private-id","status":"completed"}));
+    assert_eq!(p.view(true,true)["activeTools"],0);
+    assert_eq!(p.view(true,true)["latestToolStatus"],"completed");
+}
+#[test]
+fn long_silent_task_retains_pending_receipt_and_progress_checks_never_resend() {
+    let (_dir,core,c,key)=fixture();let id=uuid::Uuid::new_v4().to_string();
+    let generation=core.store.codex_chat_context(&key).unwrap().generation;
+    send(&core,&key,&id,generation,"SEND","slow".into(),Default::default(),false).unwrap();
+    {let mut sessions=c.sessions.lock().unwrap();let l=sessions.get_mut("fixture-native").unwrap();l.progress.last_native_event_at=Some(now()-60*60*1000);}
+    let old=progress(&core,&key).unwrap()["lastNativeEventAt"].clone();
+    for _ in 0..3 {c.refresh_pending_observations(&core.store);}
+    assert_eq!(core.store.codex_chat_context(&key).unwrap().snapshot.state,"RUNNING");
+    let v=progress(&core,&key).unwrap();assert_eq!(v["lastNativeEventAt"],old);assert_eq!(v["promptPending"],true);
+    assert_eq!(core.store.watch_reply(&id).unwrap().unwrap().status,"SENDING");
+    assert_eq!(core.store.watch_replies(&key).unwrap().len(),1);
+    wait(&core,&id,"SENT");
+    assert_eq!(progress(&core,&key).unwrap()["promptPending"],false);
+}
