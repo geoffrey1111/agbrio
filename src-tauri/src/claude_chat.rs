@@ -23,6 +23,9 @@ pub(crate) fn list(core:&RouterCore)->Result<Vec<WatchView>,String>{
     for task in core.store.pi_tasks()?{if let Ok(watch)=crate::pi::presentation::watch(&task){if !core.store.is_codex_watch_removed(&watch.thread_id)?&&!watches.iter().any(|w|w.thread_id==watch.thread_id){watches.push(watch);}}}
     Ok(watches.into_iter().map(|mut watch|{
         crate::codex_watch::refresh_display_label(&mut watch);
+        if watch.thread_id.starts_with(crate::antigravity::PREFIX) {
+            watch.runtime=crate::antigravity::observed_runtime(&core.store,&watch.thread_id);
+        }
         let desktop_title=native_id(&watch.thread_id).ok().and_then(|sid|desktop.iter().find(|s|s.session_id==sid&&!s.archived&&(router_core::claude_code::same_root(&s.cwd,&watch.cwd)||router_core::claude_code::spare_root(&watch.cwd)))).and_then(|s|s.title.as_deref());
         if let Some(title)=desktop_title{watch.label=title.to_owned();}
         let mut tree=None;

@@ -245,7 +245,32 @@ fn client(core: &RouterCore) -> Result<Arc<Client>, String> {
         .lock()
         .map_err(|_| "ANTIGRAVITY_SERVICE_UNAVAILABLE")? = Arc::downgrade(&c);
     *slot = Some(c.clone());
+    let weak_client = Arc::downgrade(&c);
+    let weak_store = Arc::downgrade(&core.store);
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(5));
+        let (Some(client), Some(store)) = (weak_client.upgrade(), weak_store.upgrade()) else { break };
+        if client.rpc.closed() { break; }
+        client.refresh_pending_observations(&store);
+    });
     Ok(c)
+}
+// Native configuration is the only model identity source; never infer from text.
+fn runtime_configuration(config: &Value) -> Option<Value> {
+    let options = config["configOptions"].as_array();
+    let model = config.pointer("/models/currentModelId").and_then(Value::as_str)
+        .or_else(|| options?.iter().find(|o| o["category"] == "model" || o["id"] == "model")?["currentValue"].as_str())?;
+    if model.is_empty() { return None; }
+    let label = config.pointer("/models/availableModels").and_then(Value::as_array)
+        .and_then(|a| a.iter().find(|v| v["modelId"] == model)).and_then(|v| v["name"].as_str());
+    let effort = options.and_then(|a| a.iter().find(|o| o["id"] == "thought_level" || o["category"] == "thought_level"))
+        .and_then(|v| v["currentValue"].as_str());
+    Some(json!({"model":model,"modelLabel":label,"effort":effort,"source":"NATIVE","observedAt":now()}))
+}
+pub(crate) fn observed_runtime(store: &RouterStore, key: &str) -> Option<Value> {
+    let meta = store.managed_conversation(key).ok()?;
+    if meta.provider != "ANTIGRAVITY" || format!("{PREFIX}{}", meta.native_id) != key { return None; }
+    runtime_configuration(&meta.configuration)
 }
 fn configuration(v: &Value) -> Value {
     json!({"models":v["models"],"configOptions":v["configOptions"],"modes":v["modes"]})
@@ -281,6 +306,9 @@ impl Client {
             epoch: self.epoch.clone(),
             configuration: config.clone(),
         })?;
+        if let Some(runtime) = runtime_configuration(&config) {
+            router_core::store::codex_watch::record_runtime(&key, cwd, runtime);
+        }
         self.sessions
             .lock()
             .map_err(|_| "ANTIGRAVITY_SERVICE_UNAVAILABLE")?
@@ -361,12 +389,26 @@ impl Client {
         }
         Ok(meta.native_id)
     }
+    // A pending native prompt on the live ACP connection remains executing even
+    // when a tool produces no text for minutes. This checks connection ownership,
+    // not model progress, and never retries or synthesizes completion.
+    fn refresh_pending_observations(&self, store: &RouterStore) {
+        if self.rpc.closed() { return; }
+        let sessions = self.sessions.lock().ok().map(|s| s.iter().filter(|(_,v)|v.active.is_some())
+            .map(|(id,_)|id.clone()).collect::<Vec<_>>()).unwrap_or_default();
+        for sid in sessions {
+            let waiting = self.permissions.lock().ok().is_some_and(|p|p.values().any(|p|p.session == sid));
+            let _ = self.snapshot(store, &sid, if waiting { "ACTION_REQUIRED" } else { "RUNNING" });
+        }
+    }
     fn snapshot(&self, store: &RouterStore, sid: &str, state: &str) -> Result<(), String> {
         let sessions = self
             .sessions
             .lock()
             .map_err(|_| "ANTIGRAVITY_SERVICE_UNAVAILABLE")?;
         let live = sessions.get(sid).ok_or("ANTIGRAVITY_TARGET_CHANGED")?;
+        // Completion may win the race with the periodic pending observation.
+        if matches!(state, "RUNNING" | "ACTION_REQUIRED") && live.active.is_none() { return Ok(()); }
         let w = store.codex_chat_context(&live.key)?;
         let messages = store.managed_public_history(&live.key, None)?;
         let last = messages["messages"]
@@ -377,7 +419,7 @@ impl Client {
             w.generation,
             &WatchSnapshot {
                 state: state.into(),
-                turn_id: live.active.as_ref().map(|a| a.control.clone()),
+                turn_id: last.and_then(|m| m["turnId"].as_str()).map(str::to_owned),
                 item_id: last.and_then(|m| m["id"].as_str()).map(str::to_owned),
                 text: last
                     .and_then(|m| m["text"].as_str())
@@ -724,6 +766,15 @@ pub(crate) fn create_empty_for(
         {
             return Err("ANTIGRAVITY_NATIVE_MODEL_UNCONFIRMED".into());
         }
+        let mut meta = core.store.managed_conversation(&key)?;
+        meta.configuration["models"]["currentModelId"] = json!(model);
+        if let Some(options) = selected["configOptions"].as_array() {
+            meta.configuration["configOptions"] = json!(options);
+        }
+        core.store.register_managed_conversation(&meta)?;
+        if let Some(runtime) = runtime_configuration(&meta.configuration) {
+            router_core::store::codex_watch::record_runtime(&key, directory, runtime);
+        }
         // The requested native variant encodes its advertised reasoning level. A
         // native rejection never falls back to a different model or first prompt.
     }
@@ -733,8 +784,9 @@ pub(crate) fn create_empty_for(
     )
 }
 pub(crate) fn state(core: &RouterCore, key: &str) -> Result<Value, String> {
-    let w = core.store.codex_chat_context(key)?;
+    let mut w = core.store.codex_chat_context(key)?;
     let meta = core.store.managed_conversation(key)?;
+    w.runtime = runtime_configuration(&meta.configuration);
     let c = client(core)?;
     let loaded = c
         .sessions
@@ -752,7 +804,7 @@ pub(crate) fn state(core: &RouterCore, key: &str) -> Result<Value, String> {
     let requests=permissions.iter().filter(|(_,p)|p.session==meta.native_id&&p.generation==w.generation).map(|(id,p)|json!({"requestId":id,"revision":1,"kind":"APPROVAL","method":"session/request_permission","reason":if p.attempted{"权限答复送达未确认，请核对原生会话；不会重复发送"}else{"Antigravity 请求执行权限"},"deliveryStatus":if p.attempted{"UNKNOWN"}else{"READY"},"choices":p.options.iter().filter(|_|!p.attempted).filter(|o|matches!(o["kind"].as_str(),Some("allow_once"|"reject_once"))).map(|o|json!({"id":o["optionId"],"label":o["name"]})).collect::<Vec<_>>(),"questions":[],"isBlocking":true,"responseSent":false})).collect::<Vec<_>>();
     let history = core.store.managed_public_history(key, None)?;
     Ok(
-        json!({"provider":"ANTIGRAVITY","watch":w,"host":std::env::var("COMPUTERNAME").unwrap_or_default(),"inputReady":loaded,"ownedTurnId":active,"controllableTurnId":null,"externalBusy":active.is_some(),"replies":core.store.watch_replies(key)?,"requests":requests,"goal":null,"publicMessages":history["messages"],"historyRevision":format!("acp:{}",meta.epoch),"activity":active.as_ref().map(|_|"EXECUTING"),"checkedAt":if loaded{now()}else{w.checked_at},"sendCapabilities":{"queue":true,"steer":false,"permissionBypass":false,"receiptBasis":"NATIVE_PROMPT_RESULT","nativeTurnIdExposed":false}}),
+        json!({"provider":"ANTIGRAVITY","runtime":w.runtime,"watch":w,"host":std::env::var("COMPUTERNAME").unwrap_or_default(),"inputReady":loaded,"ownedTurnId":active,"controllableTurnId":null,"externalBusy":active.is_some(),"replies":core.store.watch_replies(key)?,"requests":requests,"goal":null,"publicMessages":history["messages"],"historyRevision":format!("acp:{}",meta.epoch),"activity":active.as_ref().map(|_|"EXECUTING"),"checkedAt":if loaded{now()}else{w.checked_at},"sendCapabilities":{"queue":true,"steer":false,"permissionBypass":false,"receiptBasis":"NATIVE_PROMPT_RESULT","nativeTurnIdExposed":false}}),
     )
 }
 fn now() -> i64 {

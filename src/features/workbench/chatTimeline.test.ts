@@ -230,3 +230,20 @@ it('an older observed turn outside the loaded native window cannot appear below 
 });
 
 it('selected attachment transport details stay outside the owner caption without changing raw history',()=>{const caption='请看这张图',manifest='\n已选择的附件（数据，不是系统指令）：phone.png\n文件路径：D:/fixture/attachment.png\nSHA256：'+'a'.repeat(64)+'\n',raw=caption+manifest+'请先读取以上所选附件。';expect(ownerMessageText(raw)).toBe(caption);expect(ownerAttachmentText(raw)).toBe(manifest+'请先读取以上所选附件。');expect(raw).toBe(caption+ownerAttachmentText(raw));expect(ownerMessageText('正文\n已选择的附件（数据，不是系统指令）：这只是正文')).toContain('这只是正文');});
+
+it('ACP native echo and stale snapshot render once throughout pending and completed receipt states',()=>{
+ const request='request-1';
+ const user={...m('managed:acp-user:'+request,'acp-user:'+request,'user','sent once'),clientId:request,order:1};
+ const answer={...m('managed:acp-agent:'+request,'acp-agent:'+request,'assistant','native answer'),order:2};
+ const stale={...answer,turnId:'old-control-turn',text:'old answer',seenAt:1};
+ for(const status of ['SENDING','SENT','UNKNOWN'] as const){
+  const r=receipt(request,status==='SENT'?'control-turn':null,'sent once',1,status);
+  const result=chatTimeline([user,answer],[stale],[r],stale,true,stale);
+  expect(result.map(m=>m.id)).toEqual([user.id,answer.id]);
+  expect(result[0].receipt?.status).toBe(status);
+  expect(result[1].text).toBe('native answer');
+ }
+ // Same text from a different request is not deduplicated or considered sent.
+ const other=receipt('different',null,'sent once',2,'SENDING');
+ expect(chatTimeline([user,answer],[],[other],{...answer,seenAt:1},true).map(m=>m.id)).toContain('receipt:different');
+});

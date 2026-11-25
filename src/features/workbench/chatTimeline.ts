@@ -74,7 +74,7 @@ export function chatTimeline(history:ChatMessage[],observed:ObservedMessage[],re
   if(loaded&&history.length&&message!==source&&!nativeTurns.has(message.turnId)&&message.turnId!==current?.turnId&&message.turnId!==source.turnId)continue;
   // Old directory/adapter summaries are projections, never a second native row.
   // A native id remains unique even if an older projection assigned another turn.
-  const canonical=history.find(m=>m.id===message.id&&m.id.startsWith('claude_msg:'));
+  const canonical=history.find(m=>m.id===message.id&&(m.id.startsWith('claude_msg:')||m.id.startsWith('acp-agent:')||m.id.startsWith('acp-history:')));
   if(canonical){if(identity(message)===identity(source)){const item=groups.get(canonical.turnId)?.find(m=>m.id===canonical.id);if(item)item.source=true;}continue;}
   if(loaded&&message!==source&&message.id.startsWith('claude_reply:'))continue;
   const twin=sameReply(message);
@@ -93,12 +93,12 @@ export function chatTimeline(history:ChatMessage[],observed:ObservedMessage[],re
  }
  // The current live snapshot can advance inside the same native item. Older
  // session-cache text must never overwrite a freshly read native message.
- if(current&&!sameReply(current)&&(!loaded||!nativeTurns.has(current.turnId)||current.order!==undefined||history.some(m=>identity(m)===identity(current))))add({...current,source:identity(current)===identity(source)});
+ if(current&&!history.some(m=>m.id===current.id&&m.id.startsWith('acp-'))&&!sameReply(current)&&(!loaded||!nativeTurns.has(current.turnId)||current.order!==undefined||history.some(m=>identity(m)===identity(current))))add({...current,source:identity(current)===identity(source)});
  const sorted=[...replies].sort((a,b)=>a.createdAt-b.createdAt);
  for(const receipt of sorted){
   // Claude receipts can have no turn id. Their independently stored native UUID
   // is the identity; neither body text nor attachment manifests are routing keys.
-  const native=receipt.status==='SENT'?[...groups.values()].flat().find(m=>m.role==='user'&&!m.receipt&&((receipt.nativeMessageId&&m.id===receipt.nativeMessageId)||m.clientId===receipt.id)):undefined;
+  const native=(receipt.status==='SENT'||history.some(m=>m.id===`acp-user:${receipt.id}`&&m.clientId===receipt.id))?[...groups.values()].flat().find(m=>m.role==='user'&&!m.receipt&&((receipt.nativeMessageId&&m.id===receipt.nativeMessageId)||m.clientId===receipt.id)):undefined;
   if(native){native.receipt=receipt;continue;}
   const turn=receipt.turnId??`receipt:${receipt.id}`;
   const group=groups.get(turn)??[];

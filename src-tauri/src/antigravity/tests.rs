@@ -307,3 +307,36 @@ fn reviewed_mcp_send_keeps_provenance_and_revocation_blocks_queued_native_offer(
 #[test]fn owner_default_is_persisted_without_changing_the_running_native_process(){let(_d,core,c,_key)=fixture();assert_eq!(permissions(&core).unwrap()["defaultMode"],"ASK");core.store.set_antigravity_permission_mode("FULL_ACCESS").unwrap();let v=permissions(&core).unwrap();assert_eq!(v["defaultMode"],"FULL_ACCESS");assert_eq!(v["runningMode"],"ASK");assert_eq!(v["pendingNextLaunch"],true);assert!(!c.rpc.closed());assert!(core.store.set_antigravity_permission_mode("INVALID").is_err());}
 
 #[test]fn full_access_uses_the_native_flag_and_regular_mode_never_silently_adds_it(){for(mode,want)in[("ASK",false),("FULL_ACCESS",true)]{let mut cmd=Command::new("fictional-native-agent");configure_permissions(&mut cmd,mode).unwrap();assert_eq!(cmd.get_args().any(|v|v=="--dangerously-skip-permissions"),want)}assert!(configure_permissions(&mut Command::new("fixture"),"unknown").is_err());}
+
+#[test]
+fn native_configuration_never_guesses_model_from_title_or_prompt() {
+    assert!(runtime_configuration(&json!({"title":"gemini-fiction", "text":"high"})).is_none());
+    let r=runtime_configuration(&json!({"models":{"currentModelId":"native-model","availableModels":[{"modelId":"native-model","name":"Native Model"}]},"configOptions":[{"id":"thought_level","currentValue":"high"}]})).unwrap();
+    assert_eq!(r["model"], "native-model");
+    assert_eq!(r["modelLabel"], "Native Model");
+    assert_eq!(r["effort"], "high");
+    assert_eq!(r["source"], "NATIVE");
+}
+#[test]
+fn pending_observation_and_snapshot_identity_survive_silent_tools_without_replaying() {
+    let (_dir,core,c,key)=fixture();
+    let generation=core.store.codex_chat_context(&key).unwrap().generation;
+    let id=uuid::Uuid::new_v4().to_string();
+    send(&core,&key,&id,generation,"SEND","slow".into(),Default::default(),false).unwrap();
+    // A stale observer timestamp is repaired by checking the live pending call.
+    c.refresh_pending_observations(&core.store);
+    let w=core.store.codex_chat_context(&key).unwrap();
+    assert_eq!(w.snapshot.state,"RUNNING");
+    assert_eq!(core.store.watch_reply(&id).unwrap().unwrap().status,"SENDING");
+    std::thread::sleep(Duration::from_millis(2400));
+    let h=core.store.managed_public_history(&key,None).unwrap();
+    assert_eq!(h["messages"].as_array().unwrap().len(),2);
+    assert_eq!(h["messages"][0]["clientId"],id);
+    let w=core.store.codex_chat_context(&key).unwrap();
+    assert_eq!(w.snapshot.state,"RESULT_READY");
+    assert_eq!(json!(w.snapshot.turn_id),h["messages"][1]["turnId"]);
+    assert_eq!(json!(w.snapshot.item_id),h["messages"][1]["id"]);
+    c.refresh_pending_observations(&core.store);
+    c.snapshot(&core.store,"fixture-native","RUNNING").unwrap();
+    assert_eq!(core.store.codex_chat_context(&key).unwrap().snapshot.state,"RESULT_READY");
+}

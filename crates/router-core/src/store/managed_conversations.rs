@@ -146,7 +146,11 @@ impl RouterStore {
         self.with_connection(|c|{
   let mut stmt=c.prepare("SELECT ordinal,id,role,text,at FROM managed_public_messages WHERE thread_id=?1 AND (?2 IS NULL OR ordinal<?2) ORDER BY ordinal DESC LIMIT 51").map_err(db_error)?;
   let mut rows=stmt.query_map(params![key,before],|r|Ok(json!({"order":r.get::<_,i64>(0)?,"id":r.get::<_,String>(1)?,"turnId":format!("managed:{}",r.get::<_,String>(1)?),"role":r.get::<_,String>(2)?,"text":r.get::<_,String>(3)?,"timestamp":r.get::<_,i64>(4)?,"identityKind":"ADAPTER_OBSERVATION","kind":"PUBLIC"}))).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;
-  let mut bytes=0;let keep=rows.iter().take(50).take_while(|v|{let n=v["text"].as_str().unwrap_or_default().len();if bytes+n>1_000_000&&bytes>0{return false;}bytes+=n;true}).count();let more=rows.len()>keep;rows.truncate(keep);let next=if more{rows.last().and_then(|r|r["order"].as_i64())}else{None};rows.reverse();
+  let mut bytes=0;let keep=rows.iter().take(50).take_while(|v|{let n=v["text"].as_str().unwrap_or_default().len();if bytes+n>1_000_000&&bytes>0{return false;}bytes+=n;true}).count();let more=rows.len()>keep;rows.truncate(keep);
+  // Exact adapter request identity joins the admitted receipt to its public echo,
+  // including while the native prompt is still running. Text is never identity.
+  for row in &mut rows { if let Some(id)=row["id"].as_str().and_then(|id|id.strip_prefix("acp-user:")) { let id=id.to_owned();row["clientId"]=json!(id); } }
+let next=if more{rows.last().and_then(|r|r["order"].as_i64())}else{None};rows.reverse();
   Ok(json!({"messages":rows,"nextCursor":next.map(|n|format!("managed:{n}")),"coverage":"NATIVE_ACP_OBSERVATIONS","order":"OLDEST_FIRST"}))
  })
     }
