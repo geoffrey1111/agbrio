@@ -1,4 +1,4 @@
-# 连接你正在使用的助手
+﻿# 连接你正在使用的助手
 
 在 **Agbrio → 设置 → AI 助手** 先选择客户端，再点 **复制给 AI 助手**。这段指令会使用你自己的 MCP 地址。接入完成要以目标会话实际调用 `agbrio_read_app` 为准。
 
@@ -152,3 +152,38 @@ Windows Claude Desktop engine discovery supports both the legacy roaming/Store c
 In the installed Windows Agbrio client, a failed connection shows its fixed command step/exit code and the relevant recovery. Copy the manual PowerShell installer only when installation is needed; run it on that same computer with Agbrio open. It uses the bundled plugin, stops on failure and does not request credentials or change permissions. Return to Agbrio for connection configuration. Once configured, wait for the management conversation to be idle and run /reload-plugins. If still not loaded, save work and personally quit/reopen Claude Desktop, then return to the original conversation. Copy the next-step instructions to verify actual MCP tools and opt-in exact task notice registrations. A heartbeat is not a notification subscription, and no tutorial step runs these actions automatically.
 
 Watched conversations support128active subscriptions. In the conversation directory, idle watches without updates for more than three days fold into Earlier conversations while remaining watched. New progress or an explicit Show in recent restores visibility without resetting messages, native tasks, generation or read cursors. Active/attention conversations stay visible.
+
+
+## Native agy and owner conversation creation (2026-11-25)
+
+Prefer MCP for delegated control. The owner main `+` includes **新建对话** for
+Codex, Claude Code and Antigravity, with existing project directory, native
+model/reasoning choices and first instruction. Titles follow native updates;
+creation uses a durable original request ID, not an extra title-generation call.
+Desktop and paired PWA use the same owner application action and receipt.
+
+For agy delegation use `agbrio_list_agent_models({provider:"ANTIGRAVITY"})`,
+then reviewed CREATE_CHAT provider ANTIGRAVITY. Read its exact nextActionInput;
+submit the first task separately through reviewed SEND_CHAT. Existing native
+sessions appear in `agbrio_list_conversations`; use ENABLE_WATCH before reading
+or sending. Reverse agy -> Codex/Claude traffic uses agy's authorized Agbrio MCP.
+No per-message model proxy or copied credential is involved. See
+[ANTIGRAVITY_INTEGRATION.md](ANTIGRAVITY_INTEGRATION.md) for exact queue,
+permissions, UNKNOWN and capability boundaries. Claude creation is currently an
+owner operation; existing reviewed Claude text sends remain unchanged.
+
+
+### Owner CLI: new conversations
+
+The installed current-user CLI is `<Agbrio installation>/app-control/control.ps1`;
+its operations run in the installed Host, with no separate provider credentials.
+`-Command ConversationOptions` reads platforms, model/effort catalogs and known project directories.
+`-Command CreateConversation -CreationInputFile <absolute-original-request.json>`
+uses the same owner creation journal and first-message delivery as desktop/PWA.
+The JSON contains `requestId` (a UUID retained before the first offer), `provider`
+(`CODEX` or `ANTIGRAVITY`), existing absolute `directory`, nullable `model` and
+`effort`, and `text`. Never regenerate the ID after a transport failure.
+Use `-Command ConversationReceipt -RequestId <original-UUID>` after uncertainty.
+The command never retries a write automatically. Claude Desktop new conversations
+are not supported; existing Claude Desktop conversations retain their original
+plugin-based bidirectional messaging.

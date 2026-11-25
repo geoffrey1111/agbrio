@@ -260,6 +260,7 @@ pub(crate) async fn start_with_web_auth(core:RouterCore,config:MobileHttpConfig,
         .route("/v1/mobile/media",post(read_message_media))
         .route("/v1/mobile/connection/probe",get(connection_probe))
         .route("/v1/mobile/codex-watches", get(codex_watches).post(codex_watch_command))
+        .route("/v1/mobile/conversation-creation",post(owner_conversation_creation))
         .route("/v1/mobile/computer-identity", get(computer_identity))
         .route("/v1/mobile/codex-watches/events", get(codex_watch_feed))
         .route("/v1/mobile/codex-watches/events/{sequence}", get(codex_watch_event))
@@ -617,7 +618,7 @@ async fn codex_quota_read(State(state):State<MobileHttpState>,headers:HeaderMap)
  authenticated(&headers,&state,false).await?;
  Ok(Json(run_core_blocking("Codex quota",move||Ok(crate::codex_quota::read(&state.core))).await?))
 }
-async fn watch_chat_state(State(state):State<MobileHttpState>,headers:HeaderMap,Path(thread_id):Path<String>)->ApiResult<crate::watch_chat::ChatState>{authenticated(&headers,&state,false).await?;Ok(Json(run_core_blocking("Codex conversation",move||crate::watch_chat::state(&state.core,&thread_id)).await?))}
+async fn watch_chat_state(State(state):State<MobileHttpState>,headers:HeaderMap,Path(thread_id):Path<String>)->ApiResult<serde_json::Value>{authenticated(&headers,&state,false).await?;Ok(Json(run_core_blocking("Native conversation",move||crate::watch_chat::read_value(&state.core,&thread_id)).await?))}
 async fn watch_chat_command(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<crate::watch_chat::ChatCommand>)->ApiResult<serde_json::Value>{authenticated(&headers,&state,true).await?;Ok(Json(run_core_blocking("Codex reply",move||crate::watch_chat::command(&state.core,input)).await?))}
 async fn codex_watch_command(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<WatchCommand>)->ApiResult<serde_json::Value>{
     authenticated(&headers,&state,true).await?;let core=state.core.clone();
@@ -634,6 +635,10 @@ async fn codex_watch_command(State(state):State<MobileHttpState>,headers:HeaderM
             WatchCommand::Connect=>serde_json::to_value(crate::host_application::connect_codex_service(&core,std::sync::Arc::new(router_core::events::NullEventSink))?).map_err(|_|"WATCH_RESPONSE_INVALID".into()),
         }
     }).await?))
+}
+async fn owner_conversation_creation(State(state):State<MobileHttpState>,headers:HeaderMap,Json(input):Json<crate::conversation_creation::Command>)->ApiResult<serde_json::Value>{
+ authenticated(&headers,&state,true).await?;
+ Ok(Json(run_core_blocking("Conversation creation",move||crate::conversation_creation::command_with_host(&state.core,&state.host,input)).await?))
 }
 async fn codex_watch_feed(State(state):State<MobileHttpState>,headers:HeaderMap,Query(query):Query<WatchFeedQuery>)->ApiResult<router_core::store::codex_watch::WatchFeed>{
     authenticated(&headers,&state,false).await?;

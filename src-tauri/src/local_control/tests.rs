@@ -1,4 +1,4 @@
-use super::*;
+﻿use super::*;
 use std::sync::{Arc,Mutex,atomic::{AtomicUsize,Ordering}};
 fn fixture()->(tempfile::TempDir,RouterCore,HostRuntime){
     let temp=tempfile::tempdir().unwrap();let store=Arc::new(crate::RouterStore::open_at(temp.path().join("router.db")).unwrap());
@@ -208,4 +208,25 @@ fn owner_cli_management_uses_the_shared_action_and_durable_receipt() {
     assert_eq!(send(&wire)["errorCode"],"MANAGEMENT_REQUEST_CONFLICT");
     let result=dispatch(&core,&host,&request("LIST_MANAGEMENT_ZONES",None),&mut seen).0;
     assert_eq!(result["data"]["zones"][0]["name"],"CLI fixture");
+}
+
+#[test]
+fn owner_creation_cli_requires_exact_instance_and_original_identity_and_reads_unknown_receipts(){
+ let (_temp,core,host)=fixture();let mut seen=ReplayStore::new().unwrap();
+ let id=uuid::Uuid::new_v4().to_string();
+ let input=json!({"requestId":id,"provider":"CODEX","directory":"D:/unavailable-fixture","model":null,"effort":null,"text":"fixture only; never sent"});
+ let request=|expected:Option<&str>,payload:Value|serde_json::to_vec(&json!({"apiVersion":1,"requestId":id,"command":"CREATE_CONVERSATION","expectedInstance":expected,"creationInput":payload})).unwrap();
+ assert_eq!(dispatch(&core,&host,&request(None,input.clone()),&mut seen).0["errorCode"],"APP_CONTROL_EXPECTED_INSTANCE_REQUIRED");
+ let mut wrong=input.clone();wrong["requestId"]=json!(uuid::Uuid::new_v4().to_string());
+ assert_eq!(dispatch(&core,&host,&request(Some(host.instance_id()),wrong),&mut seen).0["errorCode"],"CONVERSATION_CREATION_REQUEST_ID_MISMATCH_NOT_STARTED");
+ core.store.claim_owner_conversation_creation(&id,&input).unwrap();
+ core.store.checkpoint_owner_conversation_created(&id,"original-native-id").unwrap();
+ core.store.finish_owner_conversation_creation(&id,&json!({"error":"fixture unknown"}),true).unwrap();
+ let before=core.store.owner_conversation_creation(&id).unwrap();
+ let reply=dispatch(&core,&host,&request(Some(host.instance_id()),input.clone()),&mut seen).0;
+ assert!(reply.get("errorCode").is_none(),"{reply}");assert_eq!(reply["data"]["nativeId"],"original-native-id");
+ let receipt=serde_json::to_vec(&json!({"apiVersion":1,"requestId":id,"command":"CONVERSATION_RECEIPT","expectedInstance":host.instance_id()})).unwrap();
+ assert_eq!(dispatch(&core,&host,&receipt,&mut seen).0["data"],serde_json::to_value(before).unwrap());
+ let mut changed=input.clone();changed["text"]=json!("changed input");
+ assert!(dispatch(&core,&host,&request(Some(host.instance_id()),changed),&mut seen).0.get("errorCode").is_some());
 }

@@ -1,4 +1,9 @@
 mod pi;
+mod conversation_creation;
+mod claude_creation;
+mod antigravity;
+#[tauri::command]
+async fn owner_conversation_creation(state:tauri::State<'_,RouterState>,host:tauri::State<'_,HostRuntime>,input:conversation_creation::Command)->Result<serde_json::Value,String>{let core=state.inner().clone();let host=host.inner().clone();tauri::async_runtime::spawn_blocking(move||conversation_creation::command_with_host(&core,&host,input)).await.map_err(|_|"CONVERSATION_CREATION_UNCONFIRMED_CHECK_RECEIPT")?}
 mod todo_projection;
 #[cfg(test)]mod completed_empty_turn_tests;
 mod attachment_cache;
@@ -149,7 +154,7 @@ mod goal_control;
 mod notification_activation;
 
 #[tauri::command]
-async fn codex_watch_chat(thread_id:String,state:State<'_,RouterState>)->Result<watch_chat::ChatState,String>{let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||watch_chat::state(&core,&thread_id)).await.map_err(|_|"WATCH_CHAT_FAILED".to_string())?}
+async fn codex_watch_chat(thread_id:String,state:State<'_,RouterState>)->Result<serde_json::Value,String>{let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||watch_chat::read_value(&core,&thread_id)).await.map_err(|_|"WATCH_CHAT_FAILED".to_string())?}
 #[tauri::command]
 async fn codex_watch_chat_command(input:watch_chat::ChatCommand,state:State<'_,RouterState>)->Result<serde_json::Value,String>{let core=state.inner().clone();tauri::async_runtime::spawn_blocking(move||watch_chat::command(&core,input)).await.map_err(|_|"WATCH_CHAT_FAILED".to_string())?}
 
@@ -1324,6 +1329,7 @@ pub fn run() {
         list_existing_codex_threads,
         verify_existing_codex_thread,
         create_thread,
+        owner_conversation_creation,
         start_unprojected_codex_thread,
         read_thread_history,
         resume_thread,
@@ -1388,6 +1394,7 @@ pub fn run() {
         list_existing_codex_threads,
         verify_existing_codex_thread,
         create_thread,
+        owner_conversation_creation,
         start_unprojected_codex_thread,
         read_thread_history,
         resume_thread,

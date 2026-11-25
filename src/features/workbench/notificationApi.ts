@@ -25,6 +25,7 @@ export function cachedNotificationApi(raw:NotificationApi):NotificationApi {
  };
 }
 export const desktopNotificationApi:NotificationApi=cachedNotificationApi({
+ creation:{options:()=>invoke("owner_conversation_creation",{input:{action:"OPTIONS"}}),create:input=>invoke("owner_conversation_creation",{input:{action:"CREATE",input}}),receipt:requestId=>invoke("owner_conversation_creation",{input:{action:"RECEIPT",requestId}})},
  markSeen:sequence=>invoke("codex_watch_mark_seen",{sequence}),
  markRead:sequence=>invoke("codex_watch_mark_read",{sequence}),
  markThreadRead:(threadId,upToSequence)=>invoke("codex_watch_mark_thread_read",{threadId,upToSequence:upToSequence??null}),
@@ -36,6 +37,7 @@ export const desktopNotificationApi:NotificationApi=cachedNotificationApi({
 });
 function command<T>(body:unknown){return request<T>("/codex-watches",{method:"POST",body:JSON.stringify(body)});}
 export const webNotificationApi:NotificationApi=cachedNotificationApi({
+ creation:{options:()=>request("/conversation-creation",{method:"POST",body:JSON.stringify({action:"OPTIONS"})}),create:input=>request("/conversation-creation",{method:"POST",body:JSON.stringify({action:"CREATE",input})}),receipt:requestId=>request("/conversation-creation",{method:"POST",body:JSON.stringify({action:"RECEIPT",requestId})})},
  markSeen:sequence=>command({action:"MARK_SEEN",sequence}),
  markRead:sequence=>readAndClearPush(()=>command({action:"MARK_READ",sequence}),(_d,u)=>Number(u.searchParams.get("event"))===sequence),
  markThreadRead:(threadId,upToSequence)=>readAndClearPush(()=>command({action:"MARK_THREAD_READ",threadId,...(upToSequence===undefined?{}:{upToSequence})}),async(d,u)=>{const seq=Number(d.sequence??u.searchParams.get("event"));if(!Number.isSafeInteger(seq)||seq<=0||upToSequence!==undefined&&seq>upToSequence)return false;return (d.threadId??(await request<{threadId:string}>(`/codex-watches/events/${seq}`)).threadId)===threadId;}),

@@ -2,6 +2,7 @@ import {claimsExecution,observationExpired,useObservationClock} from './observat
 import {useCallback,useEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type ReactNode} from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import {ArrowRightLeft,Check,ExternalLink,GitBranch,LayoutList,MoreHorizontal,Orbit,Plus,RefreshCw,Search,UserRoundCog,X} from 'lucide-react';
+import {threadProviderLabel,threadAvatarKind} from "./watchPresentation";
 import {ConversationAvatar} from './ConversationHome';
 import type {CodexWatch,NotificationApi} from './CodexNotifications';
 import {managementZoneApi,type ManagementApi,type ManagementChange,type ManagementSnapshot,type ManagementZone,type ManagedConversation} from './managementZoneApi';
@@ -21,7 +22,7 @@ const pendingKey=()=>`agbrio.management.pending:${readModels.presentationScope()
 function savedPending():ManagementChange|null{try{const value=JSON.parse(sessionStorage.getItem(pendingKey())??'null');return value&&typeof value.requestId==='string'&&/^[0-9a-f-]{36}$/.test(value.requestId)&&['CREATE','ADOPT','APPOINT','ADD','MOVE','REMOVE','RENAME','DELETE'].includes(value.action)?value:null;}catch{return null;}}
 function savePending(input:ManagementChange|null){try{if(input)sessionStorage.setItem(pendingKey(),JSON.stringify(input));else sessionStorage.removeItem(pendingKey());}catch{/* Memory intent and server idempotency remain available. */}}
 const rejected=new Set(['MANAGEMENT_CHANGED_REFRESH','MANAGEMENT_SOURCE_CHANGED_REFRESH','MANAGEMENT_ALREADY_ASSIGNED_USE_TRANSFER','MANAGEMENT_ALREADY_ASSIGNED','MANAGEMENT_MANAGER_IS_EXECUTOR','MANAGEMENT_EXECUTOR_IS_MANAGER','MANAGEMENT_ENABLE_WATCH_FIRST','MANAGEMENT_ZONE_NOT_EMPTY','MANAGEMENT_CONVERSATION_UNAVAILABLE','MANAGEMENT_ADOPTION_CHANGED_REFRESH','MANAGEMENT_REQUEST_INVALID','MANAGEMENT_REQUEST_CONFLICT','MANAGEMENT_NAME_INVALID','MANAGEMENT_MANAGER_UNSUPPORTED','MANAGEMENT_ZONE_NOT_FOUND','MANAGEMENT_ACTION_INVALID','MANAGEMENT_MEMBERSHIP_NOT_FOUND','MANAGEMENT_ZONE_LIMIT','MANAGEMENT_MANAGER_CAPACITY','MANAGEMENT_ADOPTION_INVALID']);
-const provider=(row:ManagedConversation)=>row.provider==='CLAUDE_CODE'?'Claude Code':row.provider==='CODEX'?'Codex':'Pi';
+const provider=(row:ManagedConversation)=>threadProviderLabel(row.threadId);
 const folder=(path:string)=>path.split(/[\\/]/).filter(Boolean).at(-1)??'';
 const ATTENTION=['ACTION_REQUIRED','WAITING_DECISION','FAILED','INTERRUPTED','INCOMPLETE','UNKNOWN','CANCELLED'];
 /** Presentation emphasis only; never routing or permission authority. */
@@ -51,7 +52,7 @@ function useNarrow(){
  useEffect(()=>{if(typeof window.matchMedia!=='function')return;const media=window.matchMedia(query);const update=()=>setNarrow(media.matches);update();media.addEventListener?.('change',update);return()=>media.removeEventListener?.('change',update);},[]);
  return narrow;
 }
-function Avatar({row}:{row:ManagedConversation}){return <ConversationAvatar id={row.threadId} kind={row.provider==='PI'?'pi':row.provider==='CLAUDE_CODE'?'claude':'codex'}/>;}
+function Avatar({row}:{row:ManagedConversation}){return <ConversationAvatar id={row.threadId} kind={threadAvatarKind(row.threadId)}/>;}
 function Status({row}:{row:ManagedConversation}){return <span className="mz-status" data-tier={tierOf(row)}><i aria-hidden/>{stateLabel(row)}</span>;}
 
 /** Members ordered by emphasis, then placed on concentric ellipses (positions in %). */
@@ -201,7 +202,7 @@ export function ManagementZones({api=managementZoneApi,watchApi,onOpenWatch}:{ap
   finally{openLock.current=false;setOpening('');}
  }
  const pickingManager=editor?.kind==='CREATE'||editor?.kind==='APPOINT';
- const candidates=data?.candidates.filter(row=>(pickingManager?row.provider!=='PI'&&!membership.has(row.threadId)&&row.threadId!==editor?.zone?.managerId:!membership.has(row.threadId)&&!managers.has(row.threadId))&&`${row.label} ${provider(row)} ${row.cwd} ${row.threadId} ${row.localSessionId??""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))??[];
+ const candidates=data?.candidates.filter(row=>(pickingManager?row.provider!=='PI'&&row.provider!=='ANTIGRAVITY'&&!membership.has(row.threadId)&&row.threadId!==editor?.zone?.managerId:!membership.has(row.threadId)&&!managers.has(row.threadId))&&`${row.label} ${provider(row)} ${row.cwd} ${row.threadId} ${row.localSessionId??""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))??[];
  const title=editor?.kind==='CREATE'?t('新建管理区'):editor?.kind==='APPOINT'?t('更换管理对话'):editor?.kind==='MOVE'?t('转移执行对话'):editor?.kind==='ADD'?t('添加执行对话'):editor?.kind==='ADOPT'?t('接管现有分工'):editor?.kind==='REMOVE'?t('移出管理区'):editor?.kind==='DELETE'?t('删除管理区'):t('重命名管理区');
  const valid=editor&&(['CREATE','APPOINT','ADD','MOVE'].includes(editor.kind)?Boolean(choice):true)&&(!['CREATE','ADOPT','RENAME'].includes(editor.kind)||Boolean(name.trim()));
  const legacy=new Map<string,string[]>();for(const link of data?.legacyAssignments??[]){if(!membership.has(link.threadId))legacy.set(link.managerId,[...new Set([...(legacy.get(link.managerId)??[]),link.threadId])]);}

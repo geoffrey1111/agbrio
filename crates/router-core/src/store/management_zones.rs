@@ -43,6 +43,9 @@ fn conversation(c:&Connection,id:&str)->Result<Conversation,String>{
             Ok(Conversation{thread_id:id.into(),label:if label.is_empty(){format!("Claude Code · {}",&sid[..8])}else{label},provider:"CLAUDE_CODE".into(),cwd:r.get(0)?,state:r.get(1)?,checked_at:r.get(2)?,available:r.get::<_,i64>(3)?>now(),generation:r.get(4)?,watch_enabled:r.get(6)?})
         }).map_err(|_|"MANAGEMENT_CONVERSATION_UNAVAILABLE".into());
     }
+    if id.starts_with("antigravity:"){
+      return c.query_row("SELECT w.label,w.cwd,w.generation,COALESCE(json_extract(w.snapshot_json,'$.state'),'UNKNOWN'),w.checked_at,w.enabled,w.error_code FROM codex_watches w JOIN managed_conversations m ON m.thread_id=w.thread_id AND m.cwd=w.cwd AND m.provider='ANTIGRAVITY' WHERE w.thread_id=?1",[id],|r|Ok(Conversation{thread_id:id.into(),label:r.get(0)?,provider:"ANTIGRAVITY".into(),cwd:r.get(1)?,generation:r.get(2)?,state:r.get(3)?,checked_at:r.get(4)?,available:r.get::<_,bool>(5)?&&r.get::<_,Option<String>>(6)?.is_none(),watch_enabled:r.get(5)?})).map_err(|_|"MANAGEMENT_CONVERSATION_UNAVAILABLE".into());
+    }
     let provider=if id.starts_with("pi:"){"PI"}else{"CODEX"};
     let native=id.strip_prefix("pi:").unwrap_or(id);
     if Uuid::parse_str(native).is_err(){return Err("MANAGEMENT_CONVERSATION_INVALID".into());}
@@ -62,7 +65,7 @@ fn name(value:Option<&str>)->Result<&str,String>{
 }
 fn manager(c:&Connection,id:&str)->Result<(),String>{
     let row=conversation(c,id)?;
-    if row.provider=="PI"{return Err("MANAGEMENT_MANAGER_UNSUPPORTED".into());}
+    if matches!(row.provider.as_str(),"PI"|"ANTIGRAVITY"){return Err("MANAGEMENT_MANAGER_UNSUPPORTED".into());}
     if c.query_row("SELECT EXISTS(SELECT 1 FROM management_members WHERE thread_id=?1)",[id],|r|r.get::<_,bool>(0)).map_err(db_error)?{return Err("MANAGEMENT_MANAGER_IS_EXECUTOR".into());}
     Ok(())
 }

@@ -1,4 +1,5 @@
 import {dismissAttention,replyAttentionKey,decisionAttentionKey} from './attentionDismissals';
+import {readModels} from './readModelCache';
 import * as mediaModule from "../codex/messageMedia";
 import { act,cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -342,6 +343,22 @@ it('async native Codex questions are interactive in the reader with an exact per
  const command=vi.fn(async(input:Record<string,unknown>)=>input.action==='ASYNC_RESPOND'?{id:'answer-original',threadId:original.threadId,status:'SENT'}:{messages:[],nextCursor:null});
  const view=render(<WatchChat original={original} api={{state:async()=>({...state,asyncQuestions:[card]}),command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
  const radio=await screen.findByRole('radio',{name:'A Bounded'});expect(radio.closest('.v4-chat-reader')).not.toBeNull();fireEvent.click(radio);fireEvent.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(command.mock.calls.some(([c])=>c.action==='ASYNC_RESPOND'&&c.id==='answer-original'&&c.requestId==='call-original')).toBe(true));expect(view.container.querySelector('.v4-chat-dock .v4-question-card')).toBeNull();await waitFor(()=>expect(screen.queryByRole('radio',{name:'A Bounded'})).not.toBeInTheDocument());expect(screen.queryByText(/正在核对这次答复/)).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'回答问题'})).not.toBeInTheDocument();expect(command.mock.calls.filter(([c])=>c.action==='ASYNC_RESPOND')).toHaveLength(1);
+});
+it('does not turn an async preflight rejection into pending-delivery feedback and keeps the answer selected',async()=>{
+ const card={requestId:'preflight-original',answerId:'answer-preflight',revision:1,method:'request_user_input_async',kind:'USER_INPUT',isBlocking:false,responseSent:false,questions:[{id:'question-preflight',label:'Preflight choice',required:true,options:[{label:'Keep',description:''}]}]};
+ const command=vi.fn(async(input:Record<string,unknown>)=>{if(input.action==='ASYNC_RESPOND')throw Error('REPLY_ASYNC_IDLE_USE_SEND_CHAT_NOT_SENT');return{messages:[],nextCursor:null};});
+ render(<WatchChat original={original} api={{state:async()=>({...state,asyncQuestions:[card]}),command:command as WatchChatApi['command']}} onBack={()=>{}}/>);
+ fireEvent.click(await screen.findByRole('radio',{name:'Keep'}));fireEvent.click(screen.getByRole('button',{name:'发送'}));
+ await screen.findByText('这次提交未获确认。请查看发送状态；不会自动重发。');expect(screen.queryByText(/正在核对这次答复/)).toBeNull();expect(screen.getByRole('radio',{name:'Keep'})).toBeChecked();expect(command.mock.calls.filter(([c])=>c.action==='ASYNC_RESPOND')).toHaveLength(1);
+});
+it('keeps explicit device dismissal across remount without answering or hiding a revised question',async()=>{
+ readModels.setScope('async-dismiss-lifecycle');
+ const card={requestId:'done-elsewhere',answerId:'answer-done',revision:1,method:'request_user_input_async',kind:'USER_INPUT',isBlocking:false,responseSent:false,questions:[{id:'q',label:'Completed elsewhere',required:true}]};
+ const command=vi.fn(async(_input:Record<string,unknown>)=>({messages:[],nextCursor:null}));let current=card;const api={state:async()=>({...state,asyncQuestions:[current]}),command:command as WatchChatApi['command']};
+ const first=render(<WatchChat original={original} api={api} onBack={()=>{}}/>);fireEvent.click(await screen.findByRole('button',{name:'在本设备收起'}));expect(screen.queryByLabelText('回答Completed elsewhere')).toBeNull();first.unmount();
+ const second=render(<WatchChat original={original} api={api} onBack={()=>{}}/>);await waitFor(()=>expect(command).toHaveBeenCalled());expect(screen.queryByLabelText('回答Completed elsewhere')).toBeNull();second.unmount();
+ current={...card,revision:2};render(<WatchChat original={original} api={api} onBack={()=>{}}/>);expect(await screen.findByLabelText('回答Completed elsewhere')).toBeVisible();expect(command.mock.calls.every(([c])=>(c as Record<string,unknown>).action==='HISTORY')).toBe(true);
+ readModels.setScope('');
 });
 it('native Claude turn actions send the original selected message and preserve the existing composer draft',async()=>{
  const native={...original,threadId:'claude_code:10000000-0000-4000-8000-000000000001'};

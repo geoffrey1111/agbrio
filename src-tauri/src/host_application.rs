@@ -32,6 +32,7 @@ pub(crate) const CODEX_OBSERVER_REQUEST_TIMEOUT: Duration = Duration::from_secs(
 
 #[derive(Default)]
 pub(crate) struct Session {
+    pub(crate) antigravity: Arc<crate::antigravity::Service>,
     /// Independent Pi task workers share Host ownership, never the Codex native
     /// process, provider protocol, permission token or conversation identity.
     pub(crate) pi: Arc<crate::pi::PiService>,
@@ -2455,7 +2456,7 @@ pub(crate) fn run_codex_existing_thread_observer(
         match resident_observer_connection(&session,observer_epoch){ObserverConnection::Stopped=>return,ObserverConnection::Borrowed=>continue,ObserverConnection::Ready=>{}}
         if let Ok(watches) = store.codex_watches() {
             let now=rollover_now().unwrap_or(0)*1000;
-            let due:Vec<_>=watches.into_iter().filter(|w|w.enabled&&!w.thread_id.starts_with("pi:")&&!w.thread_id.starts_with(router_core::store::claude_manual::PREFIX)&&w.retry_after<=now).collect();
+            let due:Vec<_>=watches.into_iter().filter(|w|w.enabled&&!w.thread_id.starts_with("pi:")&&!w.thread_id.starts_with(crate::antigravity::PREFIX)&&!w.thread_id.starts_with(router_core::store::claude_manual::PREFIX)&&w.retry_after<=now).collect();
             let selected=crate::observer_batch::next_ids(due.iter().map(|w|w.thread_id.as_str()),&mut watch_cursor,crate::observer_batch::WATCH_READS_PER_PASS);
             for watch in due.into_iter().filter(|w|selected.contains(&w.thread_id)) {
                 // Pause/Resume generation is checked again when the native read commits.
@@ -3598,10 +3599,32 @@ pub(crate) fn service_list_existing_codex_threads(
             if page.get("complete")==Some(&Value::Bool(false)) {
                 return Err("Codex catalog reported an incomplete terminal page; no partial catalog was shown".into());
             }
+            // A native list can omit an otherwise readable existing conversation.
+            // Index hints never bypass native reads or any write/readiness gate.
+            let mut complete=true;
+            #[cfg(not(test))]
+            let supplemental=router_core::codex::source_index::supplemental_catalog(&seen);
+            // Fictional protocol fixtures must never enumerate the owner's index.
+            #[cfg(test)]
+            let supplemental:Result<Vec<router_core::codex::source_index::CatalogIdentity>,String>=Ok(vec![]);
+            let supplement_deadline=std::time::Instant::now()+std::time::Duration::from_secs(5);
+            match supplemental {
+                Ok(hints)=>for hint in hints {
+                    let remaining=supplement_deadline.saturating_duration_since(std::time::Instant::now());
+                    if remaining.is_zero(){complete=false;break}
+                    let verified=adapter.request_with_timeout("thread/read",json!({"threadId":hint.id,"includeTurns":false}),remaining.min(std::time::Duration::from_secs(2)));
+                    let Ok(value)=verified else{complete=false;continue};let thread=&value["thread"];
+                    if thread["id"]!=hint.id||thread["archived"]==true||!thread["cwd"].as_str().is_some_and(|cwd|router_core::claude_code::same_root(cwd,&hint.cwd))||router_core::codex::source_index::current(&hint.id,&hint.cwd).ok().flatten()!=Some(router_core::codex::source_index::Availability::Present){complete=false;continue}
+                    let candidate=existing_codex_thread_candidate(thread)?;
+                    if seen.insert(candidate.id.clone()){threads.push(candidate);}
+                    if threads.len()>CODEX_THREAD_CATALOG_MAX_THREADS{return Err("Codex thread catalog exceeded the safe binding limit; no partial catalog was shown".into())}
+                },
+                Err(_)=>complete=false,
+            }
             apply_desktop_thread_projects(&mut threads,adapter.read_desktop_catalog().ok().as_ref());
             return Ok(ExistingCodexThreadCatalog {
                 threads,
-                complete: true,
+                complete,
             });
         }
         if !seen_cursors.insert(cursor.clone()) {return Err("Codex catalog repeated a page cursor; no partial catalog was shown".into());}

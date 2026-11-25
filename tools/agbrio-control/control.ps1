@@ -1,6 +1,6 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
- [ValidateSet('Status','Capabilities','Diagnostics','Start','Stop','Restart','PublishBoard','PublishReviewBoard','RegisterCodexNotices','ReadManagementZone','ReplaceZoneManager','AddZoneExecutors','ListManagementZones','ChangeManagementZone')][string]$Command='Status',
+ [ValidateSet('Status','Capabilities','Diagnostics','Start','Stop','Restart','PublishBoard','PublishReviewBoard','RegisterCodexNotices','ReadManagementZone','ReplaceZoneManager','AddZoneExecutors','ListManagementZones','ChangeManagementZone','ConversationOptions','CreateConversation','ConversationReceipt')][string]$Command='Status',
  [int]$ReviewPort=47816,
  [string]$Title='互动审批看板',
  [string]$NoticeBindingFile='',
@@ -10,6 +10,7 @@ param(
  [long]$ExpectedRevision=0,
  [string]$ExecutorsJson='',
  [string]$ChangeJson='',
+ [string]$CreationInputFile='',
  [string]$Folder='',
  [string]$Executable=(Join-Path $PSScriptRoot '..\ai-work-router.exe'),
  [string]$ExpectedInstance='',
@@ -37,9 +38,10 @@ function Invoke-Control([string]$Operation,[string]$Expected='',[guid]$Identity=
    $payload.executors=ConvertFrom-Json -InputObject $ExecutorsJson -AsHashtable -NoEnumerate
   }
   if($Operation -eq 'CHANGE_MANAGEMENT_ZONE'){$change=ConvertFrom-Json -InputObject $ChangeJson -AsHashtable -NoEnumerate;if(!$change -or $change -isnot [System.Collections.IDictionary]){throw 'MANAGEMENT_REQUEST_INVALID'};if($change.Contains('requestId') -and $change.requestId -ne $Identity.ToString()){throw 'MANAGEMENT_REQUEST_INVALID'};$change.requestId=$Identity.ToString();$payload.managementChange=$change}
+  if($Operation -eq 'CREATE_CONVERSATION'){$payload.creationInput=$creationInput}
   $bytes=[Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Depth 8 -Compress)+"`n")
   $write=$pipe.WriteAsync($bytes,0,$bytes.Length);if(!$write.Wait(3000)){throw 'APP_CONTROL_WRITE_UNCONFIRMED'};$write.GetAwaiter().GetResult()
-  $buffer=[byte[]]::new(8192);$output=[IO.MemoryStream]::new();$deadline=[DateTime]::UtcNow.AddSeconds(5)
+  $buffer=[byte[]]::new(8192);$output=[IO.MemoryStream]::new();$deadline=[DateTime]::UtcNow.AddSeconds($(if($Operation -in 'CONVERSATION_OPTIONS','CREATE_CONVERSATION'){120}else{5}))
   try {
    while($true){
     $remaining=[int][Math]::Max(1,($deadline-[DateTime]::UtcNow).TotalMilliseconds)
@@ -123,6 +125,22 @@ try {
   'Status' {Invoke-Control 'STATUS' $ExpectedInstance $RequestId}
   'Capabilities' {Invoke-Control 'CAPABILITIES' $ExpectedInstance $RequestId}
   'Diagnostics' {Invoke-Control 'DIAGNOSTICS' $ExpectedInstance $RequestId}
+  'ConversationOptions' {Invoke-Control 'CONVERSATION_OPTIONS' $ExpectedInstance $RequestId}
+  'ConversationReceipt' {
+   if(!$PSBoundParameters.ContainsKey('RequestId')){throw 'CONVERSATION_CREATION_ORIGINAL_REQUEST_ID_REQUIRED'}
+   Invoke-Control 'CONVERSATION_RECEIPT' $ExpectedInstance $RequestId
+  }
+  'CreateConversation' {
+   if(!$CreationInputFile){throw 'CONVERSATION_CREATION_INPUT_FILE_REQUIRED_NOT_STARTED'}
+   $creationInput=Get-Content -LiteralPath $CreationInputFile -Raw|ConvertFrom-Json -AsHashtable
+   $original=[guid]::Empty
+   if(!$creationInput -or ![guid]::TryParse([string]$creationInput.requestId,[ref]$original)){throw 'CONVERSATION_CREATION_ORIGINAL_REQUEST_ID_REQUIRED'}
+   if($PSBoundParameters.ContainsKey('RequestId') -and $RequestId -ne $original){throw 'CONVERSATION_CREATION_REQUEST_ID_MISMATCH_NOT_STARTED'}
+   $RequestId=$original
+   $owner=Invoke-Control 'STATUS' $ExpectedInstance
+   $null=Exact-Owner $owner (Exact-Executable)
+   Invoke-Control 'CREATE_CONVERSATION' $owner.instanceId $RequestId
+  }
   'PublishReviewBoard' {if(!$Folder){throw 'REVIEW_BOARD_ROOT_REQUIRED'};$owner=Invoke-Control 'STATUS';Invoke-Control 'PUBLISH_REVIEW_BOARD' $owner.instanceId $RequestId}
   'PublishBoard' {if(!$Folder){throw 'PUBLISHED_BOARD_FOLDER_REQUIRED'};$owner=Invoke-Control 'STATUS';Invoke-Control 'PUBLISH_BOARD' $owner.instanceId $RequestId}
   'RegisterCodexNotices' {if(!$NoticeBindingFile){throw 'CLAUDE_NOTICE_BINDING_REQUIRED'};$owner=Invoke-Control 'STATUS';Invoke-Control 'REGISTER_CODEX_NOTICES' $owner.instanceId $RequestId}
@@ -156,7 +174,7 @@ try {
  $result | ConvertTo-Json -Depth 30 -Compress
 } catch {
  $code=$_.Exception.Message
- if($code -notmatch '^(APP_|PUBLISHED_BOARD_|MANAGEMENT_)[A-Z_]+$'){$code='APP_CONTROL_UNREACHABLE'}
+ if($code -notmatch '^(APP_|PUBLISHED_BOARD_|MANAGEMENT_|CONVERSATION_CREATION_)[A-Z_]+$'){$code='APP_CONTROL_UNREACHABLE'}
  @{errorCode=$code;state='UNCONFIRMED';automaticWriteRetry=$false} | ConvertTo-Json -Compress
  exit 1
 }

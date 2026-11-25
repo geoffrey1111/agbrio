@@ -23,6 +23,7 @@ function read(key:string){
 export function dismissAttention(id:string){const key=storageKey();const rows=[...read(key).filter(v=>v!==id),id].slice(-256);memory.set(key,rows);if(readModels.presentationScope())try{localStorage.setItem(key,JSON.stringify(rows));}catch{}window.dispatchEvent(new Event(event));}
 export function useDismissedAttention(){const [,rerender]=useState(0);useEffect(()=>{const update=()=>rerender(n=>n+1);window.addEventListener(event,update);window.addEventListener('storage',update);return()=>{window.removeEventListener(event,update);window.removeEventListener('storage',update);};},[]);const rows=read(storageKey());return (id:string)=>rows.includes(id);}
 export const replyAttentionKey=(threadId:string,id:string)=>JSON.stringify(['reply',threadId,id]);
+export const asyncQuestionAttentionKey=(threadId:string,id:string,revision:number)=>JSON.stringify(['async-question',threadId,id,revision]);
 export const decisionAttentionKey=(threadId:string,childId:string|undefined,id:string,revision:number)=>JSON.stringify(['decision',threadId,childId??null,id,revision]);
 export function failedAttentionKey(w:{threadId:string;generation:number;lastMessageAt?:number|null;changedAt?:number|null;snapshot:{state:string;turnId:string|null;itemId:string|null}}){
  const {state,turnId,itemId}=w.snapshot;

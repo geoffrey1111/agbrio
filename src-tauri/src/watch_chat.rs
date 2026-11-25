@@ -75,6 +75,7 @@ pub(crate) fn metadata(a:&mut crate::codex::adapter::CodexAdapter,w:&CodexWatch)
  let v=a.request_with_timeout("thread/read",json!({"threadId":w.thread_id,"includeTurns":false}),CODEX_OBSERVER_REQUEST_TIMEOUT)?;
  if v.pointer("/thread/id").and_then(Value::as_str)!=Some(&w.thread_id)||v.pointer("/thread/cwd").and_then(Value::as_str)!=Some(&w.cwd){return Err("REPLY_TARGET_CHANGED_REFRESH".into());}Ok(v)
 }
+pub(crate) fn read_value(core:&RouterCore,id:&str)->Result<Value,String>{if id.starts_with(crate::antigravity::PREFIX){crate::antigravity::state(core,id)}else{serde_json::to_value(state(core,id)?).map_err(|_|"WATCH_CHAT_FAILED".into())}}
 pub(crate) fn state(core:&RouterCore,id:&str)->Result<ChatState,String>{
  if id.starts_with("pi:"){return pi_state(core,id);}
  let mut w=watch(core,id)?;if let Err(code)=crate::codex_watch::source_availability(id,&w.cwd){let _=core.store.codex_watch_unavailable_reason(id,w.generation,&code);return Err(code);}
@@ -305,6 +306,7 @@ fn async_answer_text(card:&Value,answers:&std::collections::HashMap<String,Strin
 }
 /// MCP uses the same native response paths as owner UI, never a free-form fallback.
 pub(crate) fn assistant_response_command(core:&RouterCore,thread:&str,request:&str,input:&MobileCodexResponseInput)->Result<ChatCommand,String>{
+ if thread.starts_with(crate::antigravity::PREFIX){crate::antigravity::validate_response(core,thread,request,input)?;return Ok(ChatCommand::Respond{thread_id:thread.into(),request_id:request.into(),input:MobileCodexResponseInput{revision:input.revision,decision:input.decision.clone(),answers:input.answers.clone()}});}
  let pending=core.session.lock().map_err(|_|"Router session unavailable")?.pending_codex_requests.get(request).cloned();
  if let Some(r)=pending{
   if r.thread_id!=thread||r.responded||r.revision!=input.revision{return Err("REPLY_REQUEST_EXPIRED".into());}
@@ -322,7 +324,7 @@ pub(crate) fn assistant_response_command(core:&RouterCore,thread:&str,request:&s
  async_answer_target(core,&view)?;
  Ok(ChatCommand::AsyncRespond{thread_id:thread.into(),id,request_id:request.into(),revision:input.revision as i64,answers})
 }
-pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{if c.thread_id().starts_with("pi:"){return crate::pi::presentation::command(core,c);}command_with_deadline(core,c,None)}
+pub(crate) fn command(core:&RouterCore,c:ChatCommand)->Result<Value,String>{if c.thread_id().starts_with(crate::antigravity::PREFIX){return crate::antigravity::command(core,c);}if c.thread_id().starts_with("pi:"){return crate::pi::presentation::command(core,c);}command_with_deadline(core,c,None)}
 pub(crate) fn resource_notice_command(core:&RouterCore,c:ChatCommand,deadline:i64)->Result<Value,String>{if !matches!(&c,ChatCommand::Send{mode,..}if mode!="QUEUE"){return Err("SAFETY_NOTICE_MODE_INVALID".into())}command_with_deadline(core,c,Some(deadline))}
 /// Resume only an atomically journalled, never-admitted fixed management notice.
 /// This has no HTTP/MCP entry. The physical claim revalidates its owner route,
@@ -372,7 +374,7 @@ fn command_with_deadline(core:&RouterCore,c:ChatCommand,resource_deadline:Option
  }
 }}
 pub(crate) fn start_queue(core:RouterCore){let _=core.store.recover_watch_replies();std::thread::spawn(move||loop{std::thread::sleep(Duration::from_secs(3));dispatch_queue_once(&core);});}
-fn dispatch_queue_once(core:&RouterCore){let Ok(rs)=core.store.queued_watch_replies()else{return};for r in rs{if r.thread_id.starts_with(router_core::store::claude_manual::PREFIX){continue;}let Ok(w)=watch(&core,&r.thread_id)else{let _=core.store.finish_watch_reply(&r.id,"FAILED",None,Some("REPLY_QUEUE_TARGET_CHANGED"));continue;};
+fn dispatch_queue_once(core:&RouterCore){crate::antigravity::dispatch_queue(core);let Ok(rs)=core.store.queued_watch_replies()else{return};for r in rs{if r.thread_id.starts_with(router_core::store::claude_manual::PREFIX)||r.thread_id.starts_with(crate::antigravity::PREFIX){continue;}let Ok(w)=watch(&core,&r.thread_id)else{let _=core.store.finish_watch_reply(&r.id,"FAILED",None,Some("REPLY_QUEUE_TARGET_CHANGED"));continue;};
  let Ok(mut s)=core.session.lock()else{continue};let Some(a)=s.adapter.as_mut().filter(|a|!a.is_closed())else{continue};let Ok(m)=metadata(a,&w)else{continue};let Ok((_,_,snap))=crate::codex_watch::inspect(a,&w.thread_id)else{continue};let Ok(expected)=core.store.queued_watch_reply_target(&r.id)else{continue};if w.generation!=r.generation||(snap.turn_id.is_some()&&snap.turn_id!=expected){let _=core.store.finish_watch_reply(&r.id,"FAILED",None,Some("REPLY_QUEUE_TARGET_CHANGED"));continue;}
  if a.is_turn_active(&w.thread_id)||m.pointer("/thread/status/type").and_then(Value::as_str)==Some("active"){continue;}
  if snap.turn_id==expected&&w.generation==r.generation&&matches!(snap.state.as_str(),"INCOMPLETE"|"UNKNOWN"|"RUNNING"|"RESULT_PENDING"){continue;}

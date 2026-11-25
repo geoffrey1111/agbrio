@@ -169,8 +169,9 @@ fn claude_candidate_display(s:&router_core::claude_code::Session,desktop:&[crate
 pub(crate) fn candidates(core:&RouterCore)->Result<ExistingCodexThreadCatalog,String>{
  let claude=crate::claude_code::catalog(core)?;
  let desktop=crate::claude_code_desktop::sessions();let at=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+ let antigravity=crate::antigravity::catalog(core);
  let bound:std::collections::HashSet<_>=core.store.bridge_codex_thread_ids()?.into_iter().collect();
- let mut catalog=match crate::role_bridge::catalog(core){Ok(c)=>c,Err(_) if !claude.sessions.is_empty()=>ExistingCodexThreadCatalog{threads:vec![],complete:false},Err(e)=>return Err(e)};
+ let mut catalog=match crate::role_bridge::catalog(core){Ok(c)=>c,Err(_) if !claude.sessions.is_empty()||antigravity.as_ref().is_ok_and(|c|!c.threads.is_empty())=>ExistingCodexThreadCatalog{threads:vec![],complete:false},Err(e)=>return Err(e)};
  catalog.threads.retain(|t|!bound.contains(&t.id));
  for s in claude.sessions {
    let Some((label,recency_at))=claude_candidate_display(&s,&desktop,at)else{continue};
@@ -179,6 +180,7 @@ pub(crate) fn candidates(core:&RouterCore)->Result<ExistingCodexThreadCatalog,St
    catalog.threads.push(ExistingCodexThreadCandidate{id:key,label,preview:Some("Claude Code".into()),updated_at:None,project_provenance:Some(s.cwd),recency_at,project_id:None,project_label:None,project_status:"PROJECTLESS".into()});
  }
  catalog.complete &= claude.complete;
+ if let Ok(native)=antigravity{catalog.complete &=native.complete;catalog.threads.extend(native.threads);}
  Ok(catalog)
 }
 #[cfg(test)]mod alert_candidate_tests{
@@ -192,6 +194,7 @@ pub(crate) fn candidates(core:&RouterCore)->Result<ExistingCodexThreadCatalog,St
  }
 }
 pub(crate) fn enable(core: &RouterCore, thread_id: &str) -> Result<(), String> {
+    if thread_id.starts_with(crate::antigravity::PREFIX){return crate::antigravity::enable(core,thread_id);}
     if thread_id.starts_with(router_core::store::claude_manual::PREFIX){return crate::claude_chat::enable(core,thread_id);}
     let mut s = core
         .session
@@ -212,7 +215,7 @@ pub(crate) fn poll(
     watch: &CodexWatch,
     epoch: u64,
 ) -> Result<bool, String> {
-    if watch.thread_id.starts_with(router_core::store::claude_manual::PREFIX)||watch.thread_id.starts_with("pi:"){return Ok(false);}
+    if watch.thread_id.starts_with(router_core::store::claude_manual::PREFIX)||watch.thread_id.starts_with("pi:")||watch.thread_id.starts_with(crate::antigravity::PREFIX){return Ok(false);}
      let outcome = (|| {
         source_availability(&watch.thread_id,&watch.cwd)?;
         let mut s = session.lock().map_err(|_| "Router session unavailable")?;

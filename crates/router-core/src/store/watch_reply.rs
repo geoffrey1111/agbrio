@@ -28,6 +28,9 @@ fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<WatchReply> {
 }
 const COLS:&str="id,thread_id,cwd,generation,source_sequence,expected_turn_id,mode,text,options_json,payload_hash,status,turn_id,error_code,created_at,updated_at";
 pub(super) fn prepare_watch_reply_at(c:&Connection,input:&WatchReply)->Result<WatchReply,String>{
+    prepare_watch_reply_queue_at(c,input,false)
+}
+pub(super) fn prepare_watch_reply_queue_at(c:&Connection,input:&WatchReply,known_running_queue:bool)->Result<WatchReply,String>{
         if Uuid::parse_str(&input.id).is_err()||input.text.trim().is_empty()||input.text.len()>100_000||!matches!(input.mode.as_str(),"SEND"|"QUEUE"|"STEER"){return Err("REPLY_INPUT_INVALID".into());}
         let raw=serde_json::to_string(&input.options).map_err(|_|"REPLY_OPTIONS_INVALID")?;
         if raw.len()>4096{return Err("REPLY_OPTIONS_INVALID".into());}
@@ -37,7 +40,7 @@ pub(super) fn prepare_watch_reply_at(c:&Connection,input:&WatchReply)->Result<Wa
             let current=codex_watch::chat_context(c,&input.thread_id)?;
             if current.cwd!=input.cwd||current.generation!=input.generation{return Err("REPLY_TARGET_CHANGED_REFRESH".into());}
             if let Some(seq)=input.source_sequence{let target:Option<String>=c.query_row("SELECT thread_id FROM codex_watch_events WHERE sequence=?1",[seq],|r|r.get(0)).optional().map_err(db_error)?;if target.as_deref()!=Some(&input.thread_id){return Err("WATCH_EVENT_NOT_FOUND".into());}}
-            let conflict:i64=c.query_row("SELECT COUNT(*) FROM watch_replies WHERE thread_id=?1 AND (status IN ('SENDING','UNKNOWN') OR (status='QUEUED' AND NOT (?2 AND mode='QUEUE')))",params![input.thread_id,input.mode=="QUEUE"||(input.mode=="STEER"&&!input.thread_id.starts_with(super::claude_manual::PREFIX))],|r|r.get(0)).map_err(db_error)?;if conflict>0{return Err("REPLY_PREVIOUS_PENDING_CHECK_FIRST".into());}
+            let conflict:i64=c.query_row("SELECT COUNT(*) FROM watch_replies WHERE thread_id=?1 AND (status='UNKNOWN' OR (status='SENDING' AND NOT ?3) OR (status='QUEUED' AND NOT (?2 AND mode='QUEUE')))",params![input.thread_id,input.mode=="QUEUE"||(input.mode=="STEER"&&!input.thread_id.starts_with(super::claude_manual::PREFIX)),known_running_queue&&input.mode=="QUEUE"],|r|r.get(0)).map_err(db_error)?;if conflict>0{return Err("REPLY_PREVIOUS_PENDING_CHECK_FIRST".into());}
             let depth:i64=c.query_row("SELECT COUNT(*) FROM watch_replies WHERE thread_id=?1 AND status='QUEUED'",[&input.thread_id],|r|r.get(0)).map_err(db_error)?;if input.mode=="QUEUE"&&depth>=32{return Err("REPLY_QUEUE_LIMIT".into());}
             let at=now();c.execute("INSERT INTO watch_replies(id,thread_id,cwd,generation,source_sequence,expected_turn_id,mode,text,options_json,payload_hash,status,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,'QUEUED',?11,?11)",params![input.id,input.thread_id,input.cwd,input.generation,input.source_sequence,input.expected_turn_id,input.mode,input.text,raw,hash,at]).map_err(db_error)?;
             let reply=c.query_row(&format!("SELECT {COLS} FROM watch_replies WHERE id=?1"),[&input.id],row).map_err(db_error)?;Ok(reply)

@@ -1,6 +1,40 @@
 //! Read-only identity/availability metadata from this user's existing native index.
 use std::path::{Path,PathBuf};
 use rusqlite::OptionalExtension;
+#[cfg(test)]
+#[path="source_index_catalog_tests.rs"]
+mod catalog_tests;
+/// Candidates omitted by native thread/list. These are hints only: the caller
+/// must verify each through native thread/read before presenting it for selection.
+#[derive(Debug)]
+pub struct CatalogIdentity {pub id:String,pub cwd:String}
+pub fn supplemental_catalog(listed:&std::collections::HashSet<String>)->Result<Vec<CatalogIdentity>,String>{
+ let home=std::env::var_os("CODEX_HOME").map(PathBuf::from).or_else(||std::env::var_os("USERPROFILE").or_else(||std::env::var_os("HOME")).map(|h|PathBuf::from(h).join(".codex"))).ok_or("CODEX_SOURCE_INDEX_UNAVAILABLE")?;
+ supplemental_at(&home,listed)
+}
+fn supplemental_at(home:&Path,listed:&std::collections::HashSet<String>)->Result<Vec<CatalogIdentity>,String>{
+ use std::io::{BufRead,Read};
+ let fail=||"CODEX_SOURCE_INDEX_UNAVAILABLE".to_owned();
+ if !home.join("state_5.sqlite").is_file(){return Ok(vec![])}
+ let c=rusqlite::Connection::open_with_flags(home.join("state_5.sqlite"),rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY|rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX).map_err(|_|fail())?;
+ c.busy_timeout(std::time::Duration::from_millis(50)).map_err(|_|fail())?;
+ // Ordinary human conversations only. Background exec/guardian/child records
+ // are deliberately not promoted into independent conversations.
+ let mut query=c.prepare("SELECT id,cwd,rollout_path FROM threads WHERE archived=0 AND source IN ('cli','vscode') ORDER BY updated_at DESC LIMIT 1001").map_err(|_|fail())?;
+ let rows=query.query_map([],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?))).map_err(|_|fail())?.collect::<Result<Vec<_>,_>>().map_err(|_|fail())?;
+ if rows.len()>1000{return Err("CODEX_SOURCE_CATALOG_LIMIT".into())}
+ let root=home.canonicalize().map_err(|_|fail())?.join("sessions");let mut result=Vec::new();
+ for (id,cwd,file) in rows {
+  if listed.contains(&id)||uuid::Uuid::parse_str(&id).is_err()||!Path::new(&cwd).is_dir(){continue}
+  let Ok(path)=Path::new(&file).canonicalize()else{continue};if !path.starts_with(&root)||path.extension().is_none_or(|s|s!="jsonl"){continue}
+  let Ok(file)=std::fs::File::open(&path)else{continue};let mut line=String::new();
+  if std::io::BufReader::new(file.take(128*1024)).read_line(&mut line).is_err(){continue}
+  let Ok(meta)=serde_json::from_str::<serde_json::Value>(&line)else{continue};
+  if meta["type"]!="session_meta"||meta["payload"]["id"]!=id||!meta["payload"]["cwd"].as_str().is_some_and(|p|crate::claude_code::same_root(p,&cwd)){continue}
+  result.push(CatalogIdentity{id,cwd});
+ }
+ Ok(result)
+}
 #[derive(Debug,PartialEq,Eq)]pub enum Availability{Present,Archived,FileMissing,ProjectChanged}
 pub fn current(thread:&str,cwd:&str)->Result<Option<Availability>,String>{
  if uuid::Uuid::parse_str(thread).is_err(){return Ok(None);}

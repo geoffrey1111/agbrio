@@ -6,6 +6,16 @@ import type {CodexWatch,NotificationApi} from './CodexNotifications';
 import {QUIET_WATCH_AGE} from './watchPresentation';
 import {readModels} from './readModelCache';
 afterEach(cleanup);
+it('finds an exact native deep link and reports an incomplete catalog without enabling a conversation',async()=>{
+ const a=fixture([]);const id='10000000-0000-4000-8000-000000000099';
+ vi.mocked(a.api.threads).mockResolvedValue({threads:[{id,label:'Native title',updatedAt:'1'},{id:'other',label:'Other title',updatedAt:'1'}],complete:false} as never);
+ render(<ConversationHome bridges={[]} activity={{}} activityClock={Date.now()} watchApi={a.api} addRequest={0} onOpenBridge={vi.fn()} onOpenWatch={vi.fn()}/>);
+ fireEvent.click(screen.getByRole('button',{name:'开始'}));fireEvent.click(await screen.findByText('监听一个对话'));
+ const dialog=await screen.findByRole('dialog');await within(dialog).findByText('Native title');
+ expect(within(dialog).getByRole('alert')).toHaveTextContent('部分对话暂时无法核实');
+ fireEvent.change(within(dialog).getByRole('searchbox'),{target:{value:`codex://threads/${id}`}});
+ await waitFor(()=>expect(within(dialog).getByText('Native title')).toBeVisible());expect(within(dialog).queryByText('Other title')).toBeNull();expect(a.api.enable).not.toHaveBeenCalled();
+});
 const messageEpoch=Date.now()-60000;
 const watch=(id:string,at:number,state='RESULT_READY'):CodexWatch=>({threadId:id,label:id,cwd:'C:/fixture',lastMessageAt:at?messageEpoch+at:0,checkedAt:Date.now(),enabled:true,generation:1,errorCode:null,snapshot:{state,turnId:'turn',itemId:'message',text:'fixture'}});
 function fixture(initial:CodexWatch[]){let rows=initial;let notify=()=>{};const api={connect:vi.fn(),threads:vi.fn(),enable:vi.fn(),pause:vi.fn(),feed:vi.fn(),event:vi.fn(),webUrl:vi.fn(),cachedWatches:()=>rows,watches:vi.fn(async()=>rows),show:vi.fn(async(id:string)=>{const shownAt=Date.now();rows=rows.map(w=>w.threadId===id?{...w,shownAt}:w);notify();return{shownAt};}),subscribe:(listener:()=>void)=>{notify=listener;return()=>{};}} as NotificationApi;return{api,push:(next:CodexWatch[])=>{rows=next;notify();}};}

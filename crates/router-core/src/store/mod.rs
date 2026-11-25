@@ -5,6 +5,8 @@ pub mod pi;
 pub mod pi_policy;
 pub mod assistant_oauth;
 pub mod assistant_actions;
+pub mod conversation_creation;
+pub mod managed_conversations;
 pub mod assistant_processed;
 pub mod assistant_report;
 pub mod goal_control;
@@ -811,6 +813,8 @@ impl RouterStore {
         claude_code::migrate(&mut connection, &path)?;
         claude_manual::migrate(&mut connection)?;
         assistant_actions::migrate(&mut connection)?;
+        conversation_creation::migrate(&mut connection)?;
+        managed_conversations::migrate(&mut connection)?;
         bridge_notifications::migrate(&mut connection)?;
         goal_control::migrate(&connection)?;
         assistant_processed::migrate(&connection)?;

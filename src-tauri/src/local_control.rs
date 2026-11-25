@@ -1,4 +1,4 @@
-//! Windows-local maintenance. No TCP listener, browser or provider control.
+﻿//! Windows-local owner operations. No TCP listener, credential access or implicit retries.
 use crate::{app_control,host_application::RouterCore,HostRuntime};
 use serde::{Deserialize,Serialize};
 use serde_json::{json,Value};
@@ -8,11 +8,11 @@ use replay::ReplayStore;
 
 #[derive(Clone,PartialEq,Eq,Deserialize,Serialize)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]
-struct Request { #[serde(default)]review_port:Option<u16>,#[serde(default)]title:Option<String>,api_version:u32,request_id:String,command:String,expected_instance:Option<String>,#[serde(default)]folder:Option<String>,#[serde(default)]notice_binding:Option<router_core::store::codex_notices::Binding>,#[serde(default)]zone_id:Option<String>,#[serde(default)]expected_revision:Option<i64>,#[serde(default)]new_manager:Option<crate::management_zones::ManagerTarget>,#[serde(default)]executors:Option<Vec<router_core::store::management_zones::ExecutorTarget>>,#[serde(default)]management_change:Option<router_core::store::management_zones::Change> }
+struct Request { #[serde(default)]creation_input:Option<Value>,#[serde(default)]review_port:Option<u16>,#[serde(default)]title:Option<String>,api_version:u32,request_id:String,command:String,expected_instance:Option<String>,#[serde(default)]folder:Option<String>,#[serde(default)]notice_binding:Option<router_core::store::codex_notices::Binding>,#[serde(default)]zone_id:Option<String>,#[serde(default)]expected_revision:Option<i64>,#[serde(default)]new_manager:Option<crate::management_zones::ManagerTarget>,#[serde(default)]executors:Option<Vec<router_core::store::management_zones::ExecutorTarget>>,#[serde(default)]management_change:Option<router_core::store::management_zones::Change> }
 
 fn dispatch(core:&RouterCore,host:&HostRuntime,bytes:&[u8],seen:&mut ReplayStore)->(Value,bool) {
     let failure=|code:&str|(json!({"apiVersion":1,"errorCode":code}),false);
-    if bytes.len()>8192 {return failure("APP_CONTROL_REQUEST_TOO_LARGE");}
+    if bytes.len()>131072 {return failure("APP_CONTROL_REQUEST_TOO_LARGE");}
     let Ok(r)=serde_json::from_slice::<Request>(bytes)else{return failure("APP_CONTROL_REQUEST_INVALID")};
     if r.api_version!=1||!uuid::Uuid::parse_str(&r.request_id).is_ok_and(|id|id.to_string()==r.request_id){return failure("APP_CONTROL_REQUEST_INVALID");}
     match seen.lookup(&r){Ok(Some(reply))=>return (reply,false),Ok(None)=>{},Err(code)=>return failure(&code)}
@@ -25,6 +25,17 @@ fn dispatch(core:&RouterCore,host:&HostRuntime,bytes:&[u8],seen:&mut ReplayStore
         "STATUS"=>(json!({"state":"RUNNING","instanceId":host.instance_id(),"pid":std::process::id(),"appVersion":app_control::version()}),false),
         "CAPABILITIES"=>(app_control::capabilities("OWNER"),false),
         "DIAGNOSTICS"=>match app_control::diagnostics(core,Some(host)){Ok(v)=>(v,false),Err(_)=>return failure("APP_DIAGNOSTICS_STORE_UNAVAILABLE")},
+        "CONVERSATION_OPTIONS"=>match crate::conversation_creation::command_with_host(core,host,crate::conversation_creation::Command::Options){Ok(v)=>(v,false),Err(code)=>return failure(&code)},
+        "CONVERSATION_RECEIPT"=>match crate::conversation_creation::command(core,crate::conversation_creation::Command::Receipt{request_id:r.request_id.clone()}){Ok(v)=>(v,false),Err(code)=>return failure(&code)},
+        "CREATE_CONVERSATION" if r.expected_instance.as_deref()==Some(host.instance_id())=>{
+            let Some(value)=r.creation_input.as_ref()else{return failure("CONVERSATION_CREATION_INPUT_INVALID_NOT_STARTED")};
+            let Ok(input)=serde_json::from_value::<crate::conversation_creation::Input>(value.clone())else{return failure("CONVERSATION_CREATION_INPUT_INVALID_NOT_STARTED")};
+            if input.request_id!=r.request_id{return failure("CONVERSATION_CREATION_REQUEST_ID_MISMATCH_NOT_STARTED")}
+            // Shared owner journal fences the native creation and first instruction;
+            // repeated original input reads the same receipt, never another send.
+            match crate::conversation_creation::command_with_host(core,host,crate::conversation_creation::Command::Create{input}){Ok(v)=>(v,false),Err(code)=>return failure(&code)}
+        },
+        "CREATE_CONVERSATION"=>return failure("APP_CONTROL_EXPECTED_INSTANCE_REQUIRED"),
         "PUBLISH_REVIEW_BOARD" if r.expected_instance.as_deref()==Some(host.instance_id())=>{match r.folder.as_deref().ok_or("REVIEW_BOARD_ROOT_REQUIRED".to_string()).and_then(|folder|crate::review_boards::publish(folder,r.review_port.unwrap_or(47816),r.title.as_deref().unwrap_or("互动审批看板"))){Ok(v)=>(json!(v),false),Err(code)=>return failure(&code)}},
         "PUBLISH_REVIEW_BOARD"=>return failure("APP_CONTROL_EXPECTED_INSTANCE_REQUIRED"),
         "PUBLISH_BOARD" if r.expected_instance.as_deref()==Some(host.instance_id())=>{
@@ -120,9 +131,9 @@ mod pipe {
                 Err(code)=>return Err(code)
             }};
             let mut server=std::mem::replace(&mut listener,next);
-            let exchange=tokio::time::timeout(std::time::Duration::from_secs(3),async{
+            let exchange=tokio::time::timeout(std::time::Duration::from_secs(120),async{
                 let mut bytes=Vec::new();
-                loop{let byte=server.read_u8().await.map_err(|_|())?;if byte==b'\n'{break}bytes.push(byte);if bytes.len()>8192{break}}
+                loop{let byte=server.read_u8().await.map_err(|_|())?;if byte==b'\n'{break}bytes.push(byte);if bytes.len()>131072{break}}
                 let (reply,shutdown)=dispatch(&core,&host,&bytes,&mut seen);
                 let mut output=serde_json::to_vec(&reply).map_err(|_|())?;output.push(b'\n');
                 server.write_all(&output).await.map_err(|_|())?;server.flush().await.map_err(|_|())?;

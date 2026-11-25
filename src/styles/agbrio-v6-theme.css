@@ -1,4 +1,4 @@
-/* Agbrio v6 visual system (owner-approved prototype, 2026-10-19).
+﻿/* Agbrio v6 visual system (owner-approved prototype, 2026-10-19).
    Loaded last: re-maps the shared --awr / --r2 tokens so every older surface
    follows the same palette, then restyles the app frame (header, tab bar).
    Neutrals lean warm-grey instead of cream; the accent marks only what needs
@@ -222,7 +222,7 @@ html .r2-router .r2-rail .r2-nav-selection{background:var(--awr-paper)!important
 html .v6-sheet .v6-search input[type=search],html .r2-router .v6-search input[type=search]{border:0!important;background:none!important;min-height:0!important;padding:0!important;box-shadow:none!important;outline:none}
 .v6-sheet .v6-search{min-width:0}
 .v6-binding .v6-chips button[aria-pressed=true]{background:var(--awr-ink);color:var(--awr-canvas)}
-.v6-binding-edit>:not(.v6-sheet-scroll),.v6-sheet .v6-step>:not(.v6-sheet-scroll):not(.v6-binding-edit){flex:none}
+.v6-binding-edit>:not(.v6-sheet-scroll),.v6-sheet .v6-step>:not(.v6-sheet-scroll):not(.v6-binding-edit):not(.v6-new-conversation-form){flex:none}
 .v6-project-glyph{flex:none;display:grid;place-items:center;width:42px;height:42px;border-radius:14px;background:var(--awr-shell);color:var(--awr-muted);font-weight:700;font-size:16px}
 .v6-sheet .v6-project-row{align-items:center}
 .v6-sheet .v6-chips .v6-chip-back{display:inline-flex;align-items:center;gap:2px;background:var(--awr-paper);box-shadow:0 0 0 1px var(--awr-line);color:var(--awr-ink);font-weight:600;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

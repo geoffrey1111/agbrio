@@ -43,7 +43,7 @@ fn notice_binding(c:&Connection,s:&Subscription,n:&Notice)->Result<(),String>{
  if !crate::claude_code::same_root(&root,&s.binding.receiver_cwd){return Err("CLAUDE_ROOT_CHANGED".into());}Ok(())
 }
 pub(super) fn text(s:&Subscription,id:&str,turn:&str,kind:&str,state:&str,request:Option<&str>)->String{
- let provider=if s.binding.thread_id.starts_with("pi:"){"Pi"}else if s.binding.thread_id.starts_with("claude_code:"){"Claude Code"}else{"Codex"};
+ let provider=if s.binding.thread_id.starts_with("antigravity:"){"Antigravity"}else if s.binding.thread_id.starts_with("pi:"){"Pi"}else if s.binding.thread_id.starts_with("claude_code:"){"Claude Code"}else{"Codex"};
  let mut body=format!("Agbrio {provider} task notice (metadata only)\nnoticeId: {id}\nkind: {kind} · state: {state}\nthreadId: {} · generation: {}",s.binding.thread_id,s.binding.generation);
  if !turn.is_empty(){body.push_str(&format!("\nturnId: {turn}"));}
  if let Some(request)=request{body.push_str(&format!("\nrequestId: {request}"));}
